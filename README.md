@@ -50,7 +50,17 @@ cd web && npm install && cd ..
 
 ### 3. Baixar os dados
 
-A API do Tesouro aceita **1 requisição por segundo**, e cada ente leva uma requisição por ano.
+**Caminho rápido (membros do laboratório):** os dados já processados ficam no bucket `lapam-finbra`
+do Cloudflare R2. Peça a um administrador uma chave do R2, copie `.env.example` para `.env`,
+preencha e rode:
+
+```bash
+py pipeline/r2.py baixar --camadas silver gold     # ~280 MB, menos de 1 minuto
+```
+
+Pronto: pule para o passo 4. O `.env` fica fora do git; **nunca faça commit dele**.
+
+**Sem acesso ao R2:** gere os dados a partir da API do Tesouro. A API aceita **1 requisição por segundo**, e cada ente leva uma requisição por ano.
 A extração é **retomável**: se parar no meio (Ctrl+C, queda de internet, PC desligado), basta
 rodar o mesmo comando de novo que ela continua de onde parou.
 
@@ -107,11 +117,13 @@ Variáveis opcionais do servidor: `PORT` (padrão 3001) e `DATA_DIR` (padrão `.
 
 ### 5. Atualizar os dados
 
-Os entes podem retificar declarações antigas. Para atualizar os anos recentes:
+Os entes podem retificar declarações antigas. Para atualizar os anos recentes e publicar no R2:
 
 ```bash
+py pipeline/r2.py baixar                            # traz bronze/silver/gold atuais do R2
 py pipeline/extract.py --anos 2024 2025 --atualizar
 py pipeline/processar.py --anos 2024 2025
+py pipeline/r2.py enviar                            # envia só os arquivos que mudaram
 ```
 
 Depois, **reinicie a API**: ela guarda as respostas em memória.
@@ -182,7 +194,19 @@ rankings**; ao escolher o ente, os valores aparecem como declarados, com aviso.
 - **Banco Central:** IPCA mensal, série SGS 433.
 - **Painel da pesquisa LAPAM** (opcional, fora do repositório): área, distância, Bolsa Família, INSS (2013–2021).
 
+## Armazenamento (Cloudflare R2)
+
+| Prefixo no bucket `lapam-finbra` | Conteúdo |
+|---|---|
+| `bronze/` | um Parquet por exercício, fiel à API (~300 MB) |
+| `silver/` | camada tratada que o site lê (~270 MB) |
+| `gold/` | indicadores, alertas e validação (~11 MB) |
+
+`pipeline/r2.py testar | enviar | baixar` usa as variáveis `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`,
+`R2_SECRET_ACCESS_KEY` e `R2_BUCKET`, lidas do ambiente ou do `.env`. As mesmas quatro estão
+cadastradas como *secrets* do repositório no GitHub, para a atualização automática.
+
 ## Próximos passos
 
-- GitHub Actions mensal: rebaixar os dois últimos exercícios e enviar os Parquet ao Cloudflare R2.
-- Publicação do site lendo os dados do R2.
+- GitHub Actions mensal: baixar do R2, rebaixar os dois últimos exercícios, processar e enviar de volta.
+- Publicação do site (GitHub Pages lendo os dados do R2, ou API hospedada).
