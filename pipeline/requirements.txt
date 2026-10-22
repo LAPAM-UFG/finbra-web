@@ -1,0 +1,5 @@
+requests>=2.32
+duckdb>=1.1
+pandas>=2.2
+pyarrow>=17
+truststore>=0.9

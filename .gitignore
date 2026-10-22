@@ -1,0 +1,16 @@
+# dados: regeneráveis pelo pipeline (e, no futuro, publicados no Cloudflare R2)
+data/*
+!data/.gitkeep
+
+# dependências e artefatos
+node_modules/
+web/dist/
+__pycache__/
+*.tmp
+
+# segredos
+.env
+.env.*
+
+# ambiente virtual do Python
+.venv/
