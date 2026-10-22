@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 
 import requests
 
-from config import API_BASE, ESFERAS, INTERVALO_MIN, LANDING, LOGS, PRIMEIRO_ANO
+from config import API_BASE, ESFERAS, INTERVALO_MIN, LANDING, LOGS, PRIMEIRO_ANO, UF_POR_CODIGO
 
 log = logging.getLogger("extract")
 
@@ -126,7 +126,8 @@ def main():
     if args.entes:
         entes = [e for e in entes if e["cod_ibge"] in set(args.entes)]
     if args.uf:
-        entes = [e for e in entes if e["uf"] in {u.upper() for u in args.uf}]
+        ufs = {u.upper() for u in args.uf}
+        entes = [e for e in entes if UF_POR_CODIGO.get(e["cod_ibge"], e["uf"]) in ufs]
     for ano in parse_anos(args.anos):
         extrair_ano(cliente, ano, entes, args.atualizar)
     log.info("Extração concluída.")

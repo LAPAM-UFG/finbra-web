@@ -25,7 +25,7 @@ import re
 import duckdb
 import pandas as pd
 
-from config import BRONZE, SILVER
+from config import BRONZE, SILVER, UF_POR_CODIGO
 
 # Nomes de coluna que mudaram ao longo dos anos → nome atual
 COLUNAS = {
@@ -187,7 +187,9 @@ def main():
         gerar_ano(con, arquivo)
 
     entes = BRONZE / "entes.parquet"
-    con.execute(f"""COPY (SELECT cod_ibge, ente AS nome, uf, regiao, esfera, trim(capital) = '1' AS capital, cnpj
+    uf_estados = " ".join(f"WHEN {cod} THEN '{uf}'" for cod, uf in UF_POR_CODIGO.items())
+    con.execute(f"""COPY (SELECT cod_ibge, ente AS nome, CASE cod_ibge {uf_estados} ELSE uf END AS uf,
+                                 regiao, esfera, trim(capital) = '1' AS capital, cnpj
                           FROM '{entes.as_posix()}')
                     TO '{(SILVER / "entes.parquet").as_posix()}' (FORMAT parquet)""")
 
