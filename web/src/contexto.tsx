@@ -15,8 +15,8 @@ export function ProvedorDados({ children }: { children: ReactNode }) {
         : null,
     [meta.dados, entes.dados],
   );
-  if (meta.erro || entes.erro) return <p className="vazio erro">Não foi possível falar com a API: {meta.erro ?? entes.erro}</p>;
-  if (!valor) return <p className="carregando">Carregando…</p>;
+  if (meta.erro || entes.erro) return <p className="vazio erro">Não foi possível carregar os dados: {meta.erro ?? entes.erro}</p>;
+  if (!valor) return <p className="carregando">Carregando o motor de consultas e a lista de entes…</p>;
   return <Ctx.Provider value={valor}>{children}</Ctx.Provider>;
 }
 

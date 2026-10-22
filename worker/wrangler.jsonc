@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "finbra-web",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-01",
+  // site compilado (npm run build em web/); rotas desconhecidas caem no index.html (React Router)
+  "assets": {
+    "directory": "../web/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/dados/*"]
+  },
+  // bucket privado com os Parquet: só o Worker lê
+  "r2_buckets": [{ "binding": "DADOS", "bucket_name": "lapam-finbra" }],
+  "observability": { "enabled": true }
+}

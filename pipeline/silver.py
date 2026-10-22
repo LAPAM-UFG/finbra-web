@@ -155,11 +155,13 @@ def gerar_ano(con, arquivo):
         contas_fato = pd.concat([contas_fato, novos], ignore_index=True)
     if criados:
         fato = pd.concat([fato] + criados, ignore_index=True)
+    # ordenado por ente e em blocos pequenos: o site, no navegador, lê só o trecho do ente consultado
+    fato = fato.sort_values(["cod_ibge", "anexo", "coluna", "chave"], ignore_index=True)
 
     for nome, df in (("dca", fato), ("contas", contas)):
         destino = SILVER / nome / f"exercicio={ano}.parquet"
         destino.parent.mkdir(parents=True, exist_ok=True)
-        df.to_parquet(destino, index=False, compression="zstd", compression_level=9)
+        df.to_parquet(destino, index=False, compression="zstd", compression_level=9, row_group_size=25_000)
 
     pop = linhas.groupby(["exercicio", "cod_ibge"], as_index=False).agg(uf=("uf", "first"), populacao=("populacao", "max"))
     destino = SILVER / "populacao" / f"exercicio={ano}.parquet"

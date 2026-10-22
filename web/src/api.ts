@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { executar } from './dados';
 
 export type Meta = { anos: number[]; anexos: Record<string, string[]>; baseIpca: number };
 export type Ente = { cod_ibge: number; nome: string; uf: string; esfera: 'M' | 'E' | 'D'; capital: boolean };
@@ -20,13 +21,11 @@ export function url(caminho: string, params: Params = {}) {
   return `/api/${caminho}${q ? `?${q}` : ''}`;
 }
 
+/** Consulta a camada de dados do navegador (DuckDB-WASM); o resultado fica em cache por URL lógica. */
 export function buscar<T>(caminho: string, params: Params = {}): Promise<T> {
   const u = url(caminho, params);
   if (!cache.has(u)) {
-    const p = fetch(u).then(async (r) => {
-      if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
-      return r.json();
-    });
+    const p = executar(caminho, params);
     p.catch(() => cache.delete(u));
     cache.set(u, p);
   }

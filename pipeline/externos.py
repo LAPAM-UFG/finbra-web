@@ -109,10 +109,15 @@ def main():
     args = p.parse_args()
     SILVER.mkdir(parents=True, exist_ok=True)
 
-    print("IPCA (Banco Central)...")
-    ipca().to_parquet(SILVER / "ipca.parquet", index=False)
-    print("PIB municipal (IBGE)...")
-    pib().to_parquet(SILVER / "ibge_pib.parquet", index=False)
+    for nome, funcao, arquivo in (("IPCA (Banco Central)", ipca, "ipca.parquet"),
+                                  ("PIB municipal (IBGE)", pib, "ibge_pib.parquet")):
+        print(f"{nome}...")
+        try:
+            funcao().to_parquet(SILVER / arquivo, index=False)
+        except Exception as e:  # fonte fora do ar: mantém a versão anterior, se houver
+            if not (SILVER / arquivo).exists():
+                raise
+            print(f"  AVISO: {nome} indisponível ({e}); mantido o {arquivo} anterior.")
     if args.dta:
         print("Painel de pesquisa (.dta)...")
         pesquisa(args.dta).to_parquet(SILVER / "pesquisa.parquet", index=False)

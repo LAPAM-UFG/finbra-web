@@ -15,3 +15,6 @@ __pycache__/
 
 # ambiente virtual do Python
 .venv/
+
+# wrangler (Cloudflare)
+.wrangler/

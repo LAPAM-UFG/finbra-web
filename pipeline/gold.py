@@ -12,6 +12,9 @@ filho. As que não mudaram usam a chave.
 Uso:
     py pipeline/gold.py
 """
+import json
+from datetime import datetime, timezone
+
 import duckdb
 import pandas as pd
 
@@ -98,6 +101,67 @@ def gerar_alertas(con):
     print(f"alertas: {n} registros em {entes} ente-anos (fora dos agregados)")
 
 
+def gerar_web(con):
+    """Tabelas que o site lê direto do R2, no navegador (DuckDB-WASM).
+
+    arvore/exercicio=YYYY.parquet  soma de cada conta para o Brasil e cada UF, por esfera
+    escopos.parquet                população e número de entes de cada escopo
+    manifesto.json                 exercícios, colunas por anexo e base do IPCA
+
+    Os ente-anos de alertas.parquet ficam fora das somas, como nos totais do site.
+    """
+    s, g = SILVER.as_posix(), GOLD.as_posix()
+    con.execute(f"""
+        CREATE OR REPLACE TABLE validos AS
+        SELECT p.exercicio, p.cod_ibge, p.populacao, e.uf, e.esfera
+        FROM '{s}/populacao/*.parquet' p JOIN '{s}/entes.parquet' e USING (cod_ibge)
+        WHERE NOT EXISTS (SELECT 1 FROM '{g}/alertas.parquet' a
+                          WHERE a.exercicio = p.exercicio AND a.cod_ibge = p.cod_ibge)
+    """)
+    (GOLD / "arvore").mkdir(exist_ok=True)
+    anos = [r[0] for r in con.execute("SELECT DISTINCT exercicio FROM validos ORDER BY 1").fetchall()]
+    colunas = {}
+    for ano in anos:
+        con.execute(f"""
+            COPY (
+                WITH d AS (
+                    SELECT d.anexo, d.coluna, d.chave, d.valor, v.uf, v.esfera
+                    FROM '{s}/dca/exercicio={ano}.parquet' d JOIN validos v USING (exercicio, cod_ibge))
+                SELECT {ano}::SMALLINT AS exercicio, escopo, esfera, anexo, coluna, chave,
+                       sum(valor) AS valor, count(*)::INTEGER AS entes
+                FROM (SELECT *, 'BR' AS escopo FROM d
+                      UNION ALL
+                      SELECT *, uf AS escopo FROM d WHERE esfera = 'M')
+                GROUP BY ALL
+                ORDER BY escopo, esfera, anexo, coluna, chave
+            ) TO '{g}/arvore/exercicio={ano}.parquet' (FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 20000)
+        """)
+        cols = con.execute(f"""SELECT anexo, coluna, count(*) AS n FROM '{s}/dca/exercicio={ano}.parquet'
+                               GROUP BY ALL ORDER BY anexo, n DESC""").fetchall()
+        colunas[ano] = {}
+        for anexo, coluna, _ in cols:
+            colunas[ano].setdefault(anexo, []).append(coluna)
+    con.execute(f"""
+        COPY (
+            SELECT exercicio, 'BR' AS escopo, esfera, sum(populacao) AS populacao, count(*)::INTEGER AS entes
+            FROM validos GROUP BY ALL
+            UNION ALL
+            SELECT exercicio, uf, esfera, sum(populacao), count(*)::INTEGER FROM validos WHERE esfera = 'M' GROUP BY ALL
+            ORDER BY ALL
+        ) TO '{g}/escopos.parquet' (FORMAT parquet)
+    """)
+    base = con.execute(f"SELECT max(exercicio) FROM '{s}/ipca.parquet' WHERE completo").fetchone()[0]
+    manifesto = {
+        "gerado_em": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "anos": anos,
+        "base_ipca": base,
+        "colunas": {str(a): c for a, c in colunas.items()},
+    }
+    (GOLD / "manifesto.json").write_text(json.dumps(manifesto, ensure_ascii=False, indent=1), encoding="utf-8")
+    tamanho = sum(f.stat().st_size for f in (GOLD / "arvore").glob("*.parquet")) / 1e6
+    print(f"web: árvore agregada de {len(anos)} exercícios ({tamanho:.1f} MB), escopos e manifesto")
+
+
 def main():
     GOLD.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect()
@@ -161,10 +225,11 @@ def main():
             LEFT JOIN '{s}/ibge_pib.parquet' g USING (exercicio, cod_ibge)
             LEFT JOIN '{s}/pesquisa.parquet' q ON q.exercicio = p.exercicio AND q.cod_ibge6 = p.cod_ibge // 10
                                                AND e.esfera = 'M'
-            ORDER BY p.exercicio, p.cod_ibge
-        ) TO '{GOLD.as_posix()}/indicadores.parquet' (FORMAT parquet, COMPRESSION zstd)
+            ORDER BY p.cod_ibge, p.exercicio  -- por ente, em blocos pequenos: o site lê só o trecho do ente
+        ) TO '{GOLD.as_posix()}/indicadores.parquet' (FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 2048)
     """)
     gerar_alertas(con)
+    gerar_web(con)
     con.execute(f"COPY (SELECT * FROM '{s}/ipca.parquet') TO '{GOLD.as_posix()}/ipca.parquet' (FORMAT parquet)")
     faixas.to_parquet(GOLD / "faixas.parquet", index=False)
 
