@@ -52,9 +52,10 @@ async function servirDados(request, env, url) {
   if (!('body' in objeto)) return new Response(null, { status: 304, headers: cabecalhos });
 
   if (request.headers.has('Range') && objeto.range) {
+    // R2Range: { offset, length } ou { suffix }; a chave pode existir com valor undefined
     const r = objeto.range;
-    const inicio = 'suffix' in r ? objeto.size - r.suffix : (r.offset ?? 0);
-    const fim = 'suffix' in r || r.length === undefined ? objeto.size - 1 : inicio + r.length - 1;
+    const inicio = typeof r.suffix === 'number' ? objeto.size - r.suffix : (r.offset ?? 0);
+    const fim = typeof r.suffix === 'number' || typeof r.length !== 'number' ? objeto.size - 1 : inicio + r.length - 1;
     cabecalhos.set('Content-Range', `bytes ${inicio}-${fim}/${objeto.size}`);
     cabecalhos.set('Content-Length', String(fim - inicio + 1));
     return new Response(objeto.body, { status: 206, headers: cabecalhos });

@@ -72,7 +72,7 @@ def remotos(s3, bucket, prefixo):
 
 
 def enviar(s3, bucket, camadas):
-    locais = [p for c in camadas for p in sorted((DATA / c).rglob("*")) if p.is_file() and p.suffix in (".parquet", ".csv")]
+    locais = [p for c in camadas for p in sorted((DATA / c).rglob("*")) if p.is_file() and p.suffix in (".parquet", ".csv", ".json")]
     existentes = {k: v for c in camadas for k, v in remotos(s3, bucket, f"{c}/").items()}
 
     def um(caminho):
