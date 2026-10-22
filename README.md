@@ -19,9 +19,10 @@ web/ (React) ──► build ──► Cloudflare Worker ◄─┘
                     navegador: DuckDB-WASM consulta os Parquet
 ```
 
-- **Não há servidor de banco de dados.** O site roda o DuckDB dentro do navegador (WebAssembly) e
-  lê os arquivos Parquet por requisições HTTP com *Range*: ao abrir um município, baixa só o trecho
-  do arquivo onde ele está.
+- **Não há servidor de banco de dados.** O site roda o DuckDB dentro do navegador (WebAssembly).
+  Na primeira visita, baixa de uma vez as tabelas pequenas (entes, indicadores, IPCA…, ~12 MB, que
+  ficam em cache por 1 dia). As tabelas grandes são lidas por requisições HTTP com *Range*: ao abrir
+  um município, só o trecho do arquivo onde ele está.
 - **O R2 continua privado.** Quem entrega os arquivos é o Worker, que tem uma ligação interna com o
   bucket e só expõe as camadas `silver/` e `gold/` em `/dados/`.
 - **Duas automações no GitHub:** uma atualiza os dados todo mês; a outra publica o site quando o
@@ -139,9 +140,34 @@ Workflow **Publicar site** (`.github/workflows/publicar-site.yml`): a cada push 
 publica o Worker com `wrangler deploy`.
 
 O Worker (`worker/src/index.js`) entrega os arquivos do site e responde `/dados/*` lendo o bucket
-pela ligação `DADOS`, com suporte a `Range`, `HEAD` e `ETag`. Os arquivos são pedidos com
-`?v=<data da atualização>`, tirada do `gold/manifesto.json`, então o cache dura 1 dia sem o risco de
-mostrar dados antigos depois de uma atualização.
+pela ligação `DADOS`, com suporte a `Range`, `HEAD` e `ETag`, e só expõe `silver/` e `gold/`. O site
+pede os arquivos como `/dados/v/<versão>/...`, com a versão tirada do `gold/manifesto.json`: o cache
+dura 1 dia sem risco de mostrar dados antigos depois de uma atualização.
+
+### Arquivos que o site lê
+
+O navegador faz uma requisição por vez ao R2 (~250 ms cada), então os arquivos são organizados
+para cada consulta caber em **um arquivo e poucos blocos**:
+
+| Arquivo | Uso | Como é lido |
+|---|---|---|
+| `gold/manifesto.json` | exercícios, colunas, base do IPCA, versão dos dados | inteiro, sempre revalidado |
+| `silver/entes.parquet`, `gold/indicadores.parquet`, `escopos`, `alertas`, `faixas`, `ipca` | listas, KPIs, rankings, FPM, faixas | inteiros, uma vez, em memória |
+| `silver/contas/exercicio=AAAA.parquet` | plano de contas de cada ano | inteiro, na primeira vez que o ano é aberto |
+| `gold/arvore.parquet` | árvore e séries de UF e Brasil | por Range (ordenado por escopo, conta e ano) |
+| `gold/entes/uf=XX.parquet` | árvore e séries de um ente (todos os anos) | por Range (ordenado por ente e ano) |
+
+Detalhes do DuckDB-WASM que fazem diferença (em `web/src/dados.ts`):
+
+- `forceFullHTTPReads` vem ligado e baixa cada arquivo inteiro: o site desliga e exige leitura parcial.
+- O navegador descarta o `Range` em requisições `HEAD`; por isso o Worker e o Vite respondem `206` a
+  qualquer `HEAD`, que é o que o DuckDB exige para ler por partes.
+- `?` numa URL é curinga para o DuckDB: a versão vai no caminho, não na query string.
+- Parâmetros vindos do JavaScript são decimais: `cod_ibge = $ente::INTEGER` mantém o filtro nos
+  metadados do Parquet (sem o cast, ele lê o arquivo todo).
+
+Um arquivo removido localmente pode ser apagado do bucket com
+`py pipeline/r2.py enviar --camadas gold --limpar`.
 
 ## Configuração inicial (uma vez só)
 
@@ -199,7 +225,7 @@ apague a antiga e atualize o secret no GitHub e o seu `.env`.
 | landing | resposta da API por ente e exercício (`ndjson.gz`) | ~1 GB | só local, pode ser apagada |
 | bronze | um Parquet por exercício, fiel à API | ~300 MB | R2 |
 | silver | colunas padronizadas, árvore de contas, população, PIB, IPCA | ~270 MB | R2, lida pelo site |
-| gold | indicadores, árvore agregada por UF/Brasil, alertas, validação, manifesto | ~25 MB | R2, lida pelo site |
+| gold | indicadores, árvore agregada por UF/Brasil, entes por UF, alertas, validação, manifesto | ~290 MB | R2, lida pelo site |
 
 ### Regras
 

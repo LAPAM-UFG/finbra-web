@@ -18,6 +18,26 @@ const BASE = new URL(import.meta.env.VITE_DADOS_URL ?? '/dados/', location.href)
 // ---------------- motor ----------------
 
 let pronto: Promise<{ con: duckdb.AsyncDuckDBConnection; manifesto: Manifesto }> | null = null;
+let db: duckdb.AsyncDuckDB;
+
+/**
+ * Arquivos pequenos e muito consultados: baixados uma vez, inteiros e em paralelo, e carregados
+ * na memória do DuckDB. Consultas sobre eles não fazem mais nenhuma requisição.
+ */
+const TABELAS_EM_MEMORIA: Record<string, string> = {
+  entes: 'silver/entes.parquet',
+  indicadores: 'gold/indicadores.parquet',
+  escopos: 'gold/escopos.parquet',
+  alertas: 'gold/alertas.parquet',
+  faixas: 'gold/faixas.parquet',
+  ipca: 'gold/ipca.parquet',
+};
+
+async function baixar(caminho: string): Promise<Uint8Array> {
+  const r = await fetch(url(caminho));
+  if (!r.ok) throw new Error(`${caminho} indisponível (${r.status})`);
+  return new Uint8Array(await r.arrayBuffer());
+}
 
 function iniciar() {
   pronto ??= (async () => {
@@ -25,12 +45,16 @@ function iniciar() {
       if (!r.ok) throw new Error(`manifesto indisponível (${r.status})`);
       return r.json();
     });
+    versao = manifesto.gerado_em.replace(/[^0-9]/g, '');
+    const arquivos = Promise.all(
+      Object.entries(TABELAS_EM_MEMORIA).map(async ([nome, caminho]) => [nome, await baixar(caminho)] as const),
+    );
     // o .wasm (~33 MB) vem da CDN jsDelivr, na mesma versão do pacote npm
     const pacote = await duckdb.selectBundle(duckdb.getJsDelivrBundles());
     const urlWorker = URL.createObjectURL(
       new Blob([`importScripts("${pacote.mainWorker}");`], { type: 'text/javascript' }),
     );
-    const db = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), new Worker(urlWorker));
+    db = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), new Worker(urlWorker));
     await db.instantiate(pacote.mainModule, pacote.pthreadWorker);
     URL.revokeObjectURL(urlWorker);
     // Só leituras parciais (Range). Nesta versão o DuckDB-WASM vem com forceFullHTTPReads ligado,
@@ -40,7 +64,10 @@ function iniciar() {
       filesystem: { forceFullHTTPReads: false, reliableHeadRequests: true, allowFullHTTPReads: false },
     });
     const con = await db.connect();
-    await criarVisoes(con, manifesto);
+    for (const [nome, dados] of await arquivos) {
+      await db.registerFileBuffer(`${nome}.parquet`, dados);
+      await con.query(`CREATE TABLE ${nome} AS SELECT * FROM read_parquet('${nome}.parquet')`);
+    }
     return { con, manifesto };
   })();
   pronto.catch(() => (pronto = null));
@@ -52,24 +79,28 @@ function iniciar() {
  * cache se renovar a cada atualização. Não pode ser "?v=": para o DuckDB, "?" é curinga de glob.
  */
 let versao = '';
-const arq = (caminho: string) => `'${BASE}v/${versao}/${caminho}'`;
-const lista = (caminhos: string[]) => `[${caminhos.map(arq).join(', ')}]`;
-const dcaAno = (ano: number) => arq(`silver/dca/exercicio=${ano}.parquet`);
-const contasAno = (ano: number) => arq(`silver/contas/exercicio=${ano}.parquet`);
-const arvoreAno = (ano: number) => arq(`gold/arvore/exercicio=${ano}.parquet`);
-let anos: number[] = [];
+const url = (caminho: string) => `${BASE}v/${versao}/${caminho}`;
+const arq = (caminho: string) => `'${url(caminho)}'`;
+// Cada consulta lê um único arquivo: o navegador faz uma requisição por vez ao R2, então
+// abrir vários arquivos (um por ano) tornava a série histórica lenta.
+const entesDaUf = (uf: string) => arq(`gold/entes/uf=${uf}.parquet`);
+const arvore = () => arq('gold/arvore.parquet');
 
-async function criarVisoes(con: duckdb.AsyncDuckDBConnection, m: Manifesto) {
-  versao = m.gerado_em.replace(/[^0-9]/g, '');
-  anos = m.anos;
-  await con.query(`
-    CREATE VIEW entes AS SELECT * FROM read_parquet(${arq('silver/entes.parquet')});
-    CREATE VIEW indicadores AS SELECT * FROM read_parquet(${arq('gold/indicadores.parquet')});
-    CREATE VIEW escopos AS SELECT * FROM read_parquet(${arq('gold/escopos.parquet')});
-    CREATE VIEW alertas AS SELECT * FROM read_parquet(${arq('gold/alertas.parquet')});
-    CREATE VIEW faixas AS SELECT * FROM read_parquet(${arq('gold/faixas.parquet')});
-    CREATE VIEW ipca AS SELECT * FROM read_parquet(${arq('gold/ipca.parquet')});
-  `);
+/** Plano de contas de um exercício (~100 KB): baixado uma vez e mantido em memória. */
+const contasCarregadas = new Map<number, Promise<string>>();
+function contasAno(ano: number): Promise<string> {
+  if (!contasCarregadas.has(ano)) {
+    const p = (async () => {
+      const { con } = await iniciar();
+      const nome = `contas_${ano}`;
+      await db.registerFileBuffer(`${nome}.parquet`, await baixar(`silver/contas/exercicio=${ano}.parquet`));
+      await con.query(`CREATE TABLE ${nome} AS SELECT * FROM read_parquet('${nome}.parquet')`);
+      return nome;
+    })();
+    p.catch(() => contasCarregadas.delete(ano));
+    contasCarregadas.set(ano, p);
+  }
+  return contasCarregadas.get(ano)!;
 }
 
 const normalizar = (v: unknown): Valor => (typeof v === 'bigint' ? Number(v) : (v as Valor));
@@ -172,7 +203,7 @@ const rotas: Record<string, (q: Params) => Promise<unknown>> = {
     await iniciar();
     const ano = inteiro(q.ano)!;
     return consultar(
-      `SELECT chave, chave_pai, nivel, descricao, tipo FROM read_parquet(${contasAno(ano)})
+      `SELECT chave, chave_pai, nivel, descricao, tipo FROM ${await contasAno(ano)}
        WHERE anexo = $anexo AND (tipo = 'total' OR nivel <= $nivel) ORDER BY ordem`,
       { anexo: String(q.anexo), nivel: inteiro(q.nivel_max) ?? 3 },
     );
@@ -186,24 +217,27 @@ const rotas: Record<string, (q: Params) => Promise<unknown>> = {
     const p: Record<string, Valor> = { anexo: String(q.anexo), coluna: String(q.coluna) };
     let valores: string;
     if (e.tipo === 'ente') {
-      p.ente = e.ente;
-      valores = `SELECT chave, sum(valor) AS valor, bool_or(sintetico) AS sintetico FROM read_parquet(${dcaAno(ano)})
-                 WHERE cod_ibge = $ente::INTEGER AND anexo = $anexo AND coluna = $coluna GROUP BY chave`;
+      Object.assign(p, { ente: e.ente, ano });
+      valores = `SELECT chave, sum(valor) AS valor, bool_or(sintetico) AS sintetico FROM read_parquet(${entesDaUf(e.uf)})
+                 WHERE cod_ibge = $ente::INTEGER AND exercicio = $ano::SMALLINT AND anexo = $anexo AND coluna = $coluna
+                 GROUP BY chave`;
     } else {
-      Object.assign(p, { escopo: e.escopo, esfera: e.esfera });
-      valores = `SELECT chave, valor, NULL::BOOLEAN AS sintetico FROM read_parquet(${arvoreAno(ano)})
-                 WHERE escopo = $escopo AND esfera = $esfera AND anexo = $anexo AND coluna = $coluna`;
+      Object.assign(p, { escopo: e.escopo, esfera: e.esfera, ano });
+      valores = `SELECT chave, valor, NULL::BOOLEAN AS sintetico FROM read_parquet(${arvore()})
+                 WHERE escopo = $escopo AND esfera = $esfera AND anexo = $anexo AND coluna = $coluna
+                   AND exercicio = $ano::SMALLINT`;
     }
     let comparacao = 'SELECT NULL::VARCHAR AS chave, NULL::DOUBLE AS valor WHERE false';
     if (comp) {
-      Object.assign(p, { cescopo: comp.escopo, cesfera: comp.esfera });
-      comparacao = `SELECT chave, valor FROM read_parquet(${arvoreAno(ano)})
-                    WHERE escopo = $cescopo AND esfera = $cesfera AND anexo = $anexo AND coluna = $coluna`;
+      Object.assign(p, { cescopo: comp.escopo, cesfera: comp.esfera, cano: ano });
+      comparacao = `SELECT chave, valor FROM read_parquet(${arvore()})
+                    WHERE escopo = $cescopo AND esfera = $cesfera AND anexo = $anexo AND coluna = $coluna
+                      AND exercicio = $cano::SMALLINT`;
     }
     const nos = await consultar(
       `WITH v AS (${valores}), comp AS (${comparacao})
        SELECT c.chave, c.chave_pai, c.nivel, c.descricao, c.tipo, v.valor, comp.valor AS valor_comp, v.sintetico
-       FROM read_parquet(${contasAno(ano)}) c LEFT JOIN v USING (chave) LEFT JOIN comp USING (chave)
+       FROM ${await contasAno(ano)} c LEFT JOIN v USING (chave) LEFT JOIN comp USING (chave)
        WHERE c.anexo = $anexo AND (v.valor IS NOT NULL OR comp.valor IS NOT NULL)
        ORDER BY c.ordem`,
       p,
@@ -223,12 +257,12 @@ const rotas: Record<string, (q: Params) => Promise<unknown>> = {
     let pop: string;
     if (e.tipo === 'ente') {
       p.ente = e.ente;
-      valores = `SELECT exercicio, sum(valor) AS valor FROM read_parquet(${lista(anos.map((a) => `silver/dca/exercicio=${a}.parquet`))})
+      valores = `SELECT exercicio, sum(valor) AS valor FROM read_parquet(${entesDaUf(e.uf)})
                  WHERE cod_ibge = $ente::INTEGER AND anexo = $anexo AND coluna = $coluna AND chave = $chave GROUP BY ALL`;
       pop = `SELECT exercicio, populacao::DOUBLE AS populacao, 1 AS entes FROM indicadores WHERE cod_ibge = $ente::INTEGER`;
     } else {
       Object.assign(p, { escopo: e.escopo, esfera: e.esfera });
-      valores = `SELECT exercicio, valor FROM read_parquet(${lista(anos.map((a) => `gold/arvore/exercicio=${a}.parquet`))})
+      valores = `SELECT exercicio, valor FROM read_parquet(${arvore()})
                  WHERE escopo = $escopo AND esfera = $esfera AND anexo = $anexo AND coluna = $coluna AND chave = $chave`;
       pop = `SELECT exercicio, populacao::DOUBLE AS populacao, entes FROM escopos WHERE escopo = $escopo AND esfera = $esfera`;
     }
@@ -302,7 +336,8 @@ const rotas: Record<string, (q: Params) => Promise<unknown>> = {
 
   async validacao() {
     await iniciar();
-    return consultar(`SELECT * FROM read_csv(${arq('gold/validacao.csv')})`);
+    await db.registerFileBuffer('validacao.csv', await baixar('gold/validacao.csv'));
+    return consultar(`SELECT * FROM read_csv('validacao.csv')`);
   },
 };
 

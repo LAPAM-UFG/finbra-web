@@ -104,11 +104,15 @@ def gerar_alertas(con):
 def gerar_web(con):
     """Tabelas que o site lê direto do R2, no navegador (DuckDB-WASM).
 
-    arvore/exercicio=YYYY.parquet  soma de cada conta para o Brasil e cada UF, por esfera
-    escopos.parquet                população e número de entes de cada escopo
-    manifesto.json                 exercícios, colunas por anexo e base do IPCA
+    O navegador faz uma leitura por vez e cada ida ao R2 custa ~250 ms, então o que importa é
+    o número de requisições: cada consulta do site deve caber em um arquivo e em poucos blocos.
 
-    Os ente-anos de alertas.parquet ficam fora das somas, como nos totais do site.
+    entes/uf=XX.parquet  valores de cada ente em todos os anos, um arquivo por UF, ordenado por ente
+                         (árvore e série histórica de um ente)
+    arvore.parquet       soma de cada conta por escopo (Brasil e UFs) e esfera, todos os anos
+                         (árvore e série de UF/Brasil), sem os ente-anos de alertas.parquet
+    escopos.parquet      população e número de entes de cada escopo
+    manifesto.json       exercícios, colunas por anexo e base do IPCA
     """
     s, g = SILVER.as_posix(), GOLD.as_posix()
     con.execute(f"""
@@ -118,29 +122,42 @@ def gerar_web(con):
         WHERE NOT EXISTS (SELECT 1 FROM '{g}/alertas.parquet' a
                           WHERE a.exercicio = p.exercicio AND a.cod_ibge = p.cod_ibge)
     """)
-    (GOLD / "arvore").mkdir(exist_ok=True)
     anos = [r[0] for r in con.execute("SELECT DISTINCT exercicio FROM validos ORDER BY 1").fetchall()]
-    colunas = {}
-    for ano in anos:
+
+    con.execute(f"""
+        COPY (
+            WITH d AS (
+                SELECT d.exercicio, d.anexo, d.coluna, d.chave, d.valor, v.uf, v.esfera
+                FROM '{s}/dca/*.parquet' d JOIN validos v USING (exercicio, cod_ibge))
+            SELECT escopo, esfera, anexo, coluna, chave, exercicio::SMALLINT AS exercicio,
+                   sum(valor) AS valor, count(*)::INTEGER AS entes
+            FROM (SELECT *, 'BR' AS escopo FROM d
+                  UNION ALL
+                  SELECT *, uf AS escopo FROM d WHERE esfera = 'M')
+            GROUP BY ALL
+            ORDER BY escopo, esfera, anexo, coluna, chave, exercicio
+        ) TO '{g}/arvore.parquet' (FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 50000)
+    """)
+
+    (GOLD / "entes").mkdir(exist_ok=True)
+    ufs = [r[0] for r in con.execute(f"SELECT DISTINCT uf FROM '{s}/entes.parquet' WHERE uf IS NOT NULL ORDER BY 1").fetchall()]
+    for uf in ufs:
         con.execute(f"""
             COPY (
-                WITH d AS (
-                    SELECT d.anexo, d.coluna, d.chave, d.valor, v.uf, v.esfera
-                    FROM '{s}/dca/exercicio={ano}.parquet' d JOIN validos v USING (exercicio, cod_ibge))
-                SELECT {ano}::SMALLINT AS exercicio, escopo, esfera, anexo, coluna, chave,
-                       sum(valor) AS valor, count(*)::INTEGER AS entes
-                FROM (SELECT *, 'BR' AS escopo FROM d
-                      UNION ALL
-                      SELECT *, uf AS escopo FROM d WHERE esfera = 'M')
-                GROUP BY ALL
-                ORDER BY escopo, esfera, anexo, coluna, chave
-            ) TO '{g}/arvore/exercicio={ano}.parquet' (FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 20000)
+                SELECT d.cod_ibge, d.exercicio::SMALLINT AS exercicio, d.anexo, d.coluna, d.chave,
+                       d.valor, d.sintetico
+                FROM '{s}/dca/*.parquet' d JOIN '{s}/entes.parquet' e USING (cod_ibge)
+                WHERE e.uf = '{uf}' AND d.tipo <> 'atributo'
+                ORDER BY d.cod_ibge, d.exercicio, d.anexo, d.coluna, d.chave
+            ) TO '{g}/entes/uf={uf}.parquet' (FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 50000)
         """)
-        cols = con.execute(f"""SELECT anexo, coluna, count(*) AS n FROM '{s}/dca/exercicio={ano}.parquet'
-                               GROUP BY ALL ORDER BY anexo, n DESC""").fetchall()
-        colunas[ano] = {}
-        for anexo, coluna, _ in cols:
-            colunas[ano].setdefault(anexo, []).append(coluna)
+
+    colunas = {}
+    for ano, anexo, coluna in con.execute(f"""
+            SELECT exercicio, anexo, coluna FROM '{s}/dca/*.parquet'
+            GROUP BY ALL ORDER BY exercicio, anexo, count(*) DESC""").fetchall():
+        colunas.setdefault(str(ano), {}).setdefault(anexo, []).append(coluna)
+
     con.execute(f"""
         COPY (
             SELECT exercicio, 'BR' AS escopo, esfera, sum(populacao) AS populacao, count(*)::INTEGER AS entes
@@ -155,11 +172,13 @@ def gerar_web(con):
         "gerado_em": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "anos": anos,
         "base_ipca": base,
-        "colunas": {str(a): c for a, c in colunas.items()},
+        "colunas": colunas,
     }
     (GOLD / "manifesto.json").write_text(json.dumps(manifesto, ensure_ascii=False, indent=1), encoding="utf-8")
-    tamanho = sum(f.stat().st_size for f in (GOLD / "arvore").glob("*.parquet")) / 1e6
-    print(f"web: árvore agregada de {len(anos)} exercícios ({tamanho:.1f} MB), escopos e manifesto")
+    tamanho = (GOLD / "arvore.parquet").stat().st_size / 1e6
+    por_uf = sum(f.stat().st_size for f in (GOLD / "entes").glob("*.parquet")) / 1e6
+    print(f"web: árvore agregada ({tamanho:.1f} MB), entes por UF ({len(ufs)} arquivos, {por_uf:.0f} MB), "
+          f"escopos e manifesto")
 
 
 def main():
@@ -225,8 +244,8 @@ def main():
             LEFT JOIN '{s}/ibge_pib.parquet' g USING (exercicio, cod_ibge)
             LEFT JOIN '{s}/pesquisa.parquet' q ON q.exercicio = p.exercicio AND q.cod_ibge6 = p.cod_ibge // 10
                                                AND e.esfera = 'M'
-            ORDER BY p.cod_ibge, p.exercicio  -- por ente, em blocos pequenos: o site lê só o trecho do ente
-        ) TO '{GOLD.as_posix()}/indicadores.parquet' (FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 2048)
+            ORDER BY p.cod_ibge, p.exercicio
+        ) TO '{GOLD.as_posix()}/indicadores.parquet' (FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 100000)
     """)
     gerar_alertas(con)
     gerar_web(con)

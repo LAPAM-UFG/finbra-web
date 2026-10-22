@@ -7,6 +7,7 @@ Uso:
     py pipeline/r2.py testar                     # confere as credenciais e lista o bucket
     py pipeline/r2.py enviar                     # envia bronze, silver e gold (só o que mudou)
     py pipeline/r2.py enviar --camadas gold
+    py pipeline/r2.py enviar --camadas gold --limpar   # também apaga do bucket o que não existe mais localmente
     py pipeline/r2.py baixar --camadas silver gold   # monta o data/ local a partir do R2
 """
 import argparse
@@ -71,7 +72,7 @@ def remotos(s3, bucket, prefixo):
     return out
 
 
-def enviar(s3, bucket, camadas):
+def enviar(s3, bucket, camadas, limpar=False):
     locais = [p for c in camadas for p in sorted((DATA / c).rglob("*")) if p.is_file() and p.suffix in (".parquet", ".csv", ".json")]
     existentes = {k: v for c in camadas for k, v in remotos(s3, bucket, f"{c}/").items()}
 
@@ -92,6 +93,14 @@ def enviar(s3, bucket, camadas):
         print(f"  enviado  {chave}  ({tamanho / 1e6:.1f} MB)")
     print(f"{len(enviados)} enviados, {len(resultados) - len(enviados)} já estavam iguais "
           f"({sum(r[2] for r in enviados) / 1e6:.1f} MB transferidos)")
+    if limpar:
+        locais_chaves = {c.relative_to(DATA).as_posix() for c in locais}
+        sobrando = [k for k in existentes if k not in locais_chaves]
+        for i in range(0, len(sobrando), 1000):
+            s3.delete_objects(Bucket=bucket, Delete={"Objects": [{"Key": k} for k in sobrando[i:i + 1000]]})
+        for k in sobrando:
+            print(f"  removido {k}")
+        print(f"{len(sobrando)} arquivos removidos do bucket")
 
 
 def baixar(s3, bucket, camadas):
@@ -129,12 +138,14 @@ def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("acao", choices=["testar", "enviar", "baixar"])
     p.add_argument("--camadas", nargs="+", choices=CAMADAS, default=list(CAMADAS))
+    p.add_argument("--limpar", action="store_true",
+                   help="com enviar: apaga do bucket os arquivos dessas camadas que não existem localmente")
     args = p.parse_args()
     s3, bucket = cliente()
     if args.acao == "testar":
         testar(s3, bucket)
     elif args.acao == "enviar":
-        enviar(s3, bucket, args.camadas)
+        enviar(s3, bucket, args.camadas, args.limpar)
     else:
         baixar(s3, bucket, args.camadas)
 
