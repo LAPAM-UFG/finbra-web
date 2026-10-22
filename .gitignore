@@ -11,6 +11,7 @@ __pycache__/
 # segredos
 .env
 .env.*
+!.env.example
 
 # ambiente virtual do Python
 .venv/
