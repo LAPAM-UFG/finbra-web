@@ -169,6 +169,19 @@ Detalhes do DuckDB-WASM que fazem diferença (em `web/src/dados.ts`):
 Um arquivo removido localmente pode ser apagado do bucket com
 `py pipeline/r2.py enviar --camadas gold --limpar`.
 
+### Versão em inglês
+
+O botão **English** no topo traduz o site inteiro; a escolha fica guardada no navegador.
+
+- Textos da interface: cada um é escrito com as duas versões, `t('Receita bruta', 'Gross revenue')`
+  (`web/src/idioma.ts`). Números passam a usar o formato inglês (`R$ 12.10 bn`).
+- Nomes das contas: o Tesouro só publica o plano de contas em português. A tradução fica em
+  `web/src/traducoes/contas.en.json` (descrição em português → inglês), que o navegador só baixa
+  ao escolher o inglês. Colunas dos anexos, motivos de alerta e nomes de testes ficam em `TERMOS`,
+  no mesmo `idioma.ts`.
+- Conta nova sem tradução aparece em português. Depois de uma atualização dos dados, rode
+  `py pipeline/contas_sem_traducao.py` para listar as que faltam e acrescente-as ao JSON.
+
 ## Configuração inicial (uma vez só)
 
 Já feita para o repositório `LAPAM-UFG/finbra-web`. Fica registrada aqui para refazer, se preciso.

@@ -1,20 +1,22 @@
 :root {
   color-scheme: light;
-  --marca: #002850;
+  /* identidade visual do LAPAM: azul #002F51, verde, limão e cinza-azulado #748195 */
+  --marca: #002f51;
+  --marca-2: #4e7a2c;
   --marca-tinta: #ffffff;
-  --acento: #9cb61a;
-  --pagina: #f9f9f7;
-  --superficie: #fcfcfb;
-  --superficie-2: #f0efec;
-  --tinta: #0b0b0b;
-  --tinta-2: #52514e;
-  --tinta-3: #898781;
-  --grade: #e1e0d9;
-  --eixo: #c3c2b7;
-  --borda: rgba(11, 11, 11, 0.1);
-  --serie-1: #2a78d6;
-  --serie-2: #eb6834;
-  --serie-3: #1baf7a;
+  --acento: #a4bc0b;
+  --pagina: #f8f5ee;
+  --superficie: #fdfcf8;
+  --superficie-2: #f1eee4;
+  --tinta: #0f1e2c;
+  --tinta-2: #44505f;
+  --tinta-3: #626e82;
+  --grade: #e5e1d5;
+  --eixo: #cbc6b6;
+  --borda: rgba(0, 47, 81, 0.12);
+  --serie-1: #1f5f96;
+  --serie-2: #7d9c12;
+  --serie-3: #2492b8;
   --bom: #006300;
   --ruim: #d03b3b;
   --sombra: 0 1px 2px rgba(0, 0, 0, 0.04);
@@ -23,40 +25,42 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
     color-scheme: dark;
-    --marca: #0b2340;
+    --marca: #00233d;
+    --marca-2: #3d6324;
     --acento: #b5cc2e;
-    --pagina: #0d0d0d;
-    --superficie: #1a1a19;
-    --superficie-2: #232322;
-    --tinta: #f0efec;
-    --tinta-2: #c3c2b7;
-    --tinta-3: #898781;
-    --grade: #2c2c2a;
-    --eixo: #383835;
+    --pagina: #0e141a;
+    --superficie: #161e26;
+    --superficie-2: #1f2932;
+    --tinta: #eef0ea;
+    --tinta-2: #c2c8c4;
+    --tinta-3: #8c97a3;
+    --grade: #26313b;
+    --eixo: #34414c;
     --borda: rgba(255, 255, 255, 0.1);
-    --serie-1: #3987e5;
-    --serie-2: #d95926;
-    --serie-3: #199e70;
+    --serie-1: #4673d0;
+    --serie-2: #84a016;
+    --serie-3: #1fa9a8;
     --bom: #0ca30c;
     --ruim: #e66767;
   }
 }
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --marca: #0b2340;
+  --marca: #00233d;
+  --marca-2: #3d6324;
   --acento: #b5cc2e;
-  --pagina: #0d0d0d;
-  --superficie: #1a1a19;
-  --superficie-2: #232322;
-  --tinta: #f0efec;
-  --tinta-2: #c3c2b7;
-  --tinta-3: #898781;
-  --grade: #2c2c2a;
-  --eixo: #383835;
+  --pagina: #0e141a;
+  --superficie: #161e26;
+  --superficie-2: #1f2932;
+  --tinta: #eef0ea;
+  --tinta-2: #c2c8c4;
+  --tinta-3: #8c97a3;
+  --grade: #26313b;
+  --eixo: #34414c;
   --borda: rgba(255, 255, 255, 0.1);
-  --serie-1: #3987e5;
-  --serie-2: #d95926;
-  --serie-3: #199e70;
+  --serie-1: #4673d0;
+  --serie-2: #84a016;
+  --serie-3: #1fa9a8;
   --bom: #0ca30c;
   --ruim: #e66767;
 }
@@ -68,7 +72,8 @@ button, input, select { font: inherit; color: inherit; }
 
 /* ---------- estrutura ---------- */
 .topo {
-  background: var(--marca); color: var(--marca-tinta);
+  background: linear-gradient(90deg, var(--marca) 35%, var(--marca-2)); color: var(--marca-tinta);
+  border-bottom: 3px solid var(--acento);
   display: flex; align-items: center; gap: 16px; padding: 10px 20px; flex-wrap: wrap;
   position: sticky; top: 0; z-index: 20;
 }
@@ -152,6 +157,7 @@ tbody tr:hover { background: var(--superficie-2); }
 .arvore button.abrir { background: none; border: 0; cursor: pointer; width: 18px; color: var(--tinta-3); padding: 0; }
 .arvore .n1 td { font-weight: 600; }
 .sint { color: var(--tinta-3); font-size: 11px; margin-left: 4px; }
+.dica { text-decoration: underline dotted; text-underline-offset: 3px; cursor: help; }
 .barra-av { display: inline-block; height: 6px; border-radius: 3px; background: var(--serie-1); opacity: 0.55; margin-right: 6px; vertical-align: middle; }
 .ok { color: var(--bom); }
 .falha { color: var(--ruim); }

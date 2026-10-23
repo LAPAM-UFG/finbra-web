@@ -4,6 +4,7 @@ import { BarChart, LineChart } from 'echarts/charts';
 import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 import type { EChartsCoreOption } from 'echarts/core';
+import { t } from '../idioma';
 
 echarts.use([BarChart, LineChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]);
 
@@ -72,9 +73,9 @@ export function CartaoGrafico({ titulo, desc, tabela, children, acoes }: {
         <div style={{ display: 'flex', gap: 8 }}>
           {acoes}
           {tabela && (
-            <div className="alternar" role="group" aria-label="Modo de exibição">
-              <button className={modo === 'grafico' ? 'ativo' : ''} onClick={() => setModo('grafico')}>Gráfico</button>
-              <button className={modo === 'tabela' ? 'ativo' : ''} onClick={() => setModo('tabela')}>Tabela</button>
+            <div className="alternar" role="group" aria-label={t('Modo de exibição', 'Display mode')}>
+              <button className={modo === 'grafico' ? 'ativo' : ''} onClick={() => setModo('grafico')}>{t('Gráfico', 'Chart')}</button>
+              <button className={modo === 'tabela' ? 'ativo' : ''} onClick={() => setModo('tabela')}>{t('Tabela', 'Table')}</button>
             </div>
           )}
         </div>

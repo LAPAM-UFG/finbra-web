@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { Arvore, No } from '../api';
 import { div, pct, reais, reaisExato } from '../format';
+import { dado, t } from '../idioma';
 
 /**
  * Matriz hierárquica (como a do Power BI): valor informado pelo ente em cada nó,
@@ -49,23 +50,25 @@ export function ArvoreTabela({ arvore, nivelInicial = 1 }: { arvore: Arvore; niv
   const abrirTudo = () => setAbertos(new Set(contas.map((n) => n.chave)));
   const fecharTudo = () => setAbertos(new Set());
 
-  if (!contas.length) return <p className="vazio">Sem dados para este filtro.</p>;
+  if (!contas.length) return <p className="vazio">{t('Sem dados para este filtro.', 'No data for this filter.')}</p>;
   return (
     <>
       <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-        <button className="limpar" onClick={abrirTudo}>expandir tudo</button>
-        <button className="limpar" onClick={fecharTudo}>recolher tudo</button>
+        <button className="limpar" onClick={abrirTudo}>{t('expandir tudo', 'expand all')}</button>
+        <button className="limpar" onClick={fecharTudo}>{t('recolher tudo', 'collapse all')}</button>
       </div>
       <div className="rolagem">
         <table className="arvore">
           <thead>
             <tr>
-              <th>Conta</th>
-              <th>Valor</th>
-              <th>% AV</th>
+              <th>{t('Conta', 'Account')}</th>
+              <th>{t('Valor', 'Value')}</th>
+              <th className="dica" title={t('Análise vertical: participação no total da coluna', 'Vertical analysis: share of the column total')}>
+                {t('% AV', '% VA')}
+              </th>
               <th>Per capita</th>
               {comparador && <th>Per capita · {comparador}</th>}
-              {comparador && <th>% AV · {comparador}</th>}
+              {comparador && <th>{t('% AV', '% VA')} · {comparador}</th>}
             </tr>
           </thead>
           <tbody>
@@ -77,15 +80,19 @@ export function ArvoreTabela({ arvore, nivelInicial = 1 }: { arvore: Arvore; niv
                   <td style={{ paddingLeft: 8 + profundidade * 18 }}>
                     {temFilhos ? (
                       <button className="abrir" onClick={() => alternar(no.chave)} aria-expanded={abertos.has(no.chave)}
-                        aria-label={abertos.has(no.chave) ? 'Recolher' : 'Expandir'}>
+                        aria-label={abertos.has(no.chave) ? t('Recolher', 'Collapse') : t('Expandir', 'Expand')}>
                         {abertos.has(no.chave) ? '▾' : '▸'}
                       </button>
                     ) : (
                       <span style={{ display: 'inline-block', width: 18 }} />
                     )}
                     {no.chave.startsWith('RI') || no.chave.startsWith('DI') ? 'Intra · ' : ''}
-                    {no.descricao}
-                    {no.sintetico && <span className="sint" title="O ente não informou esta conta; valor = soma das subcontas.">(soma)</span>}
+                    {dado(no.descricao)}
+                    {no.sintetico && (
+                      <span className="sint" title={t('O ente não informou esta conta; valor = soma das subcontas.', 'The government did not report this account; value = sum of sub-accounts.')}>
+                        {t('(soma)', '(sum)')}
+                      </span>
+                    )}
                   </td>
                   <td title={reaisExato(no.valor)}>{reais(no.valor)}</td>
                   <td>
@@ -103,12 +110,14 @@ export function ArvoreTabela({ arvore, nivelInicial = 1 }: { arvore: Arvore; niv
       </div>
       {totais.length > 0 && (
         <details style={{ marginTop: 10 }}>
-          <summary style={{ cursor: 'pointer', color: 'var(--tinta-2)' }}>Linhas de total declaradas no demonstrativo</summary>
+          <summary style={{ cursor: 'pointer', color: 'var(--tinta-2)' }}>
+            {t('Linhas de total declaradas no demonstrativo', 'Total lines reported in the statement')}
+          </summary>
           <table style={{ marginTop: 6 }}>
             <tbody>
               {totais.map((n) => (
                 <tr key={n.chave}>
-                  <td>{n.descricao}</td>
+                  <td>{dado(n.descricao)}</td>
                   <td>{reais(n.valor)}</td>
                   {comparador && <td>{reais(n.valor_comp)}</td>}
                 </tr>

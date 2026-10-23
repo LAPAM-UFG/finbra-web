@@ -6,6 +6,7 @@
  * Cada rota devolve o mesmo formato da antiga API em Node, para as páginas não mudarem.
  */
 import * as duckdb from '@duckdb/duckdb-wasm';
+import { t } from './idioma';
 
 type Valor = string | number | boolean | null;
 export type Linha = Record<string, Valor>;
@@ -35,14 +36,14 @@ const TABELAS_EM_MEMORIA: Record<string, string> = {
 
 async function baixar(caminho: string): Promise<Uint8Array> {
   const r = await fetch(url(caminho));
-  if (!r.ok) throw new Error(`${caminho} indisponível (${r.status})`);
+  if (!r.ok) throw new Error(`${caminho} ${t('indisponível', 'unavailable')} (${r.status})`);
   return new Uint8Array(await r.arrayBuffer());
 }
 
 function iniciar() {
   pronto ??= (async () => {
     const manifesto: Manifesto = await fetch(`${BASE}gold/manifesto.json`, { cache: 'no-cache' }).then((r) => {
-      if (!r.ok) throw new Error(`manifesto indisponível (${r.status})`);
+      if (!r.ok) throw new Error(`${t('manifesto indisponível', 'manifest unavailable')} (${r.status})`);
       return r.json();
     });
     versao = manifesto.gerado_em.replace(/[^0-9]/g, '');

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import { ProvedorDados } from './contexto';
+import { definirIdioma, t, useIdioma } from './idioma';
 import { Demonstrativos } from './pages/Demonstrativos';
 import { DespesasEvolucao, DespesasVisaoGeral } from './pages/Despesas';
 import { Fpm, FpmFaixas } from './pages/Fpm';
@@ -9,12 +10,16 @@ import { Rankings } from './pages/Rankings';
 import { ReceitasEvolucao, ReceitasVisaoGeral } from './pages/Receitas';
 import { Socioeconomico } from './pages/Socioeconomico';
 
-const MENU: [string, [string, string][]][] = [
-  ['Receitas', [['/receitas', 'Visão geral'], ['/receitas/evolucao', 'Evolução']]],
-  ['FPM', [['/fpm', 'Evolução e dependência'], ['/fpm/faixas', 'Faixas populacionais']]],
-  ['Despesas', [['/despesas', 'Visão geral'], ['/despesas/evolucao', 'Evolução']]],
-  ['Análises', [['/demonstrativos', 'Demonstrativos (7 anexos)'], ['/socioeconomico', 'Socioeconômico'], ['/rankings', 'Rankings']]],
-  ['Metodologia', [['/deflatores', 'Deflatores'], ['/qualidade', 'Qualidade e fontes']]],
+const menu = (): [string, [string, string][]][] => [
+  [t('Receitas', 'Revenue'), [['/receitas', t('Visão geral', 'Overview')], ['/receitas/evolucao', t('Evolução', 'Trends')]]],
+  ['FPM', [['/fpm', t('Evolução e dependência', 'Trends and dependency')], ['/fpm/faixas', t('Faixas populacionais', 'Population brackets')]]],
+  [t('Despesas', 'Expenditure'), [['/despesas', t('Visão geral', 'Overview')], ['/despesas/evolucao', t('Evolução', 'Trends')]]],
+  [t('Análises', 'Analysis'), [
+    ['/demonstrativos', t('Demonstrativos (7 anexos)', 'Financial statements (7 annexes)')],
+    ['/socioeconomico', t('Socioeconômico', 'Socioeconomic')],
+    ['/rankings', 'Rankings'],
+  ]],
+  [t('Metodologia', 'Methodology'), [['/deflatores', t('Deflatores', 'Deflators')], ['/qualidade', t('Qualidade e fontes', 'Quality and sources')]]],
 ];
 
 function lerTema(): string | null {
@@ -40,12 +45,32 @@ function AlternarTema() {
   const escuro = tema ? tema === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
   return (
     <button className="tema" onClick={() => setTema(escuro ? 'light' : 'dark')}>
-      {escuro ? 'Tema claro' : 'Tema escuro'}
+      {escuro ? t('Tema claro', 'Light theme') : t('Tema escuro', 'Dark theme')}
+    </button>
+  );
+}
+
+function AlternarIdioma() {
+  const idioma = useIdioma();
+  const [carregando, setCarregando] = useState(false);
+  const outro = idioma === 'en' ? 'pt' : 'en';
+  return (
+    <button
+      className="tema"
+      lang={outro === 'en' ? 'en' : 'pt-BR'}
+      disabled={carregando}
+      onClick={() => {
+        setCarregando(true);
+        definirIdioma(outro).finally(() => setCarregando(false));
+      }}
+    >
+      {outro === 'en' ? 'English' : 'Português'}
     </button>
   );
 }
 
 export function App() {
+  const idioma = useIdioma();
   const { search } = useLocation();
   // os filtros globais acompanham a navegação; o anexo é só da página de demonstrativos
   const filtros = new URLSearchParams(search);
@@ -56,13 +81,14 @@ export function App() {
     <>
       <header className="topo">
         <img className="logo" src="/logo_lapam.png" alt="LAPAM" />
-        <h1>Finanças municipais · SICONFI</h1>
+        <h1>{t('Finanças municipais', 'Municipal finances')} · SICONFI</h1>
         <span className="espaco" />
+        <AlternarIdioma />
         <AlternarTema />
       </header>
       <div className="casca">
-        <nav className="menu" aria-label="Páginas">
-          {MENU.map(([grupo, itens]) => (
+        <nav className="menu" aria-label={t('Páginas', 'Pages')}>
+          {menu().map(([grupo, itens]) => (
             <div key={grupo} style={{ display: 'contents' }}>
               <h4>{grupo}</h4>
               {itens.map(([para, rotulo]) => (
@@ -73,7 +99,8 @@ export function App() {
             </div>
           ))}
         </nav>
-        <main>
+        {/* a chave refaz as páginas ao trocar o idioma: gráficos e textos memorizados são recalculados */}
+        <main key={idioma}>
           <ProvedorDados>
             <Routes>
               <Route path="/" element={<Navigate to="/receitas" replace />} />
@@ -88,7 +115,7 @@ export function App() {
               <Route path="/rankings" element={<Rankings />} />
               <Route path="/deflatores" element={<Deflatores />} />
               <Route path="/qualidade" element={<Qualidade />} />
-              <Route path="*" element={<p className="vazio">Página não encontrada.</p>} />
+              <Route path="*" element={<p className="vazio">{t('Página não encontrada.', 'Page not found.')}</p>} />
             </Routes>
           </ProvedorDados>
         </main>

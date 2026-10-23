@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useApi, type Ente, type Meta, type Params } from './api';
+import { dado, local, t } from './idioma';
 
 type Contexto = { meta: Meta; entes: Ente[]; porCodigo: Map<number, Ente> };
 const Ctx = createContext<Contexto | null>(null);
@@ -15,15 +16,18 @@ export function ProvedorDados({ children }: { children: ReactNode }) {
         : null,
     [meta.dados, entes.dados],
   );
-  if (meta.erro || entes.erro) return <p className="vazio erro">Não foi possível carregar os dados: {meta.erro ?? entes.erro}</p>;
-  if (!valor) return <p className="carregando">Carregando o motor de consultas e a lista de entes…</p>;
+  if (meta.erro || entes.erro) {
+    return <p className="vazio erro">{t('Não foi possível carregar os dados', 'Could not load the data')}: {meta.erro ?? entes.erro}</p>;
+  }
+  if (!valor) return <p className="carregando">{t('Carregando o motor de consultas e a lista de entes…', 'Loading the query engine and the list of governments…')}</p>;
   return <Ctx.Provider value={valor}>{children}</Ctx.Provider>;
 }
 
 export const useDados = () => useContext(Ctx)!;
 
 export const UFS = 'AC AL AM AP BA CE DF ES GO MA MG MS MT PA PB PE PI PR RJ RN RO RR RS SC SE SP TO'.split(' ');
-const ESFERA = { M: 'Município', E: 'Estado', D: 'Distrito Federal' } as const;
+const esfera = (e: Ente['esfera']) =>
+  ({ M: t('Município', 'Municipality'), E: t('Estado', 'State'), D: t('Distrito Federal', 'Federal District') })[e];
 
 /** Filtros globais guardados na URL (ano, uf, ente), para links compartilháveis. */
 export function useFiltros() {
@@ -48,9 +52,11 @@ export function useFiltros() {
   const rotulo = ente
     ? `${ente.nome}${ente.esfera === 'M' ? ` (${ente.uf})` : ''}`
     : uf
-      ? `Municípios de ${uf}`
-      : 'Todos os municípios';
-  const rotuloComparador = ente ? (ente.esfera === 'M' ? `Municípios de ${ente.uf}` : 'Todos os estados') : uf ? 'Brasil' : null;
+      ? t(`Municípios de ${uf}`, `Municipalities in ${uf}`)
+      : t('Todos os municípios', 'All municipalities');
+  const rotuloComparador = ente
+    ? ente.esfera === 'M' ? t(`Municípios de ${ente.uf}`, `Municipalities in ${ente.uf}`) : t('Todos os estados', 'All states')
+    : uf ? t('Brasil', 'Brazil') : null;
   /** Escopo do comparador (para séries): UF do município, ou Brasil. */
   const escopoComparador: Params | null = ente
     ? ente.esfera === 'M'
@@ -68,7 +74,8 @@ export type Alerta = {
   indicador: string; valor: number | null; mediana: number | null; razao: number | null; motivo: string;
 };
 
-const ROTULO_INDICADOR: Record<string, string> = { receita_bruta: 'receita bruta', despesa_empenhada: 'despesa empenhada' };
+export const rotuloIndicador = (indicador: string) =>
+  ({ receita_bruta: t('receita bruta', 'gross revenue'), despesa_empenhada: t('despesa empenhada', 'committed expenditure') })[indicador] ?? indicador;
 
 export function BarraFiltros({ semAno = false }: { semAno?: boolean }) {
   const f = useFiltros();
@@ -79,9 +86,12 @@ export function BarraFiltros({ semAno = false }: { semAno?: boolean }) {
       <Filtros semAno={semAno} />
       {doAno.length > 0 && (
         <p className="aviso" role="status">
-          ⚠ Declaração atípica em {f.ano}:{' '}
-          {doAno.map((a) => `${ROTULO_INDICADOR[a.indicador] ?? a.indicador} ${a.motivo}${a.razao ? ` (${a.razao.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}× a mediana do ente)` : ''}`).join('; ')}.
-          Os valores aparecem como o ente declarou, mas este ano fica fora dos totais de UF, Brasil e rankings.
+          ⚠ {t('Declaração atípica em', 'Atypical filing in')} {f.ano}:{' '}
+          {doAno.map((a) => `${rotuloIndicador(a.indicador)} ${dado(a.motivo)}${a.razao ? ` (${a.razao.toLocaleString(local(), { maximumFractionDigits: 1 })}× ${t('a mediana do ente', 'the government’s median')})` : ''}`).join('; ')}.{' '}
+          {t(
+            'Os valores aparecem como o ente declarou, mas este ano fica fora dos totais de UF, Brasil e rankings.',
+            'Values are shown as filed, but this year is excluded from state and national totals and from rankings.',
+          )}
         </p>
       )}
     </>
@@ -95,7 +105,7 @@ function Filtros({ semAno }: { semAno: boolean }) {
     <div className="filtros">
       {!semAno && (
         <div className="campo">
-          <label htmlFor="f-ano">Exercício</label>
+          <label htmlFor="f-ano">{t('Exercício', 'Fiscal year')}</label>
           <select id="f-ano" value={f.ano} onChange={(e) => f.definir({ ano: Number(e.target.value) })}>
             {[...f.anos].reverse().map((a) => (
               <option key={a}>{a}</option>
@@ -104,9 +114,9 @@ function Filtros({ semAno }: { semAno: boolean }) {
         </div>
       )}
       <div className="campo">
-        <label htmlFor="f-uf">UF</label>
+        <label htmlFor="f-uf">{t('UF', 'State')}</label>
         <select id="f-uf" value={f.uf ?? ''} onChange={(e) => f.definir({ uf: e.target.value || null, ente: null })}>
-          <option value="">Brasil</option>
+          <option value="">{t('Brasil', 'Brazil')}</option>
           {UFS.map((u) => (
             <option key={u}>{u}</option>
           ))}
@@ -143,10 +153,10 @@ function BuscaEnte({ entes, uf, atual, aoEscolher }: {
   return (
     <div className="campo combo">
       <label htmlFor="f-ente">
-        Ente (município, estado ou DF)
+        {t('Ente (município, estado ou DF)', 'Government (municipality, state or DF)')}
         {atual && (
           <button className="limpar" style={{ padding: '0 0 0 8px', textTransform: 'none' }} onClick={() => escolher(null)}>
-            limpar
+            {t('limpar', 'clear')}
           </button>
         )}
       </label>
@@ -155,7 +165,7 @@ function BuscaEnte({ entes, uf, atual, aoEscolher }: {
         role="combobox"
         aria-expanded={aberto}
         aria-controls="f-ente-lista"
-        placeholder={atual ? `${atual.nome} — ${ESFERA[atual.esfera]}` : 'Buscar por nome ou código IBGE…'}
+        placeholder={atual ? `${atual.nome} — ${esfera(atual.esfera)}` : t('Buscar por nome ou código IBGE…', 'Search by name or IBGE code…')}
         value={texto}
         onFocus={() => setAberto(true)}
         onBlur={() => setTimeout(() => setAberto(false), 150)}
@@ -182,7 +192,7 @@ function BuscaEnte({ entes, uf, atual, aoEscolher }: {
               onMouseDown={() => escolher(e)}
             >
               <span>{e.nome}</span>
-              <small>{e.esfera === 'M' ? e.uf : ESFERA[e.esfera]}</small>
+              <small>{e.esfera === 'M' ? e.uf : esfera(e.esfera)}</small>
             </li>
           ))}
         </ul>

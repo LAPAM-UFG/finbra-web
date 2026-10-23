@@ -5,6 +5,7 @@ import { Estado, Kpi } from '../components/Kpi';
 import { BarraFiltros } from '../contexto';
 import { div, numero, pct, reais, reaisCurto, reaisExato } from '../format';
 import { num, useIndicadores } from '../hooks';
+import { t } from '../idioma';
 import { TabelaSerie } from './Receitas';
 
 const CAMPOS = [
@@ -23,6 +24,7 @@ export function Socioeconomico() {
   const comPib = s.filter((r) => r.pib !== null);
   const ultimoPib = comPib.at(-1);
   const a = doAno(s, f.ano) ?? ultimoPib;
+  const pib = t('PIB', 'GDP');
 
   const serie = (fn: (r?: Linha) => number | null) => [
     { nome: f.rotulo, valores: anos.map((ano) => fn(doAno(s, ano))) },
@@ -33,8 +35,8 @@ export function Socioeconomico() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const opcaoCarga = useMemo(() => linhas(anos, serie(receitaPib), (v) => pct(v, 0)), [alvo.dados, comp.dados]);
   const setores: [string, string][] = [
-    ['Agropecuária', 'vab_agropecuaria'], ['Indústria', 'vab_industria'],
-    ['Serviços', 'vab_servicos'], ['Administração pública', 'vab_adm_publica'],
+    [t('Agropecuária', 'Agriculture'), 'vab_agropecuaria'], [t('Indústria', 'Industry'), 'vab_industria'],
+    [t('Serviços', 'Services'), 'vab_servicos'], [t('Administração pública', 'Public administration'), 'vab_adm_publica'],
   ];
   const comVab = s.filter((r) => r.vab_servicos !== null).at(-1);
   const opcaoVab = useMemo(
@@ -45,42 +47,57 @@ export function Socioeconomico() {
 
   return (
     <>
-      <h2 className="titulo-pagina">Contexto socioeconômico</h2>
-      <p className="subtitulo">{f.rotulo} · PIB municipal (IBGE) e painel da pesquisa LAPAM</p>
+      <h2 className="titulo-pagina">{t('Contexto socioeconômico', 'Socioeconomic context')}</h2>
+      <p className="subtitulo">{f.rotulo} · {t('PIB municipal (IBGE) e painel da pesquisa LAPAM', 'Municipal GDP (IBGE) and the LAPAM research panel')}</p>
       <BarraFiltros />
       <div className="kpis">
-        <Kpi rotulo={`PIB ${ultimoPib?.exercicio ?? ''}`} valor={reais(num(ultimoPib?.pib))} />
-        <Kpi rotulo="PIB per capita" valor={reaisExato(pibPc(ultimoPib))} />
-        <Kpi rotulo="Receita bruta ÷ PIB" valor={pct(receitaPib(ultimoPib))} nota={`${ultimoPib?.exercicio ?? ''}`} />
-        <Kpi rotulo="Impostos e taxas próprios ÷ PIB" valor={pct(div(num(ultimoPib?.receita_impostos_taxas), num(ultimoPib?.pib)), 2)} />
+        <Kpi rotulo={`${pib} ${ultimoPib?.exercicio ?? ''}`} valor={reais(num(ultimoPib?.pib))} />
+        <Kpi rotulo={t('PIB per capita', 'GDP per capita')} valor={reaisExato(pibPc(ultimoPib))} />
+        <Kpi rotulo={t('Receita bruta ÷ PIB', 'Gross revenue ÷ GDP')} valor={pct(receitaPib(ultimoPib))} nota={`${ultimoPib?.exercicio ?? ''}`} />
+        <Kpi rotulo={t('Impostos e taxas próprios ÷ PIB', 'Own taxes and fees ÷ GDP')}
+          valor={pct(div(num(ultimoPib?.receita_impostos_taxas), num(ultimoPib?.pib)), 2)} />
       </div>
       <p className="aviso">
-        O PIB municipal do IBGE vai até 2023, e o detalhamento por setor até 2021. Para estados, só há dados fiscais.
+        {t(
+          'O PIB municipal do IBGE vai até 2023, e o detalhamento por setor até 2021. Para estados, só há dados fiscais.',
+          'IBGE municipal GDP runs through 2023, and the sector breakdown through 2021. For states, only fiscal data are available.',
+        )}
       </p>
       <Estado carregando={alvo.carregando} erro={alvo.erro} />
       {comPib.length > 0 && (
         <div className="grade-2">
-          <CartaoGrafico titulo="PIB per capita" desc="R$ correntes"
-            tabela={<TabelaSerie colunas={['Ano', 'PIB per capita']} linhas={s.map((r) => [r.exercicio as number, reaisExato(pibPc(r))])} />}>
+          <CartaoGrafico titulo={t('PIB per capita', 'GDP per capita')} desc={t('R$ correntes', 'Current R$')}
+            tabela={<TabelaSerie colunas={[t('Ano', 'Year'), t('PIB per capita', 'GDP per capita')]} linhas={s.map((r) => [r.exercicio as number, reaisExato(pibPc(r))])} />}>
             <Grafico opcao={opcaoPib} />
           </CartaoGrafico>
-          <CartaoGrafico titulo="Receita bruta em relação ao PIB" desc="Peso do orçamento municipal na economia local"
-            tabela={<TabelaSerie colunas={['Ano', 'Receita ÷ PIB']} linhas={s.map((r) => [r.exercicio as number, pct(receitaPib(r))])} />}>
+          <CartaoGrafico titulo={t('Receita bruta em relação ao PIB', 'Gross revenue relative to GDP')}
+            desc={t('Peso do orçamento municipal na economia local', 'Weight of the municipal budget in the local economy')}
+            tabela={<TabelaSerie colunas={[t('Ano', 'Year'), t('Receita ÷ PIB', 'Revenue ÷ GDP')]} linhas={s.map((r) => [r.exercicio as number, pct(receitaPib(r))])} />}>
             <Grafico opcao={opcaoCarga} />
           </CartaoGrafico>
         </div>
       )}
       {comVab && (
-        <CartaoGrafico titulo={`Valor adicionado por setor · ${comVab.exercicio}`} desc="IBGE, R$ correntes">
+        <CartaoGrafico titulo={`${t('Valor adicionado por setor', 'Value added by sector')} · ${comVab.exercicio}`} desc={t('IBGE, R$ correntes', 'IBGE, current R$')}>
           <Grafico opcao={opcaoVab} altura={200} />
         </CartaoGrafico>
       )}
       <section className="cartao">
-        <h3>Transferências às famílias</h3>
-        <p className="desc">Painel da pesquisa LAPAM (2013–2021): Bolsa Família e benefícios do INSS.</p>
+        <h3>{t('Transferências às famílias', 'Transfers to households')}</h3>
+        <p className="desc">
+          {t(
+            'Painel da pesquisa LAPAM (2013–2021): Bolsa Família e benefícios do INSS.',
+            'LAPAM research panel (2013–2021): Bolsa Família and INSS (social security) benefits.',
+          )}
+        </p>
         <div className="rolagem">
           <table>
-            <thead><tr><th>Ano</th><th>Famílias no Bolsa Família</th><th>Valor do Bolsa Família</th><th>Benefícios INSS</th></tr></thead>
+            <thead>
+              <tr>
+                <th>{t('Ano', 'Year')}</th><th>{t('Famílias no Bolsa Família', 'Families in Bolsa Família')}</th>
+                <th>{t('Valor do Bolsa Família', 'Bolsa Família amount')}</th><th>{t('Benefícios INSS', 'INSS benefits')}</th>
+              </tr>
+            </thead>
             <tbody>
               {s.filter((r) => r.bolsa_familia_valor !== null).map((r) => (
                 <tr key={String(r.exercicio)}>
@@ -91,7 +108,9 @@ export function Socioeconomico() {
             </tbody>
           </table>
         </div>
-        {a && a.bolsa_familia_valor === null && <p className="vazio">Sem dados do painel para os exercícios disponíveis.</p>}
+        {a && a.bolsa_familia_valor === null && (
+          <p className="vazio">{t('Sem dados do painel para os exercícios disponíveis.', 'No panel data for the available fiscal years.')}</p>
+        )}
       </section>
     </>
   );

@@ -5,9 +5,15 @@ import { Estado, Kpi } from '../components/Kpi';
 import { BarraFiltros, useDados, useFiltros } from '../contexto';
 import { div, numero, pct, reais, reaisCurto, reaisExato } from '../format';
 import { num, useIndicadores } from '../hooks';
+import { faixa, t } from '../idioma';
 import { TabelaSerie } from './Receitas';
 
 const pctEixo = (v: number) => pct(v, 0);
+const formulaDependencia = () =>
+  t(
+    'Dependência fiscal = soma do FPM ÷ soma da receita corrente dos municípios do grupo. Ficam de fora os ente-anos com alerta.',
+    'Fiscal dependency = sum of FPM ÷ sum of current revenue of the municipalities in the group. Government-years with alerts are excluded.',
+  );
 
 export function Fpm() {
   const { meta } = useDados();
@@ -19,11 +25,12 @@ export function Fpm() {
   const a = noAno(s);
   const b = noAno(c);
   const dependencia = (r?: Linha) => div(num(r?.fpm), num(r?.receita_corrente));
+  const fpmReceita = t('FPM ÷ receita corrente', 'FPM ÷ current revenue');
 
   const opcaoFpm = useMemo(
     () => linhas(anos, [
       { nome: 'Nominal', valores: s.map((r) => num(r.fpm)) },
-      { nome: `Real (R$ de ${meta.baseIpca})`, valores: s.map((r) => num(r.fpm_real)) },
+      { nome: t(`Real (R$ de ${meta.baseIpca})`, `Real (${meta.baseIpca} R$)`), valores: s.map((r) => num(r.fpm_real)) },
     ], reaisCurto),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [alvo.dados],
@@ -39,25 +46,25 @@ export function Fpm() {
 
   return (
     <>
-      <h2 className="titulo-pagina">Fundo de Participação dos Municípios</h2>
-      <p className="subtitulo">{f.rotulo} · FPM bruto (antes da dedução do FUNDEB)</p>
+      <h2 className="titulo-pagina">{t('Fundo de Participação dos Municípios', 'Municipal Participation Fund (FPM)')}</h2>
+      <p className="subtitulo">{f.rotulo} · {t('FPM bruto (antes da dedução do FUNDEB)', 'Gross FPM (before the FUNDEB deduction)')}</p>
       <BarraFiltros />
       <div className="kpis">
-        <Kpi rotulo={`FPM em ${f.ano}`} valor={reais(num(a?.fpm))} nota={`Real: ${reais(num(a?.fpm_real))}`} />
-        <Kpi rotulo="FPM per capita" valor={reaisExato(div(num(a?.fpm), num(a?.populacao)))}
+        <Kpi rotulo={t(`FPM em ${f.ano}`, `FPM in ${f.ano}`)} valor={reais(num(a?.fpm))} nota={`Real: ${reais(num(a?.fpm_real))}`} />
+        <Kpi rotulo={t('FPM per capita', 'FPM per capita')} valor={reaisExato(div(num(a?.fpm), num(a?.populacao)))}
           nota={f.rotuloComparador ? `${f.rotuloComparador}: ${reaisExato(div(num(b?.fpm), num(b?.populacao)))}` : undefined} />
-        <Kpi rotulo="Dependência fiscal" valor={pct(dependencia(a))}
-          nota={f.rotuloComparador ? `${f.rotuloComparador}: ${pct(dependencia(b))}` : 'FPM ÷ receita corrente'} />
+        <Kpi rotulo={t('Dependência fiscal', 'Fiscal dependency')} valor={pct(dependencia(a))}
+          nota={f.rotuloComparador ? `${f.rotuloComparador}: ${pct(dependencia(b))}` : fpmReceita} />
       </div>
       <Estado carregando={alvo.carregando} erro={alvo.erro} vazio={!alvo.carregando && !s.some((r) => r.fpm)} />
       {s.some((r) => r.fpm) && (
         <div className="grade-2">
-          <CartaoGrafico titulo="FPM por exercício" desc="Nominal e corrigido pelo IPCA"
-            tabela={<TabelaSerie colunas={['Ano', 'Nominal', 'Real']} linhas={s.map((r) => [r.exercicio as number, reais(num(r.fpm)), reais(num(r.fpm_real))])} />}>
+          <CartaoGrafico titulo={t('FPM por exercício', 'FPM by fiscal year')} desc={t('Nominal e corrigido pelo IPCA', 'Nominal and adjusted by the IPCA')}
+            tabela={<TabelaSerie colunas={[t('Ano', 'Year'), 'Nominal', 'Real']} linhas={s.map((r) => [r.exercicio as number, reais(num(r.fpm)), reais(num(r.fpm_real))])} />}>
             <Grafico opcao={opcaoFpm} />
           </CartaoGrafico>
-          <CartaoGrafico titulo="Dependência fiscal" desc="FPM ÷ receita corrente"
-            tabela={<TabelaSerie colunas={['Ano', 'Dependência']} linhas={s.map((r) => [r.exercicio as number, pct(dependencia(r))])} />}>
+          <CartaoGrafico titulo={t('Dependência fiscal', 'Fiscal dependency')} desc={fpmReceita}
+            tabela={<TabelaSerie colunas={[t('Ano', 'Year'), t('Dependência', 'Dependency')]} linhas={s.map((r) => [r.exercicio as number, pct(dependencia(r))])} />}>
             <Grafico opcao={opcaoDep} />
           </CartaoGrafico>
         </div>
@@ -74,39 +81,44 @@ export function FpmFaixas() {
   const porFaixa = useApi<Linha[]>('agregado', {
     por: 'faixa_grupo', campos: 'fpm,receita_corrente', ano: f.ano, uf: f.uf ?? undefined, esfera: 'M',
   });
-  const [faixa, setFaixa] = useState<number | ''>('');
-  const porUf = useApi<Linha[]>('agregado', { por: 'uf', campos: 'fpm,receita_corrente', ano: f.ano, esfera: 'M', faixa });
+  const [grupo, setGrupo] = useState<number | ''>('');
+  const porUf = useApi<Linha[]>('agregado', { por: 'uf', campos: 'fpm,receita_corrente', ano: f.ano, esfera: 'M', faixa: grupo });
 
   const linhasFaixa = (faixas.dados ?? []).map((fx) => {
     const r = porFaixa.dados?.find((l) => l.faixa_grupo === fx.grupo);
     return { ...fx, r, perCapita: div(num(r?.fpm), num(r?.populacao)) };
   });
   const opcao = useMemo(
-    () => barras(linhasFaixa.map((l) => l.faixa), linhasFaixa.map((l) => l.perCapita), reaisCurto, false),
+    () => barras(linhasFaixa.map((l) => faixa(l.faixa)), linhasFaixa.map((l) => l.perCapita), reaisCurto, false),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [porFaixa.dados, faixas.dados],
   );
+  const colDependencia = <th className="dica" title={formulaDependencia()}>{t('Dependência fiscal', 'Fiscal dependency')}</th>;
 
   return (
     <>
-      <h2 className="titulo-pagina">FPM por faixa populacional</h2>
-      <p className="subtitulo">{f.uf ? `Municípios de ${f.uf}` : 'Todos os municípios'} · {f.ano}</p>
+      <h2 className="titulo-pagina">{t('FPM por faixa populacional', 'FPM by population bracket')}</h2>
+      <p className="subtitulo">{f.uf ? t(`Municípios de ${f.uf}`, `Municipalities in ${f.uf}`) : t('Todos os municípios', 'All municipalities')} · {f.ano}</p>
       <BarraFiltros />
       <Estado carregando={porFaixa.carregando} erro={porFaixa.erro} />
-      <CartaoGrafico titulo="FPM per capita por faixa" desc="Municípios agrupados pela população do exercício">
+      <CartaoGrafico titulo={t('FPM per capita por faixa', 'FPM per capita by bracket')}
+        desc={t('Municípios agrupados pela população do exercício', 'Municipalities grouped by population in the fiscal year')}>
         <Grafico opcao={opcao} altura={320} />
       </CartaoGrafico>
       <section className="cartao">
-        <h3>Faixas populacionais</h3>
+        <h3>{t('Faixas populacionais', 'Population brackets')}</h3>
         <div className="rolagem">
           <table>
             <thead>
-              <tr><th>Grupo</th><th>Habitantes</th><th>Municípios</th><th>População</th><th>FPM</th><th>FPM per capita</th><th>Dependência fiscal</th></tr>
+              <tr>
+                <th>{t('Grupo', 'Group')}</th><th>{t('Habitantes', 'Inhabitants')}</th><th>{t('Municípios', 'Municipalities')}</th>
+                <th>{t('População', 'Population')}</th><th>FPM</th><th>{t('FPM per capita', 'FPM per capita')}</th>{colDependencia}
+              </tr>
             </thead>
             <tbody>
               {linhasFaixa.map((l) => (
                 <tr key={l.grupo}>
-                  <td>{l.nome}</td><td>{l.faixa}</td><td>{numero(num(l.r?.entes))}</td><td>{numero(num(l.r?.populacao))}</td>
+                  <td>{faixa(l.nome)}</td><td>{faixa(l.faixa)}</td><td>{numero(num(l.r?.entes))}</td><td>{numero(num(l.r?.populacao))}</td>
                   <td>{reais(num(l.r?.fpm))}</td><td>{reaisExato(l.perCapita)}</td>
                   <td>{pct(div(num(l.r?.fpm), num(l.r?.receita_corrente)))}</td>
                 </tr>
@@ -117,18 +129,23 @@ export function FpmFaixas() {
       </section>
       <section className="cartao">
         <div className="cabeca-cartao">
-          <h3>Por UF</h3>
+          <h3>{t('Por UF', 'By state')}</h3>
           <div className="campo">
-            <label htmlFor="faixa">Faixa</label>
-            <select id="faixa" value={faixa} onChange={(e) => setFaixa(e.target.value ? Number(e.target.value) : '')}>
-              <option value="">Todas</option>
-              {(faixas.dados ?? []).map((fx) => <option key={fx.grupo} value={fx.grupo}>{fx.nome} · {fx.faixa}</option>)}
+            <label htmlFor="faixa">{t('Faixa', 'Bracket')}</label>
+            <select id="faixa" value={grupo} onChange={(e) => setGrupo(e.target.value ? Number(e.target.value) : '')}>
+              <option value="">{t('Todas', 'All')}</option>
+              {(faixas.dados ?? []).map((fx) => <option key={fx.grupo} value={fx.grupo}>{faixa(fx.nome)} · {faixa(fx.faixa)}</option>)}
             </select>
           </div>
         </div>
         <div className="rolagem">
           <table>
-            <thead><tr><th>UF</th><th>Municípios</th><th>FPM</th><th>FPM real</th><th>FPM per capita</th><th>Dependência fiscal</th></tr></thead>
+            <thead>
+              <tr>
+                <th>{t('UF', 'State')}</th><th>{t('Municípios', 'Municipalities')}</th><th>FPM</th><th>{t('FPM real', 'Real FPM')}</th>
+                <th>{t('FPM per capita', 'FPM per capita')}</th>{colDependencia}
+              </tr>
+            </thead>
             <tbody>
               {(porUf.dados ?? []).map((r) => (
                 <tr key={String(r.uf)}>
