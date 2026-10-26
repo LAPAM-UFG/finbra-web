@@ -242,3 +242,7 @@ td.ia-txt { text-align: left; white-space: normal; }
 .ia-form { display: flex; flex-direction: column; gap: 6px; position: sticky; bottom: 0; background: var(--pagina); padding: 10px 0; }
 .ia-form textarea { width: 100%; box-sizing: border-box; font: inherit; padding: 8px 10px; border: 1px solid var(--borda); border-radius: 8px; background: var(--superficie); color: var(--tinta); resize: vertical; }
 .ia-acoes { display: flex; gap: 10px; align-items: center; }
+
+/* demonstrativos RREO/RGF: conta larga à esquerda, valores à direita */
+.lrf-anexo td.lrf-conta { white-space: normal; text-align: left; min-width: 280px; max-width: 520px; }
+.lrf-anexo th { white-space: normal; min-width: 90px; }

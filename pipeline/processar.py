@@ -1,4 +1,4 @@
-"""Roda as camadas depois da extração: bronze → silver → externos → famílias → gold → validação → testes.
+"""Roda as camadas depois da extração: bronze → silver → externos → famílias → LRF → gold → validação → testes.
 
 Uso:
     py pipeline/processar.py
@@ -31,6 +31,7 @@ def main():
     if not args.sem_externos:
         rodar("externos.py")
         rodar("familias.py", "--atualizar")  # só os meses e anos ainda não agregados
+    rodar("lrf.py")  # RREO e RGF já extraídos (extract_lrf.py); sem landing, não faz nada
     rodar("gold.py")
     rodar("validate.py")
     rodar("testes.py")

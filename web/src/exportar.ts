@@ -104,29 +104,54 @@ export function zip(arquivos: [string, string][]): Uint8Array {
   return saida;
 }
 
-export function paraXlsx(t: Tabela): Uint8Array {
+export type Planilha = { nome: string; linhas: Celula[][] };
+
+/**
+ * Nome válido de aba do Excel: até 31 caracteres, sem : \ / ? * [ ] e sem repetir os anteriores
+ * (comparação sem diferenciar maiúsculas, como o Excel faz).
+ */
+function nomesDeAba(nomes: string[]): string[] {
+  const usados = new Set<string>();
+  return nomes.map((n, i) => {
+    const base = (n.replace(/[:\\/?*[\]]/g, ' ').replace(/\s+/g, ' ').trim() || `aba ${i + 1}`).slice(0, 31);
+    let nome = base;
+    for (let k = 2; usados.has(nome.toLowerCase()); k++) nome = `${base.slice(0, 31 - String(k).length - 1)} ${k}`;
+    usados.add(nome.toLowerCase());
+    return nome;
+  });
+}
+
+/** Pasta de trabalho com várias abas. */
+export function paraXlsxAbas(abas: Planilha[]): Uint8Array {
+  const nomes = nomesDeAba(abas.map((a) => a.nome));
   const tipos = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">`
     + `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>`
     + `<Default Extension="xml" ContentType="application/xml"/>`
     + `<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>`
-    + `<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`
-    + `<Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`
+    + abas.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')
     + `</Types>`;
   const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`
     + `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`;
   const livro = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" `
     + `xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>`
-    + `<sheet name="dados" sheetId="1" r:id="rId1"/><sheet name="metadados" sheetId="2" r:id="rId2"/></sheets></workbook>`;
+    + nomes.map((n, i) => `<sheet name="${xml(n)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('')
+    + `</sheets></workbook>`;
   const relsLivro = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`
-    + `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>`
-    + `<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/></Relationships>`;
+    + abas.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('')
+    + `</Relationships>`;
   return zip([
     ['[Content_Types].xml', tipos],
     ['_rels/.rels', rels],
     ['xl/workbook.xml', livro],
     ['xl/_rels/workbook.xml.rels', relsLivro],
-    ['xl/worksheets/sheet1.xml', planilha([t.colunas, ...t.linhas])],
-    ['xl/worksheets/sheet2.xml', planilha(t.metadados.map(([k, v]) => [k, v]))],
+    ...abas.map((a, i): [string, string] => [`xl/worksheets/sheet${i + 1}.xml`, planilha(a.linhas)]),
+  ]);
+}
+
+export function paraXlsx(t: Tabela): Uint8Array {
+  return paraXlsxAbas([
+    { nome: 'dados', linhas: [t.colunas, ...t.linhas] },
+    { nome: 'metadados', linhas: t.metadados.map(([k, v]) => [k, v]) },
   ]);
 }
 

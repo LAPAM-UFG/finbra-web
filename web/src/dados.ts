@@ -563,6 +563,118 @@ async function populacao(ano: number, e: Escopo, dominio: Dominio, trat: Tratame
   return { populacao: pop && pop > 0 ? pop : null, entes: (r?.entes as number) ?? 0 };
 }
 
+// ---------------- LRF (RREO e RGF, fechamento do ano) ----------------
+
+/** gold/lrf.parquet (~5 MB): só é baixado quando uma página da LRF ou a IA pede. */
+let lrfCarregada: Promise<void> | null = null;
+export function tabelaLrf() {
+  lrfCarregada ??= (async () => {
+    const { con } = await iniciar();
+    await db.registerFileBuffer('lrf.parquet', await baixar('gold/lrf.parquet'));
+    await con.query(`CREATE TABLE lrf AS SELECT * FROM read_parquet('lrf.parquet')`);
+  })();
+  lrfCarregada.catch(() => (lrfCarregada = null));
+  return lrfCarregada;
+}
+
+/**
+ * Limites e mínimos legais, para contar quem descumpre. O limite de pessoal é o declarado pelo ente
+ * (54% Executivo municipal, 49% estadual, com exceções); DCL: 120% da RCL (municípios) e 200% (estados e DF,
+ * Resolução 40/2001 do Senado); saúde: 15% (municípios) e 12% (estados; o DF declara a base combinada);
+ * MDE: 25%; FUNDEB na remuneração dos profissionais: 70% desde 2021 (Lei 14.113/2020), 60% antes.
+ */
+const LRF_LIMITES = `
+  CASE WHEN l.esfera = 'M' THEN 120 ELSE 200 END AS lim_dcl,
+  CASE WHEN l.esfera = 'M' THEN 15 ELSE 12 END AS min_saude,
+  25 AS min_mde,
+  CASE WHEN l.exercicio >= 2021 THEN 70 ELSE 60 END AS min_fundeb`;
+
+/** Recorte de grupo na tabela lrf: esfera e, para municípios, a UF. */
+function recorteLrf(q: Params, p: Record<string, Valor>) {
+  const esferaLrf = q.esfera === 'E' ? 'E' : 'M';
+  p.esfera = esferaLrf;
+  const uf = UFS.has(String(q.uf)) && esferaLrf === 'M' ? String(q.uf) : null;
+  if (uf) p.uf = uf;
+  return `l.esfera = $esfera${uf ? ' AND l.uf = $uf' : ''}`;
+}
+
+const rotasLrf: Record<string, (q: Params) => Promise<unknown>> = {
+  /** Série de um ente: todos os indicadores, com limites e mínimos. */
+  async lrf_ente(q) {
+    await tabelaLrf();
+    return consultar(`SELECT l.*, ${LRF_LIMITES} FROM lrf l WHERE l.cod_ibge = $ente::INTEGER ORDER BY l.exercicio`,
+      { ente: inteiro(q.ente) });
+  },
+
+  /**
+   * Agregados por exercício para um grupo (municípios de uma UF ou do Brasil; estados). As razões são
+   * soma ÷ soma, só dos entes com numerador e denominador; os percentuais declarados entram como mediana
+   * e na contagem de quem passa do limite ou fica abaixo do mínimo.
+   */
+  async lrf_grupo(q) {
+    await tabelaLrf();
+    const p: Record<string, Valor> = {};
+    const onde = recorteLrf(q, p);
+    return consultar(
+      `WITH l AS (SELECT l.*, coalesce(l.rcl_ajustada, l.rcl) AS base, ${LRF_LIMITES} FROM lrf l WHERE ${onde})
+       SELECT exercicio, count(*)::INTEGER AS entes,
+              count(rreo_tipo)::INTEGER AS com_rreo, count(rgf_tipo)::INTEGER AS com_rgf,
+              sum(rcl) AS rcl,
+              sum(despesa_pessoal) FILTER (despesa_pessoal IS NOT NULL AND base > 0) / sum(base) FILTER (despesa_pessoal IS NOT NULL AND base > 0) AS pessoal_rcl,
+              median(pessoal_rcl_pct) / 100 AS pessoal_mediana,
+              count(pessoal_rcl_pct)::INTEGER AS n_pessoal,
+              count(*) FILTER (pessoal_rcl_pct > pessoal_limite_pct)::INTEGER AS pessoal_acima_limite,
+              count(*) FILTER (pessoal_rcl_pct > 0.95 * pessoal_limite_pct)::INTEGER AS pessoal_acima_prudencial,
+              sum(dcl) FILTER (dcl IS NOT NULL AND base > 0) / sum(base) FILTER (dcl IS NOT NULL AND base > 0) AS dcl_rcl,
+              median(dcl_rcl_pct) / 100 AS dcl_mediana,
+              count(dcl_rcl_pct)::INTEGER AS n_dcl,
+              count(*) FILTER (dcl_rcl_pct > lim_dcl)::INTEGER AS dcl_acima_limite,
+              median(saude_pct) / 100 AS saude_mediana, count(saude_pct)::INTEGER AS n_saude,
+              count(*) FILTER (saude_pct < min_saude)::INTEGER AS saude_abaixo,
+              median(mde_pct) / 100 AS mde_mediana, count(mde_pct)::INTEGER AS n_mde,
+              count(*) FILTER (mde_pct < min_mde)::INTEGER AS mde_abaixo,
+              median(fundeb_pct) / 100 AS fundeb_mediana, count(fundeb_pct)::INTEGER AS n_fundeb,
+              count(*) FILTER (fundeb_pct < min_fundeb)::INTEGER AS fundeb_abaixo,
+              sum(resultado_primario) AS resultado_primario, count(resultado_primario)::INTEGER AS n_primario,
+              count(*) FILTER (resultado_primario < 0)::INTEGER AS primario_deficit,
+              count(*) FILTER (resultado_primario IS NOT NULL AND meta_primario IS NOT NULL)::INTEGER AS n_meta,
+              count(*) FILTER (resultado_primario >= meta_primario)::INTEGER AS meta_cumprida
+       FROM l GROUP BY exercicio ORDER BY exercicio`,
+      p,
+    );
+  },
+
+  /** Entes de um grupo num exercício, com indicadores e limites (tabela e exportação). */
+  async lrf_entes(q) {
+    await tabelaLrf();
+    const p: Record<string, Valor> = { ano: inteiro(q.ano) };
+    const onde = recorteLrf(q, p);
+    return consultar(`SELECT l.*, ${LRF_LIMITES} FROM lrf l WHERE ${onde} AND l.exercicio = $ano::INTEGER ORDER BY l.uf, l.nome`, p);
+  },
+
+  /** Anexos que um ente entregou num exercício (o arquivo do ano é lido por Range, só o trecho do ente). */
+  async lrf_anexos(q) {
+    await iniciar(); // a URL do arquivo leva a versão do manifesto
+    return consultar(
+      `SELECT relatorio, anexo, any_value(tipo_demonstrativo) AS tipo, any_value(periodicidade) AS periodicidade, count(*)::INTEGER AS linhas
+       FROM read_parquet(${arq(`silver/lrf/exercicio=${inteiro(q.ano)}.parquet`)})
+       WHERE cod_ibge = $ente::INTEGER GROUP BY ALL ORDER BY relatorio DESC, anexo`,
+      { ente: inteiro(q.ente) },
+    );
+  },
+
+  /** Linhas de um anexo, na ordem do relatório. */
+  async lrf_anexo(q) {
+    await iniciar();
+    return consultar(
+      `SELECT ordem, rotulo, cod_conta, conta, coluna, valor
+       FROM read_parquet(${arq(`silver/lrf/exercicio=${inteiro(q.ano)}.parquet`)})
+       WHERE cod_ibge = $ente::INTEGER AND relatorio = $relatorio AND anexo = $anexo ORDER BY ordem`,
+      { ente: inteiro(q.ente), relatorio: String(q.relatorio), anexo: String(q.anexo) },
+    );
+  },
+};
+
 /**
  * Consulta da IA (página /ia), já conferida por validarSql: roda sobre as tabelas em memória e traz
  * no máximo `limite` linhas, mais o total. As colunas saem na ordem do SELECT.
@@ -591,7 +703,7 @@ export async function consultaLivre(sql: string, limite: number) {
 }
 
 export async function executar(caminho: string, params: Params): Promise<unknown> {
-  const rota = rotas[caminho];
+  const rota = rotas[caminho] ?? rotasLrf[caminho];
   if (!rota) throw new Error(`rota desconhecida: ${caminho}`);
   return rota(params);
 }

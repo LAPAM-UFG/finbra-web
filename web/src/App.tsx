@@ -6,6 +6,7 @@ import { Demonstrativos } from './pages/Demonstrativos';
 import { DespesasEvolucao, DespesasVisaoGeral } from './pages/Despesas';
 import { Fpm, FpmFaixas } from './pages/Fpm';
 import { Ia } from './pages/Ia';
+import { LrfDemonstrativos, LrfIndicadores } from './pages/Lrf';
 import { Deflatores, Qualidade } from './pages/Metodologia';
 import { Rankings } from './pages/Rankings';
 import { ReceitasEvolucao, ReceitasVisaoGeral } from './pages/Receitas';
@@ -15,6 +16,7 @@ const menu = (): [string, [string, string][]][] => [
   [t('Receitas', 'Revenue'), [['/receitas', t('Visão geral', 'Overview')], ['/receitas/evolucao', t('Evolução', 'Trends')]]],
   ['FPM', [['/fpm', t('Evolução e dependência', 'Trends and dependency')], ['/fpm/faixas', t('Faixas populacionais', 'Population brackets')]]],
   [t('Despesas', 'Expenditure'), [['/despesas', t('Visão geral', 'Overview')], ['/despesas/evolucao', t('Evolução', 'Trends')]]],
+  [t('Responsabilidade fiscal', 'Fiscal responsibility'), [['/lrf', t('Indicadores da LRF', 'LRF indicators')], ['/lrf/demonstrativos', t('Demonstrativos RREO e RGF', 'RREO and RGF statements')]]],
   [t('Análises', 'Analysis'), [
     ['/demonstrativos', t('Demonstrativos (7 anexos)', 'Financial statements (7 annexes)')],
     ['/socioeconomico', t('Socioeconômico', 'Socioeconomic')],
@@ -118,6 +120,8 @@ export function App() {
               <Route path="/socioeconomico" element={<Socioeconomico />} />
               <Route path="/rankings" element={<Rankings />} />
               <Route path="/ia" element={<Ia />} />
+              <Route path="/lrf" element={<LrfIndicadores />} />
+              <Route path="/lrf/demonstrativos" element={<LrfDemonstrativos />} />
               <Route path="/deflatores" element={<Deflatores />} />
               <Route path="/qualidade" element={<Qualidade />} />
               <Route path="*" element={<p className="vazio">{t('Página não encontrada.', 'Page not found.')}</p>} />

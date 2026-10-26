@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { basesAV, codigoConta, formatarPct } from '../src/calculos';
 import { consultaLivre, executar, usarMotorDeTeste } from '../src/dados';
 import { executarConsulta, paraModelo, validarSql } from '../src/ia';
-import { crc32, paraCsv, paraXlsx } from '../src/exportar';
+import { crc32, paraCsv, paraXlsx, paraXlsxAbas } from '../src/exportar';
 import { ordenarBusca } from '../src/contexto';
 
 const require = createRequire(import.meta.url);
@@ -336,6 +336,7 @@ describe('perguntas com IA', () => {
       'WITH a AS (SELECT * FROM indicadores) SELECT count(*) FROM a',
       "SELECT * FROM alertas WHERE motivo LIKE '%habitual%' -- comentário; com ponto e vírgula",
       "SELECT 'São Paulo' AS nome, '2024-01-01' AS data",
+      'SELECT receita_bruta / 1e6 AS "receita (R$ mi.)", fpm AS "pct.fpm" FROM indicadores',
     ]) assert.equal(validarSql(ok), null, ok);
     for (const ruim of [
       'DROP TABLE indicadores',
@@ -350,6 +351,8 @@ describe('perguntas com IA', () => {
       'ATTACH \'x.db\'',
       'SET threads = 1',
       'SELECT * FROM "dados.parquet"',
+      'SELECT * FROM "C:/dados/x"',
+      'SELECT * FROM "https://exemplo.org/x"',
     ]) assert.notEqual(validarSql(ruim), null, ruim);
   });
 
@@ -378,5 +381,58 @@ describe('perguntas com IA', () => {
     const texto = paraModelo({ colunas: ['i', 's'], linhas, total: 2000 });
     assert.ok(texto.length <= 40_000);
     assert.equal(JSON.parse(texto).total_linhas, 2000);
+  });
+});
+describe('LRF (RREO e RGF)', () => {
+  test('ente: indicadores do DF em 2024 iguais ao RGF/RREO declarados', async () => {
+    const s = await rota<L[]>('lrf_ente', { ente: 53 });
+    const a = s.find((r) => r.exercicio === 2024);
+    assert.ok(a, 'DF 2024 presente');
+    assert.equal(a!.pessoal_rcl_pct, 39.57);
+    assert.equal(a!.pessoal_limite_pct, 49);
+    assert.equal(a!.dcl_rcl_pct, 13.12);
+    assert.equal(a!.lim_dcl, 200);
+    assert.equal(a!.min_fundeb, 70);
+  });
+
+  test('grupo: razões em fração, contagens dentro do total de entes', async () => {
+    const g = await rota<L[]>('lrf_grupo', { esfera: 'M' });
+    assert.ok(g.length > 0);
+    for (const r of g) {
+      const p = r.pessoal_rcl as number | null;
+      if (p !== null) assert.ok(p > 0 && p < 1, `pessoal/RCL ${p}`);
+      assert.ok((r.pessoal_acima_limite as number) <= (r.n_pessoal as number));
+      assert.ok((r.pessoal_acima_prudencial as number) >= (r.pessoal_acima_limite as number));
+      assert.ok((r.com_rgf as number) <= (r.entes as number));
+    }
+  });
+
+  test('anexo completo na ordem do relatório', async () => {
+    const anexos = await rota<L[]>('lrf_anexos', { ente: 53, ano: 2024 });
+    assert.ok(anexos.some((x) => x.relatorio === 'RGF' && x.anexo === 'RGF-Anexo 01'));
+    const linhas = await rota<L[]>('lrf_anexo', { ente: 53, ano: 2024, relatorio: 'RGF', anexo: 'RGF-Anexo 01' });
+    assert.ok(linhas.some((l) => l.cod_conta === 'DespesaComPessoalTotal'));
+    const ordens = linhas.map((l) => l.ordem as number);
+    assert.deepEqual(ordens, [...ordens].sort((x, y) => x - y));
+  });
+});
+describe('Excel com várias abas', () => {
+  test('nomes de aba válidos, únicos e com até 31 caracteres', () => {
+    const x = paraXlsxAbas([
+      { nome: 'Conversa', linhas: [['a', 1]] },
+      { nome: 'P1.1 Receita per capita: municípios [GO] / 2024 com nome muito longo', linhas: [['b', 2]] },
+      { nome: 'P1.1 Receita per capita: municípios [GO] / 2024 com nome muito longo', linhas: [['c', 3]] },
+      { nome: 'conversa', linhas: [] },
+    ]);
+    assert.deepEqual([...x.slice(0, 4)], [0x50, 0x4b, 0x03, 0x04]);
+    const texto = new TextDecoder().decode(x);
+    const nomes = [...texto.matchAll(/<sheet name="([^"]*)"/g)].map((m) => m[1]);
+    assert.equal(nomes.length, 4);
+    assert.equal(new Set(nomes.map((n) => n.toLowerCase())).size, 4);
+    for (const n of nomes) {
+      assert.ok(n.length <= 31, n);
+      assert.ok(!/[:\\/?*[\]]/.test(n), n);
+    }
+    assert.ok(texto.includes('xl/worksheets/sheet4.xml'));
   });
 });

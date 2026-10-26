@@ -132,6 +132,22 @@ py pipeline/processar.py --anos 2024 2025
 py pipeline/r2.py enviar
 ```
 
+### RREO e RGF (Lei de Responsabilidade Fiscal)
+
+Fonte à parte, com páginas próprias no site (**Responsabilidade fiscal**): o fechamento de cada exercício,
+de 2015 em diante (a API não tem esses relatórios antes).
+
+| | |
+|---|---|
+| Extração | `pipeline/extract_lrf.py`: por ente e exercício, RREO do 6º bimestre e RGF do último período do Executivo, tentando as versões completa e simplificada (municípios pequenos) e o RGF quadrimestral ou semestral |
+| Processamento | `pipeline/lrf.py`: `silver/lrf/exercicio=AAAA.parquet` (todas as linhas, na ordem do relatório) e `gold/lrf.parquet` (indicadores por ente e ano: RCL, pessoal ÷ RCL, DCL ÷ RCL, resultado primário e meta, saúde, MDE e FUNDEB) |
+| Carga completa | ~46 h na sua máquina (a API só aceita um ente por chamada); retomável: `py pipeline/extract_lrf.py`, depois `py pipeline/lrf.py` |
+| Atualização | workflow **Atualizar RREO e RGF** (`atualizar-lrf.yml`), todo dia 15: busca só os entes que ainda não tinham o relatório nos dois últimos exercícios (`--faltantes`) |
+
+Os anexos 8 (educação) e 12 (saúde) do RREO não estão na API; os percentuais de saúde, educação e
+FUNDEB vêm do resumo do RREO (anexo 14). Retificações de relatórios já baixados não entram na
+atualização mensal; para pegá-las, rode `extract_lrf.py --anos AAAA --atualizar` localmente.
+
 ## Publicação do site
 
 Workflow **Publicar site** (`.github/workflows/publicar-site.yml`): a cada push na `main` que altere
@@ -155,6 +171,8 @@ para cada consulta caber em **um arquivo e poucos blocos**:
 | `silver/contas/exercicio=AAAA.parquet` | plano de contas de cada ano | inteiro, na primeira vez que o ano é aberto |
 | `gold/arvore.parquet` | árvore e séries de UF e Brasil | por Range (ordenado por escopo, conta e ano) |
 | `gold/entes/uf=XX.parquet` | árvore e séries de um ente (todos os anos) | por Range (ordenado por ente e ano) |
+| `gold/lrf.parquet` | indicadores da LRF (páginas de responsabilidade fiscal e IA) | inteiro, só quando pedido |
+| `silver/lrf/exercicio=AAAA.parquet` | anexos completos do RREO e do RGF de um ente | por Range (ordenado por ente, relatório e anexo) |
 
 Detalhes do DuckDB-WASM que fazem diferença (em `web/src/dados.ts`):
 

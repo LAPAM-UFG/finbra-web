@@ -148,6 +148,13 @@ export function Qualidade() {
             (<a href={fontes.siconfi?.url ?? 'https://apidatalake.tesouro.gov.br/docs/siconfi/'} target="_blank" rel="noreferrer">apidatalake.tesouro.gov.br</a>).{' '}
             {t('Exercícios', 'Years')} {fontes.siconfi?.anos?.join('–')} · {t('processado em', 'processed on')} {data(fontes.siconfi?.processado_em)}.{' '}
             {t('Os dois últimos exercícios fechados são extraídos de novo todo mês, porque os entes retificam declarações.', 'The two latest closed years are re-extracted every month, because governments amend their filings.')}</li>
+          {fontes.siconfi_lrf && (
+            <li><strong>{t('SICONFI / Tesouro Nacional (LRF)', 'SICONFI / National Treasury (LRF)')}</strong> —{' '}
+              {t('RREO do 6º bimestre e RGF do último quadrimestre ou semestre (Poder Executivo), inclusive as versões simplificadas, pela mesma API; os anexos de saúde e educação vêm do resumo do RREO (anexo 14), porque os anexos 8 e 12 não estão na API.',
+                '6th two-month RREO and last four- or six-month RGF (Executive branch), including the simplified versions, through the same API; health and education come from the RREO summary (annex 14), because annexes 8 and 12 are not in the API.')}{' '}
+              {t('Exercícios', 'Years')} {(fontes.siconfi_lrf as { anos?: number[] }).anos?.join('–')} · {t('processado em', 'processed on')} {data(fontes.siconfi_lrf.processado_em)}.{' '}
+              {t('Todo mês são buscados os entes que ainda não tinham o relatório nos dois últimos exercícios.', 'Every month the governments still missing a report in the two latest years are fetched again.')}</li>
+          )}
           <li><strong>IBGE</strong> — {t('PIB dos Municípios', 'Municipal GDP')} (<a href={fontes.ibge_pib?.url ?? 'https://sidra.ibge.gov.br/tabela/5938'} target="_blank" rel="noreferrer">{t('tabela SIDRA 5938', 'SIDRA table 5938')}</a>),{' '}
             {fontes.ibge_pib?.anos?.join('–')}; {t('setores até', 'sectors through')} {fontes.ibge_pib?.setorial_ate} · {t('processado em', 'processed on')} {data(fontes.ibge_pib?.processado_em)}.</li>
           <li><strong>{t('Banco Central', 'Central Bank of Brazil')}</strong> — {t('IPCA mensal', 'Monthly IPCA')} (<a href={fontes.ipca?.url ?? 'https://www3.bcb.gov.br/sgspub/'} target="_blank" rel="noreferrer">SGS 433</a>),{' '}

@@ -2,7 +2,7 @@
  * Perguntas à base (página /ia): conversa com o Worker (/api/ia, com login do Cloudflare Access) e
  * execução, aqui no navegador, das consultas SQL que o Claude propõe.
  */
-import { consultaLivre } from './dados';
+import { consultaLivre, tabelaLrf } from './dados';
 import { t } from './idioma';
 
 export type Bloco = { type: string; id?: string; name?: string; input?: unknown; text?: string; [k: string]: unknown };
@@ -66,7 +66,8 @@ export function validarSql(sql: string): string | null {
   if (/\b(from|join)\s*\(?\s*''/i.test(semTextos)) {
     return 'só as tabelas do painel podem ser lidas';
   }
-  if (/"[^"]*[/\\:.][^"]*"/.test(semTextos)) return 'identificador não permitido';
+  // aliases entre aspas são livres ("receita per capita (R$ mi.)"); só barra o que parece arquivo ou endereço
+  if (/"[^"]*([/\\]|:\/\/|^[a-z]:|\.(parquet|csv|tsv|json|txt|db|duckdb|xlsx))[^"]*"/i.test(semTextos)) return 'identificador não permitido';
   return null;
 }
 
@@ -77,6 +78,8 @@ export async function executarConsulta(entrada: unknown): Promise<Resultado> {
   const motivo = validarSql(e.sql);
   if (motivo) return { erro: motivo };
   try {
+    // a tabela da LRF só é baixada quando alguma consulta a usa
+    if (/\blrf\b/i.test(e.sql)) await tabelaLrf();
     return await consultaLivre(e.sql, LINHAS_TELA);
   } catch (err) {
     return { erro: err instanceof Error ? err.message : String(err) };

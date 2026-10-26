@@ -363,7 +363,22 @@ def fontes(con):
                      "SELECT DISTINCT exercicio FROM familias WHERE inss_fonte IS NOT NULL ORDER BY 1").fetchall()],
                  "processado_em": _quando(SILVER / "inss_municipios.parquet"),
                  "url": "https://www.gov.br/previdencia/pt-br/assuntos/previdencia-social/emitidos-municipios-2023"},
+        **fonte_lrf(con),
     }
+
+
+def fonte_lrf(con):
+    """RREO e RGF (lrf.py): exercícios e entes com cada relatório; vazio se ainda não processados."""
+    arquivo = GOLD / "lrf.parquet"
+    if not arquivo.exists():
+        return {}
+    por_ano = con.execute(f"""SELECT exercicio, count(rreo_tipo)::INTEGER, count(rgf_tipo)::INTEGER
+                              FROM '{arquivo.as_posix()}' GROUP BY 1 ORDER BY 1""").fetchall()
+    return {"siconfi_lrf": {"anos": [por_ano[0][0], por_ano[-1][0]] if por_ano else None,
+                            "exercicios": [r[0] for r in por_ano],
+                            "entes": {str(r[0]): {"rreo": r[1], "rgf": r[2]} for r in por_ano},
+                            "processado_em": _quando(arquivo),
+                            "url": "https://apidatalake.tesouro.gov.br/docs/siconfi/"}}
 
 
 def mapa_indicadores(con):

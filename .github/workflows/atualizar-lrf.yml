@@ -1,0 +1,84 @@
+# Atualização mensal do RREO e do RGF (fechamento do ano): traz a silver e a gold do R2, busca na API
+# do Tesouro só os entes que ainda não tinham o relatório nos dois últimos exercícios fechados (entregas
+# atrasadas e o ano novo), reprocessa a tabela da LRF e devolve ao R2. A carga completa (2015 em diante,
+# ~46 h a 1 req/s) não cabe numa Action: é feita localmente com extract_lrf.py.
+name: Atualizar RREO e RGF
+
+on:
+  schedule:
+    - cron: "0 6 15 * *"   # dia 15 de cada mês, 03h de Brasília (a DCA roda no dia 5)
+  workflow_dispatch:
+    inputs:
+      anos:
+        description: "Exercícios, separados por espaço (ex.: 2024 2025). Vazio = os dois últimos fechados."
+        required: false
+        default: ""
+
+concurrency:
+  group: atualizar-dados
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  atualizar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    env:
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+
+      - name: Instalar dependências
+        run: pip install -r pipeline/requirements.txt
+
+      - name: Definir exercícios
+        id: anos
+        env:
+          ANOS_INFORMADOS: ${{ inputs.anos }}
+        run: |
+          if [ -n "$ANOS_INFORMADOS" ]; then
+            if ! [[ "$ANOS_INFORMADOS" =~ ^[0-9[:space:]-]+$ ]]; then
+              echo "Exercícios inválidos: $ANOS_INFORMADOS" >&2; exit 1
+            fi
+            anos="$ANOS_INFORMADOS"
+          else
+            ano=$(date -u +%Y)
+            anos="$((ano - 2)) $((ano - 1))"
+          fi
+          echo "Exercícios: $anos"
+          echo "anos=$anos" >> "$GITHUB_OUTPUT"
+
+      - name: Baixar camadas atuais do R2
+        run: python pipeline/r2.py baixar --camadas silver gold
+
+      - name: Extrair o que falta da API do Tesouro
+        run: python pipeline/extract_lrf.py --anos ${{ steps.anos.outputs.anos }} --faltantes
+
+      - name: Processar
+        run: |
+          python pipeline/lrf.py
+          python pipeline/testes.py
+
+      - name: Enviar ao R2
+        run: python pipeline/r2.py enviar --camadas silver gold
+
+      - name: Guardar logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: logs-lrf-${{ github.run_id }}
+          path: data/logs/
+          if-no-files-found: ignore
+          retention-days: 90

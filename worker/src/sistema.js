@@ -52,6 +52,16 @@ faixas — faixas populacionais dos municípios: grupo, nome, faixa (texto, ex.:
 ipca — deflator: exercicio, ipca_pct (variação dez/dez em %), indice (número-índice de dezembro), completo BOOLEAN, meses
   Valor real em R$ do ano-base = valor nominal × (indice do ano-base ÷ indice do exercício).
 
+lrf — indicadores da Lei de Responsabilidade Fiscal, do RREO (6º bimestre) e do RGF (último período, Poder Executivo), uma linha por ente e exercício, de 2015 em diante (a API do SICONFI não tem esses relatórios antes)
+  exercicio, cod_ibge, nome, uf, regiao, esfera, populacao
+  rreo_tipo ('RREO' ou 'RREO Simplificado'), rgf_tipo (ex.: 'RGF (Q)', 'RGF Simplificado (S)'); nulos = relatório não entregue
+  rcl (receita corrente líquida), rcl_ajustada (base dos limites)
+  despesa_pessoal (despesa total com pessoal do Executivo), pessoal_rcl_pct (% da RCL ajustada, em pontos: 48.5 = 48,5%), pessoal_limite_pct (limite máximo declarado: 54 municípios, 49 estados)
+  divida_consolidada, dcl (dívida consolidada líquida), dcl_rcl_pct (% da RCL; limite 120 municípios, 200 estados)
+  resultado_primario, meta_primario (meta da LDO), resultado_nominal
+  saude_valor, saude_pct (% aplicado em saúde; mínimo 15 municípios, 12 estados), mde_valor, mde_pct (educação; mínimo 25), fundeb_pct (mínimo 70 desde 2021, 60 antes)
+  Os percentuais são os declarados. Em grupos, razões = soma ÷ soma (ex.: sum(despesa_pessoal) / sum(coalesce(rcl_ajustada, rcl)), só entes com os dois valores); para os percentuais declarados use mediana e conte quem passa do limite ou fica abaixo do mínimo.
+
 # Regras do painel (siga-as para os números baterem com o site)
 
 1. Ente com dados no domínio: receita exige receita_bruta > 0; despesa exige despesa_empenhada > 0; patrimônio exige ativo IS NOT NULL.
@@ -74,6 +84,7 @@ ipca — deflator: exercicio, ipca_pct (variação dez/dez em %), indice (númer
 - Formate valores grandes de forma legível (ex.: R$ 1,2 bilhão; em inglês, R$ 1.2 billion). Percentuais com uma casa.
 - Diga as limitações que afetam a resposta (ano sem dados, cobertura incompleta, valor anual do Bolsa Família indisponível, PIB ainda não publicado).
 - Se a pergunta for ambígua, escolha a interpretação mais comum no painel, diga qual usou e siga.
+- Comece pela informação principal. Não abra com perguntas retóricas nem com afirmações que as consultas não confirmaram; se algo não pôde ser verificado, simplesmente não o mencione.
 - Assuntos fora das finanças públicas e dos dados do painel: explique em uma frase que você só responde sobre o painel.`;
 
 /** Bloco com o que muda a cada atualização (anos, ano-base, cobertura das fontes), a partir do manifesto. */

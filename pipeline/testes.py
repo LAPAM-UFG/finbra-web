@@ -105,6 +105,24 @@ if (SILVER / "inss_municipios.parquet").exists():
           um(f"""SELECT count(*) FROM {ind} WHERE inss_beneficios IS NOT NULL
                  AND exercicio NOT IN (SELECT DISTINCT exercicio FROM '{s}/inss_municipios.parquet')""") == 0)
 
+lrf = f"'{(GOLD / 'lrf.parquet').as_posix()}'"
+if (GOLD / "lrf.parquet").exists():
+    teste("LRF: uma linha por ente e exercício",
+          um(f"SELECT count(*) - count(DISTINCT (exercicio, cod_ibge)) FROM {lrf}") == 0)
+    teste("LRF: só a partir de 2015 (a API não tem RREO/RGF antes)", um(f"SELECT min(exercicio) FROM {lrf}") >= 2015)
+    teste("LRF: percentuais de pessoal em pontos, entre 0 e 100 (no máximo 0,5% fora, erros de declaração)",
+          (um(f"""SELECT count(*) FILTER (pessoal_rcl_pct < 0 OR pessoal_rcl_pct > 100) * 1.0 / greatest(count(pessoal_rcl_pct), 1)
+                  FROM {lrf}""") or 0) <= 0.005)
+    teste("LRF: limite de pessoal declarado é 54 (municípios) ou 49 (estados) na grande maioria",
+          (um(f"""SELECT count(*) FILTER (pessoal_limite_pct IN (54, 49, 48.6, 60)) * 1.0 / greatest(count(pessoal_limite_pct), 1)
+                  FROM {lrf}""") or 0) >= 0.95)
+    teste("LRF: DTP ÷ RCL ajustada confere com o percentual declarado (±0,5 p.p.)",
+          (um(f"""SELECT count(*) FILTER (abs(100 * despesa_pessoal / rcl_ajustada - pessoal_rcl_pct) > 0.5) * 1.0
+                         / greatest(count(*), 1)
+                  FROM {lrf} WHERE rcl_ajustada > 0 AND despesa_pessoal IS NOT NULL AND pessoal_rcl_pct IS NOT NULL""") or 0) <= 0.02)
+    teste("LRF: todo ente-ano tem ao menos um dos relatórios",
+          um(f"SELECT count(*) FROM {lrf} WHERE rreo_tipo IS NULL AND rgf_tipo IS NULL") == 0)
+
 m = json.loads((GOLD / "manifesto.json").read_text(encoding="utf-8"))
 teste("manifesto com fontes, mapeamento e política", all(k in m for k in ("fontes", "mapa_indicadores", "politica_alertas", "ipca_ultimo")))
 
