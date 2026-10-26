@@ -189,15 +189,16 @@ Campo de perguntas em linguagem natural, só para e-mails autorizados.
    Cloudflare Access. O Worker confere o token do Access (`worker/src/acesso.js`) e o limite de
    **50 perguntas por pessoa e por dia** (horário de Brasília; contagem no R2, em `ia/uso/`, que
    não é servido em `/dados/`).
-2. O Worker chama o Claude (`claude-sonnet-5-5`, SDK oficial `@anthropic-ai/sdk`) com o esquema das
+2. O Worker chama o Claude (`claude-haiku-5-5`, o modelo mais barato; SDK oficial `@anthropic-ai/sdk`) com o esquema das
    tabelas e as regras do painel (`worker/src/sistema.js`) e com os anos e a cobertura lidos do manifesto.
 3. O Claude devolve consultas SQL. O navegador confere que são somente leitura (`validarSql`, em
    `web/src/ia.ts`) e as executa no DuckDB sobre as tabelas em memória (`entes`, `indicadores`,
    `alertas`, `escopos`, `faixas`, `ipca`). O resultado volta ao Claude, que escreve a resposta.
 4. A página mostra a resposta, o SQL e a tabela de cada consulta, com exportação em CSV e Excel.
 
-Se o modelo recusar um pedido por política de segurança, a API refaz o pedido no modelo reserva
-indicado pela Anthropic (`fallbacks: "default"`).
+O modelo fica em `MODELO`, no topo de `worker/src/ia.js`. O Haiku não tem modelo reserva: se ele recusar um
+pedido por política de segurança, a página avisa. Com Sonnet ou Opus, dá para voltar a pedir o modelo reserva
+(`fallbacks: "default"`), como explica o comentário no código.
 
 Configuração (uma vez):
 

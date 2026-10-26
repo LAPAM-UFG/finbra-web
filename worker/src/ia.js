@@ -17,8 +17,10 @@ import Anthropic from '@anthropic-ai/sdk';
 import { identificar } from './acesso.js';
 import { SISTEMA, contextoDosDados } from './sistema.js';
 
-// Sonnet: bem mais barato que o Opus e suficiente para SQL sobre estas tabelas; para mais qualidade, 'claude-opus-5-5'
-const MODELO = 'claude-sonnet-5-5';
+// Haiku: o mais barato (cerca de 1/20 do Sonnet). Para mais qualidade, 'claude-sonnet-5-5' ou 'claude-opus-5-5';
+// nesses dois, vale voltar a pedir o modelo reserva (betas ['server-side-fallback-2026-07-01'], fallbacks: 'default'),
+// que o Haiku não tem
+const MODELO = 'claude-haiku-5-5';
 const LIMITE_PERGUNTAS = 50;
 const LIMITE_CHAMADAS = 400;
 const MAX_RODADAS = 8; // chamadas ao modelo por pergunta
@@ -138,15 +140,12 @@ export async function rotaIa(request, env, url) {
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
   let msg;
   try {
-    msg = await client.beta.messages.create({
+    msg = await client.messages.create({
       model: MODELO,
       max_tokens: 16000,
-      // se o modelo recusar por política de segurança, a API refaz o pedido no modelo reserva indicado pela Anthropic
-      betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default',
       thinking: { type: 'adaptive' },
-      // explícito: o padrão do Sonnet 5.5 é 'high'; 'medium' é o indicado para várias rodadas de ferramenta
-      output_config: { effort: 'medium' },
+      // 'high': indicado no Haiku para seguir instruções à risca (as regras do painel); ainda custa pouco
+      output_config: { effort: 'high' },
       // instruções fixas com marcador próprio; o restante da conversa entra no cache automático
       cache_control: { type: 'ephemeral' },
       system: [
