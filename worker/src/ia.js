@@ -138,25 +138,34 @@ export async function rotaIa(request, env, url) {
   if (uso.chamadas >= LIMITE_CHAMADAS) return erro('limite diário de consultas atingido', 429);
 
   // trim: a chave colada no painel da Cloudflare às vezes vem com espaço ou quebra de linha
-  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY.trim().replace(/^["']|["']$/g, '') });
+  const segredo = env.ANTHROPIC_API_KEY.trim().replace(/^["']|["']$/g, '');
+  const pedido = {
+    model: MODELO,
+    max_tokens: 16000,
+    thinking: { type: 'adaptive' },
+    // 'high': indicado no Haiku para seguir instruções à risca (as regras do painel); ainda custa pouco
+    output_config: { effort: 'high' },
+    // instruções fixas com marcador próprio; o restante da conversa entra no cache automático
+    cache_control: { type: 'ephemeral' },
+    system: [
+      { type: 'text', text: SISTEMA, cache_control: { type: 'ephemeral' } },
+      { type: 'text', text: contextoDosDados(await lerManifesto(env)) },
+      { type: 'text', text: IDIOMA[corpo.idioma === 'en' ? 'en' : 'pt'] },
+    ],
+    tools: FERRAMENTAS,
+    messages: mensagens,
+  };
   let msg;
   try {
-    msg = await client.messages.create({
-      model: MODELO,
-      max_tokens: 16000,
-      thinking: { type: 'adaptive' },
-      // 'high': indicado no Haiku para seguir instruções à risca (as regras do painel); ainda custa pouco
-      output_config: { effort: 'high' },
-      // instruções fixas com marcador próprio; o restante da conversa entra no cache automático
-      cache_control: { type: 'ephemeral' },
-      system: [
-        { type: 'text', text: SISTEMA, cache_control: { type: 'ephemeral' } },
-        { type: 'text', text: contextoDosDados(await lerManifesto(env)) },
-        { type: 'text', text: IDIOMA[corpo.idioma === 'en' ? 'en' : 'pt'] },
-      ],
-      tools: FERRAMENTAS,
-      messages: mensagens,
-    });
+    // chaves de API vão no cabeçalho x-api-key; as chaves de usuário do console novo (sk-ant-usr-…) podem
+    // exigir Authorization: Bearer. Recusada a primeira forma (401, não cobrado), tenta a outra.
+    try {
+      msg = await new Anthropic({ apiKey: segredo }).messages.create(pedido);
+    } catch (e) {
+      if (!(e instanceof Anthropic.AuthenticationError)) throw e;
+      msg = await new Anthropic({ apiKey: null, authToken: segredo }).messages.create(pedido);
+      console.log(JSON.stringify({ ia: { autenticacao: 'bearer' } }));
+    }
   } catch (e) {
     if (e instanceof Anthropic.AuthenticationError) return erro('a chave da Anthropic gravada no Worker foi recusada (401): confira se é a chave ativa no console', 502);
     if (e instanceof Anthropic.RateLimitError) return erro('a IA está sobrecarregada; tente de novo em instantes', 503);
