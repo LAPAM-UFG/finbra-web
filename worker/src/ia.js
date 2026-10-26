@@ -137,7 +137,8 @@ export async function rotaIa(request, env, url) {
   if (nova && uso.perguntas >= LIMITE_PERGUNTAS) return erro(`limite de ${LIMITE_PERGUNTAS} perguntas por dia atingido`, 429);
   if (uso.chamadas >= LIMITE_CHAMADAS) return erro('limite diário de consultas atingido', 429);
 
-  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+  // trim: a chave colada no painel da Cloudflare às vezes vem com espaço ou quebra de linha
+  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY.trim().replace(/^["']|["']$/g, '') });
   let msg;
   try {
     msg = await client.messages.create({
@@ -157,6 +158,7 @@ export async function rotaIa(request, env, url) {
       messages: mensagens,
     });
   } catch (e) {
+    if (e instanceof Anthropic.AuthenticationError) return erro('a chave da Anthropic gravada no Worker foi recusada (401): confira se é a chave ativa no console', 502);
     if (e instanceof Anthropic.RateLimitError) return erro('a IA está sobrecarregada; tente de novo em instantes', 503);
     if (e instanceof Anthropic.BadRequestError) return erro(`pedido recusado pela API: ${e.message}`, 400);
     if (e instanceof Anthropic.APIError) return erro(`falha na API da Anthropic (${e.status ?? 'sem status'})`, 502);
