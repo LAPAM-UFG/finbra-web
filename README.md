@@ -189,7 +189,7 @@ Campo de perguntas em linguagem natural, só para e-mails autorizados.
    Cloudflare Access. O Worker confere o token do Access (`worker/src/acesso.js`) e o limite de
    **50 perguntas por pessoa e por dia** (horário de Brasília; contagem no R2, em `ia/uso/`, que
    não é servido em `/dados/`).
-2. O Worker chama o Claude (`claude-opus-5-5`, SDK oficial `@anthropic-ai/sdk`) com o esquema das
+2. O Worker chama o Claude (`claude-sonnet-5-5`, SDK oficial `@anthropic-ai/sdk`) com o esquema das
    tabelas e as regras do painel (`worker/src/sistema.js`) e com os anos e a cobertura lidos do manifesto.
 3. O Claude devolve consultas SQL. O navegador confere que são somente leitura (`validarSql`, em
    `web/src/ia.ts`) e as executa no DuckDB sobre as tabelas em memória (`entes`, `indicadores`,

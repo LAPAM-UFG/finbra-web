@@ -17,7 +17,8 @@ import Anthropic from '@anthropic-ai/sdk';
 import { identificar } from './acesso.js';
 import { SISTEMA, contextoDosDados } from './sistema.js';
 
-const MODELO = 'claude-opus-5-5';
+// Sonnet: bem mais barato que o Opus e suficiente para SQL sobre estas tabelas; para mais qualidade, 'claude-opus-5-5'
+const MODELO = 'claude-sonnet-5-5';
 const LIMITE_PERGUNTAS = 50;
 const LIMITE_CHAMADAS = 400;
 const MAX_RODADAS = 8; // chamadas ao modelo por pergunta
@@ -144,6 +145,7 @@ export async function rotaIa(request, env, url) {
       betas: ['server-side-fallback-2026-07-01'],
       fallbacks: 'default',
       thinking: { type: 'adaptive' },
+      // explícito: o padrão do Sonnet 5.5 é 'high'; 'medium' é o indicado para várias rodadas de ferramenta
       output_config: { effort: 'medium' },
       // instruções fixas com marcador próprio; o restante da conversa entra no cache automático
       cache_control: { type: 'ephemeral' },
