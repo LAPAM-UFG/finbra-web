@@ -246,3 +246,9 @@ td.ia-txt { text-align: left; white-space: normal; }
 /* demonstrativos RREO/RGF: conta larga à esquerda, valores à direita */
 .lrf-anexo td.lrf-conta { white-space: normal; text-align: left; min-width: 280px; max-width: 520px; }
 .lrf-anexo th { white-space: normal; min-width: 90px; }
+/* troca de área no topo: Finanças públicas | Mercado de trabalho */
+.areas { display: inline-flex; gap: 4px; margin-left: 18px; }
+.areas a { color: rgba(255, 255, 255, 0.8); text-decoration: none; padding: 4px 10px; border-radius: 6px; font-size: 13px; border: 1px solid transparent; }
+.areas a:hover { color: #fff; border-color: rgba(255, 255, 255, 0.35); }
+.areas a.ativo { color: #fff; background: rgba(255, 255, 255, 0.16); font-weight: 600; }
+@media (max-width: 760px) { .areas { margin-left: 0; } .areas a { padding: 3px 6px; font-size: 12px; } }

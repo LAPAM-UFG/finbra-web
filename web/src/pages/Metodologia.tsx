@@ -172,6 +172,19 @@ export function Qualidade() {
             (<a href={fontes.inss?.url ?? 'https://www.gov.br/previdencia/'} target="_blank" rel="noreferrer">gov.br/previdencia</a>),{' '}
             {(fontes.inss as { exercicios?: number[] } | undefined)?.exercicios?.join(', ') || '–'}{' '}
             ({t('não há planilha publicada para os demais anos', 'no spreadsheet is published for the other years')}) · {t('processado em', 'processed on')} {data(fontes.inss?.processado_em)}.</li>
+          {fontes.rais && (
+            <li><strong>{t('Ministério do Trabalho e Emprego — RAIS', 'Ministry of Labour and Employment — RAIS')}</strong> —{' '}
+              {t('microdados públicos sem identificação (vínculos e estabelecimentos), do FTP do PDET; vínculos ativos em 31/12, somados por município, atividade (CNAE 2.0), sexo, escolaridade e idade.',
+                'public de-identified microdata (jobs and establishments) from the PDET FTP; jobs active on Dec 31, summed by municipality, activity (CNAE 2.0), sex, education and age.')}{' '}
+              {t('Anos', 'Years')} {(fontes.rais as { anos?: number[] }).anos?.join(', ')} · {t('processado em', 'processed on')} {data(fontes.rais.processado_em)}.</li>
+          )}
+          {fontes.caged && (
+            <li><strong>{t('Ministério do Trabalho e Emprego — Novo CAGED', 'Ministry of Labour and Employment — New CAGED')}</strong> —{' '}
+              {t('movimentações mensais (admissões e desligamentos), série com ajustes: no prazo + fora do prazo − exclusões, pela competência; salário de admissão entre 0,3 e 150 salários mínimos (série 1619 do Banco Central).',
+                'monthly movements (hirings and separations), adjusted series: on time + late − exclusions, by month of movement; hiring wage between 0.3 and 150 minimum wages (Central Bank series 1619).')}{' '}
+              {String((fontes.caged as { de?: number }).de ?? '').replace(/(\d{4})(\d{2})/, '$2/$1')}–{String((fontes.caged as { ate?: number }).ate ?? '').replace(/(\d{4})(\d{2})/, '$2/$1')}
+              {' '}· {t('processado em', 'processed on')} {data(fontes.caged.processado_em)}.</li>
+          )}
           <li>{t('População: a declarada pelo ente na DCA do exercício (SICONFI).', 'Population: the one reported by the government in the year’s DCA (SICONFI).')}</li>
         </ul>
         <h3 style={{ marginTop: 14 }}>{t('Como os valores são montados', 'How the values are built')}</h3>

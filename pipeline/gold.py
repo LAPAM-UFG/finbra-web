@@ -364,7 +364,24 @@ def fontes(con):
                  "processado_em": _quando(SILVER / "inss_municipios.parquet"),
                  "url": "https://www.gov.br/previdencia/pt-br/assuntos/previdencia-social/emitidos-municipios-2023"},
         **fonte_lrf(con),
+        **fonte_trabalho(con),
     }
+
+
+def fonte_trabalho(con):
+    """RAIS e Novo CAGED (trabalho.py): anos e meses disponíveis; vazio se ainda não processados."""
+    pasta = GOLD / "trabalho"
+    saida = {}
+    if (pasta / "municipios.parquet").exists():
+        anos = [r[0] for r in con.execute(
+            f"SELECT DISTINCT ano FROM '{(pasta / 'municipios.parquet').as_posix()}' ORDER BY 1").fetchall()]
+        saida["rais"] = {"anos": anos, "processado_em": _quando(pasta / "municipios.parquet"),
+                         "url": "ftp://ftp.mtps.gov.br/pdet/microdados/RAIS/"}
+    if (pasta / "caged_uf.parquet").exists():
+        de, ate = con.execute(f"SELECT min(competencia), max(competencia) FROM '{(pasta / 'caged_uf.parquet').as_posix()}'").fetchone()
+        saida["caged"] = {"de": de, "ate": ate, "processado_em": _quando(pasta / "caged_uf.parquet"),
+                          "url": "ftp://ftp.mtps.gov.br/pdet/microdados/NOVO%20CAGED/"}
+    return saida
 
 
 def fonte_lrf(con):

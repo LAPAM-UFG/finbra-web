@@ -8,11 +8,13 @@ Uso:
     py pipeline/r2.py enviar                     # envia bronze, silver e gold (só o que mudou)
     py pipeline/r2.py enviar --camadas gold
     py pipeline/r2.py enviar --camadas gold --limpar   # também apaga do bucket o que não existe mais localmente
+    py pipeline/r2.py enviar --ignorar 'silver/lrf/*' gold/lrf.parquet   # sem os arquivos ainda incompletos
     py pipeline/r2.py baixar --camadas silver gold   # monta o data/ local a partir do R2
 """
 import argparse
 import hashlib
 import os
+from fnmatch import fnmatch
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -72,8 +74,10 @@ def remotos(s3, bucket, prefixo):
     return out
 
 
-def enviar(s3, bucket, camadas, limpar=False):
+def enviar(s3, bucket, camadas, limpar=False, ignorar=()):
     locais = [p for c in camadas for p in sorted((DATA / c).rglob("*")) if p.is_file() and p.suffix in (".parquet", ".csv", ".json")]
+    # caminhos que não sobem (ex.: dados ainda incompletos): padrões como silver/lrf/* ou gold/lrf.parquet
+    locais = [p for p in locais if not any(fnmatch(p.relative_to(DATA).as_posix(), g) for g in ignorar)]
     existentes = {k: v for c in camadas for k, v in remotos(s3, bucket, f"{c}/").items()}
 
     def um(caminho):
@@ -140,12 +144,15 @@ def main():
     p.add_argument("--camadas", nargs="+", choices=CAMADAS, default=list(CAMADAS))
     p.add_argument("--limpar", action="store_true",
                    help="com enviar: apaga do bucket os arquivos dessas camadas que não existem localmente")
+    p.add_argument("--ignorar", nargs="+", default=[], help="com enviar: padrões de caminho que não sobem (ex.: 'silver/lrf/*')")
     args = p.parse_args()
+    if args.limpar and args.ignorar:
+        sys.exit("--limpar com --ignorar apagaria do bucket os arquivos ignorados; use um ou outro")
     s3, bucket = cliente()
     if args.acao == "testar":
         testar(s3, bucket)
     elif args.acao == "enviar":
-        enviar(s3, bucket, args.camadas, args.limpar)
+        enviar(s3, bucket, args.camadas, args.limpar, args.ignorar)
     else:
         baixar(s3, bucket, args.camadas)
 

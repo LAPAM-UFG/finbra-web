@@ -42,10 +42,14 @@ SILVER_T = SILVER / "trabalho"
 GOLD_T = GOLD / "trabalho"
 SETE_ZIP = shutil.which("7z") or r"C:\Program Files\7-Zip\7z.exe"
 
-# grandes setores do IBGE a partir do subsetor (25 categorias da RAIS)
-GRANDE_SETOR = """CASE WHEN subsetor BETWEEN 1 AND 14 THEN 'industria' WHEN subsetor = 15 THEN 'construcao'
-    WHEN subsetor IN (16, 17) THEN 'comercio' WHEN subsetor BETWEEN 18 AND 23 THEN 'servicos'
-    WHEN subsetor = 24 THEN 'adm_publica' WHEN subsetor = 25 THEN 'agropecuaria' ELSE 'ignorado' END"""
+# grandes setores a partir da divisão da CNAE 2.0, que existe em todos os anos (o subsetor do IBGE falta
+# na RAIS de 2013): indústria inclui extrativa, energia e saneamento; administração pública é a divisão 84
+GRANDE_SETOR = """CASE WHEN TRY_CAST(divisao AS INTEGER) BETWEEN 1 AND 3 THEN 'agropecuaria'
+    WHEN TRY_CAST(divisao AS INTEGER) BETWEEN 5 AND 39 THEN 'industria'
+    WHEN TRY_CAST(divisao AS INTEGER) BETWEEN 41 AND 43 THEN 'construcao'
+    WHEN TRY_CAST(divisao AS INTEGER) BETWEEN 45 AND 47 THEN 'comercio'
+    WHEN TRY_CAST(divisao AS INTEGER) = 84 THEN 'adm_publica'
+    WHEN TRY_CAST(divisao AS INTEGER) BETWEEN 49 AND 99 THEN 'servicos' ELSE 'ignorado' END"""
 SETORES = ["agropecuaria", "industria", "construcao", "comercio", "servicos", "adm_publica"]
 
 
@@ -128,7 +132,6 @@ def rais_vinculos(con, txt: Path, ano: int):
     return f"""
         SELECT {ano} AS ano, {inteiro(coluna(c, 'municipio'))} AS municipio,
                lpad(regexp_replace(trim({coluna(c, 'cnae_2_0_classe')}), '[^0-9]', '', 'g'), 5, '0')[1:2] AS divisao,
-               {inteiro(coluna(c, 'ibge_subsetor'))} AS subsetor,
                {inteiro(coluna(c, 'sexo', 'sexo_trabalhador'))} AS sexo,
                {inteiro(coluna(c, 'escolaridade_apos_2005'))} >= 9 AS superior,
                {inteiro(coluna(c, 'idade'))} AS idade,
@@ -281,6 +284,13 @@ def gerar_gold(con):
     con.execute(f"""CREATE OR REPLACE TEMP TABLE muni AS
                     SELECT cod_ibge, cod_ibge // 10 AS municipio, nome, uf, regiao FROM '{SILVER.as_posix()}/entes.parquet'
                     WHERE esfera = 'M'""")
+    # UF pelo prefixo do código, para movimentações em códigos fora do cadastro (Fernando de Noronha, 260545);
+    # o código 999999 (município ignorado) não tem UF e entra só no total do Brasil
+    con.execute(f"""CREATE OR REPLACE TEMP TABLE estados AS
+                    SELECT cod_ibge AS cod, uf FROM '{SILVER.as_posix()}/entes.parquet' WHERE esfera IN ('E', 'D')""")
+    com_uf = lambda rel, cod: f"""(SELECT x.*, coalesce(m.uf, u.uf) AS uf_
+                                   FROM {rel} x LEFT JOIN muni m ON m.municipio = x.{cod}
+                                   LEFT JOIN estados u ON u.cod = x.{cod} // 10000)"""
     if any((SILVER_T / "rais_vinculos").glob("*.parquet")):
         setores = ", ".join(f"sum(vinculos) FILTER (grande_setor = '{x}') AS empregos_{x}" for x in SETORES)
         con.execute(f"""
@@ -290,9 +300,11 @@ def gerar_gold(con):
                            sum(vinculos) FILTER (sexo = 2) AS mulheres, sum(vinculos) FILTER (superior) AS superior,
                            sum(vinculos) FILTER (faixa_idade = 'ate24') AS ate24, sum(vinculos) FILTER (faixa_idade = '50mais') AS de50mais,
                            {setores},
-                           sum(rem_dez_soma) AS massa_dez, sum(rem_dez_soma) / nullif(sum(rem_dez_n), 0) AS remuneracao_media_dez,
-                           sum(rem_dez_soma) FILTER (sexo = 2) / nullif(sum(rem_dez_n) FILTER (sexo = 2), 0) AS remuneracao_media_dez_mulheres,
-                           sum(rem_dez_soma) FILTER (sexo = 1) / nullif(sum(rem_dez_n) FILTER (sexo = 1), 0) AS remuneracao_media_dez_homens
+                           -- massa e número de vínculos com remuneração em dezembro: o site faz a média
+                           -- ponderada de qualquer grupo como soma das massas ÷ soma dos vínculos
+                           sum(rem_dez_soma) AS massa_dez, sum(rem_dez_n) AS n_rem_dez,
+                           sum(rem_dez_soma) FILTER (sexo = 2) AS massa_dez_mulheres, sum(rem_dez_n) FILTER (sexo = 2) AS n_rem_dez_mulheres,
+                           sum(rem_dez_soma) FILTER (sexo = 1) AS massa_dez_homens, sum(rem_dez_n) FILTER (sexo = 1) AS n_rem_dez_homens
                     FROM '{s}/rais_vinculos/*.parquet' GROUP BY ALL),
                 e AS (SELECT ano, municipio, sum(estabelecimentos) AS estabelecimentos FROM '{s}/rais_estab/*.parquet' GROUP BY ALL)
                 SELECT v.ano, m.cod_ibge, m.nome, m.uf, m.regiao, i.populacao, v.* EXCLUDE (ano, municipio), e.estabelecimentos
@@ -312,10 +324,12 @@ def gerar_gold(con):
             ) TO '{g}/setores.parquet' (FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 50000)""")
         con.execute(f"""
             COPY (
-                SELECT v.ano, coalesce(m.uf, 'BR') AS escopo, v.divisao, sum(vinculos) AS empregos,
-                       sum(rem_dez_soma) / nullif(sum(rem_dez_n), 0) AS remuneracao_media_dez
-                FROM '{s}/rais_vinculos/*.parquet' v JOIN muni m USING (municipio)
-                GROUP BY GROUPING SETS ((v.ano, m.uf, v.divisao), (v.ano, v.divisao)) ORDER BY ALL
+                SELECT * FROM (
+                    SELECT v.ano, CASE WHEN grouping(v.uf_) = 1 THEN 'BR' ELSE v.uf_ END AS escopo, v.divisao, sum(vinculos) AS empregos,
+                           sum(rem_dez_soma) / nullif(sum(rem_dez_n), 0) AS remuneracao_media_dez
+                    FROM {com_uf(f"'{s}/rais_vinculos/*.parquet'", 'municipio')} v
+                    GROUP BY GROUPING SETS ((v.ano, v.uf_, v.divisao), (v.ano, v.divisao)))
+                WHERE escopo IS NOT NULL ORDER BY ALL
             ) TO '{g}/setores_uf.parquet' (FORMAT parquet, COMPRESSION zstd)""")
         print("gold/trabalho: municipios, setores e setores_uf")
     if any((SILVER_T / "caged").glob("*.parquet")):
@@ -336,15 +350,38 @@ def gerar_gold(con):
             ) TO '{g}/caged.parquet' (FORMAT parquet, COMPRESSION zstd)""")
         con.execute(f"""
             COPY (
-                SELECT a.competencia, coalesce(m.uf, 'BR') AS escopo, coalesce(a.secao, 'TOTAL') AS secao,
-                       sum(admissoes) AS admissoes, sum(desligamentos) AS desligamentos, sum(saldo) AS saldo,
-                       sum(salario_adm_soma) / nullif(sum(salario_adm_n), 0) AS salario_medio_admissao
+                SELECT a.competencia // 100 AS ano, m.cod_ibge, count(DISTINCT a.competencia) AS meses,
+                       sum(admissoes) AS admissoes, sum(desligamentos) AS desligamentos, sum(saldo) AS saldo
                 FROM ({ajuste}) a JOIN muni m USING (municipio)
-                GROUP BY GROUPING SETS ((a.competencia, m.uf, a.secao), (a.competencia, a.secao), (a.competencia, m.uf), (a.competencia))
-                ORDER BY ALL
+                GROUP BY ALL ORDER BY m.cod_ibge, ano
+            ) TO '{g}/caged_anual.parquet' (FORMAT parquet, COMPRESSION zstd)""")
+        con.execute(f"""
+            COPY (
+                SELECT * FROM (
+                    SELECT a.competencia, CASE WHEN grouping(a.uf_) = 1 THEN 'BR' ELSE a.uf_ END AS escopo,
+                           CASE WHEN grouping(a.secao) = 1 THEN 'TOTAL' ELSE coalesce(nullif(a.secao, ''), '?') END AS secao,
+                           sum(admissoes) AS admissoes, sum(desligamentos) AS desligamentos, sum(saldo) AS saldo,
+                           sum(salario_adm_soma) / nullif(sum(salario_adm_n), 0) AS salario_medio_admissao
+                    FROM {com_uf(f"({ajuste})", 'municipio')} a
+                    GROUP BY GROUPING SETS ((a.competencia, a.uf_, a.secao), (a.competencia, a.secao), (a.competencia, a.uf_), (a.competencia)))
+                WHERE escopo IS NOT NULL ORDER BY ALL
             ) TO '{g}/caged_uf.parquet' (FORMAT parquet, COMPRESSION zstd)""")
-        print("gold/trabalho: caged e caged_uf")
+        print("gold/trabalho: caged, caged_anual e caged_uf")
     cnae(con)
+    atualizar_manifesto(con)
+
+
+def atualizar_manifesto(con):
+    """Grava os anos da RAIS e os meses do CAGED no manifesto (o gold.py faz o mesmo ao gerá-lo inteiro)."""
+    import json
+    from gold import fonte_trabalho
+
+    caminho = GOLD / "manifesto.json"
+    if not caminho.exists():
+        return
+    manifesto = json.loads(caminho.read_text(encoding="utf-8"))
+    manifesto.setdefault("fontes", {}).update(fonte_trabalho(con))
+    caminho.write_text(json.dumps(manifesto, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
 def main():

@@ -6,6 +6,7 @@
  * Requer data/silver e data/gold (py pipeline/r2.py baixar ... ou py pipeline/processar.py).
  */
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -434,5 +435,46 @@ describe('Excel com várias abas', () => {
       assert.ok(!/[:\\/?*[\]]/.test(n), n);
     }
     assert.ok(texto.includes('xl/worksheets/sheet4.xml'));
+  });
+});
+describe('mercado de trabalho (RAIS e CAGED)', () => {
+  const semDados = !existsSync(`${DATA}/gold/trabalho/municipios.parquet`);
+
+  test('RAIS Brasil: setores somam o total e remuneração média plausível', { skip: semDados }, async () => {
+    const s = await rota<L[]>('trab_serie', {});
+    assert.ok(s.length > 0);
+    for (const r of s) {
+      const setores = ['agropecuaria', 'industria', 'construcao', 'comercio', 'servicos', 'adm_publica']
+        .reduce((t0, k) => t0 + ((r[`empregos_${k}`] as number) ?? 0), 0);
+      const total = r.empregos as number;
+      assert.ok(setores <= total && setores >= 0.98 * total, `${r.ano}: setores ${setores} de ${total}`);
+      const rem = r.remuneracao_media as number;
+      assert.ok(rem > 800 && rem < 20000, `${r.ano}: remuneração ${rem}`);
+      assert.ok((r.mulheres as number) < total);
+    }
+  });
+
+  test('RAIS município: divisões da CNAE somam os empregos do município', { skip: semDados }, async () => {
+    const s = await rota<L[]>('trab_serie', { ente: 5208707 });
+    const ano = s.at(-1)!.ano as number;
+    const setores = await rota<L[]>('trab_setores', { ente: 5208707, ano });
+    const soma = setores.reduce((t0, r) => t0 + (r.empregos as number), 0);
+    assert.equal(soma, s.at(-1)!.empregos);
+  });
+
+  test('CAGED: saldo = admissões − desligamentos e saldo de 12 meses acumulado', { skip: semDados || !existsSync(`${DATA}/gold/trabalho/caged_uf.parquet`) }, async () => {
+    const c = await rota<L[]>('trab_caged', {});
+    assert.ok(c.length >= 12);
+    for (const r of c) assert.equal(r.saldo, (r.admissoes as number) - (r.desligamentos as number));
+    const i = c.length - 1;
+    const soma = c.slice(i - 11).reduce((t0, r) => t0 + (r.saldo as number), 0);
+    assert.equal(c[i].saldo_12m, soma);
+  });
+
+  test('ranking: municípios de uma UF com empregos por mil habitantes', { skip: semDados }, async () => {
+    const s = await rota<L[]>('trab_serie', { uf: 'GO' });
+    const r = await rota<L[]>('trab_municipios', { uf: 'GO', ano: s.at(-1)!.ano as number });
+    assert.ok(r.length > 200);
+    assert.ok(r.every((x) => x.uf === 'GO'));
   });
 });

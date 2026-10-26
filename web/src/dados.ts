@@ -675,6 +675,150 @@ const rotasLrf: Record<string, (q: Params) => Promise<unknown>> = {
   },
 };
 
+// ---------------- mercado de trabalho (RAIS e Novo CAGED) ----------------
+
+/**
+ * Tabelas pequenas do mercado de trabalho, baixadas só quando uma página da área pede:
+ * municípios × ano da RAIS (~3 MB), CAGED por UF/Brasil e seção, CAGED anual por município e nomes da CNAE.
+ */
+const TABELAS_TRABALHO: Record<string, string> = {
+  trab_municipios: 'gold/trabalho/municipios.parquet',
+  trab_caged_uf: 'gold/trabalho/caged_uf.parquet',
+  trab_caged_anual: 'gold/trabalho/caged_anual.parquet',
+  trab_setores_uf: 'gold/trabalho/setores_uf.parquet',
+  trab_cnae: 'gold/trabalho/cnae.parquet',
+};
+let trabalhoCarregado: Promise<void> | null = null;
+export function tabelasTrabalho() {
+  trabalhoCarregado ??= (async () => {
+    const { con } = await iniciar();
+    const arquivos = await Promise.all(Object.entries(TABELAS_TRABALHO).map(async ([n, c]) => [n, await baixar(c)] as const));
+    for (const [nome, dados] of arquivos) {
+      await db.registerFileBuffer(`${nome}.parquet`, dados);
+      await con.query(`CREATE TABLE ${nome} AS SELECT * FROM read_parquet('${nome}.parquet')`);
+    }
+  })();
+  trabalhoCarregado.catch(() => (trabalhoCarregado = null));
+  return trabalhoCarregado;
+}
+
+/** Escopo das páginas de trabalho: um município, uma UF (municípios dela) ou o Brasil. O DF é Brasília (5300108). */
+function escopoTrabalho(q: Params, p: Record<string, Valor>, a = 'm') {
+  const ente = inteiro(q.ente);
+  if (ente) {
+    p.ente = ente === 53 ? 5300108 : ente;
+    return { tipo: 'ente' as const, onde: `${a}.cod_ibge = $ente::INTEGER` };
+  }
+  const uf = UFS.has(String(q.uf)) ? String(q.uf) : null;
+  if (uf) {
+    p.uf = uf;
+    return { tipo: 'uf' as const, onde: `${a}.uf = $uf`, escopo: uf };
+  }
+  return { tipo: 'br' as const, onde: 'true', escopo: 'BR' };
+}
+
+const rotasTrabalho: Record<string, (q: Params) => Promise<unknown>> = {
+  /**
+   * Série anual da RAIS para o escopo: somas e médias ponderadas (massa ÷ vínculos com remuneração),
+   * remuneração também em R$ reais do ano-base do IPCA.
+   */
+  async trab_serie(q) {
+    const { manifesto } = await iniciar();
+    await tabelasTrabalho();
+    const p: Record<string, Valor> = { base: manifesto.base_ipca };
+    const e = escopoTrabalho(q, p);
+    const setores = ['agropecuaria', 'industria', 'construcao', 'comercio', 'servicos', 'adm_publica']
+      .map((s) => `sum(m.empregos_${s}) AS empregos_${s}`).join(', ');
+    return consultar(
+      `SELECT m.ano, count(*)::INTEGER AS municipios, sum(m.empregos) AS empregos,
+              sum(m.populacao) FILTER (m.populacao > 0) AS populacao,
+              sum(m.empregos) FILTER (m.populacao > 0) AS empregos_com_populacao,
+              sum(m.mulheres) AS mulheres, sum(m.superior) AS superior, sum(m.ate24) AS ate24, sum(m.de50mais) AS de50mais,
+              ${setores},
+              sum(m.massa_dez) AS massa_dez,
+              sum(m.massa_dez) / nullif(sum(m.n_rem_dez), 0) AS remuneracao_media,
+              sum(m.massa_dez) / nullif(sum(m.n_rem_dez), 0) * b.indice / i.indice AS remuneracao_media_real,
+              sum(m.massa_dez_mulheres) / nullif(sum(m.n_rem_dez_mulheres), 0) AS remuneracao_mulheres,
+              sum(m.massa_dez_homens) / nullif(sum(m.n_rem_dez_homens), 0) AS remuneracao_homens,
+              sum(m.estabelecimentos) AS estabelecimentos
+       FROM trab_municipios m
+       LEFT JOIN ipca i ON i.exercicio = m.ano
+       CROSS JOIN (SELECT indice FROM ipca WHERE exercicio = $base) b
+       WHERE ${e.onde}
+       GROUP BY m.ano, b.indice, i.indice ORDER BY m.ano`,
+      p,
+    );
+  },
+
+  /** Empregos e remuneração por divisão da CNAE num ano (município: lido por Range; UF/Brasil: tabela pronta). */
+  async trab_setores(q) {
+    await tabelasTrabalho();
+    const p: Record<string, Valor> = { ano: inteiro(q.ano) };
+    const e = escopoTrabalho(q, p, 's');
+    const [origem, filtro] = e.tipo === 'ente'
+      ? [`read_parquet(${arq('gold/trabalho/setores.parquet')})`, e.onde]
+      : ['trab_setores_uf', `s.escopo = '${e.escopo}'`];
+    return consultar(
+      `SELECT s.divisao, c.divisao_nome, c.secao, c.secao_nome, s.empregos, s.remuneracao_media_dez AS remuneracao_media
+       FROM ${origem} s LEFT JOIN trab_cnae c USING (divisao)
+       WHERE ${filtro} AND s.ano = $ano::INTEGER
+       ORDER BY s.empregos DESC`,
+      p,
+    );
+  },
+
+  /** CAGED mensal: admissões, desligamentos e saldo (município: por Range; UF/Brasil: total). */
+  async trab_caged(q) {
+    await tabelasTrabalho();
+    const p: Record<string, Valor> = {};
+    const e = escopoTrabalho(q, p, 'c');
+    const [origem, filtro] = e.tipo === 'ente'
+      ? [`read_parquet(${arq('gold/trabalho/caged.parquet')})`, e.onde]
+      : ['trab_caged_uf', `c.escopo = '${e.escopo}' AND c.secao = 'TOTAL'`];
+    return consultar(
+      `SELECT c.competencia, c.admissoes, c.desligamentos, c.saldo, c.salario_medio_admissao,
+              sum(c.saldo) OVER (ORDER BY c.competencia ROWS BETWEEN 11 PRECEDING AND CURRENT ROW) AS saldo_12m
+       FROM ${origem} c WHERE ${filtro} ORDER BY c.competencia`,
+      p,
+    );
+  },
+
+  /** Saldo do CAGED por seção da CNAE nos 12 meses até a competência (só UF e Brasil). */
+  async trab_caged_secoes(q) {
+    await tabelasTrabalho();
+    const p: Record<string, Valor> = { ate: inteiro(q.ate) };
+    const e = escopoTrabalho(q, p, 'c');
+    if (e.tipo === 'ente') return [];
+    return consultar(
+      `SELECT c.secao, any_value(n.secao_nome) AS secao_nome, sum(c.admissoes) AS admissoes, sum(c.desligamentos) AS desligamentos,
+              sum(c.saldo) AS saldo
+       FROM trab_caged_uf c LEFT JOIN (SELECT DISTINCT secao, secao_nome FROM trab_cnae) n USING (secao)
+       WHERE c.escopo = '${e.escopo}' AND c.secao NOT IN ('TOTAL') AND c.secao IS NOT NULL
+         AND c.competencia > $ate - 100 AND c.competencia <= $ate
+       GROUP BY c.secao ORDER BY saldo DESC`,
+      p,
+    );
+  },
+
+  /** Municípios de uma UF (ou do Brasil) num ano da RAIS, com o saldo do CAGED do mesmo ano. */
+  async trab_municipios(q) {
+    await tabelasTrabalho();
+    const p: Record<string, Valor> = { ano: inteiro(q.ano) };
+    const e = escopoTrabalho({ uf: q.uf }, p);
+    return consultar(
+      `SELECT m.cod_ibge, m.nome, m.uf, m.populacao, m.empregos,
+              1000 * m.empregos / nullif(m.populacao, 0) AS empregos_por_mil,
+              m.massa_dez / nullif(m.n_rem_dez, 0) AS remuneracao_media,
+              m.mulheres / nullif(m.empregos, 0) AS pct_mulheres, m.superior / nullif(m.empregos, 0) AS pct_superior,
+              m.empregos_adm_publica / nullif(m.empregos, 0) AS pct_adm_publica, m.estabelecimentos,
+              c.saldo AS saldo_caged, c.meses AS meses_caged
+       FROM trab_municipios m LEFT JOIN trab_caged_anual c ON c.cod_ibge = m.cod_ibge AND c.ano = m.ano
+       WHERE ${e.onde} AND m.ano = $ano::INTEGER ORDER BY m.empregos DESC`,
+      p,
+    );
+  },
+};
+
 /**
  * Consulta da IA (página /ia), já conferida por validarSql: roda sobre as tabelas em memória e traz
  * no máximo `limite` linhas, mais o total. As colunas saem na ordem do SELECT.
@@ -703,7 +847,7 @@ export async function consultaLivre(sql: string, limite: number) {
 }
 
 export async function executar(caminho: string, params: Params): Promise<unknown> {
-  const rota = rotas[caminho] ?? rotasLrf[caminho];
+  const rota = rotas[caminho] ?? rotasLrf[caminho] ?? rotasTrabalho[caminho];
   if (!rota) throw new Error(`rota desconhecida: ${caminho}`);
   return rota(params);
 }
