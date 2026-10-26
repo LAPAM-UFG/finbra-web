@@ -1,3 +1,4 @@
+import { formatarPct } from './calculos';
 import { local, t } from './idioma';
 
 const formatos = new Map<string, Intl.NumberFormat>();
@@ -26,7 +27,6 @@ export function reais(v: number | null | undefined): string {
 export const reaisCurto = (v: number) => (Math.abs(v) >= 1e3 ? `R$ ${compacto().format(v)}` : `R$ ${inteiro().format(v)}`);
 export const reaisExato = (v: number | null | undefined) => (vazio(v) ? '–' : `R$ ${decimal().format(v)}`);
 export const numero = (v: number | null | undefined) => (vazio(v) ? '–' : inteiro().format(v));
-export const pct = (v: number | null | undefined, casas = 1) =>
-  vazio(v) ? '–' : `${nf({ minimumFractionDigits: casas, maximumFractionDigits: casas }).format(v * 100)}%`;
+export const pct = (v: number | null | undefined, casas = 1) => (vazio(v) || !Number.isFinite(v) ? '–' : formatarPct(v, casas, local()));
 export const div = (a: number | null | undefined, b: number | null | undefined) =>
   vazio(a) || vazio(b) || b === 0 ? null : a / b;

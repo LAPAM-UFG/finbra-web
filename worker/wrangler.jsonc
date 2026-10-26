@@ -8,8 +8,11 @@
     "directory": "../web/dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/dados/*"]
+    "run_worker_first": ["/dados/*", "/api/*"]
   },
+  // login da IA (Cloudflare Access): ACCESS_TEAM = <equipe>.cloudflareaccess.com e ACCESS_AUD = Application Audience
+  // da aplicação que protege /api/ia. A chave da Anthropic é segredo: wrangler secret put ANTHROPIC_API_KEY
+  "vars": { "ACCESS_TEAM": "icy-breeze-2aa0.cloudflareaccess.com", "ACCESS_AUD": "450cdcc85c30a93c64af0b4cdb6e287c11014eab8a09af54d06f302d71dd2642" },
   // bucket privado com os Parquet: só o Worker lê
   "r2_buckets": [{ "binding": "DADOS", "bucket_name": "lapam-finbra" }],
   "observability": { "enabled": true }

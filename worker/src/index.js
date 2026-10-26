@@ -1,13 +1,17 @@
 /**
  * Worker do site: entrega os arquivos do React (web/dist) e serve /dados/* a partir do
  * bucket R2 privado, com suporte a Range, para o DuckDB do navegador ler só o necessário.
+ * /api/ia* são as perguntas à base com o Claude (ia.js), só com login.
  */
+import { rotaIa } from './ia.js';
+
 const PREFIXOS_PUBLICOS = /^(silver|gold)\//;
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname.startsWith('/dados/')) return servirDados(request, env, url);
+    if (url.pathname === '/api/ia' || url.pathname.startsWith('/api/ia/')) return rotaIa(request, env, url);
     return env.ASSETS.fetch(request);
   },
 };

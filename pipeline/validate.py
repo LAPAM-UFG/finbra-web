@@ -4,16 +4,15 @@
    linha de total que o próprio ente declarou (I-C: TotalReceitas; I-D e I-F:
    TotalDespesas; I-E e I-G: total exceto intra-orçamentárias).
 2. Balanço (I-AB): Ativo = Passivo + Patrimônio Líquido.
-3. Indicadores x painel de pesquisa (.dta), quando houver: FPM, IPTU, ISS, ITBI.
+3. Sinal das deduções (informativo): total de uma coluna de dedução declarado negativo.
 
-Grava data/gold/validacao.csv (o site mostra na página de qualidade dos dados).
+Grava data/gold/validacao.csv (resumo por teste, exercício e anexo, que o site mostra na página
+de qualidade) e data/gold/validacao_divergencias.csv (cada caso reprovado, para consulta).
 
 Uso:
-    py pipeline/validate.py [--dta "E:/.../FINBRA/Revenue"]
+    py pipeline/validate.py
 """
-import argparse
 import sys
-from pathlib import Path
 
 import duckdb
 import pandas as pd
@@ -27,16 +26,6 @@ TOLERANCIA = 1.0  # R$
 # tratada como da fonte: registrada para auditoria, sem falhar o pipeline. Erro de
 # pipeline aparece muito acima disso (o bug de hierarquia do painel antigo dava 21%).
 MAX_DIVERGENCIA_FONTE = 0.01
-
-
-def arvore_x_total(con):
-    casos = arvore_casos(con)
-    divergentes = casos[(casos.raiz - casos.total).abs() > TOLERANCIA]
-    divergentes.to_csv(GOLD / "validacao_divergencias.csv", index=False)
-    casos["ok"] = (casos.raiz - casos.total).abs() <= TOLERANCIA
-    return (casos.groupby(["exercicio", "anexo"], as_index=False)
-            .agg(casos=("ok", "size"), ok=("ok", "sum"))
-            .assign(teste="arvore x total")[["teste", "exercicio", "anexo", "casos", "ok"]])
 
 
 def arvore_casos(con):
@@ -53,67 +42,75 @@ def arvore_casos(con):
                OR (anexo IN ('I-D', 'I-F') AND chave = 'TotalDespesas')
                OR (anexo IN ('I-E', 'I-G') AND chave = 'TotalExcetoIntra')
             GROUP BY ALL)
-        SELECT exercicio, anexo, cod_ibge, coluna, raiz.v AS raiz, tot.v AS total
+        SELECT 'arvore x total' AS teste, exercicio, anexo, cod_ibge, coluna, raiz.v AS calculado, tot.v AS declarado
         FROM raiz JOIN tot USING (exercicio, cod_ibge, anexo, coluna)
         ORDER BY ALL
     """).df()
 
 
-def balanco(con):
-    return con.execute(f"""
-        WITH b AS (
-            SELECT exercicio, cod_ibge,
-                   sum(valor) FILTER (chave = 'P1') AS ativo,
-                   sum(valor) FILTER (chave = 'P2') AS passivo_pl
-            FROM dca WHERE anexo = 'I-AB' AND coluna = 'Saldo em 31/12' GROUP BY ALL)
-        SELECT 'ativo = passivo + PL' AS teste, exercicio, 'I-AB' AS anexo, count(*) AS casos,
-               sum((abs(ativo - passivo_pl) <= {TOLERANCIA})::INT) AS ok
-        FROM b WHERE ativo IS NOT NULL AND passivo_pl IS NOT NULL GROUP BY ALL ORDER BY ALL
+def balanco_casos(con):
+    return con.execute("""
+        SELECT 'ativo = passivo + PL' AS teste, exercicio, 'I-AB' AS anexo, cod_ibge, 'Saldo em 31/12' AS coluna,
+               sum(valor) FILTER (chave = 'P1') AS calculado, sum(valor) FILTER (chave = 'P2') AS declarado
+        FROM dca WHERE anexo = 'I-AB' AND coluna = 'Saldo em 31/12' GROUP BY ALL
+        HAVING calculado IS NOT NULL AND declarado IS NOT NULL
     """).df()
 
 
-def contra_pesquisa(pasta_dta):
-    pasta = Path(pasta_dta)
-    ind = pd.read_parquet(GOLD / "indicadores.parquet")
-    ind = ind[ind.esfera == "M"].assign(mun=lambda d: d.cod_ibge // 10)
-    fpm = pd.read_stata(pasta / "fpm_2013-2022.dta").rename(columns={"year": "exercicio"})
-    trib = pd.read_stata(pasta / "iptu_2013-2022.dta").rename(columns={"year": "exercicio"})
-    ref = fpm.merge(trib, on=["mun", "exercicio"], how="outer")
-    ref["exercicio"] = ref["exercicio"].astype(int)
-    ref = ref.rename(columns={"fpm": "ref_fpm", "IPTU": "ref_iptu", "ISS": "ref_iss", "ITBI": "ref_itbi"})
-    m = ind.merge(ref, on=["mun", "exercicio"])
-    saida = []
-    for nosso in ("fpm", "iptu", "iss", "itbi"):
-        deles = f"ref_{nosso}"
-        for ano, g in m.groupby("exercicio"):
-            g = g.dropna(subset=[deles])
-            ok = ((g[nosso].fillna(0) - g[deles]).abs() <= TOLERANCIA).sum()
-            saida.append((f"{nosso} x pesquisa", ano, "I-C", len(g), int(ok)))
-    return pd.DataFrame(saida, columns=["teste", "exercicio", "anexo", "casos", "ok"])
+def resumir(casos, tipo):
+    casos = casos.assign(diferenca=lambda d: d.calculado - d.declarado)
+    casos["ok"] = casos.diferenca.abs() <= TOLERANCIA
+    resumo = (casos.groupby(["teste", "exercicio", "anexo"], as_index=False)
+              .agg(casos=("ok", "size"), ok=("ok", "sum"),
+                   maior_divergencia=("diferenca", lambda s: float(s.abs().max()))))
+    resumo["tipo"] = tipo
+    resumo["tolerancia"] = TOLERANCIA
+    return resumo, casos[~casos.ok]
+
+
+def sinal_deducoes(con):
+    """Informativo: colunas de dedução com total negativo (o gold usa o valor absoluto)."""
+    casos = con.execute("""
+        SELECT 'sinal das deduções' AS teste, exercicio, anexo, cod_ibge, coluna, valor AS calculado, NULL::DOUBLE AS declarado
+        FROM dca WHERE anexo = 'I-C' AND chave = 'TotalReceitas' AND coluna <> 'Receitas Brutas Realizadas'
+    """).df()
+    casos["ok"] = casos.calculado >= 0
+    resumo = (casos.groupby(["teste", "exercicio", "anexo"], as_index=False)
+              .agg(casos=("ok", "size"), ok=("ok", "sum"),
+                   maior_divergencia=("calculado", lambda s: float((-s[s < 0]).max()) if (s < 0).any() else 0.0)))
+    resumo["tipo"] = "informativo"
+    resumo["tolerancia"] = 0.0
+    return resumo, casos[~casos.ok].assign(diferenca=lambda d: d.calculado)
 
 
 def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--dta")
-    args = p.parse_args()
     con = duckdb.connect()
     con.execute(f"CREATE VIEW dca AS SELECT * FROM '{SILVER.as_posix()}/dca/*.parquet'")
     con.execute(f"CREATE VIEW contas AS SELECT * FROM '{SILVER.as_posix()}/contas/*.parquet'")
 
-    partes = [arvore_x_total(con), balanco(con)]
-    if args.dta:
-        partes.append(contra_pesquisa(args.dta))
+    partes, divergencias = [], []
+    for casos, tipo in ((arvore_casos(con), "estrutural"), (balanco_casos(con), "estrutural")):
+        resumo, div = resumir(casos, tipo)
+        partes.append(resumo)
+        divergencias.append(div)
+    resumo, div = sinal_deducoes(con)
+    partes.append(resumo)
+    divergencias.append(div)
+
     r = pd.concat(partes, ignore_index=True)
-    r["pct_ok"] = (100 * r.ok / r.casos).round(2)
+    r["reprovados"] = r.casos - r.ok
+    r["pct_ok"] = 100 * r.ok / r.casos
     GOLD.mkdir(parents=True, exist_ok=True)
     r.to_csv(GOLD / "validacao.csv", index=False)
+    colunas = ["teste", "exercicio", "anexo", "cod_ibge", "coluna", "calculado", "declarado", "diferenca"]
+    pd.concat(divergencias, ignore_index=True)[colunas].to_csv(GOLD / "validacao_divergencias.csv", index=False)
 
     pd.set_option("display.width", 200)
     print(r.to_string(index=False))
-    estruturais = r[~r.teste.str.endswith("pesquisa")]
-    divergencia = 1 - estruturais.ok / estruturais.casos
+    estruturais = r[r.tipo == "estrutural"]
+    divergencia = estruturais.reprovados / estruturais.casos
     falhas = estruturais[divergencia > MAX_DIVERGENCIA_FONTE]
-    da_fonte = int((estruturais.casos - estruturais.ok).sum())
+    da_fonte = int(estruturais.reprovados.sum())
     if da_fonte and falhas.empty:
         print(f"\n{da_fonte} casos isolados em que o total declarado pelo ente não fecha com as próprias contas "
               f"(ver {GOLD / 'validacao_divergencias.csv'}).")

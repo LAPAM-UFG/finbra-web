@@ -2,16 +2,13 @@
 
   ibge_pib.parquet       PIB e valor adicionado por setor (IBGE/SIDRA, tabela 5938)
   ipca.parquet           IPCA anual dez/dez (Banco Central, série SGS 433)
-  pesquisa.parquet       painel estático da pesquisa LAPAM (.dta): área, distância,
-                         região metropolitana, Bolsa Família, benefícios INSS, renda/Gini
+
+Bolsa Família e INSS vêm das fontes oficiais, em familias.py.
 
 Uso:
     py pipeline/externos.py
-    py pipeline/externos.py --dta "E:/Estudos e Projetos/LAPAM/FINBRA/Revenue"
 """
-import argparse
 import time
-from pathlib import Path
 
 import pandas as pd
 import requests
@@ -76,37 +73,7 @@ def ipca():
     return anual[["exercicio", "ipca_pct", "indice", "completo", "meses"]]
 
 
-def pesquisa(pasta_dta):
-    d = pd.read_stata(Path(pasta_dta) / "base_unificada_final.dta", convert_categoricals=False)
-    colunas = {
-        "mun": "cod_ibge6", "year": "exercicio", "área": "area_km2", "distance": "distancia_capital_km",
-        "Metropolitan": "metropolitana", "Main_Activity": "atividade_principal",
-        "n_of_families": "bolsa_familia_familias", "total_value": "bolsa_familia_valor",
-        "TotaldeAposentadorias": "inss_aposentadorias", "pension": "inss_pensoes",
-        "assistance": "inss_assistenciais", "total": "inss_beneficios",
-        "n_workers": "trabalhadores_amostra", "income_hour": "renda_hora", "gini": "gini",
-    }
-    d = d[list(colunas)].rename(columns=colunas)
-    d = d[d["exercicio"].between(2013, 2022) & d["cod_ibge6"].notna()].copy()
-    d["exercicio"] = d["exercicio"].astype(int)
-    d["cod_ibge6"] = d["cod_ibge6"].astype(int)
-    return d
-
-
-def pesquisa_vazia():
-    inteiros = {"cod_ibge6": "int64", "exercicio": "int64"}
-    texto = {"atividade_principal": "object"}
-    reais = ["area_km2", "distancia_capital_km", "metropolitana", "bolsa_familia_familias", "bolsa_familia_valor",
-             "inss_aposentadorias", "inss_pensoes", "inss_assistenciais", "inss_beneficios",
-             "trabalhadores_amostra", "renda_hora", "gini"]
-    tipos = {**inteiros, **texto, **{c: "float64" for c in reais}}
-    return pd.DataFrame({c: pd.Series(dtype=t) for c, t in tipos.items()})
-
-
 def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--dta", help="pasta com base_unificada_final.dta (opcional)")
-    args = p.parse_args()
     SILVER.mkdir(parents=True, exist_ok=True)
 
     for nome, funcao, arquivo in (("IPCA (Banco Central)", ipca, "ipca.parquet"),
@@ -118,13 +85,6 @@ def main():
             if not (SILVER / arquivo).exists():
                 raise
             print(f"  AVISO: {nome} indisponível ({e}); mantido o {arquivo} anterior.")
-    if args.dta:
-        print("Painel de pesquisa (.dta)...")
-        pesquisa(args.dta).to_parquet(SILVER / "pesquisa.parquet", index=False)
-    elif not (SILVER / "pesquisa.parquet").exists():
-        # sem os .dta (não estão no repositório): tabela vazia, as colunas ficam nulas no site
-        print("Painel de pesquisa ausente: criando tabela vazia.")
-        pesquisa_vazia().to_parquet(SILVER / "pesquisa.parquet", index=False)
     print("ok")
 
 

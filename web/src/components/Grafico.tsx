@@ -4,6 +4,7 @@ import { BarChart, LineChart } from 'echarts/charts';
 import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 import type { EChartsCoreOption } from 'echarts/core';
+import { nomeArquivo } from '../exportar';
 import { t } from '../idioma';
 
 echarts.use([BarChart, LineChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]);
@@ -36,10 +37,20 @@ function useVersaoTema() {
   return versao;
 }
 
-export function Grafico({ opcao, altura = 300 }: { opcao: (t: Tokens) => EChartsCoreOption; altura?: number }) {
+export function Grafico({ opcao, altura = 300, nome, descricao }: {
+  opcao: (t: Tokens) => EChartsCoreOption; altura?: number; nome?: string; descricao?: string;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const grafico = useRef<echarts.ECharts | null>(null);
   const versao = useVersaoTema();
+  const baixarPng = () => {
+    const g = grafico.current;
+    if (!g) return;
+    const a = document.createElement('a');
+    a.href = g.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: tokens().superficie });
+    a.download = `${nomeArquivo(nome ?? 'grafico')}.png`;
+    a.click();
+  };
 
   useEffect(() => {
     grafico.current = echarts.init(ref.current!, undefined, { renderer: 'canvas' });
@@ -55,7 +66,13 @@ export function Grafico({ opcao, altura = 300 }: { opcao: (t: Tokens) => ECharts
     grafico.current?.setOption(opcao(tokens()), { notMerge: true });
   }, [opcao, versao]);
 
-  return <div ref={ref} style={{ height: altura, width: '100%' }} />;
+  return (
+    <figure className="grafico">
+      <div ref={ref} style={{ height: altura, width: '100%' }} role="img"
+        aria-label={descricao ?? t('Gráfico; os valores estão na opção Tabela', 'Chart; values are available in the Table option')} />
+      <button className="botao-leve png" onClick={baixarPng}>{t('Imagem (PNG)', 'Image (PNG)')}</button>
+    </figure>
+  );
 }
 
 /** Cartão com título, alternância Gráfico/Tabela e o conteúdo. */

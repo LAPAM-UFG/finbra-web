@@ -1,12 +1,10 @@
-"""Roda as camadas depois da extração: bronze → silver → externos → gold → validação.
+"""Roda as camadas depois da extração: bronze → silver → externos → famílias → gold → validação → testes.
 
 Uso:
     py pipeline/processar.py
     py pipeline/processar.py --anos 2024 2025 --sem-externos
-    py pipeline/processar.py --dta "E:/.../FINBRA/Revenue"   # inclui o painel de pesquisa
 """
 import argparse
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -24,19 +22,18 @@ def rodar(script, *args):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--anos", nargs="+", help="só estes exercícios na bronze/silver")
-    p.add_argument("--sem-externos", action="store_true", help="não rebaixa IBGE/IPCA")
-    p.add_argument("--dta", default=os.environ.get("LAPAM_DTA"),
-                   help="pasta com os .dta do painel de pesquisa (ou variável LAPAM_DTA); opcional")
+    p.add_argument("--sem-externos", action="store_true", help="não rebaixa IBGE/IPCA, Bolsa Família e INSS")
     args = p.parse_args()
 
     anos = ["--anos", *args.anos] if args.anos else []
-    dta = ["--dta", args.dta] if args.dta else []
     rodar("bronze.py", *anos)
     rodar("silver.py", *anos)
     if not args.sem_externos:
-        rodar("externos.py", *dta)
+        rodar("externos.py")
+        rodar("familias.py", "--atualizar")  # só os meses e anos ainda não agregados
     rodar("gold.py")
-    rodar("validate.py", *dta)
+    rodar("validate.py")
+    rodar("testes.py")
 
 
 if __name__ == "__main__":

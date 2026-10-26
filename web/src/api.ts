@@ -1,14 +1,23 @@
 import { useEffect, useState } from 'react';
 import { executar } from './dados';
 
-export type Meta = { anos: number[]; anexos: Record<string, string[]>; baseIpca: number };
+export type Meta = {
+  anos: number[]; anexos: Record<string, string[]>; baseIpca: number; geradoEm: string;
+  ipcaUltimo: { exercicio: number; meses: number } | null;
+  fontes: Record<string, Record<string, unknown>>;
+  mapaIndicadores: Record<string, { chave?: string; descricao?: string; de?: number; ate?: number; anexo?: string; coluna?: string }[]>;
+  politica: Record<string, unknown>;
+};
 export type Ente = { cod_ibge: number; nome: string; uf: string; esfera: 'M' | 'E' | 'D'; capital: boolean };
 export type No = {
   chave: string; chave_pai: string | null; nivel: number; descricao: string; tipo: 'conta' | 'total' | 'atributo';
   valor: number | null; valor_comp: number | null; sintetico: boolean | null;
 };
-export type Arvore = { nos: No[]; populacao: number; entes: number; populacao_comp: number | null; comparador: string | null };
-export type PontoSerie = { ano: number; valor: number | null; valor_real: number | null; populacao: number; entes: number };
+export type Arvore = { nos: No[]; populacao: number | null; entes: number; populacao_comp: number | null; comparador: string | null };
+export type PontoSerie = {
+  ano: number; valor: number | null; valor_real: number | null; populacao: number | null; entes: number;
+  esperados: number | null; excluidos: number;
+};
 export type Linha = Record<string, number | string | null>;
 
 export type Params = Record<string, string | number | null | undefined>;
@@ -35,6 +44,7 @@ export function buscar<T>(caminho: string, params: Params = {}): Promise<T> {
 /** Busca com estado de carregamento; refaz quando os parâmetros mudam. Caminho null não busca. */
 export function useApi<T>(caminho: string | null, params: Params = {}) {
   const chave = caminho ? url(caminho, params) : null;
+  const [tentativa, setTentativa] = useState(0);
   const [estado, setEstado] = useState<{ chave: string | null; dados?: T; erro?: string }>({ chave: null });
   useEffect(() => {
     if (!caminho) return;
@@ -47,7 +57,12 @@ export function useApi<T>(caminho: string | null, params: Params = {}) {
     };
     // a chave já resume caminho + parâmetros
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chave]);
+  }, [chave, tentativa]);
   const atual = estado.chave === chave;
-  return { dados: atual ? estado.dados : undefined, erro: atual ? estado.erro : undefined, carregando: !!chave && !atual };
+  const recarregar = () => {
+    if (chave) cache.delete(chave);
+    setEstado({ chave: null });
+    setTentativa((n) => n + 1);
+  };
+  return { dados: atual ? estado.dados : undefined, erro: atual ? estado.erro : undefined, carregando: !!chave && !atual, recarregar };
 }

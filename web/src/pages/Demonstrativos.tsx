@@ -1,7 +1,7 @@
 import { useApi, type Arvore } from '../api';
 import { ArvoreTabela } from '../components/ArvoreTabela';
 import { Estado } from '../components/Kpi';
-import { BarraFiltros, useFiltros } from '../contexto';
+import { BarraFiltros, Cobertura, useFiltros } from '../contexto';
 import { useColuna } from '../hooks';
 import { dado, idioma, t } from '../idioma';
 import { useSearchParams } from 'react-router-dom';
@@ -29,6 +29,7 @@ export function Demonstrativos() {
       <h2 className="titulo-pagina">{t('Demonstrativos da DCA', 'DCA financial statements')}</h2>
       <p className="subtitulo">{f.rotulo} · {f.ano} · {t('Anexo', 'Annex')} {anexo} — {nomes[anexo]}</p>
       <BarraFiltros />
+      <Cobertura dominio={anexo === 'I-C' ? 'receita' : anexo === 'I-AB' || anexo === 'I-HI' ? 'patrimonio' : 'despesa'} />
       <div className="filtros">
         <div className="campo">
           <label htmlFor="anexo">{t('Anexo', 'Annex')}</label>
@@ -70,8 +71,8 @@ export function Demonstrativos() {
         </p>
       )}
       <section className="cartao">
-        <Estado carregando={arvore.carregando} erro={arvore.erro} />
-        {arvore.dados && <ArvoreTabela key={`${anexo}-${f.ano}-${coluna}`} arvore={arvore.dados} />}
+        <Estado carregando={arvore.carregando} erro={arvore.erro} tentarNovamente={arvore.recarregar} />
+        {arvore.dados && coluna && <ArvoreTabela key={`${anexo}-${f.ano}-${coluna}`} arvore={arvore.dados} anexo={anexo} coluna={coluna} />}
       </section>
     </>
   );

@@ -5,6 +5,7 @@ data/*
 # dependências e artefatos
 node_modules/
 web/dist/
+web/testes/.saida/
 __pycache__/
 *.tmp
 
@@ -18,3 +19,4 @@ __pycache__/
 
 # wrangler (Cloudflare)
 .wrangler/
+worker/.dev.vars

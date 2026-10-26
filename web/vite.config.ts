@@ -58,6 +58,7 @@ function dadosLocais(): Plugin {
 
 export default defineConfig({
   plugins: [react(), dadosLocais()],
-  server: { port: 5180, strictPort: true },
-  preview: { port: 5180, strictPort: true },
+  // /api (perguntas com IA) vai para o Worker local: cd worker; npx wrangler dev (porta 8787)
+  server: { port: 5180, strictPort: true, proxy: { '/api': 'http://localhost:8787' } },
+  preview: { port: 5180, strictPort: true, proxy: { '/api': 'http://localhost:8787' } },
 });

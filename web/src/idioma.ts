@@ -47,6 +47,7 @@ const TERMOS: Record<string, string> = {
   'não declarado': 'not declared',
   'ativo = passivo + PL': 'assets = liabilities + equity',
   'arvore x total': 'tree × total',
+  'sinal das deduções': 'sign of deductions',
 };
 
 /**

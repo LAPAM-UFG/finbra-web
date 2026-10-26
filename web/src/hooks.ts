@@ -10,12 +10,17 @@ export function useColuna(anexo: string, ano: number, preferida?: string) {
   return { coluna, setColuna: setEscolhida, opcoes };
 }
 
-/** Indicadores da gold somados por exercício, para o escopo e para o comparador. */
-export function useIndicadores(campos: string[]) {
+/**
+ * Indicadores da gold somados por exercício, para o escopo e para o comparador. Cada campo vem
+ * com a população e o número de entes do próprio conjunto elegível (populacao_<campo>, entes_<campo>);
+ * `pares` ("a/b") traz numerador e denominador na interseção; `painel` restringe aos mesmos entes em todos os anos.
+ */
+export function useIndicadores(campos: string[], opcoes: { pares?: string[]; painel?: boolean } = {}) {
   const f = useFiltros();
-  const alvo = useApi<Linha[]>('agregado', { por: 'exercicio', campos: campos.join(','), ...f.escopo });
+  const extra = { pares: opcoes.pares?.join(','), painel: opcoes.painel ? 1 : undefined };
+  const alvo = useApi<Linha[]>('agregado', { por: 'exercicio', campos: campos.join(','), ...extra, ...f.escopo });
   const comp = useApi<Linha[]>(f.escopoComparador ? 'agregado' : null, {
-    por: 'exercicio', campos: campos.join(','), ...(f.escopoComparador ?? {}),
+    por: 'exercicio', campos: campos.join(','), ...extra, ...(f.escopoComparador ?? {}),
   });
   return { alvo, comp, f };
 }
@@ -31,3 +36,10 @@ export function useSerie(params: Params) {
 }
 
 export const num = (v: unknown) => (typeof v === 'number' ? v : null);
+
+/** Razão de um par devolvido pelo agregado (interseção das observações válidas). */
+export const razao = (r: Linha | undefined, a: string, b: string) => {
+  const n = num(r?.[`${a}__${b}_num`]);
+  const d = num(r?.[`${a}__${b}_den`]);
+  return n === null || d === null || d === 0 ? null : n / d;
+};

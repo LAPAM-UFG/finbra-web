@@ -5,6 +5,7 @@ import { definirIdioma, t, useIdioma } from './idioma';
 import { Demonstrativos } from './pages/Demonstrativos';
 import { DespesasEvolucao, DespesasVisaoGeral } from './pages/Despesas';
 import { Fpm, FpmFaixas } from './pages/Fpm';
+import { Ia } from './pages/Ia';
 import { Deflatores, Qualidade } from './pages/Metodologia';
 import { Rankings } from './pages/Rankings';
 import { ReceitasEvolucao, ReceitasVisaoGeral } from './pages/Receitas';
@@ -18,6 +19,7 @@ const menu = (): [string, [string, string][]][] => [
     ['/demonstrativos', t('Demonstrativos (7 anexos)', 'Financial statements (7 annexes)')],
     ['/socioeconomico', t('Socioeconômico', 'Socioeconomic')],
     ['/rankings', 'Rankings'],
+    ['/ia', t('Pergunte aos dados (IA)', 'Ask the data (AI)')],
   ]],
   [t('Metodologia', 'Methodology'), [['/deflatores', t('Deflatores', 'Deflators')], ['/qualidade', t('Qualidade e fontes', 'Quality and sources')]]],
 ];
@@ -72,13 +74,15 @@ function AlternarIdioma() {
 export function App() {
   const idioma = useIdioma();
   const { search } = useLocation();
-  // os filtros globais acompanham a navegação; o anexo é só da página de demonstrativos
-  const filtros = new URLSearchParams(search);
-  filtros.delete('anexo');
+  // só os filtros globais acompanham a navegação; as escolhas de cada página (anexo, indicador do ranking…) ficam nela
+  const atuais = new URLSearchParams(search);
+  const filtros = new URLSearchParams();
+  for (const k of ['ano', 'uf', 'ente']) if (atuais.get(k)) filtros.set(k, atuais.get(k)!);
   const busca = filtros.toString() ? `?${filtros}` : '';
 
   return (
     <>
+      <a className="pular" href="#conteudo">{t('Pular para o conteúdo', 'Skip to content')}</a>
       <header className="topo">
         <img className="logo" src="/logo_lapam.png" alt="LAPAM" />
         <h1>{t('Finanças municipais', 'Municipal finances')} · SICONFI</h1>
@@ -100,7 +104,7 @@ export function App() {
           ))}
         </nav>
         {/* a chave refaz as páginas ao trocar o idioma: gráficos e textos memorizados são recalculados */}
-        <main key={idioma}>
+        <main key={idioma} id="conteudo" tabIndex={-1}>
           <ProvedorDados>
             <Routes>
               <Route path="/" element={<Navigate to="/receitas" replace />} />
@@ -113,6 +117,7 @@ export function App() {
               <Route path="/demonstrativos" element={<Demonstrativos />} />
               <Route path="/socioeconomico" element={<Socioeconomico />} />
               <Route path="/rankings" element={<Rankings />} />
+              <Route path="/ia" element={<Ia />} />
               <Route path="/deflatores" element={<Deflatores />} />
               <Route path="/qualidade" element={<Qualidade />} />
               <Route path="*" element={<p className="vazio">{t('Página não encontrada.', 'Page not found.')}</p>} />

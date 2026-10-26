@@ -14,6 +14,7 @@ Uso:
 """
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 import duckdb
 import pandas as pd
@@ -24,7 +25,8 @@ BRUTA = "Receitas Brutas Realizadas"
 
 # Receitas por descrição (o código mudou entre ementários)
 POR_DESCRICAO = {
-    "fpm": r"Fundo de Participação dos Municípios",
+    # "do Municípios": grafia do ementário na cota de 1% de dezembro (2018–2021); sem ela a parcela ficava de fora
+    "fpm": r"Fundo de Participação dos? Municípios",
     "icms": r"^Cota-Parte do (ICMS|Imposto sobre Operações Relativas à Circulação)",
     "ipva": r"^Cota-Parte do (IPVA|Imposto sobre a Propriedade de Veículos)",
     "iptu": r"^Imposto sobre a Propriedade Predial e Territorial Urbana",
@@ -46,6 +48,11 @@ POR_CHAVE = {
     "investimentos": ("I-D", "Despesas Empenhadas", "DO4.4"),
     "despesa_saude": ("I-E", "Despesas Empenhadas", "F10"),
     "despesa_educacao": ("I-E", "Despesas Empenhadas", "F12"),
+    # I-E: as funções somam a despesa exceto intraorçamentária; é a base de saúde e educação
+    "despesa_empenhada_sem_intra": ("I-E", "Despesas Empenhadas", "TotalExcetoIntra"),
+    "despesa_liquidada_sem_intra": ("I-E", "Despesas Liquidadas", "TotalExcetoIntra"),
+    "despesa_paga_sem_intra": ("I-E", "Despesas Pagas", "TotalExcetoIntra"),
+    "despesa_intra": ("I-E", "Despesas Empenhadas", "TotalIntra"),
     "ativo": ("I-AB", "Saldo em 31/12", "P1"),
     "patrimonio_liquido": ("I-AB", "Saldo em 31/12", "P2.3"),
 }
@@ -64,41 +71,87 @@ def tabela_faixas():
     return pd.DataFrame(linhas, columns=["grupo", "nome", "faixa", "pop_min", "pop_max"])
 
 
-LIMITE_ATIPICO = 5  # vezes acima ou abaixo da mediana do próprio ente
+# Política de valores atípicos (documentada no site, página Qualidade e fontes).
+LIMITE_ATIPICO = 5        # suspeita: valor real mais de 5x acima ou abaixo da mediana real do próprio ente
+MIN_OBSERVACOES = 5       # anos com valor positivo exigidos para a mediana ser comparável
+LIMITE_INCONSISTENCIA = 10  # inconsistência objetiva: > 10x a mediana real E acima do PIB do município no ano
+REVISOES = Path(__file__).resolve().parent / "alertas_revisados.csv"
+
+# Domínio de cada anexo: um alerta de receita só afeta as contas de receita, e vice-versa
+DOMINIO_ANEXO = {"I-C": "receita", "I-D": "despesa", "I-E": "despesa", "I-F": "despesa", "I-G": "despesa"}
 
 
 def gerar_alertas(con):
-    """Ente-anos com declaração atípica, que os agregados (UF, Brasil, rankings) deixam de fora.
+    """Sinalizações por ente, exercício e indicador (receita bruta e despesa empenhada).
 
-    A comparação é do ente com ele mesmo ao longo dos anos: assim municípios com receita
-    per capita alta e estável (royalties, mineração) não são marcados, mas um valor
-    digitado errado (ex.: São João de Meriti declarou R$ 366 bi em 2023) é. Também entra
-    o ente que entregou a DCA sem receitas ou sem despesas no ano.
+    Categorias (exclui = sai dos agregados de UF, Brasil, faixas e rankings):
+      ausente        DCA sem o total (nulo ou ≤ 0): não é dado utilizável, fica fora das bases
+      suspeita       razão em relação à mediana real do ente fora de [1/5, 5]: só sinalização, continua
+                     nos agregados (pode ser crescimento legítimo: royalties, receitas extraordinárias)
+      inconsistente  razão > 10 e valor acima do PIB municipal do mesmo ano (regra objetiva): exclui
+      validado       revisado manualmente como legítimo (alertas_revisados.csv): não exclui
+      confirmado     erro confirmado por revisão manual, com evidência registrada: exclui
+
+    A comparação é do ente com ele mesmo, em R$ de preços constantes (IPCA), para que a
+    inflação acumulada não pareça crescimento. Só o domínio do indicador é afetado: um alerta
+    de receita não tira a despesa do mesmo ente-ano dos agregados.
     """
+    g, s = GOLD.as_posix(), SILVER.as_posix()
+    base = con.execute(f"SELECT max(exercicio) FROM '{s}/ipca.parquet' WHERE completo").fetchone()[0]
+    con.execute("CREATE OR REPLACE TABLE revisoes (cod_ibge BIGINT, exercicio BIGINT, indicador VARCHAR, "
+                "categoria VARCHAR, evidencia VARCHAR, fonte VARCHAR, revisado_em VARCHAR)")
+    if REVISOES.exists():
+        rev = pd.read_csv(REVISOES, dtype=str).fillna("")
+        rev = rev[rev.categoria.isin(["validado", "confirmado"])]
+    if REVISOES.exists() and len(rev):
+        con.executemany("INSERT INTO revisoes VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        [(int(r.cod_ibge), int(r.exercicio), r.indicador, r.categoria, r.evidencia, r.fonte, r.revisado_em)
+                         for r in rev.itertuples()])
     con.execute(f"""
         COPY (
             WITH i AS (
-                SELECT exercicio, cod_ibge, nome, uf, esfera, 'receita_bruta' AS indicador, receita_bruta AS valor
-                FROM '{GOLD.as_posix()}/indicadores.parquet'
+                SELECT exercicio, cod_ibge, nome, uf, esfera, pib, 'receita_bruta' AS indicador, 'receita' AS dominio,
+                       receita_bruta AS valor
+                FROM '{g}/indicadores.parquet'
                 UNION ALL
-                SELECT exercicio, cod_ibge, nome, uf, esfera, 'despesa_empenhada', despesa_empenhada
-                FROM '{GOLD.as_posix()}/indicadores.parquet'),
-            m AS (SELECT cod_ibge, indicador, median(valor) FILTER (valor > 0) AS mediana FROM i GROUP BY ALL)
-            SELECT i.exercicio, i.cod_ibge, i.nome, i.uf, i.esfera, i.indicador, i.valor, m.mediana,
-                   i.valor / m.mediana AS razao,
-                   CASE WHEN coalesce(i.valor, 0) <= 0 THEN 'não declarado'
-                        WHEN i.valor / m.mediana > {LIMITE_ATIPICO} THEN 'muito acima do habitual'
-                        ELSE 'muito abaixo do habitual' END AS motivo
-            FROM i JOIN m USING (cod_ibge, indicador)
-            WHERE m.mediana IS NOT NULL
-              AND (coalesce(i.valor, 0) <= 0
-                   OR i.valor / m.mediana > {LIMITE_ATIPICO} OR i.valor / m.mediana < 1.0 / {LIMITE_ATIPICO})
+                SELECT exercicio, cod_ibge, nome, uf, esfera, pib, 'despesa_empenhada', 'despesa', despesa_empenhada
+                FROM '{g}/indicadores.parquet'),
+            r AS (
+                SELECT i.*, i.valor * b.indice / p.indice AS valor_real
+                FROM i JOIN '{s}/ipca.parquet' p USING (exercicio)
+                CROSS JOIN (SELECT indice FROM '{s}/ipca.parquet' WHERE exercicio = {base}) b),
+            m AS (SELECT cod_ibge, indicador, median(valor_real) FILTER (valor_real > 0) AS mediana_real,
+                         count(*) FILTER (valor_real > 0) AS n_obs
+                  FROM r GROUP BY ALL),
+            c AS (
+                SELECT r.*, m.mediana_real, m.n_obs, r.valor_real / m.mediana_real AS razao,
+                       CASE WHEN coalesce(r.valor, 0) <= 0 THEN 'ausente'
+                            WHEN r.valor_real / m.mediana_real > {LIMITE_INCONSISTENCIA} AND r.pib > 0 AND r.valor > r.pib
+                                 THEN 'inconsistente'
+                            ELSE 'suspeita' END AS estatistica
+                FROM r JOIN m USING (cod_ibge, indicador)
+                WHERE coalesce(r.valor, 0) <= 0
+                   OR (m.n_obs >= {MIN_OBSERVACOES}
+                       AND (r.valor_real / m.mediana_real > {LIMITE_ATIPICO} OR r.valor_real / m.mediana_real < 1.0 / {LIMITE_ATIPICO})))
+            SELECT c.exercicio, c.cod_ibge, c.nome, c.uf, c.esfera, c.indicador, c.dominio, c.valor, c.valor_real,
+                   c.mediana_real, c.razao, c.n_obs, c.pib,
+                   coalesce(v.categoria, c.estatistica) AS categoria,
+                   CASE WHEN c.estatistica = 'ausente' THEN 'não declarado'
+                        WHEN c.razao > 1 THEN 'muito acima do habitual' ELSE 'muito abaixo do habitual' END AS motivo,
+                   CASE coalesce(v.categoria, c.estatistica)
+                        WHEN 'ausente' THEN 'total do indicador nulo ou ≤ 0 na DCA'
+                        WHEN 'inconsistente' THEN 'valor real > {LIMITE_INCONSISTENCIA}× a mediana real do ente e acima do PIB municipal do ano'
+                        WHEN 'suspeita' THEN 'valor real fora de 1/{LIMITE_ATIPICO} a {LIMITE_ATIPICO}× a mediana real do ente (mín. {MIN_OBSERVACOES} anos)'
+                        ELSE 'revisão manual' END AS regra,
+                   v.evidencia, v.fonte, v.revisado_em,
+                   coalesce(v.categoria, c.estatistica) IN ('inconsistente', 'confirmado') AS exclui
+            FROM c LEFT JOIN revisoes v USING (cod_ibge, exercicio, indicador)
             ORDER BY exercicio, cod_ibge, indicador
-        ) TO '{GOLD.as_posix()}/alertas.parquet' (FORMAT parquet)
+        ) TO '{g}/alertas.parquet' (FORMAT parquet)
     """)
-    n, entes = con.execute(f"SELECT count(*), count(DISTINCT (exercicio, cod_ibge)) "
-                           f"FROM '{GOLD.as_posix()}/alertas.parquet'").fetchone()
-    print(f"alertas: {n} registros em {entes} ente-anos (fora dos agregados)")
+    for cat, n, entes in con.execute(f"SELECT categoria, count(*), count(DISTINCT (exercicio, cod_ibge)) "
+                                     f"FROM '{g}/alertas.parquet' GROUP BY 1 ORDER BY 1").fetchall():
+        print(f"alertas: {cat}: {n} registros em {entes} ente-anos")
 
 
 def gerar_web(con):
@@ -109,33 +162,54 @@ def gerar_web(con):
 
     entes/uf=XX.parquet  valores de cada ente em todos os anos, um arquivo por UF, ordenado por ente
                          (árvore e série histórica de um ente)
-    arvore.parquet       soma de cada conta por escopo (Brasil e UFs) e esfera, todos os anos
-                         (árvore e série de UF/Brasil), sem os ente-anos de alertas.parquet
-    escopos.parquet      população e número de entes de cada escopo
-    manifesto.json       exercícios, colunas por anexo e base do IPCA
+    arvore.parquet       soma de cada conta por escopo (Brasil e UFs), esfera e tratamento, todos os anos
+                         (árvore e série de UF/Brasil). tratamento 'filtrado' (o que o site usa) tira as
+                         inconsistências e erros confirmados (alertas.parquet, exclui = true) só no domínio
+                         do alerta (receita: I-C; despesa: I-D a I-G); 'declarado' soma todas as declarações
+                         com dados no domínio, para medir o impacto das exclusões
+    escopos.parquet      população e número de entes de cada escopo, domínio e tratamento, com o
+                         universo do cadastro, os ausentes e os excluídos
+    manifesto.json       exercícios, colunas por anexo, base do IPCA, fontes e mapeamento dos indicadores
     """
     s, g = SILVER.as_posix(), GOLD.as_posix()
+    # Entes com dados utilizáveis em cada domínio: o mesmo conjunto entra no numerador (soma das
+    # contas) e no denominador (população), para o per capita agregado ser um quociente coerente.
     con.execute(f"""
         CREATE OR REPLACE TABLE validos AS
-        SELECT p.exercicio, p.cod_ibge, p.populacao, e.uf, e.esfera
-        FROM '{s}/populacao/*.parquet' p JOIN '{s}/entes.parquet' e USING (cod_ibge)
-        WHERE NOT EXISTS (SELECT 1 FROM '{g}/alertas.parquet' a
-                          WHERE a.exercicio = p.exercicio AND a.cod_ibge = p.cod_ibge)
+        WITH ind AS (SELECT * FROM '{g}/indicadores.parquet'),
+        patrimonio AS (SELECT DISTINCT exercicio, cod_ibge FROM '{s}/dca/*.parquet' WHERE anexo IN ('I-AB', 'I-HI')),
+        dom AS (
+            SELECT exercicio, cod_ibge, 'receita' AS dominio FROM ind WHERE receita_bruta > 0
+            UNION ALL SELECT exercicio, cod_ibge, 'despesa' FROM ind WHERE despesa_empenhada > 0
+            UNION ALL SELECT exercicio, cod_ibge, 'patrimonio' FROM patrimonio),
+        trat AS (
+            SELECT *, 'declarado' AS tratamento FROM dom
+            UNION ALL
+            SELECT *, 'filtrado' FROM dom
+            WHERE NOT EXISTS (SELECT 1 FROM '{g}/alertas.parquet' a
+                              WHERE a.exclui AND a.exercicio = dom.exercicio AND a.cod_ibge = dom.cod_ibge
+                                AND a.dominio = dom.dominio))
+        SELECT t.*, p.populacao, e.uf, e.esfera
+        FROM trat t JOIN '{s}/populacao/*.parquet' p USING (exercicio, cod_ibge)
+        JOIN '{s}/entes.parquet' e USING (cod_ibge)
     """)
     anos = [r[0] for r in con.execute("SELECT DISTINCT exercicio FROM validos ORDER BY 1").fetchall()]
+    dominio_anexo = " ".join(f"WHEN '{a}' THEN '{d}'" for a, d in DOMINIO_ANEXO.items())
 
     con.execute(f"""
         COPY (
             WITH d AS (
-                SELECT d.exercicio, d.anexo, d.coluna, d.chave, d.valor, v.uf, v.esfera
-                FROM '{s}/dca/*.parquet' d JOIN validos v USING (exercicio, cod_ibge))
-            SELECT escopo, esfera, anexo, coluna, chave, exercicio::SMALLINT AS exercicio,
+                SELECT d.exercicio, d.anexo, d.coluna, d.chave, d.valor, v.uf, v.esfera, v.tratamento
+                FROM '{s}/dca/*.parquet' d
+                JOIN validos v ON v.exercicio = d.exercicio AND v.cod_ibge = d.cod_ibge
+                              AND v.dominio = CASE d.anexo {dominio_anexo} ELSE 'patrimonio' END)
+            SELECT escopo, esfera, tratamento, anexo, coluna, chave, exercicio::SMALLINT AS exercicio,
                    sum(valor) AS valor, count(*)::INTEGER AS entes
             FROM (SELECT *, 'BR' AS escopo FROM d
                   UNION ALL
                   SELECT *, uf AS escopo FROM d WHERE esfera = 'M')
             GROUP BY ALL
-            ORDER BY escopo, esfera, anexo, coluna, chave, exercicio
+            ORDER BY escopo, esfera, tratamento, anexo, coluna, chave, exercicio
         ) TO '{g}/arvore.parquet' (FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 50000)
     """)
 
@@ -158,27 +232,152 @@ def gerar_web(con):
             GROUP BY ALL ORDER BY exercicio, anexo, count(*) DESC""").fetchall():
         colunas.setdefault(str(ano), {}).setdefault(anexo, []).append(coluna)
 
+    # Universo esperado: entes do cadastro do SICONFI (o cadastro é o atual; municípios criados
+    # depois de 2013 aparecem no universo de todos os anos). Brasília consta como município,
+    # mas as contas do DF são declaradas pelo ente Distrito Federal.
     con.execute(f"""
         COPY (
-            SELECT exercicio, 'BR' AS escopo, esfera, sum(populacao) AS populacao, count(*)::INTEGER AS entes
-            FROM validos GROUP BY ALL
-            UNION ALL
-            SELECT exercicio, uf, esfera, sum(populacao), count(*)::INTEGER FROM validos WHERE esfera = 'M' GROUP BY ALL
+            WITH v AS (
+                SELECT exercicio, 'BR' AS escopo, esfera, dominio, tratamento, populacao, cod_ibge FROM validos
+                UNION ALL
+                SELECT exercicio, uf, esfera, dominio, tratamento, populacao, cod_ibge FROM validos WHERE esfera = 'M'),
+            cad AS (
+                SELECT 'BR' AS escopo, esfera, count(*) AS esperados FROM '{s}/entes.parquet' GROUP BY ALL
+                UNION ALL
+                SELECT uf, esfera, count(*) FROM '{s}/entes.parquet' WHERE esfera = 'M' GROUP BY ALL),
+            agg AS (
+                SELECT exercicio, escopo, esfera, dominio, tratamento, sum(populacao) AS populacao,
+                       count(*)::INTEGER AS entes, count(*) FILTER (coalesce(populacao, 0) <= 0)::INTEGER AS sem_populacao
+                FROM v GROUP BY ALL)
+            SELECT a.*, c.esperados::INTEGER AS esperados,
+                   (d.entes - a.entes)::INTEGER AS excluidos,
+                   (c.esperados - d.entes)::INTEGER AS sem_dados
+            FROM agg a
+            JOIN agg d ON d.exercicio = a.exercicio AND d.escopo = a.escopo AND d.esfera = a.esfera
+                      AND d.dominio = a.dominio AND d.tratamento = 'declarado'
+            LEFT JOIN cad c ON c.escopo = a.escopo AND c.esfera = a.esfera
             ORDER BY ALL
         ) TO '{g}/escopos.parquet' (FORMAT parquet)
     """)
     base = con.execute(f"SELECT max(exercicio) FROM '{s}/ipca.parquet' WHERE completo").fetchone()[0]
+    ultimo_ipca = con.execute(f"SELECT exercicio, meses FROM '{s}/ipca.parquet' ORDER BY exercicio DESC LIMIT 1").fetchone()
     manifesto = {
         "gerado_em": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "anos": anos,
         "base_ipca": base,
+        "ipca_ultimo": {"exercicio": ultimo_ipca[0], "meses": ultimo_ipca[1]},
         "colunas": colunas,
+        "fontes": fontes(con),
+        "mapa_indicadores": mapa_indicadores(con),
+        "politica_alertas": {
+            "limite_suspeita": LIMITE_ATIPICO, "min_observacoes": MIN_OBSERVACOES,
+            "limite_inconsistencia": LIMITE_INCONSISTENCIA, "precos": f"IPCA, R$ de {base}",
+        },
     }
     (GOLD / "manifesto.json").write_text(json.dumps(manifesto, ensure_ascii=False, indent=1), encoding="utf-8")
     tamanho = (GOLD / "arvore.parquet").stat().st_size / 1e6
     por_uf = sum(f.stat().st_size for f in (GOLD / "entes").glob("*.parquet")) / 1e6
     print(f"web: árvore agregada ({tamanho:.1f} MB), entes por UF ({len(ufs)} arquivos, {por_uf:.0f} MB), "
           f"escopos e manifesto")
+
+
+def tabela_familias(con):
+    """Bolsa Família e INSS por município e ano, das fontes oficiais (familias.py).
+
+    bolsa_familia_familias  famílias pagas em dezembro          bolsa_familia_valor  total pago no ano
+    inss_beneficios         benefícios previdenciários emitidos em dezembro (sem os assistenciais)
+    O valor anual só entra com os 12 meses agregados e sem meses de Auxílio Brasil (os arquivos dele
+    não trazem o Benefício Extraordinário); o programa e a fonte vão junto. Anos sem planilha do INSS
+    ficam vazios.
+    """
+    s = SILVER.as_posix()
+    mensal = SILVER / "bolsa_familia_mensal"
+    if mensal.exists() and any(mensal.glob("*.parquet")):
+        bf = f"""
+            WITH m AS (SELECT m.*, k.cod_ibge, m.aaaamm // 100 AS exercicio, m.aaaamm % 100 AS mes
+                       FROM '{mensal.as_posix()}/*.parquet' m
+                       JOIN read_csv('{(Path(__file__).resolve().parent / "siafi_ibge.csv").as_posix()}', all_varchar=true) k
+                         ON k.uf = m.uf AND k.siafi = m.siafi)
+            SELECT cod_ibge::BIGINT // 10 AS cod_ibge6, exercicio,
+                   sum(familias) FILTER (mes = 12) AS familias, sum(valor) AS valor,
+                   count(DISTINCT mes) AS meses, string_agg(DISTINCT programa, ' + ') AS programa
+            FROM m GROUP BY ALL"""
+    else:
+        bf = "SELECT NULL::BIGINT AS cod_ibge6, NULL::BIGINT AS exercicio, NULL::DOUBLE AS familias, NULL::DOUBLE AS valor, NULL::BIGINT AS meses, NULL::VARCHAR AS programa WHERE false"
+    inss = (f"SELECT cod_ibge // 10 AS cod_ibge6, exercicio, previdenciarios, aposentadorias, pensoes FROM '{s}/inss_municipios.parquet'"
+            if (SILVER / "inss_municipios.parquet").exists()
+            else "SELECT NULL::BIGINT AS cod_ibge6, NULL::BIGINT AS exercicio, NULL::DOUBLE AS previdenciarios, NULL::DOUBLE AS aposentadorias, NULL::DOUBLE AS pensoes WHERE false")
+    con.execute(f"""
+        CREATE OR REPLACE TABLE familias AS
+        WITH bf AS ({bf}), inss AS ({inss}),
+        bolsa AS (
+            -- valor anual só com 12 meses e sem meses de Auxílio Brasil: os arquivos dele trazem só o benefício
+            -- regular, sem o Benefício Extraordinário que completava o mínimo (R$ 400; R$ 600 desde ago/2022)
+            SELECT cod_ibge6, exercicio, familias,
+                   CASE WHEN meses = 12 AND programa NOT LIKE '%Auxílio Brasil%' THEN valor END AS valor, programa,
+                   'Portal da Transparência (CGU), pagamentos' AS fonte
+            FROM bf),
+        beneficios AS (SELECT *, 'Ministério da Previdência, benefícios emitidos por município' AS fonte FROM inss)
+        SELECT cod_ibge6, exercicio,
+               b.familias AS bolsa_familia_familias, b.valor AS bolsa_familia_valor,
+               b.programa AS bolsa_familia_programa, b.fonte AS bolsa_familia_fonte,
+               i.previdenciarios AS inss_beneficios, i.aposentadorias AS inss_aposentadorias,
+               i.pensoes AS inss_pensoes, i.fonte AS inss_fonte
+        FROM bolsa b FULL JOIN beneficios i USING (cod_ibge6, exercicio)
+    """)
+    for fonte, anos in con.execute("""SELECT bolsa_familia_fonte, list(DISTINCT exercicio ORDER BY exercicio)
+                                      FROM familias WHERE bolsa_familia_fonte IS NOT NULL GROUP BY 1""").fetchall():
+        print(f"bolsa família: {fonte}: {anos}")
+
+
+def _quando(caminho: Path) -> str | None:
+    arquivos = [caminho] if caminho.is_file() else list(caminho.glob("*.parquet"))
+    if not arquivos:
+        return None
+    return datetime.fromtimestamp(max(a.stat().st_mtime for a in arquivos), timezone.utc).isoformat(timespec="seconds")
+
+
+def fontes(con):
+    """Cobertura e data de processamento de cada base, para a página de fontes."""
+    s = SILVER.as_posix()
+    dca = con.execute(f"SELECT min(exercicio), max(exercicio) FROM '{s}/dca/*.parquet'").fetchone()
+    pib = con.execute(f"SELECT min(exercicio), max(exercicio), max(exercicio) FILTER (vab_servicos IS NOT NULL) "
+                      f"FROM '{s}/ibge_pib.parquet'").fetchone()
+    ipca = con.execute(f"SELECT exercicio, meses FROM '{s}/ipca.parquet' ORDER BY exercicio DESC LIMIT 1").fetchone()
+    bf = con.execute("SELECT min(exercicio), max(exercicio) FROM familias WHERE bolsa_familia_fonte LIKE 'Portal%'").fetchone()
+    inss = con.execute("SELECT min(exercicio), max(exercicio) FROM familias WHERE inss_fonte LIKE 'Ministério%'").fetchone()
+    mensal = SILVER / "bolsa_familia_mensal"
+    ultimo_mes = max((int(a.stem) for a in mensal.glob("*.parquet")), default=None) if mensal.exists() else None
+    return {
+        "siconfi": {"anos": [dca[0], dca[1]], "processado_em": _quando(SILVER / "dca"),
+                    "url": "https://apidatalake.tesouro.gov.br/docs/siconfi/"},
+        "ibge_pib": {"anos": [pib[0], pib[1]], "setorial_ate": pib[2], "processado_em": _quando(SILVER / "ibge_pib.parquet"),
+                     "url": "https://sidra.ibge.gov.br/tabela/5938"},
+        "ipca": {"ultimo": ipca[0], "meses": ipca[1], "processado_em": _quando(SILVER / "ipca.parquet"),
+                 "url": "https://www3.bcb.gov.br/sgspub/consultarvalores/telaCvsSelecionarSeries.paint?codigoSerie=433"},
+        "bolsa_familia": {"anos": [bf[0], bf[1]] if bf[0] else None, "ultimo_mes": ultimo_mes,
+                          "processado_em": _quando(mensal) if mensal.exists() else None,
+                          "url": "https://portaldatransparencia.gov.br/download-de-dados/novo-bolsa-familia"},
+        "inss": {"anos": [inss[0], inss[1]] if inss[0] else None,
+                 "exercicios": [r[0] for r in con.execute(
+                     "SELECT DISTINCT exercicio FROM familias WHERE inss_fonte IS NOT NULL ORDER BY 1").fetchall()],
+                 "processado_em": _quando(SILVER / "inss_municipios.parquet"),
+                 "url": "https://www.gov.br/previdencia/pt-br/assuntos/previdencia-social/emitidos-municipios-2023"},
+    }
+
+
+def mapa_indicadores(con):
+    """Conta usada por indicador em cada período (os códigos mudaram em 2018 e 2022)."""
+    linhas = con.execute("""
+        SELECT indicador, chave, any_value(descricao) AS descricao, min(exercicio) AS de, max(exercicio) AS ate
+        FROM topo GROUP BY indicador, chave ORDER BY indicador, de, chave
+    """).fetchall()
+    mapa = {}
+    for ind, chave, desc, de, ate in linhas:
+        mapa.setdefault(ind, []).append({"chave": chave, "descricao": desc, "de": de, "ate": ate})
+    for ind, (anexo, coluna, chave) in POR_CHAVE.items():
+        mapa[ind] = [{"anexo": anexo, "coluna": coluna, "chave": chave}]
+    return mapa
 
 
 def main():
@@ -199,19 +398,25 @@ def main():
     con.executemany("INSERT INTO faixas VALUES (?, ?, ?, ?, ?)",
                     [tuple(None if pd.isna(v) else v for v in r) for r in faixas.itertuples(index=False)])
 
-    con.execute(f"""
-        CREATE TABLE longo AS
+    # Só o nó mais alto de cada indicador (ex.: a conta do FPM, e não ela e as subcontas de cota
+    # mensal e extraordinária), para não somar pai e filhos.
+    con.execute("""
+        CREATE TABLE topo AS
         WITH casadas AS (
-            SELECT c.exercicio, c.chave, r.indicador
+            SELECT c.exercicio, c.chave, c.descricao, r.indicador
             FROM contas c JOIN regras r ON regexp_matches(c.descricao, r.regex, 'i')
             WHERE c.anexo = 'I-C' AND c.chave LIKE 'RO%'
-        ),
-        topo AS (  -- só o nó mais alto de cada indicador
-            SELECT * FROM casadas a
-            WHERE NOT EXISTS (SELECT 1 FROM casadas b
-                              WHERE b.exercicio = a.exercicio AND b.indicador = a.indicador
-                                AND starts_with(a.chave, b.chave || '.'))
         )
+        SELECT * FROM casadas a
+        WHERE NOT EXISTS (SELECT 1 FROM casadas b
+                          WHERE b.exercicio = a.exercicio AND b.indicador = a.indicador
+                            AND starts_with(a.chave, b.chave || '.'))
+    """)
+    # Deduções: as colunas de dedução são reduções da receita por definição. Alguns entes as
+    # declaram com sinal negativo; usar o valor absoluto evita aplicar o sinal duas vezes na
+    # receita líquida (o validate.py conta esses casos).
+    con.execute(f"""
+        CREATE TABLE longo AS
         SELECT d.exercicio, d.cod_ibge, t.indicador, sum(d.valor) AS valor
         FROM dca d JOIN topo t USING (exercicio, chave)
         WHERE d.anexo = 'I-C' AND d.coluna = '{BRUTA}'
@@ -221,7 +426,7 @@ def main():
         FROM dca d JOIN chaves k USING (anexo, coluna, chave)
         GROUP BY ALL
         UNION ALL
-        SELECT exercicio, cod_ibge, 'deducoes', sum(valor)
+        SELECT exercicio, cod_ibge, 'deducoes', sum(abs(valor))
         FROM dca WHERE anexo = 'I-C' AND chave = 'TotalReceitas' AND coluna <> '{BRUTA}'
         GROUP BY ALL
     """)
@@ -229,21 +434,24 @@ def main():
     colunas = ", ".join(f"sum(valor) FILTER (indicador = '{i}') AS {i}" for i in indicadores)
     con.execute(f"CREATE TABLE largo AS SELECT exercicio, cod_ibge, {colunas} FROM longo GROUP BY ALL")
 
+    tabela_familias(con)
     con.execute(f"""
         COPY (
             SELECT p.exercicio, p.cod_ibge, e.nome, e.uf, e.regiao, e.esfera, e.capital, p.populacao,
                    f.grupo AS faixa_grupo, i.* EXCLUDE (exercicio, cod_ibge),
                    i.receita_bruta - coalesce(i.deducoes, 0) AS receita_liquida,
                    g.pib, g.vab_agropecuaria, g.vab_industria, g.vab_servicos, g.vab_adm_publica,
-                   q.* EXCLUDE (exercicio, cod_ibge6)
+                   t.* EXCLUDE (exercicio, cod_ibge6)
             FROM '{s}/populacao/*.parquet' p
             JOIN '{s}/entes.parquet' e USING (cod_ibge)
             LEFT JOIN largo i USING (exercicio, cod_ibge)
             LEFT JOIN faixas f ON e.esfera = 'M' AND p.populacao >= f.pop_min
                                AND (f.pop_max IS NULL OR p.populacao < f.pop_max)
             LEFT JOIN '{s}/ibge_pib.parquet' g USING (exercicio, cod_ibge)
-            LEFT JOIN '{s}/pesquisa.parquet' q ON q.exercicio = p.exercicio AND q.cod_ibge6 = p.cod_ibge // 10
-                                               AND e.esfera = 'M'
+            -- transferências às famílias: municípios e o DF (que recebe os pagamentos registrados em Brasília)
+            LEFT JOIN familias t ON t.exercicio = p.exercicio
+                                 AND t.cod_ibge6 = CASE WHEN e.esfera = 'D' THEN 530010 ELSE p.cod_ibge // 10 END
+                                 AND e.esfera IN ('M', 'D')
             ORDER BY p.cod_ibge, p.exercicio
         ) TO '{GOLD.as_posix()}/indicadores.parquet' (FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 100000)
     """)
