@@ -52,16 +52,6 @@ faixas — faixas populacionais dos municípios: grupo, nome, faixa (texto, ex.:
 ipca — deflator: exercicio, ipca_pct (variação dez/dez em %), indice (número-índice de dezembro), completo BOOLEAN, meses
   Valor real em R$ do ano-base = valor nominal × (indice do ano-base ÷ indice do exercício).
 
-lrf — indicadores da Lei de Responsabilidade Fiscal, do RREO (6º bimestre) e do RGF (último período, Poder Executivo), uma linha por ente e exercício, de 2015 em diante (a API do SICONFI não tem esses relatórios antes)
-  exercicio, cod_ibge, nome, uf, regiao, esfera, populacao
-  rreo_tipo ('RREO' ou 'RREO Simplificado'), rgf_tipo (ex.: 'RGF (Q)', 'RGF Simplificado (S)'); nulos = relatório não entregue
-  rcl (receita corrente líquida), rcl_ajustada (base dos limites)
-  despesa_pessoal (despesa total com pessoal do Executivo), pessoal_rcl_pct (% da RCL ajustada, em pontos: 48.5 = 48,5%), pessoal_limite_pct (limite máximo declarado: 54 municípios, 49 estados)
-  divida_consolidada, dcl (dívida consolidada líquida), dcl_rcl_pct (% da RCL; limite 120 municípios, 200 estados)
-  resultado_primario, meta_primario (meta da LDO), resultado_nominal
-  saude_valor, saude_pct (% aplicado em saúde; mínimo 15 municípios, 12 estados), mde_valor, mde_pct (educação; mínimo 25), fundeb_pct (mínimo 70 desde 2021, 60 antes)
-  Os percentuais são os declarados. Em grupos, razões = soma ÷ soma (ex.: sum(despesa_pessoal) / sum(coalesce(rcl_ajustada, rcl)), só entes com os dois valores); para os percentuais declarados use mediana e conte quem passa do limite ou fica abaixo do mínimo.
-
 # Regras do painel (siga-as para os números baterem com o site)
 
 1. Ente com dados no domínio: receita exige receita_bruta > 0; despesa exige despesa_empenhada > 0; patrimônio exige ativo IS NOT NULL.
@@ -87,6 +77,19 @@ lrf — indicadores da Lei de Responsabilidade Fiscal, do RREO (6º bimestre) e 
 - Comece pela informação principal. Não abra com perguntas retóricas nem com afirmações que as consultas não confirmaram; se algo não pôde ser verificado, simplesmente não o mencione.
 - Assuntos fora das finanças públicas e dos dados do painel: explique em uma frase que você só responde sobre o painel.`;
 
+/** Tabela da LRF (RREO e RGF): só é apresentada à IA quando os dados estão publicados (fontes.siconfi_lrf). */
+const LRF = `# Tabela adicional
+
+lrf — indicadores da Lei de Responsabilidade Fiscal, do RREO (6º bimestre) e do RGF (último período, Poder Executivo), uma linha por ente e exercício, de 2015 em diante (a API do SICONFI não tem esses relatórios antes)
+  exercicio, cod_ibge, nome, uf, regiao, esfera, populacao
+  rreo_tipo ('RREO' ou 'RREO Simplificado'), rgf_tipo (ex.: 'RGF (Q)', 'RGF Simplificado (S)'); nulos = relatório não entregue
+  rcl (receita corrente líquida), rcl_ajustada (base dos limites)
+  despesa_pessoal (despesa total com pessoal do Executivo), pessoal_rcl_pct (% da RCL ajustada, em pontos: 48.5 = 48,5%), pessoal_limite_pct (limite máximo declarado: 54 municípios, 49 estados)
+  divida_consolidada, dcl (dívida consolidada líquida), dcl_rcl_pct (% da RCL; limite 120 municípios, 200 estados)
+  resultado_primario, meta_primario (meta da LDO), resultado_nominal
+  saude_valor, saude_pct (% aplicado em saúde; mínimo 15 municípios, 12 estados), mde_valor, mde_pct (educação; mínimo 25), fundeb_pct (mínimo 70 desde 2021, 60 antes)
+  Os percentuais são os declarados. Em grupos, razões = soma ÷ soma (ex.: sum(despesa_pessoal) / sum(coalesce(rcl_ajustada, rcl)), só entes com os dois valores); para os percentuais declarados use mediana e conte quem passa do limite ou fica abaixo do mínimo.`;
+
 /** Bloco com o que muda a cada atualização (anos, ano-base, cobertura das fontes), a partir do manifesto. */
 export function contextoDosDados(m) {
   if (!m) return 'Manifesto dos dados indisponível: confirme anos e cobertura consultando as tabelas.';
@@ -103,5 +106,7 @@ export function contextoDosDados(m) {
       + 'O valor anual fica nulo quando o ano não tem os 12 meses ou tem meses de Auxílio Brasil (os arquivos não trazem o Benefício Extraordinário); o número de famílias existe.');
   }
   if (f.inss?.exercicios?.length) linhas.push(`INSS: exercícios ${f.inss.exercicios.join(', ')} (os demais ficam nulos).`);
+  if (f.siconfi_lrf?.anos) linhas.push(`Tabela lrf (RREO e RGF): exercícios ${f.siconfi_lrf.anos[0]} a ${f.siconfi_lrf.anos[1]}.`, '', LRF);
+  else linhas.push('Os indicadores da LRF (RREO e RGF: RCL, pessoal ÷ RCL, dívida, mínimos de saúde e educação) ainda estão em preparação e não podem ser consultados; se pedirem, diga isso em uma frase.');
   return linhas.join('\n');
 }

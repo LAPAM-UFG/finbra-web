@@ -32,7 +32,7 @@ const FERRAMENTAS = [
   {
     name: 'consultar',
     description:
-      'Executa uma consulta SQL somente leitura (DuckDB) nas tabelas entes, indicadores, alertas, escopos, faixas, ipca e lrf, no navegador '
+      'Executa uma consulta SQL somente leitura (DuckDB) nas tabelas descritas nas instruções, no navegador '
       + 'de quem perguntou, e devolve as colunas e até 200 linhas em JSON (com o total de linhas). Use para obter qualquer número da resposta. '
       + 'Só SELECT ou WITH, uma instrução, sem ler arquivos ou URLs.',
     strict: true,
