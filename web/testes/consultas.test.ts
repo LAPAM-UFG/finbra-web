@@ -13,7 +13,7 @@ import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { basesAV, codigoConta, formatarPct } from '../src/calculos';
-import { consultaLivre, executar, usarMotorDeTeste } from '../src/dados';
+import { consultaLivre, executar, tabelasIaTrabalho, usarMicrodadosNoTeste, usarMotorDeTeste } from '../src/dados';
 import { executarConsulta, paraModelo, validarSql } from '../src/ia';
 import { crc32, paraCsv, paraXlsx, paraXlsxAbas } from '../src/exportar';
 import { ordenarBusca } from '../src/contexto';
@@ -21,6 +21,9 @@ import { ordenarBusca } from '../src/contexto';
 const require = createRequire(import.meta.url);
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const DATA = path.resolve(AQUI, '..', '..', '..', 'data').replaceAll('\\', '/');
+// microdados da RAIS (pipeline/microdados.py), fora do projeto
+const MICRO = (process.env.TRABALHO_MICRO ?? 'D:/LVBERNARDELLI/finbra_micro').replaceAll('\\', '/');
+const onde = (c: string) => (c.startsWith('silver/trabalho/micro/') ? `${MICRO}/${c}` : `${DATA}/${c}`);
 const rota = <T>(caminho: string, params: Record<string, string | number | undefined> = {}) => executar(caminho, params) as Promise<T>;
 type L = Record<string, number | string | null | boolean>;
 
@@ -51,7 +54,7 @@ before(async () => {
   };
   const db = await duckdb.createDuckDB(bundles, new duckdb.VoidLogger(), duckdb.NODE_RUNTIME);
   await db.instantiate();
-  db.open({ query: { castBigIntToDouble: true } });
+  db.open({ query: { castBigIntToDouble: true, castDecimalToDouble: true } }); // como no site (src/dados.ts)
   const { db: adb, con } = adaptar(db);
   const manifesto = JSON.parse(await readFile(`${DATA}/gold/manifesto.json`, 'utf8'));
   for (const [nome, arq] of Object.entries({
@@ -60,7 +63,7 @@ before(async () => {
   })) {
     await con.query(`CREATE TABLE ${nome} AS SELECT * FROM read_parquet('${DATA}/${arq}')`);
   }
-  usarMotorDeTeste(adb as any, con as any, manifesto, (c) => `${DATA}/${c}`, async (c) => new Uint8Array(await readFile(`${DATA}/${c}`)));
+  usarMotorDeTeste(adb as any, con as any, manifesto, onde, async (c) => new Uint8Array(await readFile(onde(c))));
 });
 after(() => undefined);
 
@@ -338,6 +341,8 @@ describe('perguntas com IA', () => {
       "SELECT * FROM alertas WHERE motivo LIKE '%habitual%' -- comentário; com ponto e vírgula",
       "SELECT 'São Paulo' AS nome, '2024-01-01' AS data",
       'SELECT receita_bruta / 1e6 AS "receita (R$ mi.)", fpm AS "pct.fpm" FROM indicadores',
+      "SELECT 'mulheres/homens: % da remuneração (2013 e 2018)' AS indicador, '10:30' AS hora",
+      'SELECT 1 AS "mulheres/total (%)", 2 AS "rem. dez. (R$/mês)", 3 AS "público/privado"',
     ]) assert.equal(validarSql(ok), null, ok);
     for (const ruim of [
       'DROP TABLE indicadores',
@@ -354,6 +359,13 @@ describe('perguntas com IA', () => {
       'SELECT * FROM "dados.parquet"',
       'SELECT * FROM "C:/dados/x"',
       'SELECT * FROM "https://exemplo.org/x"',
+      'SELECT * FROM "/dados/x"',
+      'SELECT * FROM "dados\\x"',
+      'SELECT * FROM "x.csv.gz"',
+      "SELECT 'https://exemplo.org/x' AS u",
+      "SELECT 'C:\\dados\\x' AS c",
+      "SELECT '/etc/passwd' AS p",
+      "SELECT 'x.parquet' AS a",
     ]) assert.notEqual(validarSql(ruim), null, ruim);
   });
 
@@ -476,5 +488,122 @@ describe('mercado de trabalho (RAIS e CAGED)', () => {
     const r = await rota<L[]>('trab_municipios', { uf: 'GO', ano: s.at(-1)!.ano as number });
     assert.ok(r.length > 200);
     assert.ok(r.every((x) => x.uf === 'GO'));
+  });
+});
+
+describe('consulta personalizada (microdados da RAIS)', () => {
+  const ANO = 2013;
+  const GOIANIA = 5208707;
+  const semCubo = !existsSync(`${DATA}/gold/trabalho/cubo_uf/ano=${ANO}.parquet`);
+  const semMicro = semCubo || !existsSync(`${MICRO}/silver/trabalho/micro/rais_vinculos/ano=${ANO}/uf=52.parquet`);
+  type R = { fonte: string; linhas: L[] };
+  const consulta = (p: Record<string, string | number | undefined>) => rota<R>('trab_consulta', { ano: ANO, agrupar: 'total', ...p });
+  const total = async (p: Record<string, string | number | undefined>) => (await consulta(p)).linhas[0];
+
+  test('Brasil (tabela por UF): vínculos ativos em 31/12 = total oficial da RAIS', { skip: semCubo }, async () => {
+    const r = await consulta({});
+    assert.equal(r.fonte, 'cubo_uf');
+    assert.equal(r.linhas[0].ativos, 48948433);
+    const ufs = await consulta({ agrupar: 'uf' });
+    assert.equal(ufs.linhas.length, 27);
+    assert.equal(ufs.linhas.reduce((t0, x) => t0 + (x.vinculos as number), 0), r.linhas[0].vinculos);
+  });
+
+  test('combinar CNAEs: 4711 + 4712 = soma das duas consultas separadas', { skip: semCubo }, async () => {
+    const a = await total({ uf: 'GO', cnae: '4711' });
+    const b = await total({ uf: 'GO', cnae: '4712' });
+    const ab = await total({ uf: 'GO', cnae: '4711, 4712' });
+    assert.equal(ab.vinculos, (a.vinculos as number) + (b.vinculos as number));
+    assert.equal(ab.ativos, (a.ativos as number) + (b.ativos as number));
+  });
+
+  test('município na web: só divisão CNAE e grande grupo CBO', { skip: semCubo }, async () => {
+    const r = await consulta({ ente: GOIANIA, cnae: '47' });
+    assert.equal(r.fonte, 'cubo_mun');
+    assert.ok((r.linhas[0].vinculos as number) > 10000);
+    await assert.rejects(consulta({ ente: GOIANIA, cnae: '4711' }), /até 2 dígito/);
+  });
+
+  test('microdados = tabelas pré-somadas (UF, município, filtros e agrupamento)', { skip: semMicro }, async () => {
+    const casos = [{ uf: 'GO' }, { uf: 'GO', cnae: '4711, 56', situacao: 'afastados' }, { uf: 'GO', cbo: '2312', sexo: '2' },
+      { ente: GOIANIA }, { ente: GOIANIA, cnae: '84', situacao: 'desligados' }];
+    for (const c of casos) {
+      usarMicrodadosNoTeste(false);
+      const cubo = await total(c);
+      usarMicrodadosNoTeste(true);
+      const micro = await consulta(c);
+      usarMicrodadosNoTeste(false);
+      assert.equal(micro.fonte, 'micro');
+      const m = micro.linhas[0];
+      for (const k of ['vinculos', 'ativos', 'desligados', 'afastados', 'mulheres', 'superior', 'n_rem_dez']) assert.equal(m[k], cubo[k], `${JSON.stringify(c)} ${k}`);
+      for (const k of ['rem_dez_media', 'rem_media_media', 'dias_afastamento_medio', 'horas_media']) quase(m[k] as number, cubo[k] as number, 1e-6);
+      assert.ok(m.rem_dez_mediana === null || ((m.rem_dez_mediana as number) > 300 && (m.rem_dez_mediana as number) < 30000), `mediana: ${m.rem_dez_mediana}`);
+    }
+    usarMicrodadosNoTeste(true);
+    const tot = await total({ ente: GOIANIA });
+    const porCbo = await consulta({ ente: GOIANIA, agrupar: 'cbo' });
+    const porIdade = await consulta({ ente: GOIANIA, agrupar: 'faixa_idade' });
+    usarMicrodadosNoTeste(false);
+    const soma = (l: L[]) => l.reduce((t0, x) => t0 + (x.vinculos as number), 0);
+    assert.equal(soma(porCbo.linhas), tot.vinculos);
+    assert.equal(soma(porIdade.linhas), tot.vinculos);
+    assert.ok(porCbo.linhas.slice(0, 20).every((x) => x.nome), 'as ocupações mais comuns têm nome no dicionário');
+  });
+
+  test('dicionário: busca de ocupação pelo nome, sem acento', { skip: semCubo }, async () => {
+    const r = await rota<L[]>('trab_dicionario', { variavel: 'cbo', texto: 'medico clinico' });
+    assert.ok(r.some((x) => x.codigo === '225125'), JSON.stringify(r));
+  });
+});
+
+describe('IA do mercado de trabalho (tabelas e microdados)', () => {
+  const semCubo = !existsSync(`${DATA}/gold/trabalho/cubo_uf/ano=2013.parquet`);
+  const semMicro = semCubo || !existsSync(`${MICRO}/silver/trabalho/micro/indice.json`);
+  const sql = async (q: string) => {
+    const r = await executarConsulta({ sql: q, objetivo: 'teste' }, ['trabalho']);
+    if ('erro' in r) throw new Error(r.erro);
+    return r;
+  };
+
+  test('tabelas somadas, microdados e séries do painel batem entre si', { skip: semMicro }, async () => {
+    usarMicrodadosNoTeste(true);
+    const ctx = await tabelasIaTrabalho();
+    usarMicrodadosNoTeste(false);
+    assert.ok(ctx.microdados && ctx.micro_anos.includes(2013));
+    const br = await sql('SELECT sum(vinculos) AS n FROM rais_uf WHERE ano = 2013 AND situacao = 1');
+    assert.equal(br.linhas[0][0], 48948433);
+    const go = await sql('SELECT sum(vinculos) AS n FROM rais_uf WHERE ano = 2013 AND uf = 52 AND situacao = 1');
+    const micro = await sql('SELECT count(*) AS n, median(rem_dezembro_nom) FILTER (ativo_31_12 = 1 AND rem_dezembro_nom > 0) AS mediana FROM rais_vinculos WHERE ano = 2013 AND uf = 52 AND ativo_31_12 = 1');
+    assert.equal(micro.linhas[0][0], go.linhas[0][0]);
+    const mediana = micro.linhas[0][1] as number;
+    assert.ok(mediana > 500 && mediana < 20000, `mediana de dezembro em R$: ${mediana}`); // valores DECIMAL chegam em reais, não em centavos
+    const painel = await sql("SELECT sum(empregos) FROM trab_municipios WHERE ano = 2013 AND uf = 'GO'");
+    assert.equal(painel.linhas[0][0], go.linhas[0][0]);
+    const setores = await sql('SELECT sum(empregos) FROM trab_setores WHERE ano = 2013 AND cod_ibge = 5208707');
+    assert.ok((setores.linhas[0][0] as number) > 100000);
+  });
+});
+
+describe('IA do mercado de trabalho: rais_mun por UF', () => {
+  test('rais_mun tem uf e soma o mesmo que rais_uf', { skip: !existsSync(`${DATA}/gold/trabalho/cubo_mun/ano=2013.parquet`) }, async () => {
+    const sql = async (q: string) => {
+      const r = await executarConsulta({ sql: q, objetivo: 'teste' }, ['trabalho']);
+      if ('erro' in r) throw new Error(r.erro);
+      return r.linhas[0][0];
+    };
+    const mun = await sql("SELECT sum(vinculos) FROM rais_mun WHERE ano = 2013 AND uf = '52'");
+    const uf = await sql('SELECT sum(vinculos) FROM rais_uf WHERE ano = 2013 AND uf = 52');
+    assert.equal(mun, uf);
+  });
+});
+
+describe('IA do mercado de trabalho: sigla da UF', () => {
+  test('uf_sigla nas tabelas somadas bate com o código', { skip: !existsSync(`${DATA}/gold/trabalho/cubo_uf/ano=2013.parquet`) }, async () => {
+    const r = await executarConsulta({ sql: "SELECT uf, uf_sigla, sum(vinculos) AS v FROM rais_uf WHERE ano = 2013 AND uf_sigla IN ('GO', 'SP') GROUP BY ALL ORDER BY uf", objetivo: 'teste' }, ['trabalho']);
+    if ('erro' in r) throw new Error(r.erro);
+    assert.deepEqual(r.linhas.map((l) => [l[0], l[1]]), [[35, 'SP'], [52, 'GO']]);
+    const m = await executarConsulta({ sql: "SELECT DISTINCT uf_sigla FROM rais_mun WHERE ano = 2013 AND municipio = 520870", objetivo: 'teste' }, ['trabalho']);
+    if ('erro' in m) throw new Error(m.erro);
+    assert.equal(m.linhas[0][0], 'GO');
   });
 });

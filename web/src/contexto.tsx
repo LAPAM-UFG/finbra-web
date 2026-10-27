@@ -1,5 +1,5 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import { useApi, type Ente, type Meta, type Params } from './api';
 import { Dica } from './components/Dica';
 import { Estado } from './components/Kpi';
@@ -121,7 +121,9 @@ type Opcoes = { semAno?: boolean; semEnte?: string };
 
 export function BarraFiltros(opcoes: Opcoes = {}) {
   const f = useFiltros();
-  const alertas = useApi<Alerta[]>(f.alvo ? 'alertas' : null, { ente: f.alvo?.cod_ibge });
+  // as sinalizações são das declarações do SICONFI: não valem para a área de mercado de trabalho (RAIS e CAGED)
+  const financas = !useLocation().pathname.startsWith('/trabalho');
+  const alertas = useApi<Alerta[]>(f.alvo && financas ? 'alertas' : null, { ente: f.alvo?.cod_ibge });
   const doAno = (alertas.dados ?? []).filter((a) => a.exercicio === f.ano);
   return (
     <>

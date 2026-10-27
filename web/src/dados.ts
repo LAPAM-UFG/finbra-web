@@ -87,8 +87,10 @@ function iniciar() {
     URL.revokeObjectURL(urlWorker);
     // Só leituras parciais (Range). Nesta versão o DuckDB-WASM vem com forceFullHTTPReads ligado,
     // o que baixa cada arquivo inteiro (centenas de MB numa série histórica).
+    // castDecimalToDouble: sem ele, um DECIMAL (remunerações da RAIS) chega ao JavaScript sem a escala
+    // (R$ 4.160,00 vira 416000)
     await db.open({
-      query: { castBigIntToDouble: true },
+      query: { castBigIntToDouble: true, castDecimalToDouble: true },
       filesystem: { forceFullHTTPReads: false, reliableHeadRequests: true, allowFullHTTPReads: false },
     });
     const con = await db.connect();
@@ -96,6 +98,7 @@ function iniciar() {
       await db.registerFileBuffer(`${nome}.parquet`, dados);
       await con.query(`CREATE TABLE ${nome} AS SELECT * FROM read_parquet('${nome}.parquet')`);
     }
+    await carregarIndiceMicro();
     return { con, manifesto };
   })();
   pronto.catch(() => (pronto = null));
@@ -151,7 +154,7 @@ const normalizar = (v: unknown): Valor => (typeof v === 'bigint' ? Number(v) : (
 async function consultar(sql: string, params: Record<string, Valor> = {}): Promise<Linha[]> {
   const { con } = await iniciar();
   const args: Valor[] = [];
-  const texto = sql.replace(/\$([a-z_]+)/gi, (_, nome: string) => {
+  const texto = sql.replace(/\$([a-z_][a-z_0-9]*)/gi, (_, nome: string) => {
     if (!(nome in params)) throw new Error(`parâmetro ausente: ${nome}`);
     args.push(params[nome]);
     return '?';
@@ -702,6 +705,22 @@ export function tabelasTrabalho() {
   return trabalhoCarregado;
 }
 
+/**
+ * Dicionário dos códigos dos microdados (~100 KB), só para a consulta personalizada: fica à parte para as
+ * outras páginas de trabalho funcionarem onde ele não foi publicado.
+ */
+let dicionarioCarregado: Promise<void> | null = null;
+function dicionarioTrabalho() {
+  dicionarioCarregado ??= (async () => {
+    await tabelasTrabalho();
+    const { con } = await iniciar();
+    await db.registerFileBuffer('trab_dic.parquet', await baixar('gold/trabalho/dicionario.parquet'));
+    await con.query(`CREATE TABLE trab_dic AS SELECT * FROM read_parquet('trab_dic.parquet')`);
+  })();
+  dicionarioCarregado.catch(() => (dicionarioCarregado = null));
+  return dicionarioCarregado;
+}
+
 /** Escopo das páginas de trabalho: um município, uma UF (municípios dela) ou o Brasil. O DF é Brasília (5300108). */
 function escopoTrabalho(q: Params, p: Record<string, Valor>, a = 'm') {
   const ente = inteiro(q.ente);
@@ -819,6 +838,280 @@ const rotasTrabalho: Record<string, (q: Params) => Promise<unknown>> = {
   },
 };
 
+// ---------------- consulta personalizada (microdados da RAIS) ----------------
+
+/**
+ * Situação do vínculo no ano: 1 ativo em 31/12; 2 desligado no ano (motivo de desligamento informado);
+ * 3 outro (não ativo e sem desligamento). Afastado: primeira causa de afastamento válida (10 a 90).
+ */
+const SITUACAO = `CASE WHEN ativo_31_12 = 1 THEN 1 WHEN motivo_desligamento > 0 THEN 2 ELSE 3 END`;
+const AFASTADO = `causa_afastamento_1 BETWEEN 10 AND 90`;
+const FAIXA_IDADE = `CASE WHEN idade < 18 THEN '1' WHEN idade < 25 THEN '2' WHEN idade < 30 THEN '3' WHEN idade < 40 THEN '4'
+  WHEN idade < 50 THEN '5' WHEN idade < 65 THEN '6' WHEN idade IS NOT NULL THEN '7' END`;
+
+/**
+ * Fontes da consulta: os microdados (um arquivo por ano e UF, ~1–3 GB por ano), quando publicados (há
+ * silver/trabalho/micro/indice.json no R2 ou, no servidor local do Vite, na pasta finbra_micro), para UFs e
+ * municípios; senão, e para o Brasil, as tabelas pré-somadas do gold: cubo_uf (UF × classe CNAE × CBO) e
+ * cubo_mun (município × divisão CNAE × grande grupo CBO). VITE_MICRODADOS=0 força as tabelas.
+ */
+type FonteConsulta = 'micro' | 'cubo_uf' | 'cubo_mun';
+type IndiceMicro = { rais_vinculos?: Record<string, number[]> };
+const env = (import.meta as { env?: Record<string, string | boolean | undefined> }).env;
+let indiceMicro: IndiceMicro | null = null;
+async function carregarIndiceMicro() {
+  if (env?.VITE_MICRODADOS === '0' || lerLocal) return; // nos testes, quem decide é usarMicrodadosNoTeste
+  indiceMicro = await baixar('silver/trabalho/micro/indice.json')
+    .then((b) => JSON.parse(new TextDecoder().decode(b)) as IndiceMicro)
+    .catch(() => null);
+}
+const temMicro = () => microNoTeste ?? (!!indiceMicro && Object.keys(indiceMicro.rais_vinculos ?? {}).length > 0);
+let microNoTeste: boolean | null = null;
+/** Testes: liga ou desliga os microdados (por padrão, nos testes, a consulta usa as tabelas). */
+export function usarMicrodadosNoTeste(v: boolean) {
+  if (microNoTeste !== v) iaTrabalho = null; // as tabelas da IA são refeitas com a nova escolha
+  microNoTeste = v;
+}
+export function fonteConsulta(escopo: { ente?: unknown; uf?: unknown }): FonteConsulta {
+  if (temMicro() && (escopo.ente || escopo.uf)) return 'micro';
+  return escopo.ente ? 'cubo_mun' : 'cubo_uf';
+}
+
+/** Colunas de CNAE e CBO em cada fonte e o maior prefixo que cada uma aceita. */
+const COLUNAS_CONSULTA: Record<FonteConsulta, { cnae: string; maxCnae: number; cbo: string; maxCbo: number }> = {
+  micro: { cnae: 'coalesce(cnae_subclasse, cnae_classe)', maxCnae: 7, cbo: 'cbo', maxCbo: 6 },
+  cubo_uf: { cnae: 'cnae_classe', maxCnae: 5, cbo: 'cbo', maxCbo: 6 },
+  cubo_mun: { cnae: 'cnae_divisao', maxCnae: 2, cbo: 'cbo_grande_grupo', maxCbo: 1 },
+};
+export const LIMITES_CONSULTA = Object.fromEntries(
+  Object.entries(COLUNAS_CONSULTA).map(([k, v]) => [k, { cnae: v.maxCnae, cbo: v.maxCbo }]),
+) as Record<FonteConsulta, { cnae: number; cbo: number }>;
+
+/**
+ * Agrupamentos: expressão em cada fonte (ausente = a fonte não tem o recorte) e de onde vem o nome
+ * (variável do dicionário, divisão/seção da CNAE, UF ou município).
+ */
+type Grupo = { micro: string; cubo_uf?: string; cubo_mun?: string; nome?: string };
+const GRUPOS: Record<string, Grupo> = {
+  total: { micro: `'total'`, cubo_uf: `'total'`, cubo_mun: `'total'` },
+  uf: { micro: 'uf::VARCHAR', cubo_uf: 'uf::VARCHAR', nome: 'uf' },
+  municipio: { micro: 'municipio::VARCHAR', cubo_mun: 'municipio::VARCHAR', nome: 'municipio' },
+  cnae_secao: { micro: 'secao', cubo_uf: 'secao', cubo_mun: 'secao', nome: 'secao' },
+  cnae_divisao: { micro: 'cnae_classe[1:2]', cubo_uf: 'cnae_classe[1:2]', cubo_mun: 'cnae_divisao', nome: 'divisao' },
+  cnae_classe: { micro: 'cnae_classe', cubo_uf: 'cnae_classe', nome: 'cnae_classe' },
+  cnae_subclasse: { micro: 'cnae_subclasse', nome: 'cnae_subclasse' },
+  cbo_grande_grupo: { micro: 'cbo[1:1]', cubo_uf: 'cbo[1:1]', cubo_mun: 'cbo_grande_grupo', nome: 'cbo_grande_grupo' },
+  cbo_familia: { micro: 'cbo[1:4]', cubo_uf: 'cbo[1:4]' },
+  cbo: { micro: 'cbo', cubo_uf: 'cbo', nome: 'cbo' },
+  sexo: { micro: 'sexo::VARCHAR', cubo_uf: 'sexo::VARCHAR', cubo_mun: 'sexo::VARCHAR', nome: 'sexo' },
+  situacao: { micro: `(${SITUACAO})::VARCHAR`, cubo_uf: 'situacao::VARCHAR', cubo_mun: 'situacao::VARCHAR', nome: 'situacao' },
+  faixa_idade: { micro: FAIXA_IDADE, nome: 'faixa_idade' },
+  escolaridade: { micro: 'escolaridade::VARCHAR', nome: 'escolaridade' },
+  raca_cor: { micro: 'raca_cor::VARCHAR', nome: 'raca_cor' },
+  tipo_vinculo: { micro: 'tipo_vinculo::VARCHAR', nome: 'tipo_vinculo' },
+  natureza_juridica_grupo: { micro: '(natureza_juridica // 1000)::VARCHAR', nome: 'natureza_juridica_grupo' },
+  tamanho_estab: { micro: 'tamanho_estab::VARCHAR', nome: 'tamanho_estab' },
+  causa_afastamento: { micro: 'causa_afastamento_1::VARCHAR', nome: 'causa_afastamento' },
+  motivo_desligamento: { micro: 'motivo_desligamento::VARCHAR', nome: 'motivo_desligamento' },
+};
+export const gruposDaFonte = (fonte: FonteConsulta) => Object.keys(GRUPOS).filter((k) => GRUPOS[k][fonte]);
+
+const MEDIDAS_MICRO = `
+  count(*) AS vinculos,
+  count(*) FILTER (ativo_31_12 = 1) AS ativos,
+  count(*) FILTER (${SITUACAO} = 2) AS desligados,
+  count(*) FILTER (${AFASTADO}) AS afastados,
+  avg(dias_afastamento) FILTER (${AFASTADO}) AS dias_afastamento_medio,
+  count(*) FILTER (sexo = 2) AS mulheres,
+  count(*) FILTER (escolaridade >= 9) AS superior,
+  avg(rem_dezembro_nom) FILTER (ativo_31_12 = 1 AND rem_dezembro_nom > 0) AS rem_dez_media,
+  median(rem_dezembro_nom) FILTER (ativo_31_12 = 1 AND rem_dezembro_nom > 0) AS rem_dez_mediana,
+  count(*) FILTER (ativo_31_12 = 1 AND rem_dezembro_nom > 0) AS n_rem_dez,
+  avg(rem_media_nom) FILTER (rem_media_nom > 0) AS rem_media_media,
+  median(rem_media_nom) FILTER (rem_media_nom > 0) AS rem_media_mediana,
+  avg(horas_contratadas) FILTER (horas_contratadas > 0) AS horas_media,
+  avg(idade) AS idade_media`;
+
+// o cubo guarda somas e contagens: médias saem como soma ÷ contagem; medianas não são somáveis
+const MEDIDAS_CUBO = `
+  coalesce(sum(vinculos), 0)::DOUBLE AS vinculos,
+  coalesce(sum(vinculos) FILTER (situacao = 1), 0)::DOUBLE AS ativos,
+  coalesce(sum(vinculos) FILTER (situacao = 2), 0)::DOUBLE AS desligados,
+  coalesce(sum(vinculos) FILTER (afastado), 0)::DOUBLE AS afastados,
+  sum(dias_afastamento) FILTER (afastado) / nullif(sum(vinculos) FILTER (afastado), 0) AS dias_afastamento_medio,
+  coalesce(sum(vinculos) FILTER (sexo = 2), 0)::DOUBLE AS mulheres,
+  coalesce(sum(superior), 0)::DOUBLE AS superior,
+  sum(rem_dez_soma) / nullif(sum(rem_dez_n), 0) AS rem_dez_media,
+  NULL::DOUBLE AS rem_dez_mediana,
+  coalesce(sum(rem_dez_n), 0)::DOUBLE AS n_rem_dez,
+  sum(rem_media_soma) / nullif(sum(rem_media_n), 0) AS rem_media_media,
+  NULL::DOUBLE AS rem_media_mediana,
+  sum(horas_soma) / nullif(sum(horas_n), 0) AS horas_media,
+  sum(idade_soma) / nullif(sum(idade_n), 0) AS idade_media`;
+
+/** '4711, 56; 2124' → ['4711', '56', '2124']: só dígitos, até `max` por código e 60 códigos. */
+const prefixos = (v: unknown, max: number) =>
+  String(v ?? '').split(/[\s,;]+/).map((s) => s.replace(/\D/g, '')).filter((s) => s.length > 0 && s.length <= max).slice(0, 60);
+
+const rotasConsulta: Record<string, (q: Params) => Promise<unknown>> = {
+  /**
+   * Consulta personalizada da RAIS num ano, na fonte de fonteConsulta: microdados (quando publicados; um
+   * arquivo por ano e UF, lido por Range: as colunas usadas e, para um município, só o trecho dele) ou as
+   * tabelas pré-somadas (somas e contagens, sem medianas).
+   * Filtros: cnae e cbo (listas de prefixos), situacao (ativos, nao_ativos, desligados, afastados), sexo.
+   */
+  async trab_consulta(q) {
+    await dicionarioTrabalho();
+    const ano = inteiro(q.ano);
+    const ente = inteiro(q.ente);
+    const uf = UFS.has(String(q.uf)) ? String(q.uf) : null;
+    const fonte = fonteConsulta({ ente, uf });
+    const p: Record<string, Valor> = {};
+    const filtros: string[] = [];
+    let ufCod: number | null = null;
+    if (ente) {
+      const cod = ente === 53 ? 5300108 : ente;
+      ufCod = Math.floor(cod / 100000);
+      p.municipio = Math.floor(cod / 10); // a RAIS usa o código IBGE de 6 dígitos
+      filtros.push('municipio = $municipio::INTEGER');
+    } else if (uf) {
+      const [u] = await consultar(`SELECT cod_ibge FROM entes WHERE esfera IN ('E', 'D') AND uf = $uf`, { uf });
+      ufCod = Number(u?.cod_ibge);
+      if (fonte !== 'micro') {
+        p.uf_cod = ufCod;
+        filtros.push(fonte === 'cubo_uf' ? 'uf = $uf_cod::INTEGER' : 'municipio // 10000 = $uf_cod::INTEGER');
+      }
+    }
+    const origem = `read_parquet(${arq(fonte === 'micro'
+      ? `silver/trabalho/micro/rais_vinculos/ano=${ano}/uf=${ufCod}.parquet`
+      : `gold/trabalho/${fonte}/ano=${ano}.parquet`)})`;
+    const grupo = GRUPOS[String(q.agrupar)] ?? GRUPOS.total;
+    const expr = grupo[fonte];
+    if (!expr) throw new Error(t('Este agrupamento não está disponível para este recorte.', 'This grouping is not available for this scope.'));
+
+    const col = COLUNAS_CONSULTA[fonte];
+    const codigos = (v: unknown, max: number, nome: string) => {
+      const lista = prefixos(v, 7);
+      if (lista.some((c) => c.length > max)) {
+        throw new Error(t(`Neste recorte a ${nome} aceita códigos de até ${max} dígito(s).`, `For this scope ${nome} accepts codes of up to ${max} digit(s).`));
+      }
+      return lista;
+    };
+    const cnae = codigos(q.cnae, col.maxCnae, 'CNAE');
+    if (cnae.length) filtros.push(`(${cnae.map((c, i) => ((p[`c${i}`] = c), `starts_with(${col.cnae}, $c${i})`)).join(' OR ')})`);
+    const cbo = codigos(q.cbo, col.maxCbo, 'CBO');
+    if (cbo.length) filtros.push(`(${cbo.map((c, i) => ((p[`o${i}`] = c), `starts_with(${col.cbo}, $o${i})`)).join(' OR ')})`);
+    const sit = fonte === 'micro' ? SITUACAO : 'situacao';
+    const situacoes: Record<string, string> = {
+      ativos: `${sit} = 1`, nao_ativos: `${sit} <> 1`, desligados: `${sit} = 2`,
+      afastados: fonte === 'micro' ? AFASTADO : 'afastado',
+    };
+    if (situacoes[String(q.situacao)]) filtros.push(situacoes[String(q.situacao)]);
+    if (q.sexo === '1' || q.sexo === '2') filtros.push(`sexo = ${q.sexo}`);
+
+    // a seção vem da divisão da CNAE; só junta a tabela quando o agrupamento pede
+    const divisao = fonte === 'cubo_mun' ? 'v.cnae_divisao' : 'v.cnae_classe[1:2]';
+    const base = String(q.agrupar) === 'cnae_secao'
+      ? `(SELECT v.*, c.secao FROM ${origem} v LEFT JOIN trab_cnae c ON c.divisao = ${divisao})`
+      : origem;
+    const nome = ({
+      uf: `(SELECT e.uf FROM entes e WHERE e.esfera IN ('E', 'D') AND e.cod_ibge::VARCHAR = g.grupo)`,
+      municipio: `(SELECT e.nome FROM entes e WHERE e.esfera = 'M' AND (e.cod_ibge // 10)::VARCHAR = g.grupo)`,
+      secao: `(SELECT any_value(c.secao_nome) FROM trab_cnae c WHERE c.secao = g.grupo)`,
+      divisao: `(SELECT any_value(c.divisao_nome) FROM trab_cnae c WHERE c.divisao = g.grupo)`,
+    } as Record<string, string>)[grupo.nome ?? ''] ??
+      (grupo.nome ? `(SELECT d.descricao FROM trab_dic d WHERE d.variavel = '${grupo.nome}' AND d.codigo = g.grupo)` : 'NULL');
+    const linhas = await consultar(
+      `SELECT g.*, ${nome} AS nome
+       FROM (SELECT ${expr} AS grupo, ${fonte === 'micro' ? MEDIDAS_MICRO : MEDIDAS_CUBO}
+             FROM ${base} WHERE ${filtros.length ? filtros.join(' AND ') : 'true'} GROUP BY 1) g
+       ORDER BY g.vinculos DESC LIMIT 3000`,
+      p,
+    );
+    return { fonte, linhas };
+  },
+
+  /** Nomes de um código do dicionário (CBO, CNAE…) que contêm o texto, para a busca dos filtros. */
+  async trab_dicionario(q) {
+    await dicionarioTrabalho();
+    const texto = String(q.texto ?? '').trim();
+    if (texto.length < 2) return [];
+    return consultar(
+      `SELECT codigo, descricao FROM trab_dic
+       WHERE variavel = $variavel AND (strip_accents(lower(descricao)) LIKE '%' || strip_accents(lower($texto)) || '%' OR codigo LIKE $texto || '%')
+       ORDER BY length(codigo), codigo LIMIT 30`,
+      { variavel: String(q.variavel), texto },
+    );
+  },
+};
+
+/** Manifesto como veio do servidor (para o Worker local da IA, que não tem o do R2). */
+export async function manifestoDados() {
+  return (await iniciar()).manifesto;
+}
+
+// ---------------- tabelas da IA do mercado de trabalho ----------------
+
+/** O que a IA do mercado de trabalho tem nesta sessão (vai no pedido ao Worker, que monta as instruções). */
+export type ContextoTrabalho = {
+  rais_anos: number[]; micro_anos: number[]; caged_de: number | null; caged_ate: number | null;
+  base_ipca: number; microdados: boolean;
+};
+
+/**
+ * Prepara as tabelas que a IA do mercado de trabalho consulta: as pequenas em memória (tabelasTrabalho e o
+ * dicionário) e visões sobre arquivos lidos por Range (setores e CAGED por município, tabelas somadas por
+ * ano e, no computador local, os microdados por ano e UF, com a lista do indice.json). Devolve o contexto.
+ */
+let iaTrabalho: Promise<ContextoTrabalho> | null = null;
+export function tabelasIaTrabalho() {
+  iaTrabalho ??= (async () => {
+    const { con, manifesto } = await iniciar();
+    // o que faltar (ex.: dicionário não publicado na web) só deixa a tabela de fora, sem derrubar a conversa
+    await tabelasTrabalho().catch(() => undefined);
+    await dicionarioTrabalho().catch(() => undefined);
+    const f = (manifesto.fontes ?? {}) as Record<string, Record<string, unknown>>;
+    const lista = (caminhos: string[]) => `[${caminhos.map((c) => arq(c)).join(', ')}]`;
+    await con.query(`CREATE OR REPLACE VIEW trab_setores AS SELECT * FROM read_parquet(${arq('gold/trabalho/setores.parquet')})`);
+    await con.query(`CREATE OR REPLACE VIEW trab_caged AS SELECT * FROM read_parquet(${arq('gold/trabalho/caged.parquet')})`);
+    const microAnos = ((f.rais_micro?.anos as number[] | undefined) ?? []).filter(Number.isInteger);
+    // nas tabelas da RAIS a UF é o código IBGE (52); uf_sigla ('GO') evita juntar com entes.uf, que é a sigla
+    const ufs = await consultar(`SELECT cod_ibge, uf FROM entes WHERE esfera IN ('E', 'D') AND cod_ibge BETWEEN 11 AND 53`);
+    const sigla = (col: string) => (ufs.length
+      ? `CASE ${col} ${ufs.map((u) => `WHEN ${Number(u.cod_ibge)} THEN '${String(u.uf).replace(/[^A-Z]/g, '')}'`).join(' ')} END`
+      : 'NULL::VARCHAR');
+    if (microAnos.length) {
+      const cubo = (pasta: string) => `read_parquet(${lista(microAnos.map((a) => `gold/trabalho/${pasta}/ano=${a}.parquet`))})`;
+      await con.query(`CREATE OR REPLACE VIEW rais_uf AS SELECT *, ${sigla('uf')} AS uf_sigla FROM ${cubo('cubo_uf')}`);
+      // uf (2 dígitos) a partir do município, para filtrar uma UF nesta tabela como nas outras
+      await con.query(`CREATE OR REPLACE VIEW rais_mun AS SELECT *, (municipio // 10000)::INTEGER AS uf, ${sigla('municipio // 10000')} AS uf_sigla FROM ${cubo('cubo_mun')}`);
+    }
+    let microdados = false;
+    if (temMicro()) {
+      try {
+        const indice = indiceMicro ?? JSON.parse(new TextDecoder().decode(await baixar('silver/trabalho/micro/indice.json'))) as IndiceMicro;
+        const arquivos = Object.entries(indice.rais_vinculos ?? {}).flatMap(([ano, ufs]) =>
+          ufs.filter(Number.isInteger).map((uf) => `silver/trabalho/micro/rais_vinculos/ano=${Number(ano)}/uf=${uf}.parquet`));
+        if (arquivos.length) {
+          // hive_partitioning: o filtro por ano e uf descarta arquivos pelo caminho, sem abri-los
+          await con.query(`CREATE OR REPLACE VIEW rais_vinculos AS SELECT *, ${sigla('uf')} AS uf_sigla FROM read_parquet(${lista(arquivos)}, hive_partitioning = true)`);
+          microdados = true;
+        }
+      } catch {
+        /* sem microdados publicados: a IA usa as tabelas somadas */
+      }
+    }
+    const rais = f.rais as { anos?: number[] } | undefined;
+    const caged = f.caged as { de?: number; ate?: number } | undefined;
+    return {
+      rais_anos: rais?.anos ?? [], micro_anos: microAnos, caged_de: caged?.de ?? null, caged_ate: caged?.ate ?? null,
+      base_ipca: manifesto.base_ipca, microdados,
+    };
+  })();
+  iaTrabalho.catch(() => (iaTrabalho = null));
+  return iaTrabalho;
+}
+
 /**
  * Consulta da IA (página /ia), já conferida por validarSql: roda sobre as tabelas em memória e traz
  * no máximo `limite` linhas, mais o total. As colunas saem na ordem do SELECT.
@@ -827,7 +1120,8 @@ export async function consultaLivre(sql: string, limite: number) {
   const { con } = await iniciar();
   const base = sql.trim().replace(/;\s*$/, '');
   const r = await con.query(`SELECT * FROM (${base}) AS consulta LIMIT ${limite}`);
-  const [n] = await consultar(`SELECT count(*) AS n FROM (${base}) AS consulta`);
+  // a contagem roda a consulta de novo (pesado nos microdados): só quando o resultado passou do limite
+  const [n] = r.numRows < limite ? [{ n: r.numRows }] : await consultar(`SELECT count(*) AS n FROM (${base}) AS consulta`);
   const colunas = r.schema.fields.map((f) => f.name);
   // DECIMAL, datas e listas chegam como objetos do Arrow: viram número ou texto
   const celula = (v: unknown): Valor => {
@@ -847,7 +1141,7 @@ export async function consultaLivre(sql: string, limite: number) {
 }
 
 export async function executar(caminho: string, params: Params): Promise<unknown> {
-  const rota = rotas[caminho] ?? rotasLrf[caminho] ?? rotasTrabalho[caminho];
+  const rota = rotas[caminho] ?? rotasLrf[caminho] ?? rotasTrabalho[caminho] ?? rotasConsulta[caminho];
   if (!rota) throw new Error(`rota desconhecida: ${caminho}`);
   return rota(params);
 }

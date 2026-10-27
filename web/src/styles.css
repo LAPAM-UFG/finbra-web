@@ -236,7 +236,12 @@ figure.grafico { margin: 0; }
 .ia-consulta summary { cursor: pointer; font-size: 12px; color: var(--tinta-3); margin: 4px 0; }
 .ia-sql { font-size: 12px; white-space: pre-wrap; word-break: break-word; background: var(--superficie); border-radius: 6px; padding: 8px 10px; margin: 4px 0 8px; }
 .ia-consulta .rolagem { max-height: 420px; }
-td.ia-txt { text-align: left; white-space: normal; }
+/* tabelas da IA: tudo centralizado (cabeçalho alinhado com os valores), menos textos longos */
+.ia-tabela th, .ia-tabela td, .ia-tabela th:first-child, .ia-tabela td:first-child { text-align: center; padding: 6px 14px; }
+.ia-tabela th { text-transform: none; letter-spacing: 0; font-size: 12px; white-space: normal; vertical-align: bottom; min-width: 70px; }
+.ia-tabela th.ia-txt, .ia-tabela td.ia-txt { text-align: left; white-space: normal; min-width: 180px; }
+.ia-tabela tbody tr:nth-child(even) { background: color-mix(in srgb, var(--superficie) 55%, transparent); }
+.ia-tabela tbody tr:hover { background: var(--superficie); }
 .ia-exemplos { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
 .ia-exemplos .botao-leve { text-align: left; font-size: 13px; padding: 6px 10px; }
 .ia-form { display: flex; flex-direction: column; gap: 6px; position: sticky; bottom: 0; background: var(--pagina); padding: 10px 0; }
@@ -252,3 +257,15 @@ td.ia-txt { text-align: left; white-space: normal; }
 .areas a:hover { color: #fff; border-color: rgba(255, 255, 255, 0.35); }
 .areas a.ativo { color: #fff; background: rgba(255, 255, 255, 0.16); font-weight: 600; }
 @media (max-width: 760px) { .areas { margin-left: 0; } .areas a { padding: 3px 6px; font-size: 12px; } }
+/* consulta personalizada: códigos CNAE/CBO com busca pelo nome */
+.campo-codigos { width: 260px; max-width: 100%; }
+.campo-codigos input + input { margin-top: 4px; }
+.sugestoes { list-style: none; margin: 4px 0 0; padding: 4px; max-height: 220px; overflow: auto; border: 1px solid var(--borda); border-radius: 6px; background: var(--superficie); font-size: 12px; }
+.sugestoes li button { text-align: left; width: 100%; padding: 3px 4px; }
+.sugestoes code { color: var(--tinta-3); margin-right: 4px; }
+
+/* aba geral da IA: painéis que entram na conversa */
+.ia-paineis { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; border: 1px solid var(--borda); border-radius: 6px; padding: 8px 12px; margin: 0 0 12px; }
+.ia-paineis legend { font-size: 11px; color: var(--tinta-3); text-transform: uppercase; letter-spacing: 0.05em; padding: 0 4px; }
+.ia-paineis label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+.ia-paineis .nota { font-size: 12px; color: var(--tinta-3); }

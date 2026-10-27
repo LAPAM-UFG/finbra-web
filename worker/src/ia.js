@@ -7,7 +7,11 @@
  *
  *   GET  /api/ia/estado   e-mail e perguntas restantes no dia
  *   GET  /api/ia/entrar   passa pelo login do Access e volta para /ia
- *   POST /api/ia          { idioma, mensagens } -> { conteudo, parada, restantes }
+ *   POST /api/ia          { idioma, mensagens, paineis?, contexto?, manifesto? } -> { conteudo, parada, restantes }
+ *
+ * Uma IA para todos os painéis (aba "Pergunte aos dados"): paineis diz quais entram na conversa
+ * (['financas', 'trabalho']; vazio = todos) e as instruções juntam a seção de cada um (sistema_geral.js).
+ * contexto: anos e microdados do mercado de trabalho, informados pelo navegador.
  *
  * Limites por pessoa e dia (horário de Brasília): 50 perguntas e 400 chamadas ao modelo (cada pergunta
  * pode levar algumas rodadas de consulta). A contagem fica no R2, em ia/uso/, fora de /dados/.
@@ -15,15 +19,17 @@
  */
 import Anthropic from '@anthropic-ai/sdk';
 import { identificar } from './acesso.js';
-import { SISTEMA, contextoDosDados } from './sistema.js';
+import { instrucoes, paineisDoPedido } from './sistema_geral.js';
 
-// Haiku: o mais barato (cerca de 1/20 do Sonnet). Para mais qualidade, 'claude-sonnet-5-5' ou 'claude-opus-5-5';
-// nesses dois, vale voltar a pedir o modelo reserva (betas ['server-side-fallback-2026-07-01'], fallbacks: 'default'),
-// que o Haiku não tem
-const MODELO = 'claude-haiku-5-5';
+// Modelo: IA_MODELO (variável do Worker ou worker/.dev.vars), entre os da lista; padrão Haiku, o mais barato
+// (cerca de 1/20 do Sonnet). O Sonnet segue melhor as regras dos painéis (ex.: descartar "exceto …" na busca de
+// códigos). Com Sonnet ou Opus dá para pedir o modelo reserva (betas ['server-side-fallback-2026-07-01'],
+// fallbacks: 'default'), que o Haiku não tem
+const MODELOS = ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5'];
+const modeloDe = (env) => (MODELOS.includes(env.IA_MODELO?.trim()) ? env.IA_MODELO.trim() : MODELOS[0]);
 const LIMITE_PERGUNTAS = 50;
 const LIMITE_CHAMADAS = 400;
-const MAX_RODADAS = 8; // chamadas ao modelo por pergunta
+const MAX_RODADAS = 12; // chamadas ao modelo por pergunta
 const MAX_PERGUNTAS_CONVERSA = 15;
 const MAX_CORPO = 600_000; // bytes
 const MAX_PERGUNTA = 2000; // caracteres
@@ -114,7 +120,7 @@ export async function rotaIa(request, env, url) {
   if (url.pathname === '/api/ia/entrar') return Response.redirect(new URL('/ia', url).href, 302);
   if (url.pathname === '/api/ia/estado' && request.method === 'GET') {
     const uso = await lerUso(env, chave);
-    return resposta({ email, restantes: Math.max(0, LIMITE_PERGUNTAS - uso.perguntas), limite: LIMITE_PERGUNTAS, configurada: !!env.ANTHROPIC_API_KEY });
+    return resposta({ email, restantes: Math.max(0, LIMITE_PERGUNTAS - uso.perguntas), limite: LIMITE_PERGUNTAS, configurada: !!env.ANTHROPIC_API_KEY, modelo: modeloDe(env) });
   }
   if (url.pathname !== '/api/ia') return erro('não encontrado', 404);
   if (request.method !== 'POST') return erro('método não permitido', 405);
@@ -139,8 +145,10 @@ export async function rotaIa(request, env, url) {
 
   // trim: a chave colada no painel da Cloudflare às vezes vem com espaço ou quebra de linha
   const segredo = env.ANTHROPIC_API_KEY.trim().replace(/^["']|["']$/g, '');
+  const paineis = paineisDoPedido(corpo.paineis);
+  const local = url.hostname === 'localhost';
   const pedido = {
-    model: MODELO,
+    model: modeloDe(env),
     max_tokens: 16000,
     thinking: { type: 'adaptive' },
     // 'high': indicado no Haiku para seguir instruções à risca (as regras do painel); ainda custa pouco
@@ -148,8 +156,12 @@ export async function rotaIa(request, env, url) {
     // instruções fixas com marcador próprio; o restante da conversa entra no cache automático
     cache_control: { type: 'ephemeral' },
     system: [
-      { type: 'text', text: SISTEMA, cache_control: { type: 'ephemeral' } },
-      { type: 'text', text: contextoDosDados(await lerManifesto(env)) },
+      ...instrucoes(paineis, {
+        // no desenvolvimento local (wrangler dev) o R2 simulado não tem o manifesto: vale o do navegador
+        manifesto: (await lerManifesto(env)) ?? (local && corpo.manifesto && typeof corpo.manifesto === 'object' ? corpo.manifesto : null),
+        // anos e microdados do mercado de trabalho vêm do navegador: podem existir só no computador local
+        contextoTrabalho: corpo.contexto,
+      }),
       { type: 'text', text: IDIOMA[corpo.idioma === 'en' ? 'en' : 'pt'] },
     ],
     tools: FERRAMENTAS,
@@ -176,7 +188,7 @@ export async function rotaIa(request, env, url) {
 
   const atualizado = { perguntas: uso.perguntas + (nova ? 1 : 0), chamadas: uso.chamadas + 1 };
   await env.DADOS.put(chave, JSON.stringify(atualizado), { httpMetadata: { contentType: 'application/json' } });
-  console.log(JSON.stringify({ ia: { parada: msg.stop_reason, modelo: msg.model, uso: msg.usage } }));
+  console.log(JSON.stringify({ ia: { paineis, parada: msg.stop_reason, modelo: msg.model, uso: msg.usage } }));
 
   return resposta({
     conteudo: msg.content,

@@ -9,7 +9,9 @@ Uso:
     py pipeline/r2.py enviar --camadas gold
     py pipeline/r2.py enviar --camadas gold --limpar   # também apaga do bucket o que não existe mais localmente
     py pipeline/r2.py enviar --ignorar 'silver/lrf/*' gold/lrf.parquet   # sem os arquivos ainda incompletos
-    py pipeline/r2.py baixar --camadas silver gold   # monta o data/ local a partir do R2
+    py pipeline/r2.py enviar --raiz D:/LVBERNARDELLI/finbra_micro --camadas silver   # microdados (fora do Dropbox)
+    py pipeline/r2.py baixar --camadas silver gold   # monta o data/ local a partir do R2 (sem os microdados)
+    py pipeline/r2.py baixar --camadas silver --com-micro --raiz D:/LVBERNARDELLI/finbra_micro
 """
 import argparse
 import hashlib
@@ -74,14 +76,14 @@ def remotos(s3, bucket, prefixo):
     return out
 
 
-def enviar(s3, bucket, camadas, limpar=False, ignorar=()):
-    locais = [p for c in camadas for p in sorted((DATA / c).rglob("*")) if p.is_file() and p.suffix in (".parquet", ".csv", ".json")]
+def enviar(s3, bucket, camadas, limpar=False, ignorar=(), raiz=DATA):
+    locais = [p for c in camadas for p in sorted((raiz / c).rglob("*")) if p.is_file() and p.suffix in (".parquet", ".csv", ".json")]
     # caminhos que não sobem (ex.: dados ainda incompletos): padrões como silver/lrf/* ou gold/lrf.parquet
-    locais = [p for p in locais if not any(fnmatch(p.relative_to(DATA).as_posix(), g) for g in ignorar)]
+    locais = [p for p in locais if not any(fnmatch(p.relative_to(raiz).as_posix(), g) for g in ignorar)]
     existentes = {k: v for c in camadas for k, v in remotos(s3, bucket, f"{c}/").items()}
 
     def um(caminho):
-        chave = caminho.relative_to(DATA).as_posix()
+        chave = caminho.relative_to(raiz).as_posix()
         soma = md5(caminho)
         if chave in existentes and existentes[chave]["Size"] == caminho.stat().st_size:
             meta = s3.head_object(Bucket=bucket, Key=chave).get("Metadata", {})
@@ -90,15 +92,17 @@ def enviar(s3, bucket, camadas, limpar=False, ignorar=()):
         s3.upload_file(str(caminho), bucket, chave, Config=TRANSFERENCIA, ExtraArgs={"Metadata": {"md5": soma}})
         return "enviado", chave, caminho.stat().st_size
 
+    # os .json (manifesto, índice dos microdados) apontam para os outros arquivos: sobem depois deles
     with ThreadPoolExecutor(max_workers=6) as pool:
-        resultados = list(pool.map(um, locais))
+        resultados = list(pool.map(um, [p for p in locais if p.suffix != ".json"]))
+        resultados += list(pool.map(um, [p for p in locais if p.suffix == ".json"]))
     enviados = [r for r in resultados if r[0] == "enviado"]
     for _, chave, tamanho in enviados:
         print(f"  enviado  {chave}  ({tamanho / 1e6:.1f} MB)")
     print(f"{len(enviados)} enviados, {len(resultados) - len(enviados)} já estavam iguais "
           f"({sum(r[2] for r in enviados) / 1e6:.1f} MB transferidos)")
     if limpar:
-        locais_chaves = {c.relative_to(DATA).as_posix() for c in locais}
+        locais_chaves = {c.relative_to(raiz).as_posix() for c in locais}
         sobrando = [k for k in existentes if k not in locais_chaves]
         for i in range(0, len(sobrando), 1000):
             s3.delete_objects(Bucket=bucket, Delete={"Objects": [{"Key": k} for k in sobrando[i:i + 1000]]})
@@ -107,12 +111,16 @@ def enviar(s3, bucket, camadas, limpar=False, ignorar=()):
         print(f"{len(sobrando)} arquivos removidos do bucket")
 
 
-def baixar(s3, bucket, camadas):
-    objetos = {k: v for c in camadas for k, v in remotos(s3, bucket, f"{c}/").items()}
+MICRO = "silver/trabalho/micro/"  # microdados da RAIS e do CAGED (~33 GB): só descem com --com-micro
+
+
+def baixar(s3, bucket, camadas, com_micro=False, raiz=DATA):
+    objetos = {k: v for c in camadas for k, v in remotos(s3, bucket, f"{c}/").items()
+               if com_micro or not k.startswith(MICRO)}
 
     def um(item):
         chave, obj = item
-        destino = DATA / chave
+        destino = raiz / chave
         if destino.exists() and destino.stat().st_size == obj["Size"]:
             return 0
         destino.parent.mkdir(parents=True, exist_ok=True)
@@ -145,16 +153,22 @@ def main():
     p.add_argument("--limpar", action="store_true",
                    help="com enviar: apaga do bucket os arquivos dessas camadas que não existem localmente")
     p.add_argument("--ignorar", nargs="+", default=[], help="com enviar: padrões de caminho que não sobem (ex.: 'silver/lrf/*')")
+    p.add_argument("--raiz", type=Path, default=DATA,
+                   help="pasta com as camadas (ex.: D:/LVBERNARDELLI/finbra_micro para os microdados)")
+    p.add_argument("--com-micro", action="store_true",
+                   help=f"com baixar: inclui os microdados ({MICRO}, ~33 GB); use com --raiz fora do Dropbox")
     args = p.parse_args()
     if args.limpar and args.ignorar:
         sys.exit("--limpar com --ignorar apagaria do bucket os arquivos ignorados; use um ou outro")
+    if args.limpar and args.raiz != DATA:
+        sys.exit("--limpar com --raiz apagaria do bucket os arquivos da data/ que não estão nessa pasta")
     s3, bucket = cliente()
     if args.acao == "testar":
         testar(s3, bucket)
     elif args.acao == "enviar":
-        enviar(s3, bucket, args.camadas, args.limpar, args.ignorar)
+        enviar(s3, bucket, args.camadas, args.limpar, args.ignorar, args.raiz)
     else:
-        baixar(s3, bucket, args.camadas)
+        baixar(s3, bucket, args.camadas, args.com_micro, args.raiz)
 
 
 if __name__ == "__main__":

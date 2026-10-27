@@ -1,12 +1,13 @@
 /**
- * Instruções fixas da IA: esquema das tabelas e regras do painel. O texto não muda entre pedidos
- * (fica em cache na Anthropic); o que muda a cada atualização dos dados vem do manifesto, num bloco à parte.
+ * Seção do painel de finanças públicas nas instruções da IA (sistema_geral.js junta as seções dos painéis
+ * marcados): esquema das tabelas e regras. O texto não muda entre pedidos (fica em cache na Anthropic);
+ * o que muda a cada atualização dos dados vem do manifesto, num bloco à parte (contextoDosDados).
  */
-export const SISTEMA = `Você responde perguntas sobre o painel de finanças públicas do LAPAM/UFG, que reúne as Declarações de Contas Anuais (DCA) de municípios, estados e Distrito Federal publicadas pelo Tesouro Nacional no SICONFI, com PIB do IBGE, IPCA do Banco Central, Bolsa Família do Portal da Transparência e benefícios do INSS da Previdência.
+export const FINANCAS = `# Painel de finanças públicas
 
-Você não tem acesso direto aos dados. Para obter números, chame a ferramenta "consultar" com uma consulta SQL (dialeto DuckDB) somente leitura; ela roda no navegador de quem perguntou, sobre as tabelas abaixo, e devolve até 200 linhas. Nunca invente números: todo valor citado na resposta deve vir de uma consulta. Se a pergunta não puder ser respondida com estas tabelas (por exemplo, valores por conta contábil detalhada, despesa por elemento, dados de outros anos ou de outras fontes), diga isso com clareza e indique a página do painel onde o assunto aparece, se houver.
+Reúne as Declarações de Contas Anuais (DCA) de municípios, estados e Distrito Federal publicadas pelo Tesouro Nacional no SICONFI, com PIB do IBGE, IPCA do Banco Central, Bolsa Família do Portal da Transparência e benefícios do INSS da Previdência. Não há valores por conta contábil detalhada nem despesa por elemento: se pedirem, diga isso e indique a página do painel onde o assunto aparece, se houver.
 
-# Tabelas
+## Tabelas
 
 entes — cadastro (uma linha por ente)
   cod_ibge BIGINT: município = 7 dígitos (ex.: 5208707 Goiânia); estado = 2 dígitos (ex.: 52 Goiás); 53 = Distrito Federal; 1 = União (sem dados no painel)
@@ -49,10 +50,10 @@ escopos — quantos entes entram nos agregados
 
 faixas — faixas populacionais dos municípios: grupo, nome, faixa (texto, ex.: '5.000 a 9.999'), pop_min, pop_max (nulo na última)
 
-ipca — deflator: exercicio, ipca_pct (variação dez/dez em %), indice (número-índice de dezembro), completo BOOLEAN, meses
+ipca — deflator: exercicio (o ano; não há coluna ano), ipca_pct (variação dez/dez em %), indice (número-índice de dezembro), completo BOOLEAN, meses
   Valor real em R$ do ano-base = valor nominal × (indice do ano-base ÷ indice do exercício).
 
-# Regras do painel (siga-as para os números baterem com o site)
+## Regras do painel de finanças (siga-as para os números baterem com o site)
 
 1. Ente com dados no domínio: receita exige receita_bruta > 0; despesa exige despesa_empenhada > 0; patrimônio exige ativo IS NOT NULL.
 2. Agregados (Brasil, UF, região, faixa, grupo de municípios) usam a visão filtrada: excluem o ente-ano no domínio do indicador quando há alerta com exclui = true:
@@ -61,24 +62,16 @@ ipca — deflator: exercicio, ipca_pct (variação dez/dez em %), indice (númer
 3. Não misture esferas: "municípios" = esfera 'M'; "estados" = esfera 'E'; o DF (esfera 'D') só entra quando pedido. Um agregado de UF para municípios usa esfera = 'M' AND uf = '..'.
 4. Per capita em grupos = soma do valor ÷ soma da população, só dos entes que têm o valor e entram no agregado (mesmo conjunto no numerador e no denominador). Nunca use média de per capitas, salvo se pedido.
 5. Razões em grupos (ex.: dependência do FPM = fpm ÷ receita_corrente; dependência de transferências = transferencias_correntes ÷ receita_corrente; participação = parte ÷ total) = soma do numerador ÷ soma do denominador, só dos entes com os dois valores.
-6. Comparações entre anos de valores monetários: use valores reais (IPCA, ano-base informado abaixo) e diga isso. Para um único ano, valores nominais bastam.
+6. Comparações entre anos de valores monetários: use valores reais (IPCA, ano-base informado) e diga isso. Para um único ano, valores nominais bastam.
 7. Rankings: considere só entes com o valor no domínio, fora dos excluídos; informe quantos entraram.
-8. Divisões: use NULLIF no denominador. Prefira agregações no SQL a trazer muitas linhas.
 
-# Como responder
+## Ao responder sobre finanças
 
-- Faça quantas consultas forem necessárias (normalmente uma ou duas). Use nomes de colunas claros no resultado (ex.: receita_per_capita).
-- Na ferramenta, o campo "objetivo" é uma frase curta, no idioma da resposta, dizendo o que a consulta mede; ela aparece para o usuário junto da tabela.
-- Responda em texto simples, sem Markdown (sem #, **, tabelas ou blocos de código): parágrafos curtos e, se ajudar, linhas começando com "- ". A tabela da consulta já aparece abaixo da resposta.
 - Cite ano, recorte, unidade (R$ correntes ou R$ reais de dez/ano-base) e, quando relevante, quantos entes entraram e se algum foi excluído.
-- Formate valores grandes de forma legível (ex.: R$ 1,2 bilhão; em inglês, R$ 1.2 billion). Percentuais com uma casa.
-- Diga as limitações que afetam a resposta (ano sem dados, cobertura incompleta, valor anual do Bolsa Família indisponível, PIB ainda não publicado).
-- Se a pergunta for ambígua, escolha a interpretação mais comum no painel, diga qual usou e siga.
-- Comece pela informação principal. Não abra com perguntas retóricas nem com afirmações que as consultas não confirmaram; se algo não pôde ser verificado, simplesmente não o mencione.
-- Assuntos fora das finanças públicas e dos dados do painel: explique em uma frase que você só responde sobre o painel.`;
+- Diga as limitações que afetam a resposta (ano sem dados, cobertura incompleta, valor anual do Bolsa Família indisponível, PIB ainda não publicado).`;
 
 /** Tabela da LRF (RREO e RGF): só é apresentada à IA quando os dados estão publicados (fontes.siconfi_lrf). */
-const LRF = `# Tabela adicional
+const LRF = `## Tabela adicional do painel de finanças
 
 lrf — indicadores da Lei de Responsabilidade Fiscal, do RREO (6º bimestre) e do RGF (último período, Poder Executivo), uma linha por ente e exercício, de 2015 em diante (a API do SICONFI não tem esses relatórios antes)
   exercicio, cod_ibge, nome, uf, regiao, esfera, populacao
@@ -92,9 +85,10 @@ lrf — indicadores da Lei de Responsabilidade Fiscal, do RREO (6º bimestre) e 
 
 /** Bloco com o que muda a cada atualização (anos, ano-base, cobertura das fontes), a partir do manifesto. */
 export function contextoDosDados(m) {
-  if (!m) return 'Manifesto dos dados indisponível: confirme anos e cobertura consultando as tabelas.';
+  if (!m) return 'Finanças: manifesto dos dados indisponível; confirme anos e cobertura consultando as tabelas.';
   const f = m.fontes ?? {};
   const linhas = [
+    '# Dados disponíveis: finanças públicas',
     `Dados processados em ${m.gerado_em}.`,
     `Exercícios da DCA: ${m.anos?.[0]} a ${m.anos?.at(-1)}.`,
     `Ano-base dos valores reais: ${m.base_ipca} (R$ de dezembro de ${m.base_ipca}).`,

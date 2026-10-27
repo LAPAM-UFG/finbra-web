@@ -12,6 +12,8 @@ import { Rankings } from './pages/Rankings';
 import { ReceitasEvolucao, ReceitasVisaoGeral } from './pages/Receitas';
 import { Socioeconomico } from './pages/Socioeconomico';
 import { TrabalhoCaged, TrabalhoEvolucao, TrabalhoRankings, TrabalhoVisaoGeral } from './pages/Trabalho';
+import { TrabalhoConsulta } from './pages/TrabalhoConsulta';
+import { TrabalhoMetodologia } from './pages/TrabalhoMetodologia';
 
 const menu = (): [string, [string, string][]][] => [
   [t('Receitas', 'Revenue'), [['/receitas', t('Visão geral', 'Overview')], ['/receitas/evolucao', t('Evolução', 'Trends')]]],
@@ -22,17 +24,24 @@ const menu = (): [string, [string, string][]][] => [
     ['/demonstrativos', t('Demonstrativos (7 anexos)', 'Financial statements (7 annexes)')],
     ['/socioeconomico', t('Socioeconômico', 'Socioeconomic')],
     ['/rankings', 'Rankings'],
-    ['/ia', t('Pergunte aos dados (IA)', 'Ask the data (AI)')],
   ]],
   [t('Metodologia', 'Methodology'), [['/deflatores', t('Deflatores', 'Deflators')], ['/qualidade', t('Qualidade e fontes', 'Quality and sources')]]],
 ];
 
 /** Área de mercado de trabalho (RAIS e Novo CAGED), em /trabalho. */
 const menuTrabalho = (): [string, [string, string][]][] => [
-  ['RAIS', [['/trabalho', t('Visão geral', 'Overview')], ['/trabalho/evolucao', t('Evolução', 'Trends')], ['/trabalho/rankings', 'Rankings']]],
+  ['RAIS', [['/trabalho', t('Visão geral', 'Overview')], ['/trabalho/evolucao', t('Evolução', 'Trends')], ['/trabalho/rankings', 'Rankings'], ['/trabalho/consulta', t('Consulta personalizada', 'Custom query')]]],
   ['CAGED', [['/trabalho/caged', t('Empregos mês a mês', 'Jobs month by month')]]],
-  [t('Metodologia', 'Methodology'), [['/deflatores', t('Deflatores', 'Deflators')], ['/qualidade', t('Qualidade e fontes', 'Quality and sources')]]],
+  [t('Metodologia', 'Methodology'), [['/trabalho/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
 ];
+
+/** Aba geral da IA (/ia), que consulta os painéis marcados na página. */
+const menuIa = (): [string, [string, string][]][] => [
+  [t('Inteligência artificial', 'Artificial intelligence'), [['/ia', t('Pergunte aos dados', 'Ask the data')]]],
+];
+
+type Area = 'financas' | 'trabalho' | 'ia';
+const areaDe = (pathname: string): Area => (pathname === '/ia' ? 'ia' : pathname.startsWith('/trabalho') ? 'trabalho' : 'financas');
 
 function lerTema(): string | null {
   try {
@@ -84,7 +93,7 @@ function AlternarIdioma() {
 export function App() {
   const idioma = useIdioma();
   const { search, pathname } = useLocation();
-  const trabalho = pathname.startsWith('/trabalho');
+  const area = areaDe(pathname);
   // só os filtros globais acompanham a navegação; as escolhas de cada página (anexo, indicador do ranking…) ficam nela
   const atuais = new URLSearchParams(search);
   const filtros = new URLSearchParams();
@@ -96,10 +105,15 @@ export function App() {
       <a className="pular" href="#conteudo">{t('Pular para o conteúdo', 'Skip to content')}</a>
       <header className="topo">
         <img className="logo" src="/logo_lapam.png" alt="LAPAM" />
-        <h1>{trabalho ? t('Mercado de trabalho · RAIS e CAGED', 'Labour market · RAIS and CAGED') : `${t('Finanças municipais', 'Municipal finances')} · SICONFI`}</h1>
+        <h1>{{
+          financas: `${t('Finanças municipais', 'Municipal finances')} · SICONFI`,
+          trabalho: t('Mercado de trabalho · RAIS e CAGED', 'Labour market · RAIS and CAGED'),
+          ia: t('Pergunte aos dados · LAPAM/UFG', 'Ask the data · LAPAM/UFG'),
+        }[area]}</h1>
         <nav className="areas" aria-label={t('Áreas', 'Areas')}>
-          <NavLink to={{ pathname: '/receitas', search: busca }} className={trabalho ? '' : 'ativo'}>{t('Finanças públicas', 'Public finances')}</NavLink>
-          <NavLink to={{ pathname: '/trabalho', search: busca }} className={trabalho ? 'ativo' : ''}>{t('Mercado de trabalho', 'Labour market')}</NavLink>
+          <NavLink to={{ pathname: '/receitas', search: busca }} className={area === 'financas' ? 'ativo' : ''}>{t('Finanças públicas', 'Public finances')}</NavLink>
+          <NavLink to={{ pathname: '/trabalho', search: busca }} className={area === 'trabalho' ? 'ativo' : ''}>{t('Mercado de trabalho', 'Labour market')}</NavLink>
+          <NavLink to={{ pathname: '/ia', search: busca }} className={area === 'ia' ? 'ativo' : ''}>{t('Pergunte aos dados (IA)', 'Ask the data (AI)')}</NavLink>
         </nav>
         <span className="espaco" />
         <AlternarIdioma />
@@ -107,7 +121,7 @@ export function App() {
       </header>
       <div className="casca">
         <nav className="menu" aria-label={t('Páginas', 'Pages')}>
-          {(trabalho ? menuTrabalho() : menu()).map(([grupo, itens]) => (
+          {({ financas: menu, trabalho: menuTrabalho, ia: menuIa }[area])().map(([grupo, itens]) => (
             <div key={grupo} style={{ display: 'contents' }}>
               <h4>{grupo}</h4>
               {itens.map(([para, rotulo]) => (
@@ -139,6 +153,9 @@ export function App() {
               <Route path="/trabalho/evolucao" element={<TrabalhoEvolucao />} />
               <Route path="/trabalho/caged" element={<TrabalhoCaged />} />
               <Route path="/trabalho/rankings" element={<TrabalhoRankings />} />
+              <Route path="/trabalho/consulta" element={<TrabalhoConsulta />} />
+              <Route path="/trabalho/metodologia" element={<TrabalhoMetodologia />} />
+              <Route path="/trabalho/ia" element={<Navigate to="/ia?paineis=trabalho" replace />} />
               <Route path="/deflatores" element={<Deflatores />} />
               <Route path="/qualidade" element={<Qualidade />} />
               <Route path="*" element={<p className="vazio">{t('Página não encontrada.', 'Page not found.')}</p>} />

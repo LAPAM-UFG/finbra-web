@@ -148,6 +148,28 @@ Os anexos 8 (educação) e 12 (saúde) do RREO não estão na API; os percentuai
 FUNDEB vêm do resumo do RREO (anexo 14). Retificações de relatórios já baixados não entram na
 atualização mensal; para pegá-las, rode `extract_lrf.py --anos AAAA --atualizar` localmente.
 
+### Mercado de trabalho (RAIS e Novo CAGED)
+
+Microdados do PDET (Ministério do Trabalho), baixados à mão do FTP para a pasta de brutos
+(`D:/LVBERNARDELLI/finbra_brutos`, fora do Dropbox: `rais/AAAA/*.7z` e `caged/AAAAMM/*.7z`; precisa do 7-Zip).
+
+| | |
+|---|---|
+| Totais do painel | `pipeline/trabalho.py`: `silver/trabalho` (somas por município, divisão CNAE e perfil) e `gold/trabalho` (páginas de mercado de trabalho) |
+| Microdados | `pipeline/microdados.py`: uma linha por vínculo da RAIS (ativos ou não em 31/12), por estabelecimento e por movimentação do CAGED, com todas as colunas e nomes padronizados entre os anos. Fica em `D:/LVBERNARDELLI/finbra_micro/silver/trabalho/micro/` (fora do Dropbox; ~25–30 GB), em arquivos por ano e UF ordenados por município, CNAE e CBO. Sobe para o R2 com `py pipeline/r2.py enviar --raiz D:/LVBERNARDELLI/finbra_micro --camadas silver` (o `indice.json` vai por último); o `baixar` os pula, a menos que se passe `--com-micro` |
+| Tabelas da consulta na web | o mesmo script soma os microdados em `gold/trabalho/cubo_uf/ano=AAAA.parquet` (UF × classe CNAE × CBO × sexo × situação × afastamento) e `gold/trabalho/cubo_mun/ano=AAAA.parquet` (município × divisão CNAE × grande grupo CBO × …), ~90 MB por ano; `py pipeline/microdados.py --so cubos` refaz só elas |
+| Dicionário | `pipeline/dicionario_trabalho.csv` (CBO, CNAE, afastamento, desligamento, vínculo…), montado a partir dos layouts do PDET; vira `gold/trabalho/dicionario.parquet` no `trabalho.py` |
+| Tempo | algumas horas para 2013–2023 e o CAGED desde 2020; retomável (pula o que já terminou) |
+
+A página **Consulta personalizada** (`/trabalho/consulta`) escolhe a fonte sozinha: se houver
+`silver/trabalho/micro/indice.json` (no R2 ou, no servidor local, na pasta `finbra_micro`), UFs e municípios
+vêm dos microdados, com todos os recortes e medianas; o Brasil, e tudo quando não há microdados, vem das
+tabelas pré-somadas (médias, sem medianas; municípios só com divisão CNAE e grande grupo CBO).
+`VITE_MICRODADOS=0 npm run dev` força as tabelas pré-somadas.
+
+Os arquivos públicos não identificam pessoas nem empresas: a unidade é o vínculo (quem tem dois empregos
+aparece duas vezes) e não há como seguir o mesmo trabalhador entre anos.
+
 ## Publicação do site
 
 Workflow **Publicar site** (`.github/workflows/publicar-site.yml`): a cada push na `main` que altere
@@ -230,6 +252,17 @@ Configuração (uma vez):
 Desenvolvimento local: crie `worker/.dev.vars` (fora do git) com `ANTHROPIC_API_KEY=...` e
 `IA_DEV_EMAIL=seu@email`. Depois rode `npx wrangler dev` em `worker/` (porta 8787) e `npm run dev` em `web/`;
 o Vite repassa `/api` ao Worker.
+
+**Uma IA para todos os painéis.** A aba "Pergunte aos dados" (`/ia`) tem caixas para os painéis que entram na
+conversa (`?paineis=financas,trabalho`; nenhum = todos). O Worker junta as instruções em
+`worker/src/sistema_geral.js`: introdução comum, a seção de cada painel marcado (`sistema.js` para finanças,
+`sistema_trabalho.js` para RAIS e CAGED), regras de cruzamento (códigos de município de 7 e 6 dígitos, anos,
+DF) quando há mais de um, e o jeito de responder. Painel novo: crie a sua seção e acrescente-a a `PAINEIS`.
+As tabelas do mercado de trabalho são preparadas em `tabelasIaTrabalho` (`web/src/dados.ts`): as séries do
+painel (`trab_*`), as tabelas somadas `rais_uf` e `rais_mun` (de `gold/trabalho/cubo_*`) e, quando publicados, os
+microdados `rais_vinculos` (um arquivo por ano e UF, listados em `silver/trabalho/micro/indice.json`). Para a
+Anthropic vão a pergunta e os resultados das consultas (até 200 linhas), nunca os arquivos. No Worker local
+(`wrangler dev`), que não tem o manifesto do R2, vale o manifesto enviado pelo navegador.
 
 ## Configuração inicial (uma vez só)
 

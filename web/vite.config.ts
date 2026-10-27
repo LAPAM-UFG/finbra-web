@@ -4,6 +4,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const PASTA_DADOS = path.resolve(__dirname, process.env.DATA_DIR ?? '../data');
+// microdados da RAIS e do CAGED (pipeline/microdados.py): fora do projeto e do Dropbox
+const PASTA_MICRO = path.resolve(process.env.TRABALHO_MICRO ?? 'D:/LVBERNARDELLI/finbra_micro');
 
 /**
  * Serve a pasta data/ em /dados/ com suporte a Range, como o Worker faz em produção a partir do R2.
@@ -14,8 +16,9 @@ function dadosLocais(): Plugin {
     // /v/<versão>/ só existe para renovar o cache do navegador; o arquivo é o mesmo
     const relativo = decodeURIComponent((req.url ?? '/').split('?')[0]).replace(/^\/v\/[0-9]+\//, '/');
     if (process.env.DEBUG_DADOS) console.log('[dados]', req.method, relativo, req.headers.range ?? '-');
-    const arquivo = path.join(PASTA_DADOS, relativo);
-    const permitido = /^[\\/](silver|gold)[\\/]/.test(relativo) && arquivo.startsWith(PASTA_DADOS);
+    const raiz = /^[\\/]silver[\\/]trabalho[\\/]micro[\\/]/.test(relativo) ? PASTA_MICRO : PASTA_DADOS;
+    const arquivo = path.join(raiz, relativo);
+    const permitido = /^[\\/](silver|gold)[\\/]/.test(relativo) && arquivo.startsWith(raiz);
     if (!permitido || !fs.existsSync(arquivo) || !fs.statSync(arquivo).isFile()) {
       res.statusCode = 404;
       res.end('não encontrado');

@@ -381,6 +381,10 @@ def fonte_trabalho(con):
         de, ate = con.execute(f"SELECT min(competencia), max(competencia) FROM '{(pasta / 'caged_uf.parquet').as_posix()}'").fetchone()
         saida["caged"] = {"de": de, "ate": ate, "processado_em": _quando(pasta / "caged_uf.parquet"),
                           "url": "ftp://ftp.mtps.gov.br/pdet/microdados/NOVO%20CAGED/"}
+    # consulta personalizada (microdados.py): anos com as tabelas pré-somadas da RAIS
+    anos_cubo = sorted(int(p.stem[4:]) for p in (pasta / "cubo_uf").glob("ano=*.parquet"))
+    if anos_cubo:
+        saida["rais_micro"] = {"anos": anos_cubo, "processado_em": _quando(pasta / "cubo_uf" / f"ano={anos_cubo[-1]}.parquet")}
     return saida
 
 

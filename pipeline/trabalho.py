@@ -18,6 +18,8 @@ gold/trabalho/caged.parquet        competência × município: admissões, desli
                                    no prazo + fora do prazo − exclusões, pela competência da movimentação)
 gold/trabalho/caged_uf.parquet     competência × UF/Brasil × seção CNAE
 gold/trabalho/cnae.parquet         nomes das seções e divisões da CNAE 2.0 (IBGE)
+gold/trabalho/dicionario.parquet   nomes dos códigos dos microdados (de dicionario_trabalho.csv, montado a partir
+                                   dos layouts do PDET: CBO, CNAE, afastamento, desligamento, vínculo…)
 
 Uso:
     py pipeline/trabalho.py                    # processa o que houver nos brutos e ainda não está na silver
@@ -368,6 +370,10 @@ def gerar_gold(con):
             ) TO '{g}/caged_uf.parquet' (FORMAT parquet, COMPRESSION zstd)""")
         print("gold/trabalho: caged, caged_anual e caged_uf")
     cnae(con)
+    # nomes dos códigos dos microdados (CBO, CNAE, afastamento, desligamento…), para a consulta personalizada
+    con.execute(f"""COPY (SELECT * FROM read_csv('{(Path(__file__).parent / "dicionario_trabalho.csv").as_posix()}',
+                                                 header=true, delim=',', quote='"', all_varchar=true) ORDER BY variavel, codigo)
+                    TO '{g}/dicionario.parquet' (FORMAT parquet, COMPRESSION zstd)""")
     atualizar_manifesto(con)
 
 
@@ -379,8 +385,12 @@ def atualizar_manifesto(con):
     caminho = GOLD / "manifesto.json"
     if not caminho.exists():
         return
+    from datetime import datetime, timezone
+
     manifesto = json.loads(caminho.read_text(encoding="utf-8"))
     manifesto.setdefault("fontes", {}).update(fonte_trabalho(con))
+    # o site põe gerado_em no caminho dos arquivos (/dados/v/<versão>/): sem mudar, o navegador usaria o cache antigo
+    manifesto["gerado_em"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     caminho.write_text(json.dumps(manifesto, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
