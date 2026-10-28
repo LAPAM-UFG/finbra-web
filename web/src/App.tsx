@@ -3,7 +3,7 @@ import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom'
 import { ProvedorDados } from './contexto';
 import { definirIdioma, t, useIdioma } from './idioma';
 import { Demonstrativos } from './pages/Demonstrativos';
-import { DespesasEvolucao, DespesasVisaoGeral } from './pages/Despesas';
+import { DespesasEvolucao, DespesasNaturezaEvolucao, DespesasNaturezaVisaoGeral, DespesasVisaoGeral } from './pages/Despesas';
 import { Fpm, FpmFaixas } from './pages/Fpm';
 import { Ia } from './pages/Ia';
 import { LrfDemonstrativos, LrfIndicadores } from './pages/Lrf';
@@ -19,7 +19,8 @@ import { TrabalhoMetodologia } from './pages/TrabalhoMetodologia';
 const menu = (): [string, [string, string][]][] => [
   [t('Receitas', 'Revenue'), [['/receitas', t('Visão geral', 'Overview')], ['/receitas/evolucao', t('Evolução', 'Trends')]]],
   ['FPM', [['/fpm', t('Evolução e dependência', 'Trends and dependency')], ['/fpm/faixas', t('Faixas populacionais', 'Population brackets')]]],
-  [t('Despesas', 'Expenditure'), [['/despesas', t('Visão geral', 'Overview')], ['/despesas/evolucao', t('Evolução', 'Trends')]]],
+  [t('Despesas orçamentárias', 'Budget expenditure'), [['/despesas-orcamentarias', t('Visão geral', 'Overview')], ['/despesas-orcamentarias/evolucao', t('Evolução', 'Trends')]]],
+  [t('Despesas por função', 'Expenditure by function'), [['/despesas', t('Visão geral', 'Overview')], ['/despesas/evolucao', t('Evolução', 'Trends')]]],
   [t('Responsabilidade fiscal', 'Fiscal responsibility'), [['/lrf', t('Indicadores da LRF', 'LRF indicators')], ['/lrf/demonstrativos', t('Demonstrativos RREO e RGF', 'RREO and RGF statements')]]],
   [t('Saúde e educação', 'Health and education'), [
     ['/educacao', t('Educação (SIOPE)', 'Education (SIOPE)')],
@@ -121,9 +122,9 @@ export function App() {
           ia: t('Pergunte aos dados · LAPAM/UFG', 'Ask the data · LAPAM/UFG'),
         }[area]}</h1>
         <nav className="areas" aria-label={t('Áreas', 'Areas')}>
+          <NavLink to={{ pathname: '/ia', search: buscaIa }} className={area === 'ia' ? 'ativo' : ''}>{t('Pergunte aos dados (IA)', 'Ask the data (AI)')}</NavLink>
           <NavLink to={{ pathname: '/receitas', search: busca }} className={area === 'financas' ? 'ativo' : ''}>{t('Finanças públicas', 'Public finances')}</NavLink>
           <NavLink to={{ pathname: '/trabalho', search: busca }} className={area === 'trabalho' ? 'ativo' : ''}>{t('Mercado de trabalho', 'Labour market')}</NavLink>
-          <NavLink to={{ pathname: '/ia', search: buscaIa }} className={area === 'ia' ? 'ativo' : ''}>{t('Pergunte aos dados (IA)', 'Ask the data (AI)')}</NavLink>
         </nav>
         <span className="espaco" />
         <AlternarIdioma />
@@ -146,13 +147,15 @@ export function App() {
         <main key={idioma} id="conteudo" tabIndex={-1}>
           <ProvedorDados>
             <Routes>
-              <Route path="/" element={<Navigate to="/receitas" replace />} />
+              <Route path="/" element={<Navigate to="/ia" replace />} />
               <Route path="/receitas" element={<ReceitasVisaoGeral />} />
               <Route path="/receitas/evolucao" element={<ReceitasEvolucao />} />
               <Route path="/fpm" element={<Fpm />} />
               <Route path="/fpm/faixas" element={<FpmFaixas />} />
               <Route path="/despesas" element={<DespesasVisaoGeral />} />
               <Route path="/despesas/evolucao" element={<DespesasEvolucao />} />
+              <Route path="/despesas-orcamentarias" element={<DespesasNaturezaVisaoGeral />} />
+              <Route path="/despesas-orcamentarias/evolucao" element={<DespesasNaturezaEvolucao />} />
               <Route path="/demonstrativos" element={<Demonstrativos />} />
               <Route path="/socioeconomico" element={<Socioeconomico />} />
               <Route path="/rankings" element={<Rankings />} />

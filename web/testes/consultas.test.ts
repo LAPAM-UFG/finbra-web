@@ -224,6 +224,30 @@ describe('intraorçamentárias', () => {
   });
 });
 
+describe('despesas orçamentárias por natureza (Anexo I-D)', () => {
+  const GRUPOS = ['DO3.1', 'DO3.2', 'DO3.3', 'DO4.4', 'DO4.5', 'DO4.6'];
+
+  test('os seis grupos de natureza somam o total, com as intra (municípios, 2024)', async () => {
+    const arv = await rota<{ nos: any[] }>('arvore', { anexo: 'I-D', ano: 2024, coluna: 'Despesas Empenhadas', esfera: 'M' });
+    const valor = (c: string) => arv.nos.find((n) => n.chave === c)?.valor as number;
+    const soma = GRUPOS.reduce((s, c) => s + valor(c), 0);
+    assert.ok(Math.abs(soma / valor('TotalDespesas') - 1) < 0.01, `diferença ${(soma / valor('TotalDespesas') - 1) * 100}%`);
+    const pessoal = valor('DO3.1') / valor('TotalDespesas');
+    assert.ok(pessoal > 0.3 && pessoal < 0.7, `pessoal ${pessoal}`);
+  });
+
+  test('grupo de natureza com série completa desde 2013 (municípios) e no ente', async () => {
+    const s = await rota<L[]>('serie', { anexo: 'I-D', coluna: 'Despesas Empenhadas', chave: 'DO4.4', esfera: 'M' });
+    const anos = s.filter((p) => typeof p.valor === 'number').map((p) => p.ano as number);
+    assert.equal(anos[0], 2013);
+    assert.ok(anos.length >= 13, `anos com valor: ${anos.join(', ')}`);
+    // o município não declarou a DCA de 2013: a série dele começa em 2014, com o mesmo valor do indicador
+    const m = await rota<L[]>('serie', { anexo: 'I-D', coluna: 'Despesas Empenhadas', chave: 'DO4.4', ente: GOIAS_MUN });
+    const [ind] = await rota<L[]>('agregado', { por: 'exercicio', campos: 'investimentos', ano: 2024, ente: GOIAS_MUN });
+    quase(m.find((p) => p.ano === 2024)!.valor as number, ind.investimentos as number);
+  });
+});
+
 describe('Distrito Federal', () => {
   test('UF=DF usa o ente Distrito Federal (não "municípios de DF" vazios)', async () => {
     const [r] = await rota<L[]>('agregado', { por: 'exercicio', campos: 'receita_bruta,fpm', ano: 2025, uf: 'DF', esfera: 'M' });

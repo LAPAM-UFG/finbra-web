@@ -9,6 +9,7 @@ import { BarraFiltros, Cobertura, useDados, useFiltros } from '../contexto';
 import { div, numero, pct, reais, reaisCurto, reaisExato } from '../format';
 import { num, useColuna, useSerie } from '../hooks';
 import { dado, t } from '../idioma';
+import { codigoConta } from '../calculos';
 import { textoReferencia } from './Receitas';
 
 export const textoIntra = () =>
@@ -105,24 +106,146 @@ export function DespesasVisaoGeral() {
   );
 }
 
-const TOTAL = 'TotalExcetoIntra';
-const ESTAGIOS = ['Despesas Empenhadas', 'Despesas Liquidadas', 'Despesas Pagas'];
+export const textoIntraNatureza = () =>
+  t(
+    'Neste anexo (I-D), o total inclui as despesas intraorçamentárias: elas já estão nas despesas correntes e de capital, e as linhas “Intra” só as detalham. Por isso o total é maior que o das páginas de despesa por função, que excluem as intraorçamentárias.',
+    'In this annex (I-D), the total includes intra-budgetary expenditure: it is already within current and capital expenditure, and the “Intra” lines only detail it. That is why the total is larger than on the expenditure-by-function pages, which exclude intra-budgetary items.',
+  );
 
-export function DespesasEvolucao() {
+/** Grupos de natureza da despesa (GND), na ordem da classificação; os códigos são os mesmos desde 2013. */
+const GRUPOS_NATUREZA = ['DO3.1', 'DO3.2', 'DO3.3', 'DO4.4', 'DO4.5', 'DO4.6'];
+
+export function DespesasNaturezaVisaoGeral() {
+  const f = useFiltros();
+  const { coluna, setColuna, opcoes } = useColuna('I-D', f.ano, 'Despesas Empenhadas');
+  const arvore = useApi<Arvore>(coluna ? 'arvore' : null, { anexo: 'I-D', ano: f.ano, coluna, ...f.escopo });
+  const kpi = useApi<Linha[]>('agregado', {
+    por: 'exercicio',
+    campos: 'despesa_empenhada,despesa_liquidada,despesa_paga',
+    pares: 'despesa_pessoal/despesa_empenhada,investimentos/despesa_empenhada',
+    ano: f.ano, ...f.escopo,
+  });
+  const k = kpi.dados?.[0];
+  const grupos = useMemo(
+    () => GRUPOS_NATUREZA.map((c) => arvore.dados?.nos.find((n) => n.chave === c)).filter((n) => !!n?.valor).map((n) => n!),
+    [arvore.dados],
+  );
+  const opcao = useMemo(() => barras(grupos.map((n) => dado(n.descricao)), grupos.map((n) => n.valor), reaisCurto), [grupos]);
+  const empenhada = num(k?.despesa_empenhada);
+  const participacao = (campo: string) => {
+    const n = num(k?.[`${campo}__despesa_empenhada_num`]);
+    const d = num(k?.[`${campo}__despesa_empenhada_den`]);
+    return { v: div(n, d), n };
+  };
+  const pessoal = participacao('despesa_pessoal');
+  const investimentos = participacao('investimentos');
+  const dicaParticipacao = (
+    <Dica rotulo={t('Base do percentual', 'Percentage base')}>
+      {t(
+        'Participação do grupo de natureza (1 Pessoal e encargos sociais ou 4 Investimentos, despesa empenhada) na despesa empenhada total do Anexo I-D, com as intraorçamentárias, no mesmo conjunto de entes. Não é o limite de pessoal da LRF, que usa a receita corrente líquida como base (veja Responsabilidade fiscal).',
+        'Share of the expenditure group (1 Personnel and social charges or 4 Investments, committed expenditure) in total committed expenditure in Annex I-D, including intra-budgetary items, in the same set of governments. It is not the Fiscal Responsibility Law personnel limit, which uses net current revenue as the base (see Fiscal responsibility).',
+      )}
+    </Dica>
+  );
+
+  return (
+    <>
+      <h2 className="titulo-pagina">{t('Visão geral das despesas orçamentárias', 'Budget expenditure overview')}</h2>
+      <p className="subtitulo">{f.rotulo} · {f.ano} · {t('DCA Anexo I-D (despesas orçamentárias por natureza)', 'DCA Annex I-D (budget expenditure by economic category)')}</p>
+      <BarraFiltros />
+      <Cobertura dominio="despesa" />
+      <p className="nota-base">{textoIntraNatureza()}</p>
+      <Estado carregando={kpi.carregando} erro={kpi.erro} tentarNovamente={kpi.recarregar} />
+      <div className="kpis">
+        <Kpi rotulo={t('Despesa empenhada', 'Committed expenditure')} valor={reais(empenhada)}
+          nota={t('inclui intraorçamentárias', 'includes intra-budgetary')} />
+        <Kpi rotulo={t('Liquidada', 'Accrued')} valor={reais(num(k?.despesa_liquidada))} nota={t('inclui intra', 'includes intra')} />
+        <Kpi rotulo={t('Paga', 'Paid')} valor={reais(num(k?.despesa_paga))} nota={t('inclui intra', 'includes intra')} />
+        <Kpi rotulo={t('Empenhada per capita', 'Committed per capita')}
+          valor={reaisExato(div(empenhada, num(k?.populacao_despesa_empenhada)))}
+          dica={f.alvo ? undefined : <Dica rotulo={t('Como é calculado', 'How it is calculated')}>{textoReferencia()}</Dica>} />
+        <Kpi rotulo={t('Pessoal: participação na despesa', 'Personnel: share of expenditure')} valor={pct(pessoal.v)} nota={reais(pessoal.n)} dica={dicaParticipacao} />
+        <Kpi rotulo={t('Investimentos: participação na despesa', 'Investments: share of expenditure')} valor={pct(investimentos.v)} nota={reais(investimentos.n)} dica={dicaParticipacao} />
+      </div>
+      {grupos.length > 0 && (
+        <CartaoGrafico titulo={t('Grupos de natureza da despesa', 'Expenditure groups')}
+          desc={`${dado(coluna ?? '')} · ${t('inclui intraorçamentárias', 'includes intra-budgetary')}`}
+          tabela={<TabelaSerie nome="grupos_natureza_despesa" anos={grupos.map((n) => dado(n.descricao))}
+            colunas={[{ titulo: t('Valor (R$ correntes)', 'Value (current R$)'), valores: grupos.map((n) => n.valor), formato: reais }]} />}>
+          <Grafico opcao={opcao} altura={Math.max(220, grupos.length * 36)} nome="grupos_natureza_despesa" />
+        </CartaoGrafico>
+      )}
+      <section className="cartao">
+        <div className="cabeca-cartao">
+          <div>
+            <h3>{t('Despesas por natureza', 'Expenditure by economic category')}</h3>
+            <p className="desc">
+              {t(
+                'Categoria econômica, grupo de natureza, modalidade de aplicação e elemento, como informados pelo ente; cada nível já contém os de baixo. As linhas “Intra” detalham as intraorçamentárias, já contidas nas despesas correntes e de capital.',
+                'Economic category, expenditure group, application modality and element, as reported by the government; each level already contains the ones below. The “Intra” lines detail intra-budgetary items, already included in current and capital expenditure.',
+              )}
+            </p>
+          </div>
+          <div className="campo">
+            <label htmlFor="col-id">{t('Coluna', 'Column')}</label>
+            <select id="col-id" value={coluna ?? ''} onChange={(e) => setColuna(e.target.value)}>
+              {opcoes.map((c) => <option key={c} value={c}>{dado(c)}</option>)}
+            </select>
+          </div>
+        </div>
+        <Estado carregando={arvore.carregando} erro={arvore.erro} tentarNovamente={arvore.recarregar} />
+        {arvore.dados && coluna && <ArvoreTabela key={`${f.ano}-${coluna}`} arvore={arvore.dados} anexo="I-D" coluna={coluna} />}
+      </section>
+    </>
+  );
+}
+
+const ESTAGIOS = ['Despesas Empenhadas', 'Despesas Liquidadas', 'Despesas Pagas'];
+const RECUO = '   ';
+
+/** Classificação da despesa nas páginas de evolução: por função (I-E) ou por natureza (I-D). */
+type Classificacao = {
+  anexo: string; total: string; nome: string; titulo: () => string; rotuloTotal: () => string; rotuloConta: () => string;
+  incluir: (chave: string) => boolean; codigo: (chave: string) => string; nota: () => string; intra: () => string;
+};
+
+const POR_FUNCAO: Classificacao = {
+  anexo: 'I-E', total: 'TotalExcetoIntra', nome: 'despesa',
+  titulo: () => t('Evolução das despesas', 'Expenditure trends'),
+  rotuloTotal: () => t('Total (exceto intraorçamentárias)', 'Total (excluding intra-budgetary)'),
+  rotuloConta: () => t('Função / subfunção', 'Function / subfunction'),
+  incluir: () => true, codigo: (c) => c.replace(/^F/, ''), nota: textoIntra,
+  intra: () => t('exceto intraorçamentárias', 'excluding intra-budgetary'),
+};
+
+const POR_NATUREZA: Classificacao = {
+  anexo: 'I-D', total: 'TotalDespesas', nome: 'despesa_natureza',
+  titulo: () => t('Evolução das despesas orçamentárias', 'Budget expenditure trends'),
+  rotuloTotal: () => t('Total (inclui intraorçamentárias)', 'Total (includes intra-budgetary)'),
+  rotuloConta: () => t('Categoria / grupo de natureza', 'Category / expenditure group'),
+  // as linhas DI só detalham a parte intra, já contida nas DO
+  incluir: (c) => c.startsWith('DO'), codigo: codigoConta, nota: textoIntraNatureza,
+  intra: () => t('inclui intraorçamentárias', 'includes intra-budgetary'),
+};
+
+export const DespesasEvolucao = () => <Evolucao c={POR_FUNCAO} />;
+export const DespesasNaturezaEvolucao = () => <Evolucao c={POR_NATUREZA} />;
+
+function Evolucao({ c: cl }: { c: Classificacao }) {
   const f = useFiltros();
   const { meta } = useDados();
-  const [chave, setChave] = useState(TOTAL);
+  const [chave, setChave] = useState(cl.total);
   const [coluna, setColuna] = useState(ESTAGIOS[0]);
   const contas = useApi<{ chave: string; nivel: number; descricao: string; tipo: string }[]>('contas', {
-    anexo: 'I-E', ano: meta.anos.at(-1), nivel_max: 2,
+    anexo: cl.anexo, ano: meta.anos.at(-1), nivel_max: 2,
   });
   const opcoes = useMemo(
-    () => [{ chave: TOTAL, descricao: t('Total (exceto intraorçamentárias)', 'Total (excluding intra-budgetary)') }, ...(contas.dados ?? [])
-      .filter((c) => c.tipo === 'conta')
-      .map((c) => ({ chave: c.chave, descricao: `${c.nivel > 1 ? '   ' : ''}${c.chave.replace(/^F/, '')} ${dado(c.descricao)}` }))],
-    [contas.dados],
+    () => [{ chave: cl.total, descricao: cl.rotuloTotal() }, ...(contas.dados ?? [])
+      .filter((c) => c.tipo === 'conta' && cl.incluir(c.chave))
+      .map((c) => ({ chave: c.chave, descricao: `${c.nivel > 1 ? RECUO : ''}${cl.codigo(c.chave)} ${dado(c.descricao)}` }))],
+    [contas.dados, cl],
   );
-  const { alvo, comp } = useSerie({ anexo: 'I-E', coluna, chave });
+  const { alvo, comp } = useSerie({ anexo: cl.anexo, coluna, chave });
   const s = alvo.dados ?? [];
   const anos = s.map((p) => p.ano);
   const ponto = s.find((p) => p.ano === f.ano);
@@ -148,12 +271,12 @@ export function DespesasEvolucao() {
 
   return (
     <>
-      <h2 className="titulo-pagina">{t('Evolução das despesas', 'Expenditure trends')}</h2>
+      <h2 className="titulo-pagina">{cl.titulo()}</h2>
       <p className="subtitulo">{f.rotulo} · {opcoes.find((o) => o.chave === chave)?.descricao.trim()} · {dado(coluna)}</p>
       <BarraFiltros />
       <div className="filtros">
         <div className="campo">
-          <label htmlFor="funcao">{t('Função / subfunção', 'Function / subfunction')}</label>
+          <label htmlFor="funcao">{cl.rotuloConta()}</label>
           <select id="funcao" value={chave} onChange={(e) => setChave(e.target.value)} style={{ maxWidth: 420 }}>
             {opcoes.map((o) => <option key={o.chave} value={o.chave}>{o.descricao}</option>)}
           </select>
@@ -165,7 +288,7 @@ export function DespesasEvolucao() {
           </select>
         </div>
       </div>
-      <p className="nota-base">{textoIntra()}</p>
+      <p className="nota-base">{cl.nota()}</p>
       <h3 className="secao">{t(`Exercício de referência: ${f.ano}`, `Reference year: ${f.ano}`)}</h3>
       <div className="kpis">
         <Kpi rotulo={t(`Valor nominal em ${f.ano}`, `Nominal value in ${f.ano}`)} valor={reais(ponto?.valor)} />
@@ -179,24 +302,24 @@ export function DespesasEvolucao() {
           <h3 className="secao">{t(`Série completa: ${periodo}`, `Full series: ${periodo}`)}</h3>
           <div className="grade-2">
             <CartaoGrafico titulo={t('Valor por exercício', 'Value by fiscal year')} desc={t('Nominal e corrigido pelo IPCA', 'Nominal and adjusted by the IPCA')}
-              tabela={<TabelaSerie nome={`despesa_${chave}`} anos={anos} colunas={[
+              tabela={<TabelaSerie nome={`${cl.nome}_${chave}`} anos={anos} colunas={[
                 { titulo: t('Nominal (R$ correntes)', 'Nominal (current R$)'), valores: s.map((p) => p.valor), formato: reais },
                 { titulo: t(`Real (R$ dez/${meta.baseIpca})`, `Real (Dec/${meta.baseIpca} R$)`), valores: s.map((p) => p.valor_real), formato: reais },
                 ...(f.alvo ? [] : [
                   { titulo: t('Entes com dados', 'Governments with data'), valores: s.map((p) => p.entes), formato: numero },
                   { titulo: t('Excluídos pelo filtro', 'Excluded by filter'), valores: s.map((p) => p.excluidos), formato: numero },
                 ]),
-              ]} metadados={[[t('Intraorçamentárias', 'Intra-budgetary'), t('exceto intraorçamentárias', 'excluding intra-budgetary')]]} />}>
-              <Grafico opcao={opcaoValores} nome={`despesa_${chave}`} />
+              ]} metadados={[[t('Intraorçamentárias', 'Intra-budgetary'), cl.intra()]]} />}>
+              <Grafico opcao={opcaoValores} nome={`${cl.nome}_${chave}`} />
             </CartaoGrafico>
             <CartaoGrafico titulo={t('Per capita (real)', 'Per capita (real)')}
               desc={f.rotuloComparador ? t(`Comparado com ${f.rotuloComparador}`, `Compared with ${f.rotuloComparador}`) : undefined}
               acoes={f.rotuloComparador ? <Dica rotulo={t('Referência', 'Reference')}>{textoReferencia()}</Dica> : undefined}
-              tabela={<TabelaSerie nome={`despesa_per_capita_${chave}`} anos={anos} colunas={[
+              tabela={<TabelaSerie nome={`${cl.nome}_per_capita_${chave}`} anos={anos} colunas={[
                 { titulo: f.rotulo, valores: perCapita(), formato: reaisExato },
                 { titulo: f.rotuloComparador ?? '', valores: comp.dados ? perCapita(comp.dados) : [], formato: reaisExato },
               ]} />}>
-              <Grafico opcao={opcaoPerCapita} nome={`despesa_per_capita_${chave}`} />
+              <Grafico opcao={opcaoPerCapita} nome={`${cl.nome}_per_capita_${chave}`} />
             </CartaoGrafico>
           </div>
         </>

@@ -382,8 +382,10 @@ apague a antiga e atualize o secret no GitHub e o seu `.env`.
   escolher a UF "DF" mostra o ente Distrito Federal (Brasília não declara como município).
 - **Deduções da receita** entram pelo valor absoluto na receita líquida (alguns entes as declaram
   negativas; o teste "sinal das deduções" conta os casos). A árvore mostra os valores como declarados.
-- **Intraorçamentárias:** as páginas de despesa usam o total exceto intraorçamentárias (Anexo I-E) e
-  mostram o valor intra à parte; saúde e educação são % dessa mesma base.
+- **Intraorçamentárias:** as páginas de despesa por função usam o total exceto intraorçamentárias
+  (Anexo I-E) e mostram o valor intra à parte; saúde e educação são % dessa mesma base. As páginas de
+  despesas orçamentárias (por natureza, Anexo I-D) usam o total com as intra, como o anexo declara; as
+  linhas "Intra" só detalham essa parte e não entram de novo nos totais.
 - **Valores reais** usam o IPCA de dezembro a dezembro, na base do último ano completo; o ano
   parcial (ex.: 2026) traz o número de meses no `manifesto.json`.
 
