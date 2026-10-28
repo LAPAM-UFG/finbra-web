@@ -207,8 +207,9 @@ export function ordenarBusca(entes: Ente[], termo: string, uf: string | null, li
 
 const descreverEnte = (e: Ente) => (e.esfera === 'M' ? `${e.nome} (${e.uf}) — ${esfera(e.esfera)}` : `${e.nome} — ${esfera(e.esfera)}`);
 
-function BuscaEnte({ entes, uf, atual, aoEscolher, explicacao }: {
-  entes: Ente[]; uf: string | null; atual: Ente | null; aoEscolher: (e: Ente | null) => void; explicacao?: string;
+/** Busca de ente por nome ou código (usada nos filtros e no contexto da página da IA). */
+export function BuscaEnte({ entes, uf, atual, aoEscolher, explicacao, rotulo }: {
+  entes: Ente[]; uf: string | null; atual: Ente | null; aoEscolher: (e: Ente | null) => void; explicacao?: string; rotulo?: string;
 }) {
   const [texto, setTexto] = useState('');
   const [aberto, setAberto] = useState(false);
@@ -224,7 +225,7 @@ function BuscaEnte({ entes, uf, atual, aoEscolher, explicacao }: {
   return (
     <div className="campo combo">
       <label htmlFor="f-ente">
-        {t('Ente (município, estado ou DF)', 'Government (municipality, state or DF)')}
+        {rotulo ?? t('Ente (município, estado ou DF)', 'Government (municipality, state or DF)')}
         {explicacao && <Dica rotulo={t('Função do ente nesta página', 'Role of the government on this page')}>{explicacao}</Dica>}
         {atual && (
           <button className="limpar" style={{ padding: '0 0 0 8px', textTransform: 'none' }} onClick={() => escolher(null)}>

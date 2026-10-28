@@ -155,6 +155,30 @@ export function Qualidade() {
               {t('Exercícios', 'Years')} {(fontes.siconfi_lrf as { anos?: number[] }).anos?.join('–')} · {t('processado em', 'processed on')} {data(fontes.siconfi_lrf.processado_em)}.{' '}
               {t('Todo mês são buscados os entes que ainda não tinham o relatório nos dois últimos exercícios.', 'Every month the governments still missing a report in the two latest years are fetched again.')}</li>
           )}
+          {fontes.siope && (
+            <li><strong>{t('SIOPE / FNDE (educação)', 'SIOPE / FNDE (education)')}</strong> —{' '}
+              {t('declaração anual de receitas e despesas com educação, pela API de dados abertos', 'annual return on education revenue and spending, through the open-data API')}{' '}
+              (<a href={fontes.siope.url ?? 'https://www.fnde.gov.br/olinda-ide/'} target="_blank" rel="noreferrer">fnde.gov.br/olinda-ide</a>):{' '}
+              {t('indicadores, despesas por etapa, item e fonte, receitas, despesas por subfunção e totais. Até 2016 a declaração é anual; de 2017 em diante usa-se o 6º bimestre (o ano fechado). Os códigos dos indicadores mudam de sentido entre anos, por isso as páginas acham cada indicador pelo texto.',
+                'indicators, spending by stage, item and funding source, revenue, spending by subfunction and totals. Until 2016 the return is annual; from 2017 on the 6th two-month period (the closed year) is used. Indicator codes change meaning across years, so the pages find each indicator by its text.')}{' '}
+              {t('Ficam fora das páginas (mas nas tabelas da IA) indicadores que o SIOPE deixou de calcular ou quase nunca preenche: pessoal e capital em % do MDE (0 em quase todos os municípios desde 2021) e alimentação escolar. Zero que é falha de cálculo vira vazio: 0% da despesa total em educação, e a composição por etapa quando o ensino fundamental vem com 0% (um quarto dos municípios em 2020).',
+                'Indicators SIOPE stopped computing or rarely fills are left out of the pages (but kept in the AI tables): personnel and capital as % of MDE (0 for almost all municipalities since 2021) and school meals. A zero that is a calculation failure becomes blank: 0% of total spending on education, and the breakdown by stage when primary education comes as 0% (a quarter of municipalities in 2020).')}{' '}
+              {t('Remuneração (dezembro): a fonte traz cada profissional por escola, com o nome; aqui só entra agregada por ente, categoria e situação, sem nomes. Vínculos repetidos (mesma escola, categoria, carga e remuneração) contam uma vez, os vínculos de uma mesma pessoa na mesma categoria são somados, e salário e carga horária só aparecem em grupos de 5 ou mais pessoas.',
+                'Pay (December): the source lists each staff member by school, with names; here it is only aggregated by government, category and status, without names. Repeated records (same school, category, hours and pay) count once, a person’s records in the same category are added up, and pay and hours are shown only for groups of 5 or more people.')}{' '}
+              {t('Anos', 'Years')} {fontes.siope.anos?.join('–')} · {t('processado em', 'processed on')} {data(fontes.siope.processado_em)}.</li>
+          )}
+          {fontes.siops && (
+            <li><strong>{t('SIOPS / DATASUS (saúde)', 'SIOPS / DATASUS (health)')}</strong> —{' '}
+              {t('série histórica de indicadores municipais, pelo TABNET', 'municipal indicator series, through TABNET')}{' '}
+              (<a href={fontes.siops.url ?? 'http://siops-asp.datasus.gov.br/'} target="_blank" rel="noreferrer">siops-asp.datasus.gov.br</a>):{' '}
+              {t('percentual da receita própria aplicado em saúde (EC 29), despesa por habitante, transferências do SUS e composição da despesa. Só municípios: o DF e os estados não estão nesta série. "..." na fonte (não disponível) vira vazio e "-" vira zero. As subfunções (atenção básica, hospitalar…) só existem até 2015 e ficam só nas tabelas da IA.',
+                'share of own revenue spent on health (Constitutional Amendment 29), spending per inhabitant, SUS transfers and spending composition. Municipalities only: the Federal District and the states are not in this series. "..." in the source (not available) becomes blank and "-" becomes zero. Subfunctions (primary care, hospital care…) only exist until 2015 and are kept only in the AI tables.')}{' '}
+              {t('Anos', 'Years')} {fontes.siops.anos?.join('–')} · {t('processado em', 'processed on')} {data(fontes.siops.processado_em)}.</li>
+          )}
+          {(fontes.siope || fontes.siops) && (
+            <li>{t('Nas páginas de saúde e educação, os valores em reais são corrigidos pelo IPCA para reais do ano-base do painel (a remuneração fica em reais de dezembro de cada ano). Em grupos, percentuais declarados entram como mediana e na contagem de quem fica abaixo do mínimo; valores por habitante são soma ÷ soma da população.',
+              'On the health and education pages, R$ values are IPCA-adjusted to the panel’s base year (pay stays in R$ of each December). For groups, reported percentages are shown as the median and in the count of those below the minimum; per-inhabitant values are sum ÷ sum of population.')}</li>
+          )}
           <li><strong>IBGE</strong> — {t('PIB dos Municípios', 'Municipal GDP')} (<a href={fontes.ibge_pib?.url ?? 'https://sidra.ibge.gov.br/tabela/5938'} target="_blank" rel="noreferrer">{t('tabela SIDRA 5938', 'SIDRA table 5938')}</a>),{' '}
             {fontes.ibge_pib?.anos?.join('–')}; {t('setores até', 'sectors through')} {fontes.ibge_pib?.setorial_ate} · {t('processado em', 'processed on')} {data(fontes.ibge_pib?.processado_em)}.</li>
           <li><strong>{t('Banco Central', 'Central Bank of Brazil')}</strong> — {t('IPCA mensal', 'Monthly IPCA')} (<a href={fontes.ipca?.url ?? 'https://www3.bcb.gov.br/sgspub/'} target="_blank" rel="noreferrer">SGS 433</a>),{' '}

@@ -2,8 +2,11 @@
  * Perguntas à base com o Claude (/api/ia). Só com login no Cloudflare Access.
  *
  * O Worker não roda SQL: o Claude propõe consultas (ferramenta "consultar"), o navegador as executa
- * no DuckDB com os mesmos Parquet do painel e devolve o resultado no próximo pedido. O histórico
- * da conversa fica no navegador e vem inteiro a cada pedido (a API não guarda estado).
+ * no DuckDB com os mesmos Parquet do painel e devolve o resultado no próximo pedido; lugares citados pelo
+ * nome passam pela ferramenta "localizar" (cadastro de entes, também no navegador). A resposta final vem
+ * pela ferramenta "responder" (conclusão, destaques, gráficos, ressalvas), que a página confere com os
+ * resultados das consultas antes de mostrar (o que não bate volta ao modelo). O histórico da conversa
+ * fica no navegador e vem inteiro a cada pedido (a API não guarda estado).
  *
  *   GET  /api/ia/estado   e-mail e perguntas restantes no dia
  *   GET  /api/ia/entrar   passa pelo login do Access e volta para /ia
@@ -12,6 +15,9 @@
  * Uma IA para todos os painéis (aba "Pergunte aos dados"): paineis diz quais entram na conversa
  * (['financas', 'trabalho']; vazio = todos) e as instruções juntam a seção de cada um (sistema_geral.js).
  * contexto: anos e microdados do mercado de trabalho, informados pelo navegador.
+ * Cada pergunta é uma mensagem do usuário com blocos de texto: o contexto da página (território, ano de
+ * referência, estilo de resposta) e, por último, a pergunta; antes deles, os resultados de ferramenta que a
+ * resposta anterior deixou pendentes (a chamada de "responder").
  *
  * Limites por pessoa e dia (horário de Brasília): 50 perguntas e 400 chamadas ao modelo (cada pergunta
  * pode levar algumas rodadas de consulta). A contagem fica no R2, em ia/uso/, fora de /dados/.
@@ -33,22 +39,156 @@ const MAX_RODADAS = 12; // chamadas ao modelo por pergunta
 const MAX_PERGUNTAS_CONVERSA = 15;
 const MAX_CORPO = 600_000; // bytes
 const MAX_PERGUNTA = 2000; // caracteres
+const MAX_CONTEXTO = 1500; // caracteres do contexto da página que acompanha cada pergunta
 
-const FERRAMENTAS = [
+const FORMATOS = ['inteiro', 'decimal', 'reais', 'percentual'];
+
+export const FERRAMENTAS = [
   {
     name: 'consultar',
     description:
       'Executa uma consulta SQL somente leitura (DuckDB) nas tabelas descritas nas instruções, no navegador '
-      + 'de quem perguntou, e devolve as colunas e até 200 linhas em JSON (com o total de linhas). Use para obter qualquer número da resposta. '
-      + 'Só SELECT ou WITH, uma instrução, sem ler arquivos ou URLs.',
+      + 'de quem perguntou. Devolve o identificador da consulta (C1, C2…, para citar em "responder"), as colunas e até '
+      + '200 linhas em JSON, com o total de linhas. Use para obter qualquer número da resposta. '
+      + 'Só SELECT ou WITH, uma instrução, sem ler arquivos ou URLs. Antes de rodar, a página confere os códigos de '
+      + 'município e UF da consulta e recusa (erro "bloqueada") código no formato errado, inexistente ou buscado por aproximação.',
     strict: true,
     input_schema: {
       type: 'object',
       properties: {
         sql: { type: 'string', description: 'Uma única consulta SELECT/WITH em SQL do DuckDB.' },
         objetivo: { type: 'string', description: 'Frase curta, no idioma da resposta, dizendo o que a consulta mede.' },
+        substitui: { type: 'string', description: 'Identificador da consulta que esta corrige ou refaz (ex.: C4), ou "" se for nova.' },
       },
-      required: ['sql', 'objetivo'],
+      required: ['sql', 'objetivo', 'substitui'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'localizar',
+    description:
+      'Acha um município ou uma UF pelo nome (sem diferenciar acentos) e devolve os códigos em cada formato das tabelas: '
+      + 'cod_ibge de 7 dígitos, municipio de 6 dígitos da RAIS, sigla e código da UF. Use antes de consultar um lugar '
+      + 'citado na pergunta que não seja o do contexto da página; nunca procure códigos com LIKE ou por parte do código. '
+      + 'Com nomes repetidos em mais de uma UF, devolve todos.',
+    strict: true,
+    input_schema: {
+      type: 'object',
+      properties: {
+        nome: { type: 'string', description: 'Nome do município ou da UF, como na pergunta (ex.: Andirá).' },
+        uf: { type: 'string', description: 'Sigla ou nome da UF, se a pergunta disser (ex.: PR), ou "".' },
+      },
+      required: ['nome', 'uf'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'responder',
+    description:
+      'Entrega a resposta final ao usuário. Chame uma única vez, sozinha, no fim de cada pergunta, depois de ver os '
+      + 'resultados das consultas; não escreva a resposta final fora desta ferramenta. Todo número vem dos resultados '
+      + 'das consultas desta conversa. Todos os campos vão dentro do objeto "resposta", em JSON; os sem conteúdo ficam '
+      + 'vazios ("" ou []). Nos textos, nada de marcações (como <parameter> ou </conclusao>) e acentos escritos '
+      + 'diretamente (á, ç, ã), sem sequências como \\u00e1. A página confere a resposta antes de mostrá-la e devolve '
+      + 'os problemas (destaque fora da tabela, gráfico com coluna inexistente, leitura sem colunas de apoio, '
+      + 'comparação que atravessa quebra de série sem dizer isso na conclusão) para você corrigir.',
+    strict: true,
+    // um único parâmetro-objeto: o modelo o escreve como JSON, e os textos longos não se misturam com a
+    // marcação de parâmetros da chamada (com campos de texto soltos, o Haiku às vezes fechava um campo com
+    // "</conclusao>" e engolia os seguintes)
+    input_schema: {
+      type: 'object',
+      properties: {
+        resposta: {
+          type: 'object',
+          properties: {
+            tipo: {
+              type: 'string',
+              enum: ['resposta', 'esclarecimento', 'fora_da_cobertura'],
+              description: '"esclarecimento" quando falta uma informação indispensável; "fora_da_cobertura" quando os dados não respondem.',
+            },
+            conclusao: {
+              type: 'string',
+              description: 'A resposta principal em 1 a 3 frases, começando pelo resultado, com os números-chave. Em "esclarecimento", a pergunta curta a fazer.',
+            },
+            destaques: {
+              type: 'array',
+              description: 'De 0 a 4 números principais; a página confere cada um na tabela da consulta indicada.',
+              items: {
+                type: 'object',
+                properties: {
+                  rotulo: { type: 'string', description: 'O que o número mede, em poucas palavras.' },
+                  valor: { type: 'number', description: 'O número exato da célula do resultado, sem arredondar; percentuais na escala 0–100.' },
+                  formato: { type: 'string', enum: FORMATOS },
+                  unidade: { type: 'string', description: 'Unidade curta, sem repetir o símbolo do formato: "vínculos em 31/12", "de dez/2025 (IPCA)", "dos vínculos".' },
+                  consulta: { type: 'string', description: 'Identificador da consulta de onde vem o valor (ex.: C2).' },
+                  coluna: { type: 'string', description: 'Nome exato da coluna no resultado.' },
+                  de: { type: 'string', description: 'Início do período do número: ano ("2015") ou competência ("2025-09").' },
+                  ate: { type: 'string', description: 'Fim do período: igual a de para um único ano ou mês; numa variação, o último período comparado.' },
+                },
+                required: ['rotulo', 'valor', 'formato', 'unidade', 'consulta', 'coluna', 'de', 'ate'],
+                additionalProperties: false,
+              },
+            },
+            explicacao: { type: 'string', description: 'Dados observados que sustentam a conclusão: parágrafos curtos ou itens começando com "- ".' },
+            interpretacao: {
+              type: 'array',
+              description: 'Leituras que vão além da descrição, cada uma com a consulta e as colunas que a sustentam (o indicador e a referência da comparação); [] se não houver.',
+              items: {
+                type: 'object',
+                properties: {
+                  texto: { type: 'string' },
+                  consulta: { type: 'string', description: 'Identificador da consulta (ex.: C3).' },
+                  colunas: { type: 'array', items: { type: 'string' }, description: 'Colunas do resultado que sustentam a leitura.' },
+                },
+                required: ['texto', 'consulta', 'colunas'],
+                additionalProperties: false,
+              },
+            },
+            hipoteses: { type: 'string', description: 'Explicações possíveis que os dados não testaram, só quando a pergunta pede causas; vazio na maioria das respostas.' },
+            limitacoes: { type: 'string', description: 'Ressalvas indispensáveis para ler os números: quebra de série, cobertura, ausências, grupos pequenos; vazio se não houver.' },
+            recorte: {
+              type: 'object',
+              properties: {
+                territorio: { type: 'string' },
+                periodo: { type: 'string' },
+                unidade: { type: 'string', description: 'Ex.: vínculos; R$ nominais; R$ de dez/2025 (IPCA).' },
+                filtros: { type: 'string', description: 'Definições e filtros aplicados, ex.: vínculos ativos em 31/12.' },
+              },
+              required: ['territorio', 'periodo', 'unidade', 'filtros'],
+              additionalProperties: false,
+            },
+            metodologia: { type: 'string', description: 'Tabelas usadas, fórmulas e critérios, em texto simples.' },
+            graficos: {
+              type: 'array',
+              description: 'Até 2 gráficos, só quando ajudam; a página os monta com os dados da consulta indicada. x e y são colunas '
+                + 'que existem nela; para comparar categorias, a consulta precisa ter uma linha por categoria.',
+              items: {
+                type: 'object',
+                properties: {
+                  consulta: { type: 'string' },
+                  tipo: { type: 'string', enum: ['linha', 'barras'] },
+                  titulo: { type: 'string' },
+                  x: { type: 'string', description: 'Coluna dos anos ou das categorias.' },
+                  y: { type: 'array', items: { type: 'string' }, description: 'Até 3 colunas numéricas.' },
+                  serie: { type: 'string', description: 'Coluna que separa as séries num resultado em formato longo (ex.: uf_sigla), ou "".' },
+                  formato: { type: 'string', enum: FORMATOS },
+                },
+                required: ['consulta', 'tipo', 'titulo', 'x', 'y', 'serie', 'formato'],
+                additionalProperties: false,
+              },
+            },
+            aprofundar: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Até 3 perguntas curtas de continuação que os dados disponíveis respondem.',
+            },
+          },
+          required: ['tipo', 'conclusao', 'destaques', 'explicacao', 'interpretacao', 'hipoteses', 'limitacoes', 'recorte', 'metodologia', 'graficos', 'aprofundar'],
+          additionalProperties: false,
+        },
+      },
+      required: ['resposta'],
       additionalProperties: false,
     },
   },
@@ -91,12 +231,18 @@ async function lerManifesto(env) {
 
 // ---------------- validação do histórico ----------------
 
-const ehPergunta = (m) => m.role === 'user' && typeof m.content === 'string';
+/** Textos de uma mensagem do usuário: a pergunta é o último; antes dele pode vir o contexto da página. */
+const textos = (m) => (typeof m.content === 'string'
+  ? [m.content]
+  : m.content.filter((b) => b.type === 'text' && typeof b.text === 'string').map((b) => b.text));
+// mensagens só com resultados de ferramenta (tool_result) não são perguntas
+const ehPergunta = (m) => m.role === 'user' && textos(m).length > 0;
 
 /** Confere a forma do histórico enviado pelo navegador; devolve a mensagem de erro ou null. */
-function validar(mensagens) {
+export function validar(mensagens) {
   if (!Array.isArray(mensagens) || !mensagens.length) return 'histórico vazio';
-  if (!mensagens.every((m) => m && (m.role === 'user' || m.role === 'assistant') && (typeof m.content === 'string' || Array.isArray(m.content)))) {
+  if (!mensagens.every((m) => m && (m.role === 'user' || m.role === 'assistant')
+    && (typeof m.content === 'string' || (Array.isArray(m.content) && m.content.every((b) => b && typeof b.type === 'string'))))) {
     return 'histórico inválido';
   }
   if (!ehPergunta(mensagens[0])) return 'a conversa deve começar por uma pergunta';
@@ -104,7 +250,11 @@ function validar(mensagens) {
   if (ultima.role !== 'user') return 'a última mensagem deve ser do usuário';
   const perguntas = mensagens.filter(ehPergunta);
   if (perguntas.length > MAX_PERGUNTAS_CONVERSA) return 'conversa longa demais: comece uma nova';
-  if (perguntas.some((m) => !m.content.trim() || m.content.length > MAX_PERGUNTA)) return `pergunta vazia ou com mais de ${MAX_PERGUNTA} caracteres`;
+  if (perguntas.some((m) => {
+    const tx = textos(m);
+    const pergunta = tx.at(-1);
+    return !pergunta.trim() || pergunta.length > MAX_PERGUNTA || tx.slice(0, -1).join('').length > MAX_CONTEXTO;
+  })) return `pergunta vazia ou com mais de ${MAX_PERGUNTA} caracteres`;
   const inicio = mensagens.findLastIndex(ehPergunta);
   if (mensagens.slice(inicio).filter((m) => m.role === 'assistant').length >= MAX_RODADAS) return 'consultas demais nesta pergunta';
   return null;

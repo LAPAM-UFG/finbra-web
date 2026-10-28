@@ -580,6 +580,40 @@ export function tabelaLrf() {
   return lrfCarregada;
 }
 
+// ---------------- educação (SIOPE) e saúde (SIOPS) ----------------
+
+/** Tabelas da IA sobre as declarações de educação e saúde: fonte no manifesto e arquivo do gold. */
+const TABELAS_EDUCACAO_SAUDE: Record<string, [string, string]> = {
+  siope_indicadores: ['siope', 'gold/siope/indicadores.parquet'],
+  siope_despesas: ['siope', 'gold/siope/despesas.parquet'],
+  siope_receitas: ['siope', 'gold/siope/receitas.parquet'],
+  siope_despesas_funcao: ['siope', 'gold/siope/despesas_funcao.parquet'],
+  siope_gerais: ['siope', 'gold/siope/gerais.parquet'],
+  siope_remuneracao: ['siope', 'gold/siope/remuneracao.parquet'],
+  siops_indicadores: ['siops', 'gold/siops/indicadores.parquet'],
+};
+
+/**
+ * Visões sobre os arquivos do SIOPE e do SIOPS, lidos por Range (só o trecho que a consulta usa), criadas
+ * quando uma consulta da IA as cita. Só as fontes que estão no manifesto; a remuneração, só se processada.
+ */
+let educacaoSaude: Promise<string[]> | null = null;
+export function tabelasEducacaoSaude() {
+  educacaoSaude ??= (async () => {
+    const { con, manifesto } = await iniciar();
+    const f = (manifesto.fontes ?? {}) as Record<string, { remuneracao?: unknown[] }>;
+    const criadas: string[] = [];
+    for (const [nome, [fonte, caminho]] of Object.entries(TABELAS_EDUCACAO_SAUDE)) {
+      if (!f[fonte] || (nome === 'siope_remuneracao' && !f.siope?.remuneracao?.length)) continue;
+      await con.query(`CREATE OR REPLACE VIEW ${nome} AS SELECT * FROM read_parquet(${arq(caminho)})`);
+      criadas.push(nome);
+    }
+    return criadas;
+  })();
+  educacaoSaude.catch(() => (educacaoSaude = null));
+  return educacaoSaude;
+}
+
 /**
  * Limites e mínimos legais, para contar quem descumpre. O limite de pessoal é o declarado pelo ente
  * (54% Executivo municipal, 49% estadual, com exceções); DCL: 120% da RCL (municípios) e 200% (estados e DF,
@@ -592,13 +626,13 @@ const LRF_LIMITES = `
   25 AS min_mde,
   CASE WHEN l.exercicio >= 2021 THEN 70 ELSE 60 END AS min_fundeb`;
 
-/** Recorte de grupo na tabela lrf: esfera e, para municípios, a UF. */
-function recorteLrf(q: Params, p: Record<string, Valor>) {
+/** Recorte de grupo (municípios do Brasil ou de uma UF; estados) na tabela de apelido `a`. */
+function recorteLrf(q: Params, p: Record<string, Valor>, a = 'l') {
   const esferaLrf = q.esfera === 'E' ? 'E' : 'M';
   p.esfera = esferaLrf;
   const uf = UFS.has(String(q.uf)) && esferaLrf === 'M' ? String(q.uf) : null;
   if (uf) p.uf = uf;
-  return `l.esfera = $esfera${uf ? ' AND l.uf = $uf' : ''}`;
+  return `${a}.esfera = $esfera${uf ? ` AND ${a}.uf = $uf` : ''}`;
 }
 
 const rotasLrf: Record<string, (q: Params) => Promise<unknown>> = {
@@ -674,6 +708,128 @@ const rotasLrf: Record<string, (q: Params) => Promise<unknown>> = {
        FROM read_parquet(${arq(`silver/lrf/exercicio=${inteiro(q.ano)}.parquet`)})
        WHERE cod_ibge = $ente::INTEGER AND relatorio = $relatorio AND anexo = $anexo ORDER BY ordem`,
       { ente: inteiro(q.ente), relatorio: String(q.relatorio), anexo: String(q.anexo) },
+    );
+  },
+};
+
+// ---------------- saúde (SIOPS) e educação (SIOPE) ----------------
+
+/** Colunas em reais do resumo: corrigidas pelo IPCA para reais do ano-base do painel ao carregar. */
+const SE_REAIS = ['aluno_basica', 'aluno_infantil', 'aluno_fundamental', 'professores_aluno', 'educacao_liquidada', 'despesa_liquidada',
+  'saude_hab', 'saude_proprios_hab', 'sus_hab', 'saude_total', 'saude_proprios', 'sus_receita'];
+
+/** gold/saude_educacao.parquet (~6 MB): uma linha por ente e ano, baixado quando uma página de saúde ou educação pede. */
+let seCarregada: Promise<void> | null = null;
+function tabelaSaudeEducacao() {
+  seCarregada ??= (async () => {
+    const { con, manifesto } = await iniciar();
+    await db.registerFileBuffer('saude_educacao.parquet', await baixar('gold/saude_educacao.parquet'));
+    await con.query(
+      `CREATE TABLE se AS
+       SELECT s.* REPLACE (${SE_REAIS.map((c) => `s.${c} * b.indice / i.indice AS ${c}`).join(', ')}),
+              CASE WHEN s.ano >= 2021 THEN 70 ELSE 60 END AS min_fundeb
+       FROM read_parquet('saude_educacao.parquet') s LEFT JOIN ipca i ON i.exercicio = s.ano
+       CROSS JOIN (SELECT indice FROM ipca WHERE exercicio = ${Number(manifesto.base_ipca)}) b`,
+    );
+  })();
+  seCarregada.catch(() => (seCarregada = null));
+  return seCarregada;
+}
+
+/** Remuneração da educação (SIOPE, dezembro): ente, ou os municípios de uma UF ou do Brasil, ou os estados. */
+function recorteRemuneracao(q: Params, p: Record<string, Valor>) {
+  if (q.ente) {
+    p.ente = inteiro(q.ente);
+    return 'r.cod_ibge = $ente::INTEGER';
+  }
+  return recorteLrf(q, p, 'r');
+}
+
+/** Média de grupos já agregados, ponderada pelo número de pessoas (só grupos com a estatística, de 5 ou mais). */
+const ponderada = (c: string) => `sum(${c} * profissionais) FILTER (${c} IS NOT NULL) / sum(profissionais) FILTER (${c} IS NOT NULL)`;
+
+const rotasSaudeEducacao: Record<string, (q: Params) => Promise<unknown>> = {
+  /** Série de um ente, com os mínimos legais. */
+  async se_ente(q) {
+    await tabelaSaudeEducacao();
+    return consultar('SELECT * FROM se WHERE cod_ibge = $ente::INTEGER ORDER BY ano', { ente: inteiro(q.ente) });
+  },
+
+  /**
+   * Agregados por ano de um grupo. Percentuais declarados: mediana e contagem de quem fica abaixo do mínimo;
+   * valores por habitante: soma ÷ soma da população, só dos entes com os dois valores.
+   */
+  async se_grupo(q) {
+    await tabelaSaudeEducacao();
+    const p: Record<string, Valor> = {};
+    const onde = recorteLrf(q, p, 's');
+    const porHab = (v: string, pop: string) =>
+      `sum(${v}) FILTER (${v} IS NOT NULL AND ${pop} > 0) / sum(${pop}) FILTER (${v} IS NOT NULL AND ${pop} > 0)`;
+    return consultar(
+      `SELECT ano, count(*)::INTEGER AS entes,
+              median(mde_pct) / 100 AS mde_mediana, count(mde_pct)::INTEGER AS n_mde,
+              count(*) FILTER (mde_pct < 25)::INTEGER AS mde_abaixo,
+              median(fundeb_remuneracao_pct) / 100 AS fundeb_mediana, count(fundeb_remuneracao_pct)::INTEGER AS n_fundeb,
+              count(*) FILTER (fundeb_remuneracao_pct < min_fundeb)::INTEGER AS fundeb_abaixo, any_value(min_fundeb) AS min_fundeb,
+              median(educacao_despesa_pct) / 100 AS educacao_despesa_mediana,
+              ${porHab('educacao_liquidada', 'populacao_siope')} AS educacao_hab,
+              median(aluno_basica) AS aluno_basica_mediana, median(professores_aluno) AS professores_aluno_mediana,
+              median(infantil_pct) / 100 AS infantil_mediana, median(fundamental_pct) / 100 AS fundamental_mediana,
+              median(medio_pct) / 100 AS medio_mediana,
+              median(saude_pct) / 100 AS saude_mediana, count(saude_pct)::INTEGER AS n_saude,
+              count(*) FILTER (saude_pct < 15)::INTEGER AS saude_abaixo,
+              ${porHab('saude_total', 'populacao_siops')} AS saude_hab,
+              ${porHab('saude_proprios', 'populacao_siops')} AS saude_proprios_hab,
+              ${porHab('sus_receita', 'populacao_siops')} AS sus_hab,
+              median(saude_pessoal_pct) / 100 AS saude_pessoal_mediana, median(saude_medicamentos_pct) / 100 AS saude_medicamentos_mediana,
+              median(saude_terceiros_pct) / 100 AS saude_terceiros_mediana, median(saude_investimentos_pct) / 100 AS saude_investimentos_mediana,
+              median(sus_despesa_pct) / 100 AS sus_despesa_mediana
+       FROM se s WHERE ${onde} GROUP BY ano ORDER BY ano`,
+      p,
+    );
+  },
+
+  /** Entes de um grupo num ano (tabela e exportação). */
+  async se_entes(q) {
+    await tabelaSaudeEducacao();
+    const p: Record<string, Valor> = { ano: inteiro(q.ano) };
+    const onde = recorteLrf(q, p, 's');
+    return consultar(
+      `SELECT s.*, e.nome, s.educacao_liquidada / nullif(s.populacao_siope, 0) AS educacao_hab
+       FROM se s JOIN entes e USING (cod_ibge) WHERE ${onde} AND s.ano = $ano::INTEGER ORDER BY s.uf, e.nome`,
+      p,
+    );
+  },
+
+  /** Profissionais e remuneração por ano, tipo de categoria e situação (o arquivo é lido por Range). */
+  async rem_resumo(q) {
+    await iniciar();
+    const p: Record<string, Valor> = {};
+    const onde = recorteRemuneracao(q, p);
+    return consultar(
+      `SELECT ano, tipo_categoria, situacao, sum(profissionais)::INTEGER AS profissionais, sum(vinculos)::INTEGER AS vinculos,
+              sum(profissionais) FILTER (salario_medio IS NOT NULL)::INTEGER AS com_estatistica,
+              ${ponderada('salario_medio')} AS salario_medio, ${ponderada('carga_horaria_media')} AS carga_horaria_media
+       FROM read_parquet(${arq('gold/siope/remuneracao.parquet')}) r WHERE ${onde} GROUP BY ALL ORDER BY ano, tipo_categoria, profissionais DESC`,
+      p,
+    );
+  },
+
+  /** Categorias de um ano: as do ente como declaradas (com quartis), ou somadas no grupo (média ponderada). */
+  async rem_categorias(q) {
+    await iniciar();
+    const p: Record<string, Valor> = { ano: inteiro(q.ano) };
+    const onde = recorteRemuneracao(q, p);
+    const colunas = q.ente
+      ? 'profissionais, vinculos, carga_horaria_media, salario_medio, salario_p25, salario_mediana, salario_p75, outros_medio'
+      : `sum(profissionais)::INTEGER AS profissionais, sum(vinculos)::INTEGER AS vinculos,
+         sum(profissionais) FILTER (salario_medio IS NOT NULL)::INTEGER AS com_estatistica,
+         ${ponderada('carga_horaria_media')} AS carga_horaria_media, ${ponderada('salario_medio')} AS salario_medio`;
+    return consultar(
+      `SELECT tipo_categoria, categoria, situacao, ${colunas}
+       FROM read_parquet(${arq('gold/siope/remuneracao.parquet')}) r WHERE ${onde} AND r.ano = $ano::INTEGER
+       ${q.ente ? '' : 'GROUP BY ALL'} ORDER BY tipo_categoria DESC, profissionais DESC`,
+      p,
     );
   },
 };
@@ -1050,6 +1206,11 @@ export async function manifestoDados() {
   return (await iniciar()).manifesto;
 }
 
+/** Cadastro de entes (municípios, estados, DF e União) para a IA achar e conferir códigos de território. */
+export function cadastroEntes() {
+  return consultar('SELECT cod_ibge, nome, uf, esfera FROM entes');
+}
+
 // ---------------- tabelas da IA do mercado de trabalho ----------------
 
 /** O que a IA do mercado de trabalho tem nesta sessão (vai no pedido ao Worker, que monta as instruções). */
@@ -1074,6 +1235,14 @@ export function tabelasIaTrabalho() {
     const lista = (caminhos: string[]) => `[${caminhos.map((c) => arq(c)).join(', ')}]`;
     await con.query(`CREATE OR REPLACE VIEW trab_setores AS SELECT * FROM read_parquet(${arq('gold/trabalho/setores.parquet')})`);
     await con.query(`CREATE OR REPLACE VIEW trab_caged AS SELECT * FROM read_parquet(${arq('gold/trabalho/caged.parquet')})`);
+    // os seis grandes setores de trab_municipios em linhas (setor, vínculos): distribuição sem uma coluna por setor
+    await con.query(`CREATE OR REPLACE VIEW trab_grandes_setores AS
+      SELECT m.ano, m.cod_ibge, m.nome, m.uf, s.ordem, s.setor,
+        CASE s.ordem WHEN 1 THEN m.empregos_agropecuaria WHEN 2 THEN m.empregos_industria WHEN 3 THEN m.empregos_construcao
+          WHEN 4 THEN m.empregos_comercio WHEN 5 THEN m.empregos_servicos ELSE m.empregos_adm_publica END AS vinculos
+      FROM trab_municipios m
+      CROSS JOIN (VALUES (1, 'Agropecuária'), (2, 'Indústria'), (3, 'Construção'), (4, 'Comércio'), (5, 'Serviços'), (6, 'Administração pública')) s(ordem, setor)`)
+      .catch(() => undefined); // sem trab_municipios (dados não publicados), a visão fica de fora
     const microAnos = ((f.rais_micro?.anos as number[] | undefined) ?? []).filter(Number.isInteger);
     // nas tabelas da RAIS a UF é o código IBGE (52); uf_sigla ('GO') evita juntar com entes.uf, que é a sigla
     const ufs = await consultar(`SELECT cod_ibge, uf FROM entes WHERE esfera IN ('E', 'D') AND cod_ibge BETWEEN 11 AND 53`);
@@ -1113,16 +1282,63 @@ export function tabelasIaTrabalho() {
 }
 
 /**
- * Consulta da IA (página /ia), já conferida por validarSql: roda sobre as tabelas em memória e traz
- * no máximo `limite` linhas, mais o total. As colunas saem na ordem do SELECT.
+ * Conexão só das consultas da IA: cancelar uma delas (botão Cancelar da página /ia) não interrompe as
+ * consultas dos painéis. Tabelas e visões ficam no mesmo banco em memória, visíveis às duas conexões.
+ * Nos testes há uma conexão só.
  */
-export async function consultaLivre(sql: string, limite: number) {
+let conexaoDaIa: Promise<duckdb.AsyncDuckDBConnection> | null = null;
+async function conexaoIa(): Promise<duckdb.AsyncDuckDBConnection> {
   const { con } = await iniciar();
+  if (lerLocal || typeof db.connect !== 'function') return con;
+  conexaoDaIa ??= db.connect();
+  conexaoDaIa.catch(() => (conexaoDaIa = null));
+  return conexaoDaIa;
+}
+
+type Lote = { schema: { fields: { name: string }[] }; toArray(): { toJSON(): unknown }[] };
+type Leitor = { schema?: { fields: { name: string }[] }; next(): IteratorResult<Lote> | Promise<IteratorResult<Lote>> };
+const cancelada = () => new DOMException(t('consulta cancelada', 'query cancelled'), 'AbortError');
+
+/**
+ * Roda a consulta por partes (send), para poder cancelá-la no meio: o sinal pede ao DuckDB que pare
+ * (cancelSent) e a leitura das partes já recebidas é interrompida.
+ */
+async function lerCancelavel(con: duckdb.AsyncDuckDBConnection, sql: string, sinal?: AbortSignal) {
+  if (sinal?.aborted) throw cancelada();
+  const parar = () => void con.cancelSent().catch(() => undefined);
+  sinal?.addEventListener('abort', parar, { once: true });
+  try {
+    const leitor = (await con.send(sql, true)) as unknown as Leitor;
+    let colunas: string[] | null = null;
+    const linhas: Record<string, unknown>[] = [];
+    // next() serve aos dois leitores do Arrow: o assíncrono do navegador e o síncrono dos testes
+    for (let r = await leitor.next(); !r.done; r = await leitor.next()) {
+      if (sinal?.aborted) throw cancelada();
+      colunas ??= r.value.schema.fields.map((f) => f.name);
+      for (const l of r.value.toArray()) linhas.push(l.toJSON() as Record<string, unknown>);
+    }
+    return { colunas: colunas ?? leitor.schema?.fields.map((f) => f.name) ?? [], linhas };
+  } catch (e) {
+    if (sinal?.aborted) throw cancelada();
+    throw e;
+  } finally {
+    sinal?.removeEventListener('abort', parar);
+  }
+}
+
+/**
+ * Consulta da IA (página /ia), já conferida por validarSql: roda sobre as tabelas em memória e traz
+ * no máximo `limite` linhas, mais o total. As colunas saem na ordem do SELECT. Com `sinal`, pode ser
+ * cancelada (o erro é um AbortError).
+ */
+export async function consultaLivre(sql: string, limite: number, sinal?: AbortSignal) {
+  const con = await conexaoIa();
   const base = sql.trim().replace(/;\s*$/, '');
-  const r = await con.query(`SELECT * FROM (${base}) AS consulta LIMIT ${limite}`);
+  const r = await lerCancelavel(con, `SELECT * FROM (${base}) AS consulta LIMIT ${limite}`, sinal);
   // a contagem roda a consulta de novo (pesado nos microdados): só quando o resultado passou do limite
-  const [n] = r.numRows < limite ? [{ n: r.numRows }] : await consultar(`SELECT count(*) AS n FROM (${base}) AS consulta`);
-  const colunas = r.schema.fields.map((f) => f.name);
+  const total = r.linhas.length < limite
+    ? r.linhas.length
+    : Number((await lerCancelavel(con, `SELECT count(*) AS n FROM (${base}) AS consulta`, sinal)).linhas[0]?.n);
   // DECIMAL, datas e listas chegam como objetos do Arrow: viram número ou texto
   const celula = (v: unknown): Valor => {
     if (v === null || v === undefined) return null;
@@ -1133,15 +1349,12 @@ export async function consultaLivre(sql: string, limite: number) {
     }
     return normalizar(v);
   };
-  const linhas = r.toArray().map((l) => {
-    const o = l.toJSON() as Record<string, unknown>;
-    return colunas.map((c) => celula(o[c]));
-  });
-  return { colunas, linhas, total: Number(n.n) };
+  const linhas = r.linhas.map((o) => r.colunas.map((c) => celula(o[c])));
+  return { colunas: r.colunas, linhas, total };
 }
 
 export async function executar(caminho: string, params: Params): Promise<unknown> {
-  const rota = rotas[caminho] ?? rotasLrf[caminho] ?? rotasTrabalho[caminho] ?? rotasConsulta[caminho];
+  const rota = rotas[caminho] ?? rotasLrf[caminho] ?? rotasSaudeEducacao[caminho] ?? rotasTrabalho[caminho] ?? rotasConsulta[caminho];
   if (!rota) throw new Error(`rota desconhecida: ${caminho}`);
   return rota(params);
 }

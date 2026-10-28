@@ -365,7 +365,16 @@ def fontes(con):
                  "url": "https://www.gov.br/previdencia/pt-br/assuntos/previdencia-social/emitidos-municipios-2023"},
         **fonte_lrf(con),
         **fonte_trabalho(con),
+        **fonte_educacao_saude(con),
     }
+
+
+def fonte_educacao_saude(con):
+    """SIOPE e SIOPS (siope.py e siops.py): anos disponíveis; vazio se ainda não processados."""
+    from siope import fonte_siope
+    from siops import fonte_siops
+
+    return {**fonte_siope(con), **fonte_siops(con)}
 
 
 def fonte_trabalho(con):

@@ -83,6 +83,39 @@ lrf — indicadores da Lei de Responsabilidade Fiscal, do RREO (6º bimestre) e 
   saude_valor, saude_pct (% aplicado em saúde; mínimo 15 municípios, 12 estados), mde_valor, mde_pct (educação; mínimo 25), fundeb_pct (mínimo 70 desde 2021, 60 antes)
   Os percentuais são os declarados. Em grupos, razões = soma ÷ soma (ex.: sum(despesa_pessoal) / sum(coalesce(rcl_ajustada, rcl)), só entes com os dois valores); para os percentuais declarados use mediana e conte quem passa do limite ou fica abaixo do mínimo.`;
 
+const intervalo = (anos) => (anos?.length ? `${anos[0]} a ${anos.at(-1)}` : '');
+const mesAno = (aaaamm) => `${String(aaaamm % 100).padStart(2, '0')}/${Math.floor(aaaamm / 100)}`;
+
+/** Tabelas do SIOPE (educação) e do SIOPS (saúde): só as fontes publicadas (manifesto). */
+function educacaoSaude(f) {
+  if (!f.siope && !f.siops) return '';
+  const partes = [`## Educação (SIOPE) e saúde (SIOPS): declarações dos próprios entes
+
+São bases autodeclaradas (o ente informa ao FNDE e ao Ministério da Saúde; há atrasos e falta de entrega): ausência é "sem dado", nunca zero; diga quantos entes ficaram sem declaração. Os mínimos constitucionais também aparecem no RREO (tabela lrf: saude_pct, mde_pct, fundeb_pct), se publicada: quando comparar as fontes, diga de qual vem cada número e se divergem.`];
+  if (f.siope) {
+    const meses = f.siope.remuneracao ?? [];
+    partes.push(`SIOPE (FNDE), educação, ${intervalo(f.siope.anos)}: municípios, estados e DF (esfera 'M', 'E', 'D'); cod_ibge de 7 dígitos (estado = código da UF; DF = 53). Ano fechado: até 2016, a declaração anual; desde 2017, o 6º bimestre.
+siope_indicadores — ano, cod_ibge, uf, esfera, cod_indicador, codigo, grupo, indicador (texto), valor
+  Indicadores declarados: aplicação em MDE (mínimo de 25%), FUNDEB na remuneração dos profissionais (mínimo de 70% desde 2021; 60% antes), investimento por aluno por etapa, participação das etapas na despesa etc. Os códigos mudam entre anos: ache o indicador pelo texto (strip_accents(lower(indicador)) LIKE '%...%'), confira que o texto achado é o mesmo em cada ano e diga qual usou. Percentuais em 0–100; valores por aluno em R$ nominais.
+siope_despesas — ano, cod_ibge, uf, esfera, etapa (ex.: 'Educação Infantil', 'Ensino Fundamental'), cod_etapa, subfuncao, tipo_etapa, codigo, fonte (fonte de recursos), item (natureza da despesa), classe, fase ('Dotação Atualizada', 'Desp. Empenhadas', 'Desp. Liquidadas', 'Desp. Pagas'), nivel (0 = o mais agregado; cada nível detalha o anterior), ordem, valor (R$)
+  Some um nível só (ex.: nivel = 0) e uma fase só, para não contar duas vezes.
+siope_receitas — ano, cod_ibge, uf, esfera, codigo, item, classe, coluna, nivel, ordem, valor (R$)
+siope_despesas_funcao — ano, cod_ibge, uf, esfera, ordem, subfuncao, empenhada, liquidada, paga (R$)
+siope_gerais — ano, cod_ibge, uf, esfera, populacao, data_declaracao, receita_prevista, receita_realizada, despesa_dotacao, despesa_empenhada, despesa_liquidada, despesa_paga, educacao_dotacao, educacao_empenhada, educacao_liquidada, educacao_paga, tipo_declaracao, retificadora`);
+    if (meses.length) {
+      partes.push(`siope_remuneracao — ano, mes, cod_ibge, uf, esfera, categoria (categoria profissional), situacao (efetivo, contratado…), tipo_categoria, profissionais, vinculos, carga_horaria_media, salario_medio, salario_p25, salario_mediana, salario_p75, outros_medio (R$ nominais do mês)
+  Agregada pelo LAPAM a partir da folha declarada: não há nomes nem salários individuais. profissionais = pessoas no grupo; vinculos = linhas distintas da folha (uma por escola e categoria). Vínculos repetidos na fonte (mesma escola, carga e remuneração) contam uma vez e os vínculos de uma pessoa na mesma categoria e situação são somadas, então carga e salário são por pessoa. As estatísticas ficam nulas em grupos com menos de 5 pessoas (diga isso quando aparecerem); para juntar grupos, use média ponderada por profissionais só dos grupos com o valor. Uma pessoa em duas categorias conta em cada uma. Meses: ${meses.map(mesAno).join(', ')}.`);
+    }
+  }
+  if (f.siops) {
+    partes.push(`SIOPS (Ministério da Saúde), saúde, municípios, ${intervalo(f.siops.anos)}: série histórica de indicadores do TABNET (o nível que a fonte publica para todos os municípios).
+siops_indicadores — ano, cod_ibge, uf, codigo, indicador, unidade ('%', 'R$', 'R$/hab', 'habitantes'), valor; uma linha por indicador
+  codigo: populacao; 1.1 a 1.6 (receitas e transferências, %); 2.1 (despesa total com saúde por habitante, R$/hab); 2.2 a 2.5 (pessoal, medicamentos, serviços de terceiros e investimentos, % da despesa total com saúde); 2.10 a 2.30 (subfunções, % da despesa total com saúde; só até cerca de 2018); 3.1 (transferências do SUS / despesa total com saúde, %); 3.2 (receita própria aplicada em saúde, EC 29/LC 141, mínimo de 15%); r_impostos_transf, r_transf_sus, d_pessoal, d_recursos_proprios, d_total (R$); r_transf_sus_hab, d_recursos_proprios_hab (R$/hab).
+  Para pôr indicadores lado a lado: max(valor) FILTER (WHERE codigo = '3.2') AS ec29_pct etc. Em grupos, recalcule razões com soma ÷ soma dos valores em R$, não a média dos percentuais.`);
+  }
+  return partes.join('\n');
+}
+
 /** Bloco com o que muda a cada atualização (anos, ano-base, cobertura das fontes), a partir do manifesto. */
 export function contextoDosDados(m) {
   if (!m) return 'Finanças: manifesto dos dados indisponível; confirme anos e cobertura consultando as tabelas.';
@@ -102,5 +135,7 @@ export function contextoDosDados(m) {
   if (f.inss?.exercicios?.length) linhas.push(`INSS: exercícios ${f.inss.exercicios.join(', ')} (os demais ficam nulos).`);
   if (f.siconfi_lrf?.anos) linhas.push(`Tabela lrf (RREO e RGF): exercícios ${f.siconfi_lrf.anos[0]} a ${f.siconfi_lrf.anos[1]}.`, '', LRF);
   else linhas.push('Os indicadores da LRF (RREO e RGF: RCL, pessoal ÷ RCL, dívida, mínimos de saúde e educação) ainda estão em preparação e não podem ser consultados; se pedirem, diga isso em uma frase.');
+  const es = educacaoSaude(f);
+  if (es) linhas.push('', es);
   return linhas.join('\n');
 }

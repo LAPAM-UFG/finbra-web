@@ -148,6 +148,18 @@ Os anexos 8 (educação) e 12 (saúde) do RREO não estão na API; os percentuai
 FUNDEB vêm do resumo do RREO (anexo 14). Retificações de relatórios já baixados não entram na
 atualização mensal; para pegá-las, rode `extract_lrf.py --anos AAAA --atualizar` localmente.
 
+### Educação (SIOPE) e saúde (SIOPS)
+
+Declarações anuais dos entes, com páginas próprias no painel de finanças (**Saúde e educação**) e
+tabelas para a IA (`siope_*`, `siops_indicadores`), de 2013 em diante.
+
+| | |
+|---|---|
+| Educação | `pipeline/siope.py`: API OData do FNDE, uma consulta por tabela, ano e UF (até 2016 o período 1; depois o 6º bimestre). `silver/siope/<tabela>/ano=AAAA/uf=XX.parquet` e `gold/siope/<tabela>.parquet` (indicadores, despesas, receitas, despesas por subfunção, totais e remuneração). Carga completa ~4 h; retomável |
+| Remuneração | a fonte traz cada profissional por escola, com o nome. O nome só junta as linhas da pessoa em memória e não é gravado: fica só o agregado por ente, categoria e situação (pessoas, vínculos e estatísticas por pessoa, nulas em grupos com menos de 5). Só dezembro, de 2019 em diante (`--meses 1-12` para os demais, ~7 min por mês) |
+| Saúde | `pipeline/siops.py`: série histórica de indicadores municipais do TABNET/DATASUS, uma consulta por UF e ano. `gold/siops/indicadores.parquet` (formato longo: código, indicador, unidade, valor). Só municípios |
+| Resumo das páginas | `pipeline/saude_educacao.py` (chamado no fim dos dois): `gold/saude_educacao.parquet`, uma linha por ente e ano com os indicadores das páginas. Indicadores do SIOPE achados pelo texto (os códigos mudam entre anos); os que a fonte deixou de calcular ficam de fora |
+
 ### Mercado de trabalho (RAIS e Novo CAGED)
 
 Microdados do PDET (Ministério do Trabalho), baixados à mão do FTP para a pasta de brutos
@@ -228,17 +240,46 @@ Campo de perguntas em linguagem natural, só para e-mails autorizados.
 1. O navegador envia a pergunta ao Worker (`/api/ia`, `worker/src/ia.js`), protegido pelo
    Cloudflare Access. O Worker confere o token do Access (`worker/src/acesso.js`) e o limite de
    **50 perguntas por pessoa e por dia** (horário de Brasília; contagem no R2, em `ia/uso/`, que
-   não é servido em `/dados/`).
-2. O Worker chama o Claude (`claude-haiku-5-5`, o modelo mais barato; SDK oficial `@anthropic-ai/sdk`) com o esquema das
-   tabelas e as regras do painel (`worker/src/sistema.js`) e com os anos e a cobertura lidos do manifesto.
-3. O Claude devolve consultas SQL. O navegador confere que são somente leitura (`validarSql`, em
-   `web/src/ia.ts`) e as executa no DuckDB sobre as tabelas em memória (`entes`, `indicadores`,
-   `alertas`, `escopos`, `faixas`, `ipca`). O resultado volta ao Claude, que escreve a resposta.
-4. A página mostra a resposta, o SQL e a tabela de cada consulta, com exportação em CSV e Excel.
+   não é servido em `/dados/`). Cada pergunta leva o **contexto da página**: território e ano dos
+   filtros globais (`?uf=`, `?ente=`, `?ano=`), com os **códigos do território em cada formato das tabelas**,
+   e o estilo de resposta (direta ou técnica). A pergunta prevalece; sem território, a IA responde para o
+   Brasil e avisa, ou pede esclarecimento.
+2. O Worker chama o Claude (SDK oficial `@anthropic-ai/sdk`) com o esquema das tabelas e as regras de cada
+   painel e com os anos e a cobertura lidos do manifesto.
+3. O Claude pede consultas SQL (ferramenta `consultar`) e acha lugares citados pelo nome com a ferramenta
+   `localizar` (cadastro de entes, `web/src/ia_territorio.ts`). Antes de rodar, o navegador confere que a
+   consulta é somente leitura (`validarSql`) e que os **códigos de município e UF estão no formato da tabela**
+   (`conferirCodigos`: `cod_ibge` de 7 dígitos nas tabelas `trab_*` e nas finanças, `municipio` de 6 dígitos
+   só em `rais_mun`/`rais_vinculos`; sem busca por pedaço do código ou LIKE no nome). O que não passa volta
+   ao modelo como consulta "bloqueada", com o código certo. As consultas rodam no DuckDB numa conexão própria,
+   canceláveis, e voltam com um identificador (C1, C2…).
+4. No fim, o Claude chama a ferramenta `responder` com a resposta estruturada (conclusão, até 4 números
+   destacados com o período de cada um, explicação, leituras com as colunas que as sustentam, hipóteses,
+   ressalvas, recorte, metodologia, gráficos e perguntas para aprofundar). **Antes de mostrar**, a página a
+   confere (`revisarResposta`, em `web/src/ia.ts`) e devolve ao modelo, até duas vezes: destaque que não está
+   na tabela citada, gráfico com coluna inexistente ou sobre uma linha só, leitura sem colunas de apoio,
+   hipóteses numa pergunta que não pede explicações e comparação de anos da RAIS que atravessa a quebra de
+   2022–2023 sem dizer isso na conclusão.
+5. A resposta mostra as **notas metodológicas verificadas** (`web/src/ia_notas.ts`: texto, documento, trecho
+   literal e data de conferência; quebras da RAIS em 2022 e 2023 pelas notas técnicas do MTE) junto aos
+   números e marca o ano da quebra nos gráficos. Período, território e fontes vêm das consultas, não do
+   texto do modelo; números, competências (set/2025), códigos e reais seguem `web/src/ia_formato.ts`, igual na
+   tela, no PDF e na cópia. No estilo direto: conclusão, destaques, um gráfico e as ressalvas; o resto fica em
+   "Detalhes da análise".
+6. As consultas, o SQL, as tabelas e as revisões ficam em "Como chegamos aqui" (consulta sem resultado,
+   recusada, refeita e usada na resposta), com exportação em CSV e Excel; a conversa inteira sai em PDF
+   (com os gráficos) ou Excel, na versão sintética ou com o apêndice técnico.
 
-O modelo fica em `MODELO`, no topo de `worker/src/ia.js`. O Haiku não tem modelo reserva: se ele recusar um
-pedido por política de segurança, a página avisa. Com Sonnet ou Opus, dá para voltar a pedir o modelo reserva
-(`fallbacks: "default"`), como explica o comentário no código.
+O modelo vem de `IA_MODELO` (variável do Worker ou `worker/.dev.vars`), entre os da lista `MODELOS`; o padrão
+é o Haiku, o mais barato. O Haiku não tem modelo reserva: se ele recusar um pedido por política de segurança,
+a página avisa.
+
+Testes: `npm test` em `worker/` (forma do histórico, esquemas estritos das ferramentas, instruções por painel)
+e em `web/` (inclui o ciclo da conversa com um Worker simulado e as regressões da conversa sobre Andirá/PR:
+código municipal no formato errado, gráfico com colunas inexistentes, competências, quebra de série). Com o
+Worker local ligado, `IA_E2E=1 npm test` em `web/` faz perguntas de verdade (gasta perguntas do dia) e exige
+que os números destacados estejam nas tabelas citadas; `IA_ANDIRA=1` acrescenta as três perguntas de Andirá
+(`IA_GRAVAR=arquivo.json` guarda as respostas do modelo para repetir a conversa sem custo).
 
 Configuração (uma vez):
 
@@ -253,13 +294,13 @@ Desenvolvimento local: crie `worker/.dev.vars` (fora do git) com `ANTHROPIC_API_
 `IA_DEV_EMAIL=seu@email`. Depois rode `npx wrangler dev` em `worker/` (porta 8787) e `npm run dev` em `web/`;
 o Vite repassa `/api` ao Worker.
 
-**Uma IA para todos os painéis.** A aba "Pergunte aos dados" (`/ia`) tem caixas para os painéis que entram na
-conversa (`?paineis=financas,trabalho`; nenhum = todos). O Worker junta as instruções em
+**Uma IA para todos os painéis.** A aba "Pergunte aos dados" (`/ia`) escolhe os painéis que entram na
+conversa (`?paineis=financas,trabalho`; nenhum = todos; vinda de uma área, abre com o painel dela). O Worker junta as instruções em
 `worker/src/sistema_geral.js`: introdução comum, a seção de cada painel marcado (`sistema.js` para finanças,
 `sistema_trabalho.js` para RAIS e CAGED), regras de cruzamento (códigos de município de 7 e 6 dígitos, anos,
 DF) quando há mais de um, e o jeito de responder. Painel novo: crie a sua seção e acrescente-a a `PAINEIS`.
 As tabelas do mercado de trabalho são preparadas em `tabelasIaTrabalho` (`web/src/dados.ts`): as séries do
-painel (`trab_*`), as tabelas somadas `rais_uf` e `rais_mun` (de `gold/trabalho/cubo_*`) e, quando publicados, os
+painel (`trab_*`, com a visão `trab_grandes_setores`, os seis grandes setores em linhas), as tabelas somadas `rais_uf` e `rais_mun` (de `gold/trabalho/cubo_*`) e, quando publicados, os
 microdados `rais_vinculos` (um arquivo por ano e UF, listados em `silver/trabalho/micro/indice.json`). Para a
 Anthropic vão a pergunta e os resultados das consultas (até 200 linhas), nunca os arquivos. No Worker local
 (`wrangler dev`), que não tem o manifesto do R2, vale o manifesto enviado pelo navegador.

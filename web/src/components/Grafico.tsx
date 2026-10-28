@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import * as echarts from 'echarts/core';
 import { BarChart, LineChart } from 'echarts/charts';
-import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components';
-import { CanvasRenderer } from 'echarts/renderers';
+import { GridComponent, LegendComponent, MarkLineComponent, TooltipComponent } from 'echarts/components';
+import { CanvasRenderer, SVGRenderer } from 'echarts/renderers';
 import type { EChartsCoreOption } from 'echarts/core';
 import { nomeArquivo } from '../exportar';
 import { t } from '../idioma';
 
-echarts.use([BarChart, LineChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]);
+// SVG: gráficos do relatório em PDF da IA, desenhados sem tela (graficoSvg)
+echarts.use([BarChart, LineChart, GridComponent, LegendComponent, TooltipComponent, MarkLineComponent, CanvasRenderer, SVGRenderer]);
 
 /** Lê os tokens de cor atuais (mudam com o tema). */
 export function tokens() {
@@ -126,10 +127,28 @@ const tooltipBase = (t: Tokens) => ({
   textStyle: { color: t.tinta, fontSize: 12 },
 });
 
+/** Cores do tema claro, para gráficos desenhados fora da página (relatório em PDF). */
+const TOKENS_IMPRESSAO: Tokens = {
+  superficie: '#ffffff', tinta: '#0f1e2c', tinta2: '#44505f', tinta3: '#626e82', grade: '#e5e1d5', eixo: '#cbc6b6',
+  series: ['#1f5f96', '#7d9c12', '#2492b8'],
+};
+
+/** O gráfico como SVG (texto), nas cores do tema claro, sem animação: vai dentro do relatório em PDF. */
+export function graficoSvg(opcao: (t: Tokens) => EChartsCoreOption, largura = 640, altura = 260): string {
+  const g = echarts.init(null, undefined, { renderer: 'svg', ssr: true, width: largura, height: altura });
+  g.setOption({ ...opcao(TOKENS_IMPRESSAO), animation: false });
+  const svg = g.renderToSVGString();
+  g.dispose();
+  return svg;
+}
+
+/** Linha vertical tracejada numa categoria do eixo x (ex.: ano de uma quebra de série), com rótulo no topo. */
+export type Marca = { x: string; rotulo: string };
+
 /** Linhas sobre os anos: 2px, marcadores de 8px com anel na cor da superfície, mira e tooltip. */
-export function linhas(anos: (number | string)[], series: Serie[], formato: (v: number) => string) {
+export function linhas(anos: (number | string)[], series: Serie[], formato: (v: number) => string, marcas: Marca[] = []) {
   return (t: Tokens): EChartsCoreOption => ({
-    grid: { left: 8, right: 16, top: series.length > 1 ? 36 : 16, bottom: 8, containLabel: true },
+    grid: { left: 8, right: 16, top: series.length > 1 ? 36 : marcas.length ? 26 : 16, bottom: 8, containLabel: true },
     legend: series.length > 1
       ? { top: 0, left: 0, icon: 'roundRect', itemWidth: 14, itemHeight: 3, textStyle: { color: t.tinta2 } }
       : undefined,
@@ -151,6 +170,15 @@ export function linhas(anos: (number | string)[], series: Serie[], formato: (v: 
       symbol: 'circle',
       symbolSize: 8,
       emphasis: { scale: 1.4 },
+      ...(i === 0 && marcas.length ? {
+        markLine: {
+          silent: true,
+          symbol: 'none',
+          lineStyle: { type: 'dashed', color: t.tinta3, width: 1 },
+          label: { position: 'end', color: t.tinta2, fontSize: 10 },
+          data: marcas.map((m) => ({ xAxis: m.x, label: { show: !!m.rotulo, formatter: m.rotulo } })),
+        },
+      } : {}),
     })),
   });
 }

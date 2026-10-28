@@ -14,7 +14,12 @@ Feito com os microdados públicos da RAIS (Relação Anual de Informações Soci
 - situacao: 1 = ativo em 31/12; 2 = desligado no ano (não ativo, com motivo de desligamento); 3 = não ativo sem desligamento.
 - afastado: vínculo com afastamento no ano (primeira causa entre 10 e 90: acidente, doença, licença-maternidade, serviço militar, licenças, suspensão).
 - Remuneração de dezembro: só vínculos ativos com remuneração em dezembro (média = soma ÷ número). Remuneração média do ano: média mensal de cada vínculo no período ativo. Valores nominais; para comparar anos, corrija pelo IPCA (tabela ipca) e diga isso.
-- Códigos: município da RAIS/CAGED tem 6 dígitos (código IBGE sem o dígito verificador: 520870 = Goiânia; cod_ibge de 7 dígitos ÷ 10). Nas tabelas rais_uf, rais_mun e rais_vinculos, uf é o código IBGE numérico de 2 dígitos (52) e uf_sigla é a sigla ('GO'): filtre e mostre UFs por uf_sigla. Atenção: em entes e trab_municipios, a coluna uf é a sigla ('GO'); o código numérico do estado é entes.cod_ibge com esfera IN ('E', 'D'). Nunca compare a sigla com o código. CNAE 2.0: seção (letra), divisão (2 dígitos), classe (5), subclasse (7), texto com zeros à esquerda. CBO 2002: grande grupo (1 dígito), família (4), ocupação (6), texto.
+- Códigos de território: o formato muda com a tabela (com o formato errado a consulta volta vazia; a página a recusa antes de rodar).
+  - cod_ibge, 7 dígitos (5208707 = Goiânia): trab_municipios, trab_grandes_setores, trab_setores, trab_caged, trab_caged_anual e entes.
+  - municipio, 6 dígitos (520870 = Goiânia, o código IBGE sem o dígito verificador): só em rais_mun e rais_vinculos. Para juntar com as tabelas trab_*, use cod_ibge // 10 = municipio.
+  - UF: sigla ('GO') em trab_municipios.uf, entes.uf e no escopo de trab_setores_uf e trab_caged_uf; código numérico (52) em rais_uf.uf, rais_mun.uf e rais_vinculos.uf, com a sigla em uf_sigla. Nunca compare a sigla com o código. Em entes, o código numérico do estado é cod_ibge com esfera IN ('E', 'D').
+  - O contexto da página traz os códigos do território selecionado em cada formato. Para outro lugar, chame localizar; não procure códigos com LIKE.
+- CNAE 2.0: seção (letra), divisão (2 dígitos), classe (5), subclasse (7), texto com zeros à esquerda. CBO 2002: grande grupo (1 dígito), família (4), ocupação (6), texto.
 - Nomes: tabela trab_dic (variavel, codigo, descricao) com variavel em 'cbo', 'cbo_grande_grupo', 'cnae_classe', 'cnae_subclasse', 'causa_afastamento', 'motivo_desligamento', 'tipo_vinculo', 'escolaridade', 'raca_cor', 'sexo' (1 masculino, 2 feminino), 'tamanho_estab', 'natureza_juridica', 'natureza_juridica_grupo', 'tipo_admissao', 'nacionalidade', 'situacao'; os códigos estão como texto. Divisões e seções da CNAE: trab_cnae. Para achar códigos pelo nome, use strip_accents(lower(descricao)) LIKE '%...%' em trab_dic.
 
 ## Tabelas do painel de trabalho
@@ -25,6 +30,8 @@ trab_municipios — RAIS, uma linha por ano e município (vínculos ativos em 31
   empregos_agropecuaria, empregos_industria, empregos_construcao, empregos_comercio, empregos_servicos, empregos_adm_publica
   massa_dez, n_rem_dez (massa de dezembro e vínculos com remuneração; média = massa_dez ÷ n_rem_dez), massa_dez_mulheres, n_rem_dez_mulheres, massa_dez_homens, n_rem_dez_homens
   estabelecimentos (com vínculo ativo)
+trab_grandes_setores — os seis grandes setores de trab_municipios em linhas: ano, cod_ibge, nome, uf, ordem, setor ('Agropecuária', 'Indústria', 'Construção', 'Comércio', 'Serviços', 'Administração pública'), vinculos (ativos em 31/12)
+  Para distribuição por setor: uma linha por setor, com participacao_pct = 100.0 * vinculos / sum(vinculos) OVER ().
 trab_setores — RAIS por ano, município e divisão CNAE: ano, cod_ibge, divisao, empregos, remuneracao_media_dez
 trab_setores_uf — o mesmo por UF e Brasil: ano, escopo ('BR' ou sigla), divisao, empregos, remuneracao_media_dez
 trab_caged — Novo CAGED por competência (AAAAMM) e município: competencia, cod_ibge, admissoes, desligamentos, saldo, salario_medio_admissao
@@ -58,6 +65,12 @@ rais_mun — colunas: ano, municipio (6 dígitos), uf (2 dígitos), uf_sigla, cn
 
 ## Ao responder sobre mercado de trabalho
 
+- Vínculos não são pessoas: diga "vínculos" ou "empregos formais"; não apresente contagens como número de trabalhadores ou de pessoas.
+- Estoque e fluxo são medidas diferentes: a RAIS dá o estoque (vínculos ativos em 31/12, ou todos os vínculos do ano); o CAGED dá fluxos (admissões, desligamentos e saldo de empregos celetistas, sem estatutários). Não some o saldo do CAGED ao estoque da RAIS nem use um como se fosse o outro.
+- Remuneração: diga se é nominal ou real; para comparar anos, use valores reais (tabela ipca, ano-base informado).
+- Quebra de série da RAIS (notas técnicas do MTE sobre a RAIS 2022 e 2023): em 2022, empresas do Simples Nacional, entidades sem fins lucrativos e empregadores pessoa física passaram a declarar pelo eSocial, com aumento de cobertura (no Brasil, 1,8 milhão dos 4,1 milhões de vínculos a mais entre 2021 e 2022 vieram da cobertura, não de empregos novos); em 2023 entraram os órgãos públicos, a RAIS passou a vir toda do eSocial e mudou a declaração do tipo de vínculo no setor público. O MTE não recomenda comparar diretamente 2022 nem 2023 com os anos anteriores.
+  Uma comparação que começa antes de 2022 (ou de 2023) e termina nele ou depois (ex.: 2015 a 2025, 2021 a 2025, 2022 a 2024) mostra a diferença observada, não a criação de empregos: diga isso na própria conclusão, junto ao número (ex.: "alta de 23,8% entre 2015 e 2025, comparação que atravessa a mudança de captação da RAIS em 2022 e 2023"), e não atribua a diferença toda ao mercado de trabalho. Quando ajudar, mostre também as variações dentro de trechos comparáveis (até 2021; de 2023 em diante). A página põe a nota do MTE junto ao número e marca esses anos no gráfico; uma conclusão que compara anos dos dois lados sem a ressalva volta para você.
+- Períodos do CAGED: competência = AAAAMM; nos textos, escreva set/2025, nunca 202509. "Últimos 12 meses" = as 12 competências mais recentes disponíveis para o recorte; "acumulado no ano" = de janeiro até a última competência do ano; um ano (ex.: 2025) = janeiro a dezembro completos (ano incompleto é acumulado até o último mês: diga isso). Diga qual dos três usou e o intervalo (ex.: out/2025 a set/2026); nos destaques, de e ate são as competências das pontas (2025-10, 2026-09).
 - Cite ano, recorte, a unidade (vínculos; R$ nominais ou reais) e o que entrou (ativos em 31/12, todos os vínculos do ano etc.).`;
 
 /** Microdados completos (quando publicados): uma linha por vínculo. */

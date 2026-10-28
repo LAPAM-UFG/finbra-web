@@ -10,6 +10,7 @@ import { LrfDemonstrativos, LrfIndicadores } from './pages/Lrf';
 import { Deflatores, Qualidade } from './pages/Metodologia';
 import { Rankings } from './pages/Rankings';
 import { ReceitasEvolucao, ReceitasVisaoGeral } from './pages/Receitas';
+import { Educacao, RemuneracaoEducacao, Saude } from './pages/SaudeEducacao';
 import { Socioeconomico } from './pages/Socioeconomico';
 import { TrabalhoCaged, TrabalhoEvolucao, TrabalhoRankings, TrabalhoVisaoGeral } from './pages/Trabalho';
 import { TrabalhoConsulta } from './pages/TrabalhoConsulta';
@@ -20,6 +21,11 @@ const menu = (): [string, [string, string][]][] => [
   ['FPM', [['/fpm', t('Evolução e dependência', 'Trends and dependency')], ['/fpm/faixas', t('Faixas populacionais', 'Population brackets')]]],
   [t('Despesas', 'Expenditure'), [['/despesas', t('Visão geral', 'Overview')], ['/despesas/evolucao', t('Evolução', 'Trends')]]],
   [t('Responsabilidade fiscal', 'Fiscal responsibility'), [['/lrf', t('Indicadores da LRF', 'LRF indicators')], ['/lrf/demonstrativos', t('Demonstrativos RREO e RGF', 'RREO and RGF statements')]]],
+  [t('Saúde e educação', 'Health and education'), [
+    ['/educacao', t('Educação (SIOPE)', 'Education (SIOPE)')],
+    ['/educacao/profissionais', t('Profissionais da educação', 'Education staff')],
+    ['/saude', t('Saúde (SIOPS)', 'Health (SIOPS)')],
+  ]],
   [t('Análises', 'Analysis'), [
     ['/demonstrativos', t('Demonstrativos (7 anexos)', 'Financial statements (7 annexes)')],
     ['/socioeconomico', t('Socioeconômico', 'Socioeconomic')],
@@ -99,6 +105,10 @@ export function App() {
   const filtros = new URLSearchParams();
   for (const k of ['ano', 'uf', 'ente']) if (atuais.get(k)) filtros.set(k, atuais.get(k)!);
   const busca = filtros.toString() ? `?${filtros}` : '';
+  // a aba da IA abre com o painel da área de onde se veio (dá para marcar o outro nos ajustes, antes da 1ª pergunta)
+  const filtrosIa = new URLSearchParams(area === 'ia' ? atuais : filtros);
+  if (area !== 'ia') filtrosIa.set('paineis', area);
+  const buscaIa = `?${filtrosIa}`;
 
   return (
     <>
@@ -113,7 +123,7 @@ export function App() {
         <nav className="areas" aria-label={t('Áreas', 'Areas')}>
           <NavLink to={{ pathname: '/receitas', search: busca }} className={area === 'financas' ? 'ativo' : ''}>{t('Finanças públicas', 'Public finances')}</NavLink>
           <NavLink to={{ pathname: '/trabalho', search: busca }} className={area === 'trabalho' ? 'ativo' : ''}>{t('Mercado de trabalho', 'Labour market')}</NavLink>
-          <NavLink to={{ pathname: '/ia', search: busca }} className={area === 'ia' ? 'ativo' : ''}>{t('Pergunte aos dados (IA)', 'Ask the data (AI)')}</NavLink>
+          <NavLink to={{ pathname: '/ia', search: buscaIa }} className={area === 'ia' ? 'ativo' : ''}>{t('Pergunte aos dados (IA)', 'Ask the data (AI)')}</NavLink>
         </nav>
         <span className="espaco" />
         <AlternarIdioma />
@@ -125,7 +135,7 @@ export function App() {
             <div key={grupo} style={{ display: 'contents' }}>
               <h4>{grupo}</h4>
               {itens.map(([para, rotulo]) => (
-                <NavLink key={para} to={{ pathname: para, search: busca }} end className={({ isActive }) => (isActive ? 'ativo' : '')}>
+                <NavLink key={para} to={{ pathname: para, search: area === 'ia' ? buscaIa : busca }} end className={({ isActive }) => (isActive ? 'ativo' : '')}>
                   {rotulo}
                 </NavLink>
               ))}
@@ -149,6 +159,9 @@ export function App() {
               <Route path="/ia" element={<Ia />} />
               <Route path="/lrf" element={<LrfIndicadores />} />
               <Route path="/lrf/demonstrativos" element={<LrfDemonstrativos />} />
+              <Route path="/educacao" element={<Educacao />} />
+              <Route path="/educacao/profissionais" element={<RemuneracaoEducacao />} />
+              <Route path="/saude" element={<Saude />} />
               <Route path="/trabalho" element={<TrabalhoVisaoGeral />} />
               <Route path="/trabalho/evolucao" element={<TrabalhoEvolucao />} />
               <Route path="/trabalho/caged" element={<TrabalhoCaged />} />
