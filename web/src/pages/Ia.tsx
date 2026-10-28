@@ -2,21 +2,24 @@ import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } 
 import { useSearchParams } from 'react-router-dom';
 import type { Ente, Meta } from '../api';
 import { BotoesExportar } from '../components/Exportar';
-import { barras, Grafico, graficoSvg, linhas, type Marca } from '../components/Grafico';
+import { barrasAgrupadas, Grafico, graficoSvg, linhas, type Marca } from '../components/Grafico';
 import { BuscaEnte, UFS, useDados, useFiltros } from '../contexto';
 import { tabelasIaTrabalho } from '../dados';
 import { baixarArquivo, nomeArquivo, paraXlsxAbas, type Celula, type Planilha } from '../exportar';
 import { idioma, local, t } from '../idioma';
 import {
-  consultasDaConversa, contextoParaModelo, descreverCobertura, estadoIa, exemploPergunta, foiCancelado, LINHAS_TELA, MAX_PERGUNTA,
-  mesmoContexto, nomeDaUf, PAINEIS, perguntarIa, prepararResposta, rotuloAno, rotuloEstilo, rotuloTerritorio, semUltimaPergunta,
-  sugestoes, textoDaResposta, turnos,
-  type Cobertura, type ContextoIa, type DadosGrafico, type Desfecho, type Estilo, type EstadoIa, type GraficoIa,
-  type GraficoPronto, type ItemTurno, type Mensagem, type Painel, type Progresso, type RespostaPronta, type Resultado, type Sugestao,
-  type Territorio, type TurnoIa,
+  avisoFaltantes, consultasDaConversa, contextoParaModelo, descreverCobertura, descricaoModo, estadoIa, exemploPergunta, foiCancelado,
+  fontesConsultadas, lerModo, LINHAS_TELA, MAX_PERGUNTA, mesmoContexto, MODOS, nomeDaUf, PAINEIS, perguntarIa, prepararResposta,
+  recorteDe, rotuloAno, rotuloModo, rotuloTerritorio, semUltimaPergunta, sugestoes, textoDaResposta, turnos,
+  type Cobertura, type ConsultaFeita, type ContextoIa, type DadosGrafico, type Desfecho, type EstadoIa, type GraficoIa,
+  type GraficoPronto, type ItemTurno, type Mensagem, type Modo, type Painel, type Progresso, type RespostaPronta, type Resultado,
+  type Sugestao, type TabelaPronta, type Territorio, type TurnoIa,
 } from '../ia';
 import { contar, formatarTabela, formatarValor, rotuloCompetencia, tiposDoResultado, type TabelaFormatada } from '../ia_formato';
 import { dataDaNota, type NotaMetodologica } from '../ia_notas';
+import {
+  ehTexto, formatarCelulaT, rodapeTabela, tabelaExportavel, tabelaHtml, tabelaTsv, type TabelaAnalitica,
+} from '../ia_tabelas';
 import { cadastro as carregarCadastro, type Cadastro } from '../ia_territorio';
 
 const LINHAS_INICIAIS = 25;
@@ -89,8 +92,8 @@ const fonteIa = (paineis: Painel[]) => t(
 );
 /** Rótulo do período: o consultado (depois da resposta) ou o ano de referência da página. */
 const rotuloDoPeriodo = (c: ContextoIa, periodo?: string | null) => (periodo ? t(`Período consultado: ${periodo}`, `Period queried: ${periodo}`) : rotuloAno(c.ano));
-const descreverContexto = (c: ContextoIa, periodo?: string | null) =>
-  [c.paineis.map((p) => NOMES_PAINEIS()[p]).join(' + '), rotuloTerritorio(c.territorio), rotuloDoPeriodo(c, periodo), rotuloEstilo(c.estilo)].join(' · ');
+const descreverContexto = (c: ContextoIa, periodo?: string | null, comModo = true) =>
+  [c.paineis.map((p) => NOMES_PAINEIS()[p]).join(' + '), rotuloTerritorio(c.territorio), rotuloDoPeriodo(c, periodo), ...(comModo ? [rotuloModo(c.modo)] : [])].join(' · ');
 
 const consultasDoTurno = (turno: TurnoIa) => turno.itens.filter((i): i is ItemConsulta => i.tipo === 'consulta');
 /** Pergunta sem acentos, maiúsculas, pontuação e UF entre parênteses: para não sugerir de novo o que já foi perguntado. */
@@ -132,28 +135,39 @@ function textoLocalizacao(r?: Resultado): string {
 /** Gráfico da resposta em opção do ECharts, com as quebras de série marcadas no eixo dos anos. */
 function opcaoDoGrafico(g: GraficoIa, dados: DadosGrafico, quebras: NotaMetodologica[]) {
   const fmt = (v: number) => formatarValor(v, g.formato);
-  if (g.tipo === 'barras') return barras(dados.rotulos, dados.series[0].valores, fmt, true);
+  // todas as séries (ex.: os dois anos de uma comparação), não só a primeira
+  if (g.tipo === 'barras') return barrasAgrupadas(dados.rotulos, dados.series, fmt);
   // um rótulo só, na primeira linha: os anos vizinhos (2022 e 2023) se sobreporiam; a legenda diz os dois
   const marcas: Marca[] = quebras.filter((n) => dados.rotulos.includes(String(n.quebra)))
     .map((n, i) => ({ x: String(n.quebra), rotulo: i === 0 ? 'eSocial' : '' }));
   return linhas(dados.rotulos, dados.series, fmt, marcas);
 }
-const alturaDoGrafico = (g: GraficoIa, dados: DadosGrafico) => (g.tipo === 'barras' ? Math.max(160, dados.categorias.length * 26 + 30) : 260);
+const alturaDoGrafico = (g: GraficoIa, dados: DadosGrafico) => (g.tipo === 'barras'
+  ? Math.max(160, dados.categorias.length * (dados.series.length > 1 ? 18 * dados.series.length + 10 : 26) + 40)
+  : 260);
 /** Motivo de um gráfico recusado, sem a lista de colunas (que vai só para o modelo; a tabela está logo abaixo). */
 const motivoCurto = (motivo: string) => motivo.replace(/\s*\((colunas|columns): [^)]*\)/, '');
 const legendaQuebras = (notas: NotaMetodologica[]) => t(
   `Linha tracejada: mudança de captação da RAIS para o eSocial (${anosDas(notas)}). Anos dos dois lados não são diretamente comparáveis (MTE).`,
   `Dashed line: RAIS capture moved to eSocial (${anosDas(notas)}). Years on either side are not directly comparable (MTE).`,
 );
-/** Gráficos mostrados: no estilo direto, um (o primeiro que pode ser montado). */
-const graficosVisiveis = (p: RespostaPronta, estilo: Estilo) =>
-  (estilo === 'direta' ? [p.graficos.find((g) => g.validacao.ok) ?? p.graficos[0]].filter((g): g is GraficoPronto => !!g) : p.graficos);
+/** Gráficos mostrados: na resposta rápida, um (o primeiro que pode ser montado). */
+const graficosVisiveis = (p: RespostaPronta, modo: Modo) =>
+  (modo === 'rapida' ? [p.graficos.find((g) => g.validacao.ok) ?? p.graficos[0]].filter((g): g is GraficoPronto => !!g) : p.graficos);
+/** Fonte legível de um gráfico ou tabela: as bases que a consulta leu (sem o identificador interno). */
+const fonteDaConsulta = (c?: ConsultaFeita) => (c ? fontesConsultadas([c.sql]).join('; ') : '');
+const ROTULO_PAPEL = (): Record<TabelaPronta['espec']['papel'], string> => ({
+  principal: '',
+  alternativa: t('Alternativa: outro recorte, não atende integralmente ao pedido', 'Alternative: a different scope, does not fully meet the request'),
+  complemento: t('Complemento', 'Supplement'),
+});
 
 // ---------------- exportação da conversa inteira ----------------
 
 const LINHAS_PDF = 200;
 const html = (s: unknown) => String(s ?? '').replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' })[c]!);
 const limiteCelula = (s: string) => s.slice(0, 32_000); // limite de uma célula do Excel
+const ROTULO_APENDICE = () => t('apêndice de reprodução (SQL e histórico das consultas)', 'reproduction appendix (SQL and query history)');
 
 /** Linhas de uma consulta para o Excel: valores completos, com a competência também em "set/2025" ao lado. */
 function linhasExcel(r: Extract<Resultado, { colunas: string[] }>, sql: string): Celula[][] {
@@ -163,10 +177,14 @@ function linhasExcel(r: Extract<Resultado, { colunas: string[] }>, sql: string):
   return [cabecalho, ...r.linhas.map((l) => l.flatMap((v, j) => (extra[j] ? [v, typeof v === 'number' ? rotuloCompetencia(v) : v] : [v])))];
 }
 
+/** A resposta tem alguma tabela montada? Sem nenhuma, as consultas usadas vão no lugar delas. */
+const temTabelas = (p: RespostaPronta | null) => !!p?.tabelas.some((x) => x.tabela);
+
 /**
- * Conversa em Excel. Versão sintética: uma aba de resumo (pergunta, contexto, período consultado, resposta)
- * e uma aba por consulta usada na resposta. Com o apêndice técnico: todas as consultas (inclusive as sem
- * resultado e as recusadas), com SQL e situação, e uma aba com o histórico de execução.
+ * Conversa em Excel: uma aba de resumo (pergunta, modo, contexto, período utilizado, resposta) e uma aba por
+ * tabela das respostas, com números como números e os metadados (unidade, fonte, notas, legenda) acima.
+ * Respostas sem tabela levam as consultas usadas. Com o apêndice de reprodução: todas as consultas
+ * (inclusive as sem resultado e as recusadas), com SQL e situação, e uma aba com o histórico de execução.
  */
 function baixarExcel(lista: TurnoIa[], metas: MetaTurno[], prontas: (RespostaPronta | null)[], resultados: Record<string, Resultado>, paineis: Painel[], apendice: boolean) {
   const resumo: Planilha = {
@@ -174,18 +192,27 @@ function baixarExcel(lista: TurnoIa[], metas: MetaTurno[], prontas: (RespostaPro
     linhas: [
       [t('Fonte', 'Source'), fonteIa(paineis)],
       [t('Exportado em', 'Exported on'), new Date().toISOString()],
-      [t('Conteúdo', 'Contents'), apendice ? t('versão completa, com apêndice técnico', 'full version, with technical appendix') : t('versão sintética', 'summary version')],
+      [t('Conteúdo', 'Contents'), apendice ? `${t('respostas e tabelas, com', 'answers and tables, with')} ${ROTULO_APENDICE()}` : t('respostas e tabelas', 'answers and tables')],
       [],
-      [t('Pergunta', 'Question'), t('Contexto', 'Context'), t('Período consultado', 'Period queried'), t('Resposta', 'Answer'), t('Abas com as consultas', 'Query sheets')],
+      [t('Pergunta', 'Question'), t('Modo', 'Mode'), t('Contexto', 'Context'), t('Período utilizado', 'Period used'), t('Resposta', 'Answer'), t('Abas', 'Sheets')],
     ],
   };
   const abas: Planilha[] = [];
   const historico: Celula[][] = [[t('Pergunta', 'Question'), t('Passo', 'Step'), t('Situação', 'Status'), t('Objetivo ou motivo', 'Purpose or reason'), 'SQL']];
+  let n = 0;
   lista.forEach((turno, i) => {
     const p = prontas[i];
     const consultas = consultasDoTurno(turno);
     const refeita = refeitas(consultas, resultados);
     const nomes: string[] = [];
+    for (const x of p?.tabelas ?? []) {
+      if (!x.tabela) continue;
+      n += 1;
+      const e = tabelaExportavel(x.tabela, [[t('Pergunta', 'Question'), turno.pergunta]]);
+      const nome = `${t('Tabela', 'Table')} ${n} ${x.tabela.titulo}`;
+      nomes.push(nome.slice(0, 31));
+      abas.push({ nome, linhas: [...e.metadados.map(([k, v]): Celula[] => [k, v]), [], e.colunas, ...e.linhas] });
+    }
     for (const item of turno.itens) {
       if (item.tipo === 'revisao') historico.push([turno.pergunta, t('revisão da resposta', 'answer review'), t('devolvida à IA', 'returned to the AI'), item.motivos.join(' | '), '']);
       if (item.tipo === 'localizacao') historico.push([turno.pergunta, t('localização', 'location'), '', `${item.nome} ${item.uf} → ${textoLocalizacao(resultados[item.id])}`, '']);
@@ -195,7 +222,7 @@ function baixarExcel(lista: TurnoIa[], metas: MetaTurno[], prontas: (RespostaPro
       const situacao = [estadoConsulta(r).texto, usada ? t('usada na resposta', 'used in the answer') : '', refeita.has(item.rotulo) ? t(`refeita em ${refeita.get(item.rotulo)}`, `redone in ${refeita.get(item.rotulo)}`) : '']
         .filter(Boolean).join('; ');
       historico.push([turno.pergunta, item.rotulo, situacao, r && 'erro' in r ? `${item.objetivo} (${r.erro})` : item.objetivo, limiteCelula(item.sql)]);
-      if (!apendice && !usada) continue;
+      if (!apendice && !(usada && !temTabelas(p))) continue;
       const nome = `${item.rotulo} ${item.objetivo}`;
       nomes.push(nome.slice(0, 31));
       abas.push({
@@ -203,6 +230,7 @@ function baixarExcel(lista: TurnoIa[], metas: MetaTurno[], prontas: (RespostaPro
         linhas: [
           [t('Pergunta', 'Question'), turno.pergunta],
           [t('Objetivo da consulta', 'Query purpose'), item.objetivo],
+          [t('Fonte', 'Source'), fontesConsultadas([item.sql]).join('; ')],
           [t('Situação', 'Status'), situacao],
           ['SQL', limiteCelula(item.sql)],
           ...(r && 'erro' in r ? [[t('Erro', 'Error'), r.erro]] : [[t('Linhas', 'Rows'), r ? `${r.linhas.length} / ${r.total}` : '–']]),
@@ -211,73 +239,115 @@ function baixarExcel(lista: TurnoIa[], metas: MetaTurno[], prontas: (RespostaPro
         ],
       });
     }
-    const resposta = p
-      ? apendice ? textoDaResposta(p) : [p.r.conclusao, ...p.alertas.map((n) => `⚠ ${n.curta()}`),
-        ...p.destaques.map((x) => `- ${x.d.rotulo}: ${x.valor}${x.unidade ? ` ${x.unidade}` : ''}${x.rotuloPeriodo ? ` (${x.rotuloPeriodo})` : ''}`),
-        ...(p.r.limitacoes ? [`${t('Ressalvas', 'Caveats')}: ${p.r.limitacoes}`] : [])].join('\n')
-      : turno.textoFinal ?? '';
-    resumo.linhas.push([turno.pergunta, metas[i] ? descreverContexto(metas[i].contexto, p?.periodo) : '', p?.periodo ?? '', limiteCelula(resposta), nomes.join('; ')]);
+    const resposta = p ? textoDaResposta(p) : turno.textoFinal ?? '';
+    const modo = metas[i] ? rotuloModo(metas[i].contexto.modo) : '';
+    resumo.linhas.push([turno.pergunta, modo, metas[i] ? descreverContexto(metas[i].contexto, p?.periodo) : '', p?.periodo ?? '', limiteCelula(resposta), nomes.join('; ')]);
   });
-  const todas = apendice ? [resumo, { nome: t('Histórico de execução', 'Execution history'), linhas: historico }, ...abas] : [resumo, ...abas];
+  const todas = apendice ? [resumo, ...abas, { nome: t('Histórico de execução', 'Execution history'), linhas: historico }] : [resumo, ...abas];
   baixarArquivo(`${nomeArquivo(t('pergunte_aos_dados', 'ask_the_data'))}.xlsx`, paraXlsxAbas(todas) as BlobPart,
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 }
 
-function tabelaHtml(f: TabelaFormatada) {
-  return `${f.extras.length ? `<p class="nota">${html(f.extras.join(' · '))}</p>` : ''}<table><thead><tr>${f.cabecalho.map((c, j) => `<th class="${f.texto[j] ? 't' : ''}">${html(c)}</th>`).join('')}</tr></thead><tbody>`
+/** Tabela de consulta (apêndice e gráficos que não puderam ser montados), já formatada. */
+function tabelaConsultaHtml(f: TabelaFormatada) {
+  return `${f.extras.length ? `<p class="nota">${html(f.extras.join(' · '))}</p>` : ''}<table class="consulta-tab"><thead><tr>${f.cabecalho.map((c, j) => `<th class="${f.texto[j] ? 't' : ''}">${html(c)}</th>`).join('')}</tr></thead><tbody>`
     + f.linhas.map((l) => `<tr>${l.map((v, j) => `<td class="${f.texto[j] ? 't' : 'n'}">${html(v)}</td>`).join('')}</tr>`).join('')
     + '</tbody></table>';
 }
 
-/** Parte sintética de uma resposta no relatório: conclusão, alerta, destaques, gráfico, ressalvas e fonte. */
-function respostaHtml(p: RespostaPronta, estilo: Estilo) {
-  const r = p.r;
-  const alerta = p.alertas.length
-    ? `<div class="alerta"><strong>${html(t(`Comparação entre anos com mudança de metodologia da RAIS (${anosDas(p.alertas)}).`, `Comparison across a RAIS methodology change (${anosDas(p.alertas)}).`))}</strong> `
-      + `${html(t('A diferença observada mistura a variação do emprego com a ampliação da cobertura.', 'The observed difference mixes employment change with wider coverage.'))}`
-      + `<ul>${p.alertas.map((n) => `<li>${html(n.curta())} <span class="nota">(${html(n.documento)})</span></li>`).join('')}</ul></div>`
-    : '';
-  const destaques = p.destaques.map((x) => `<div class="destaque"><span class="rotulo">${html(x.d.rotulo)}</span><strong>${html(x.valor)}</strong>`
-    + `${x.unidade ? `<span class="unidade">${html(x.unidade)}</span>` : ''}${x.rotuloPeriodo ? `<span class="periodo">${html(x.rotuloPeriodo)}</span>` : ''}`
-    + `${x.quebras.length ? `<span class="quebra">${html(t(`atravessa a quebra da RAIS (${anosDas(x.quebras)})`, `crosses the RAIS break (${anosDas(x.quebras)})`))}</span>` : ''}`
-    + `<span class="nota">${html(x.conferencia === 'conferido' ? t(`conferido em ${x.d.consulta}`, `checked in ${x.d.consulta}`) : t(`não encontrado em ${x.d.consulta}`, `not found in ${x.d.consulta}`))}</span></div>`).join('');
-  const graficos = graficosVisiveis(p, estilo).map((g) => {
-    const tituloG = `<p class="titulo-grafico">${html(g.g.titulo || t('Gráfico', 'Chart'))} <span class="nota">· ${html(t(`dados de ${g.g.consulta}`, `data from ${g.g.consulta}`))}</span></p>`;
-    if (g.validacao.ok) {
-      const svg = graficoSvg(opcaoDoGrafico(g.g, g.validacao.dados, g.quebras), 680, alturaDoGrafico(g.g, g.validacao.dados));
-      return `<figure class="grafico">${tituloG}${svg}${g.quebras.length ? `<figcaption class="nota">${html(legendaQuebras(g.quebras))}</figcaption>` : ''}</figure>`;
+/** Numeração de tabelas e gráficos ao longo do relatório (Tabela 1, Gráfico 1…). */
+type Contador = { tabela: number; grafico: number };
+
+/** Tabelas da resposta no relatório: título numerado, papel (alternativa, complemento), unidade, fonte e notas. */
+function tabelasHtml(p: RespostaPronta, n: Contador) {
+  return p.tabelas.map((x) => {
+    if (!x.tabela) {
+      const r = x.consulta?.resultado;
+      const dados = r && !('erro' in r) && r.linhas.length ? tabelaConsultaHtml(formatarTabela(r, x.consulta!.sql, LINHAS_PDF)) : '';
+      return `<div class="bloco-tabela"><p class="aviso">${html(t(`A tabela “${x.espec.titulo}” não pôde ser montada: ${x.motivo}.`, `Table “${x.espec.titulo}” could not be built: ${x.motivo}.`))}</p>${dados}</div>`;
     }
-    const r2 = g.consulta?.resultado;
-    const tabela = r2 && !('erro' in r2) && r2.linhas.length ? tabelaHtml(formatarTabela(r2, g.consulta!.sql, 30)) : '';
-    return `<figure class="grafico">${tituloG}<p class="aviso">${html(t(`Não foi possível montar este gráfico: ${motivoCurto(g.validacao.motivo)}.`, `This chart could not be drawn: ${motivoCurto(g.validacao.motivo)}.`))}`
-      + `${tabela ? ` ${html(t(`Os dados válidos de ${g.g.consulta} estão na tabela abaixo.`, `The valid data from ${g.g.consulta} are in the table below.`))}` : ''}</p>${tabela}</figure>`;
+    n.tabela += 1;
+    const papel = ROTULO_PAPEL()[x.espec.papel];
+    return `<div class="bloco-tabela">${papel ? `<p class="papel">${html(papel)}</p>` : ''}${tabelaHtml(x.tabela, { numero: `${t('Tabela', 'Table')} ${n.tabela}` })}</div>`;
   }).join('');
-  const fonte = [p.fontes.join('; '), p.territorios.join('; ') || r.recorte.territorio, p.periodo ?? r.recorte.periodo].filter(Boolean).join(' · ');
-  return `<p class="conclusao">${html(r.conclusao)}</p>${alerta}${destaques ? `<div class="destaques">${destaques}</div>` : ''}${graficos}`
-    + `${r.limitacoes ? `<h4>${html(t('Ressalvas', 'Caveats'))}</h4><div class="texto">${html(r.limitacoes)}</div>` : ''}`
-    + `${fonte ? `<p class="nota">${html(t('Fonte', 'Source'))}: ${html(fonte)}</p>` : ''}`;
 }
 
-/** Apêndice técnico de uma pergunta: textos completos, ficha, notas verificadas e histórico de execução com as tabelas. */
+/** Gráficos no relatório: título numerado e fonte legível (sem o identificador da consulta). */
+function graficosHtml(p: RespostaPronta, modo: Modo, n: Contador) {
+  return graficosVisiveis(p, modo).map((g) => {
+    if (!g.validacao.ok) return '';
+    n.grafico += 1;
+    const svg = graficoSvg(opcaoDoGrafico(g.g, g.validacao.dados, g.quebras), 680, alturaDoGrafico(g.g, g.validacao.dados));
+    const fonte = fonteDaConsulta(g.consulta);
+    return `<figure class="grafico"><p class="titulo-grafico">${html(`${t('Gráfico', 'Chart')} ${n.grafico} — ${g.g.titulo || t('Gráfico', 'Chart')}`)}</p>${svg}`
+      + `<figcaption class="nota">${html([fonte && `${t('Fonte', 'Source')}: ${fonte}; ${t('elaboração LAPAM/UFG', 'prepared by LAPAM/UFG')}.`, g.quebras.length ? legendaQuebras(g.quebras) : ''].filter(Boolean).join(' '))}</figcaption></figure>`;
+  }).join('');
+}
+
+/** Alertas da resposta no relatório: pedido não atendido por inteiro e quebra de série da RAIS. */
+function alertasHtml(p: RespostaPronta) {
+  const faltas = p.faltantes.length ? `<div class="alerta"><strong>${html(avisoFaltantes(p))}</strong></div>` : '';
+  const serie = p.alertas.length
+    ? `<div class="alerta"><strong>${html(t(`Comparação entre anos com mudança de metodologia da RAIS (${anosDas(p.alertas)}).`, `Comparison across a RAIS methodology change (${anosDas(p.alertas)}).`))}</strong> `
+      + `${html(t('A diferença observada mistura a variação do emprego com a ampliação da cobertura.', 'The observed difference mixes employment change with wider coverage.'))}`
+      + `<ul>${p.alertas.map((x) => `<li>${html(x.curta())} <span class="nota">(${html(x.documento)})</span></li>`).join('')}</ul></div>`
+    : '';
+  return faltas + serie;
+}
+
+const fichaHtml = (linhas: [string, string][]) => (linhas.length
+  ? `<table class="ficha">${linhas.map(([k, v]) => `<tr><th class="t">${html(k)}</th><td class="t">${html(v)}</td></tr>`).join('')}</table>` : '');
+
+const notasHtml = (notas: NotaMetodologica[]) => (notas.length
+  ? `<ul>${notas.map((x) => `<li><strong>${html(x.titulo())}.</strong> ${html(x.texto())}<br><span class="nota">${html(x.documento)}: ${html(x.url)}${x.trecho ? ` · ${html(t('trecho', 'excerpt'))}: “${html(x.trecho)}”` : ''} · ${html(t(`conferida em ${dataDaNota(x)}`, `checked on ${dataDaNota(x)}`))}</span></li>`).join('')}</ul>`
+  : '');
+
+/**
+ * Uma resposta no relatório, conforme o modo em que foi feita. Rápida: conclusão, avisos, números
+ * principais, tabelas, gráfico, ressalvas e fonte. Pesquisa: conclusão, avisos, recorte da análise, tabelas
+ * completas, gráficos, análise dos resultados, ressalvas, metodologia e fontes. Sem identificadores internos.
+ */
+function respostaHtml(p: RespostaPronta, modo: Modo, n: Contador) {
+  const r = p.r;
+  const texto = (titulo: string, v: string) => (v ? `<h4>${html(titulo)}</h4><div class="texto">${html(v)}</div>` : '');
+  const leituras = p.leituras.filter((l) => !l.motivo);
+  const destaques = p.destaques.map((x) => `<div class="destaque"><span class="rotulo">${html(x.d.rotulo)}</span><strong>${html(x.valor)}</strong>`
+    + `${x.unidade ? `<span class="unidade">${html(x.unidade)}</span>` : ''}${x.rotuloPeriodo ? `<span class="periodo">${html(x.rotuloPeriodo)}</span>` : ''}`
+    + `${x.quebras.length ? `<span class="quebra">${html(t(`atravessa a quebra da RAIS (${anosDas(x.quebras)})`, `crosses the RAIS break (${anosDas(x.quebras)})`))}</span>` : ''}</div>`).join('');
+  if (modo === 'rapida') {
+    const fonte = [p.fontes.join('; '), p.territorios.join('; ') || r.recorte.territorio, p.periodo ?? r.recorte.periodo].filter(Boolean).join(' · ');
+    return `<p class="conclusao">${html(r.conclusao)}</p>${alertasHtml(p)}${destaques ? `<div class="destaques">${destaques}</div>` : ''}`
+      + `${tabelasHtml(p, n)}${graficosHtml(p, modo, n)}${texto(t('Ressalvas', 'Caveats'), r.limitacoes)}`
+      + `${fonte ? `<p class="nota">${html(t('Fonte', 'Source'))}: ${html(fonte)}</p>` : ''}`;
+  }
+  const metodo = [
+    texto(t('Metodologia', 'Methodology'), r.metodologia),
+    p.fontes.length ? `<h4>${html(t('Fontes', 'Sources'))}</h4><ul>${p.fontes.map((f) => `<li>${html(f)}</li>`).join('')}</ul>` : '',
+    p.bases.length ? `<p class="nota">${html(t('Versão das bases', 'Dataset versions'))}: ${html(p.bases.join('; '))}</p>` : '',
+    p.notas.length ? `<h4>${html(t('Notas metodológicas verificadas', 'Verified methodological notes'))}</h4>${notasHtml(p.notas)}` : '',
+  ].join('');
+  return `<p class="conclusao">${html(r.conclusao)}</p>${alertasHtml(p)}`
+    + `<h3>${html(t('Recorte da análise', 'Scope of the analysis'))}</h3>${fichaHtml(recorteDe(p))}`
+    + `${p.tabelas.length ? `<h3>${html(t('Tabelas', 'Tables'))}</h3>${tabelasHtml(p, n)}` : ''}`
+    + `${graficosHtml(p, modo, n)}`
+    + `<h3>${html(t('Análise dos resultados', 'Analysis of the results'))}</h3>${r.explicacao ? `<div class="texto">${html(r.explicacao)}</div>` : ''}`
+    + `${leituras.length ? `<ul>${leituras.map((l) => `<li>${html(l.texto)}</li>`).join('')}</ul>` : ''}`
+    + `${texto(t('Hipóteses (não testadas pelos dados)', 'Hypotheses (not tested by the data)'), p.hipoteses)}`
+    + `${texto(t('Ressalvas', 'Caveats'), r.limitacoes)}`
+    + `${metodo ? `<h3>${html(t('Metodologia e fontes', 'Methodology and sources'))}</h3>${metodo}` : ''}`;
+}
+
+/** Apêndice de reprodução de uma pergunta: textos do modelo, consultas com SQL e tabelas, e o histórico de execução. */
 function apendiceHtml(turno: TurnoIa, p: RespostaPronta | null, resultados: Record<string, Resultado>) {
   const partes: string[] = [];
   if (p) {
-    const r = p.r;
+    if (p.hipotesesOmitidas) partes.push(`<h4>${html(t('Hipóteses (omitidas da resposta: a pergunta não pedia explicações)', 'Hypotheses (left out of the answer: the question did not ask for explanations)'))}</h4><div class="texto">${html(p.r.hipoteses)}</div>`);
     const leituras = p.leituras.filter((l) => !l.motivo);
-    const hipoteses = p.hipotesesOmitidas
-      ? t('Hipóteses (omitidas da resposta: a pergunta não pedia explicações)', 'Hypotheses (left out of the answer: the question did not ask for explanations)')
-      : t('Hipóteses (não testadas)', 'Hypotheses (not tested)');
-    for (const [k, v] of [[t('Dados observados', 'Observed data'), r.explicacao], [hipoteses, r.hipoteses],
-      [t('Metodologia da resposta', 'Answer methodology'), r.metodologia]] as [string, string][]) {
-      if (v) partes.push(`<h4>${html(k)}</h4><div class="texto">${html(v)}</div>`);
-    }
-    if (leituras.length) partes.push(`<h4>${html(t('Leitura dos dados', 'Reading the data'))}</h4><ul>${leituras.map((l) => `<li>${html(l.texto)} <span class="nota">(${html(`${l.consulta}: ${l.colunas.join(', ')}`)})</span></li>`).join('')}</ul>`);
-    const ficha = fichaDe(p).map(([k, v]) => `<tr><th class="t">${html(k)}</th><td class="t">${html(v)}</td></tr>`).join('');
-    if (ficha) partes.push(`<table class="ficha">${ficha}</table>`);
-    if (p.notas.length) {
-      partes.push(`<h4>${html(t('Notas metodológicas verificadas', 'Verified methodological notes'))}</h4><ul>${p.notas.map((n) => `<li><strong>${html(n.titulo())}.</strong> ${html(n.texto())}`
-        + `<br><span class="nota">${html(n.documento)}: ${html(n.url)}${n.trecho ? ` · ${html(t('trecho', 'excerpt'))}: “${html(n.trecho)}”` : ''} · ${html(t(`conferida em ${dataDaNota(n)}`, `checked on ${dataDaNota(n)}`))}</span></li>`).join('')}</ul>`);
-    }
+    if (leituras.length) partes.push(`<h4>${html(t('Leituras e colunas que as sustentam', 'Readings and supporting columns'))}</h4><ul>${leituras.map((l) => `<li>${html(l.texto)} <span class="nota">(${html(`${l.consulta}: ${l.colunas.join(', ')}`)})</span></li>`).join('')}</ul>`);
+    const conferencia = p.destaques.map((x) => `<li>${html(x.d.rotulo)}: ${html(x.valor)} <span class="nota">(${html(x.conferencia === 'conferido' ? t(`conferido na consulta ${x.d.consulta}, coluna ${x.d.coluna}`, `checked in query ${x.d.consulta}, column ${x.d.coluna}`) : t(`não encontrado na consulta ${x.d.consulta}`, `not found in query ${x.d.consulta}`))})</span></li>`).join('');
+    if (conferencia) partes.push(`<h4>${html(t('Conferência dos números principais', 'Check of the key numbers'))}</h4><ul>${conferencia}</ul>`);
+    const origem = p.tabelas.filter((x) => x.tabela).map((x) => `<li>${html(x.tabela!.titulo)}: ${html(t(`consulta ${x.espec.consulta}`, `query ${x.espec.consulta}`))} (${html(x.espec.tipo)}${x.espec.grupo ? `, ${html(t('grupo', 'group'))} ${html(x.espec.grupo)}` : ''}${x.espec.periodo ? `, ${html(t('período', 'period'))} ${html(x.espec.periodo)}` : ''}${x.espec.valor ? `, ${html(t('valor', 'value'))} ${html(x.espec.valor)}` : ''})</li>`).join('');
+    if (origem) partes.push(`<h4>${html(t('Origem das tabelas', 'Table sources'))}</h4><ul>${origem}</ul>`);
   } else if (turno.textoFinal) partes.push(`<div class="texto">${html(turno.textoFinal)}</div>`);
   const refeita = refeitas(consultasDoTurno(turno), resultados);
   const passos = turno.itens.map((item) => {
@@ -294,29 +364,35 @@ function apendiceHtml(turno: TurnoIa, p: RespostaPronta | null, resultados: Reco
     else if (!r.linhas.length) corpo = `<p class="nota">${html(t('Nenhum registro para este recorte.', 'No records for this scope.'))}</p>`;
     else {
       const f = formatarTabela(r, item.sql, LINHAS_PDF);
-      corpo = `${tabelaHtml(f)}<p class="nota">${html(r.total > f.linhas.length && !f.emLinhas
-        ? t(`${r.total.toLocaleString(local())} linhas; o relatório mostra as primeiras ${f.linhas.length} (todas estão no Excel).`, `${r.total.toLocaleString(local())} rows; the report shows the first ${f.linhas.length} (all are in the Excel file).`)
+      corpo = `${tabelaConsultaHtml(f)}<p class="nota">${html(r.total > f.linhas.length && !f.emLinhas
+        ? t(`${r.total.toLocaleString(local())} linhas; o relatório mostra as primeiras ${f.linhas.length} (todas as carregadas estão no Excel).`, `${r.total.toLocaleString(local())} rows; the report shows the first ${f.linhas.length} (all loaded rows are in the Excel file).`)
         : `${contar(r.total, t('linha', 'row'), t('linhas', 'rows'))}.`)}${r.linhas.some((l) => l.some((v) => v === null)) ? ` ${html(t('— = sem dado (ausente, não zero).', '— = no data (missing, not zero).'))}` : ''}</p>`;
     }
-    return `<div class="consulta"><h3>${html(item.rotulo)} · ${html(item.objetivo || t('Consulta', 'Query'))} <span class="nota">(${html(marcas)})</span></h3><pre>${html(item.sql)}</pre>${corpo}</div>`;
+    const fonte = fontesConsultadas([item.sql]).join('; ');
+    return `<div class="consulta"><h3>${html(item.rotulo)} · ${html(item.objetivo || t('Consulta', 'Query'))} <span class="nota">(${html(marcas)})</span></h3>${fonte ? `<p class="nota">${html(t('Tabelas de origem', 'Source tables'))}: ${html(fonte)}</p>` : ''}<pre>${html(item.sql)}</pre>${corpo}</div>`;
   }).join('');
   partes.push(`<h4>${html(t('Histórico de execução', 'Execution history'))}</h4>${passos || `<p class="nota">${html(t('Sem consultas.', 'No queries.'))}</p>`}`);
   return partes.join('');
 }
 
 /**
- * Relatório para impressão (o navegador salva em PDF): versão sintética de cada pergunta e, se pedido, o
- * apêndice técnico. Vai num iframe invisível, para não depender de janelas pop-up.
+ * Relatório para impressão (o navegador salva em PDF): cada resposta no modo em que foi feita (resposta
+ * rápida ou análise para pesquisa) e, se pedido, o apêndice de reprodução. Vai num iframe invisível, para
+ * não depender de janelas pop-up.
  */
-function imprimirPdf(lista: TurnoIa[], metas: MetaTurno[], prontas: (RespostaPronta | null)[], resultados: Record<string, Resultado>, email: string, paineis: Painel[], apendice: boolean) {
-  const sinteses = lista.map((turno, i) => {
+function imprimirPdf(lista: TurnoIa[], metas: MetaTurno[], prontas: (RespostaPronta | null)[], resultados: Record<string, Resultado>,
+  o: { email: string; paineis: Painel[]; apendice: boolean; geradoEm: string }) {
+  const n: Contador = { tabela: 0, grafico: 0 };
+  const corpo = lista.map((turno, i) => {
     const p = prontas[i];
-    const resposta = p ? respostaHtml(p, metas[i]?.contexto.estilo ?? 'direta') : turno.textoFinal ? `<div class="texto">${html(turno.textoFinal)}</div>` : '';
-    return `<section><h2>${i + 1}. ${html(turno.pergunta)}</h2>`
-      + `${metas[i] ? `<p class="nota">${html(t('Contexto', 'Context'))}: ${html(descreverContexto(metas[i].contexto, p?.periodo))}</p>` : ''}${resposta}</section>`;
+    const modo = metas[i]?.contexto.modo ?? 'rapida';
+    const resposta = p ? respostaHtml(p, modo, n) : turno.textoFinal ? `<div class="texto">${html(turno.textoFinal)}</div>` : '';
+    return `<section class="pergunta"><h2>${i + 1}. ${html(turno.pergunta)}</h2>`
+      + `<p class="nota">${html(rotuloModo(modo))}${metas[i] ? ` · ${html(descreverContexto(metas[i].contexto, p?.periodo, false))}` : ''}</p>${resposta}</section>`;
   }).join('');
-  const anexo = apendice
-    ? `<section class="apendice"><h1>${html(t('Apêndice técnico', 'Technical appendix'))}</h1>`
+  const anexo = o.apendice
+    ? `<section class="apendice"><h1>${html(t('Apêndice de reprodução', 'Reproduction appendix'))}</h1>`
+      + `<p class="nota">${html(t('Consultas SQL executadas no navegador sobre os arquivos do painel, com os resultados e o histórico de cada pergunta.', 'SQL queries run in the browser on the dashboard files, with the results and the history of each question.'))}</p>`
       + lista.map((turno, i) => `<section><h2>${i + 1}. ${html(turno.pergunta)}</h2>${apendiceHtml(turno, prontas[i], resultados)}</section>`).join('') + '</section>'
     : '';
   const doc = `<!doctype html><html lang="${idioma() === 'en' ? 'en' : 'pt-BR'}"><head><meta charset="utf-8">
@@ -328,38 +404,52 @@ function imprimirPdf(lista: TurnoIa[], metas: MetaTurno[], prontas: (RespostaPro
       header h1, .apendice > h1 { font-size: 15pt; margin: 0; color: #002f51; }
       .apendice { break-before: page; }
       header p, .nota { font-size: 8.5pt; color: #4b5563; margin: 3px 0; }
-      h2 { font-size: 12pt; color: #002f51; margin: 18px 0 6px; break-after: avoid; }
-      h3 { font-size: 10pt; margin: 10px 0 4px; break-after: avoid; }
+      h2 { font-size: 12pt; color: #002f51; margin: 18px 0 4px; break-after: avoid; }
+      h3 { font-size: 10.5pt; color: #002f51; margin: 14px 0 4px; break-after: avoid; }
       h4 { font-size: 9pt; text-transform: uppercase; letter-spacing: .04em; color: #4b5563; margin: 10px 0 2px; break-after: avoid; }
+      .pergunta + .pergunta { margin-top: 22px; }
       .conclusao { font-weight: 600; border-left: 3px solid #a4bc0b; padding-left: 8px; }
       .alerta { border: 1px solid #c98a1a; background: #fdf6e7; border-radius: 6px; padding: 6px 10px; margin: 8px 0; font-size: 9.5pt; break-inside: avoid; }
       .alerta ul { margin: 4px 0 0; padding-left: 16px; }
       .destaques { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px; margin: 8px 0; }
       .destaque { background: #f1eee4; border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; break-inside: avoid; }
       .destaque strong { font-size: 13pt; }
-      .destaque .rotulo, .destaque .periodo { font-size: 8.5pt; color: #44505f; }
+      .destaque .rotulo, .destaque .periodo, .destaque .unidade { font-size: 8.5pt; color: #44505f; }
       .destaque .quebra { font-size: 8pt; color: #8a5a00; font-weight: 600; }
-      .destaque .unidade { font-size: 8.5pt; color: #44505f; }
-      .grafico { margin: 8px 0; break-inside: avoid; }
+      .grafico { margin: 10px 0; break-inside: avoid; }
       .grafico svg { max-width: 100%; height: auto; }
-      .titulo-grafico { font-weight: 600; margin: 0 0 2px; font-size: 9.5pt; }
+      .titulo-grafico { font-weight: 600; margin: 0 0 2px; font-size: 9.5pt; break-after: avoid; }
       .aviso { font-size: 9pt; color: #8a2a2a; }
+      .papel { font-size: 8.5pt; font-weight: 600; color: #8a5a00; margin: 8px 0 0; break-after: avoid; }
       .texto { white-space: pre-wrap; margin: 4px 0; }
       .consulta, .passo { border-left: 3px solid #a4bc0b; padding-left: 8px; margin: 10px 0; }
       .revisao { border-left-color: #c98a1a; }
       pre { font: 8pt/1.35 Consolas, monospace; background: #f1eee4; padding: 6px 8px; white-space: pre-wrap; word-break: break-word; }
-      table { border-collapse: collapse; width: 100%; font-size: 8pt; margin: 4px 0; }
-      th, td { border-bottom: 1px solid #ddd; padding: 2px 6px; text-align: center; }
-      th { background: #002f51; color: #fff; }
-      td.n { font-variant-numeric: tabular-nums; }
-      th.t, td.t { text-align: left; }
-      .ficha th { background: none; color: #44505f; width: 30%; }
+      table { border-collapse: collapse; width: 100%; margin: 4px 0; }
+      thead { display: table-header-group; }
       tr { break-inside: avoid; }
+      caption { caption-side: top; text-align: left; font-weight: 600; font-size: 9.5pt; padding: 0 0 4px; break-after: avoid; }
+      .bloco-tabela { margin: 10px 0 12px; }
+      table.analitica { font-size: 8.5pt; width: auto; min-width: 60%; max-width: 100%; }
+      table.analitica th { background: #002f51; color: #fff; font-weight: 600; padding: 3px 7px; vertical-align: bottom; }
+      table.analitica td { border-bottom: 1px solid #d9d4c6; padding: 2px 7px; }
+      table.analitica td.n, table.analitica th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+      table.analitica td.t, table.analitica th.t { text-align: left; }
+      table.analitica tr.total td { font-weight: 700; border-top: 1.5px solid #002f51; }
+      table.analitica + .nota { margin-top: 4px; }
+      .consulta-tab { font-size: 8pt; }
+      .consulta-tab th, .consulta-tab td { border-bottom: 1px solid #ddd; padding: 2px 6px; text-align: center; }
+      .consulta-tab th { background: #002f51; color: #fff; }
+      .consulta-tab td.n { font-variant-numeric: tabular-nums; }
+      th.t, td.t { text-align: left; }
+      .ficha { font-size: 9pt; }
+      .ficha th { background: none; color: #44505f; width: 26%; vertical-align: top; padding: 2px 8px 2px 0; text-align: left; }
+      .ficha td { padding: 2px 0; vertical-align: top; }
     </style></head><body>
     <header><h1>${html(t('Pergunte aos dados — LAPAM/UFG', 'Ask the data — LAPAM/UFG'))}</h1>
-      <p>${html(email)} · ${html(new Date().toLocaleString(local()))} · ${html(apendice ? t('com apêndice técnico', 'with technical appendix') : t('versão sintética', 'summary version'))}</p>
-      <p>${html(fonteIa(paineis))}</p></header>
-    ${sinteses}${anexo}</body></html>`;
+      <p>${html(o.email)} · ${html(new Date().toLocaleString(local()))} · ${html(t(`dados processados em ${o.geradoEm}`, `data processed on ${o.geradoEm}`))}${o.apendice ? ` · ${html(t('com', 'with'))} ${html(ROTULO_APENDICE())}` : ''}</p>
+      <p>${html(fonteIa(o.paineis))}</p></header>
+    ${corpo}${anexo}</body></html>`;
   const quadro = document.createElement('iframe');
   quadro.style.cssText = 'position:fixed;width:0;height:0;border:0;right:0;bottom:0';
   document.body.append(quadro);
@@ -414,7 +504,7 @@ function Chips({ contexto, rotulo, pequenos, periodo }: { contexto: ContextoIa; 
       <li className="ia-chip" title={t('Painéis consultados', 'Dashboards queried')}>{contexto.paineis.map((p) => NOMES_PAINEIS()[p]).join(' + ')}</li>
       <li className="ia-chip" title={t('Território', 'Territory')}>{rotuloTerritorio(contexto.territorio)}</li>
       <li className="ia-chip" title={t('Período', 'Period')}>{rotuloDoPeriodo(contexto, periodo)}</li>
-      <li className="ia-chip" title={t('Estilo da resposta', 'Answer style')}>{rotuloEstilo(contexto.estilo)}</li>
+      <li className="ia-chip" title={t('Modo de resposta', 'Answer mode')}>{rotuloModo(contexto.modo)}</li>
     </ul>
   );
 }
@@ -431,9 +521,9 @@ function BarraContexto({ rotulo, contexto, aberto, alternar }: { rotulo: string;
   );
 }
 
-function Ajustes({ paineis, alternarPainel, travarPaineis, anos, ano, definirAno, estilo, definirEstilo }: {
+function Ajustes({ paineis, alternarPainel, travarPaineis, anos, ano, definirAno }: {
   paineis: Painel[]; alternarPainel: (p: Painel) => void; travarPaineis: boolean;
-  anos: number[]; ano: number | null; definirAno: (a: number | null) => void; estilo: Estilo; definirEstilo: (e: Estilo) => void;
+  anos: number[]; ano: number | null; definirAno: (a: number | null) => void;
 }) {
   const { entes } = useDados();
   const f = useFiltros();
@@ -480,21 +570,26 @@ function Ajustes({ paineis, alternarPainel, travarPaineis, anos, ano, definirAno
           </select>
         </div>
       </fieldset>
-      <fieldset className="ia-grupo">
-        <legend>{t('Estilo da resposta', 'Answer style')}</legend>
-        <label className="ia-opcao">
-          <input type="radio" name="ia-estilo" checked={estilo === 'direta'} onChange={() => definirEstilo('direta')} />
-          <span><strong>{t('Direta', 'Direct')}</strong> · {t('conclusão, números principais, um gráfico e as ressalvas indispensáveis', 'conclusion, key numbers, one chart and the essential caveats')}</span>
-        </label>
-        <label className="ia-opcao">
-          <input type="radio" name="ia-estilo" checked={estilo === 'tecnica'} onChange={() => definirEstilo('tecnica')} />
-          <span><strong>{t('Técnica', 'Technical')}</strong> · {t('definições, fórmulas e metodologia detalhadas', 'detailed definitions, formulas and methodology')}</span>
-        </label>
-      </fieldset>
       {f.temFiltros && (
         <button type="button" className="limpar" onClick={f.limpar}>{t('Limpar território e ano', 'Clear territory and year')}</button>
       )}
     </div>
+  );
+}
+
+/** Escolha do modo de resposta, junto ao campo da pergunta; vale para as próximas perguntas e fica guardada. */
+function SeletorModo({ modo, definir, travado }: { modo: Modo; definir: (m: Modo) => void; travado: boolean }) {
+  return (
+    <fieldset className="ia-modos">
+      <legend className="sr-only">{t('Modo de resposta', 'Answer mode')}</legend>
+      {MODOS.map((m) => (
+        <label key={m} className={`ia-modo${modo === m ? ' ativo' : ''}`}>
+          <input type="radio" name="ia-modo" value={m} checked={modo === m} disabled={travado} onChange={() => definir(m)} />
+          <span className="ia-modo-nome">{rotuloModo(m)}</span>
+          <span className="ia-modo-desc">{descricaoModo(m)}</span>
+        </label>
+      ))}
+    </fieldset>
   );
 }
 
@@ -786,10 +881,99 @@ function Processo({ itens, resultados, ativo, abertoPadrao, pergunta, paineis, u
   );
 }
 
+const LINHAS_PAGINA = 25;
+
+/** Copia a tabela em HTML (Word) e em texto com tabulações (Excel), preservando linhas e colunas. */
+async function copiarTabela(tab: TabelaAnalitica): Promise<boolean> {
+  const tsv = tabelaTsv(tab, idioma() === 'en' ? '.' : ',');
+  try {
+    if (typeof ClipboardItem !== 'undefined' && navigator.clipboard.write) {
+      await navigator.clipboard.write([new ClipboardItem({
+        'text/html': new Blob([tabelaHtml(tab, { inline: true })], { type: 'text/html' }),
+        'text/plain': new Blob([tsv], { type: 'text/plain' }),
+      })]);
+    } else await navigator.clipboard.writeText(tsv);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Tabela da resposta: montada pela página com o resultado da consulta (totais e variações calculados aqui),
+ * com cópia para Word/Excel, CSV e Excel, paginação na tela (a exportação leva tudo) e o rodapé com
+ * unidade, fonte, notas e legenda das ausências.
+ */
+function TabelaResposta({ x, numero, pergunta }: { x: TabelaPronta; numero: number; pergunta: string }) {
+  const { meta } = useDados();
+  const [todas, setTodas] = useState(false);
+  const [copiada, setCopiada] = useState<boolean | null>(null);
+  const tab = x.tabela;
+  if (!tab) {
+    const r = x.consulta?.resultado;
+    const dados = r && !('erro' in r) && r.linhas.length ? formatarTabela(r, x.consulta!.sql, 30) : null;
+    return (
+      <div className="ia-grafico falhou" role="note">
+        <p className="ia-grafico-titulo">{x.espec.titulo || t('Tabela', 'Table')}</p>
+        <p className="ia-grafico-aviso">{t(`Não foi possível montar esta tabela: ${motivoCurto(x.motivo ?? '')}.`, `This table could not be built: ${motivoCurto(x.motivo ?? '')}.`)}
+          {dados && ` ${t('Os dados da consulta estão abaixo, como vieram.', 'The query data are below, as returned.')}`}</p>
+        {dados && <TabelaIa tabela={dados} />}
+      </div>
+    );
+  }
+  const visiveis = todas ? tab.linhas : tab.linhas.slice(0, LINHAS_PAGINA);
+  const papel = ROTULO_PAPEL()[x.espec.papel];
+  const copiar = async () => {
+    setCopiada(await copiarTabela(tab));
+    setTimeout(() => setCopiada(null), 2000);
+  };
+  return (
+    <figure className={`ia-tab${x.espec.papel !== 'principal' ? ` papel-${x.espec.papel}` : ''}`}>
+      {papel && <p className="ia-tab-papel">{papel}</p>}
+      <div className="ia-tab-cabeca">
+        <figcaption className="ia-tab-titulo"><span className="ia-tab-num">{t('Tabela', 'Table')} {numero}</span> {tab.titulo}</figcaption>
+        <div className="ia-tab-acoes">
+          <button type="button" className="botao-leve" onClick={copiar} title={t('Cola em linhas e colunas no Word e no Excel', 'Pastes as rows and columns in Word and Excel')}>
+            {copiada === true ? t('Copiada ✓', 'Copied ✓') : copiada === false ? t('Não foi possível copiar', 'Could not copy') : t('Copiar tabela', 'Copy table')}
+          </button>
+          <BotoesExportar nome={`tabela_${numero}_${tab.titulo}`} obter={() => tabelaExportavel(tab, [
+            [t('Pergunta', 'Question'), pergunta],
+            [t('Dados processados em', 'Data processed on'), meta.geradoEm],
+            [t('Exportado em', 'Exported on'), new Date().toISOString()],
+          ])} />
+        </div>
+      </div>
+      <div className="rolagem">
+        <table className="ia-tab-tabela">
+          <thead><tr>{tab.colunas.map((c, j) => <th key={j} scope="col" className={ehTexto(c) ? 'ia-txt' : 'ia-num'}>{c.nome}</th>)}</tr></thead>
+          <tbody>
+            {visiveis.map((l, i) => (
+              <tr key={i} className={i === tab.linhaTotal ? 'ia-tab-total' : undefined}>
+                {l.map((c, j) => (
+                  <td key={j} className={`${ehTexto(tab.colunas[j]) ? 'ia-txt' : 'ia-num'}${c.a ? ' ia-ausente' : ''}`}>{formatarCelulaT(c, tab.colunas[j])}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {tab.linhas.length > LINHAS_PAGINA && (
+        <p className="ia-tab-paginas">
+          {t(`Exibindo ${visiveis.length.toLocaleString(local())} de ${tab.linhas.length.toLocaleString(local())} registros; a cópia e a exportação levam todos.`,
+            `Showing ${visiveis.length.toLocaleString(local())} of ${tab.linhas.length.toLocaleString(local())} records; copy and export include all.`)}
+          {' '}<button type="button" className="limpar" onClick={() => setTodas(!todas)}>{todas ? t('mostrar menos', 'show fewer') : t('mostrar todos', 'show all')}</button>
+        </p>
+      )}
+      <div className="ia-tab-rodape">{rodapeTabela(tab).map((linha, k) => <p key={k}>{linha}</p>)}</div>
+    </figure>
+  );
+}
+
 function GraficoResposta({ p }: { p: GraficoPronto }) {
   const { g, validacao, quebras } = p;
   const opcao = useMemo(() => (validacao.ok ? opcaoDoGrafico(g, validacao.dados, quebras) : null), [g, validacao, quebras]);
-  const tituloG = <p className="ia-grafico-titulo">{g.titulo || t('Gráfico', 'Chart')} <span className="ia-nota">· {t(`dados de ${g.consulta}`, `data from ${g.consulta}`)}</span></p>;
+  const fonte = fonteDaConsulta(p.consulta);
+  const tituloG = <p className="ia-grafico-titulo">{g.titulo || t('Gráfico', 'Chart')} <span className="ia-nota ia-rastro">· {t(`dados de ${g.consulta}`, `data from ${g.consulta}`)}</span></p>;
   if (!validacao.ok || !opcao) {
     const r = p.consulta?.resultado;
     const tabela = r && !('erro' in r) && r.linhas.length ? formatarTabela(r, p.consulta!.sql, 30) : null;
@@ -809,6 +993,7 @@ function GraficoResposta({ p }: { p: GraficoPronto }) {
       {tituloG}
       <Grafico opcao={opcao} altura={alturaDoGrafico(g, validacao.dados)} nome={g.titulo || 'grafico_ia'}
         descricao={t(`${g.titulo}. Os valores estão na tabela da consulta ${g.consulta}.`, `${g.titulo}. The values are in the table of query ${g.consulta}.`)} />
+      {fonte && <p className="ia-nota">{t('Fonte', 'Source')}: {fonte}; {t('elaboração LAPAM/UFG', 'prepared by LAPAM/UFG')}.</p>}
       {quebras.length > 0 && <p className="ia-nota ia-legenda-quebra">{legendaQuebras(quebras)}</p>}
     </div>
   );
@@ -838,18 +1023,6 @@ function AlertaSerie({ notas }: { notas: NotaMetodologica[] }) {
   );
 }
 
-/** Ficha da resposta: fontes e bases, território e período tirados das consultas; unidade e filtros do modelo. */
-function fichaDe(p: RespostaPronta): [string, string][] {
-  return ([
-    [t('Fontes consultadas', 'Sources queried'), p.fontes.join('; ')],
-    [t('Bases', 'Datasets'), p.bases.join('; ')],
-    [t('Território (das consultas)', 'Territory (from the queries)'), p.territorios.join('; ') || p.r.recorte.territorio],
-    [t('Período consultado', 'Period queried'), p.periodo ?? p.r.recorte.periodo],
-    [t('Unidade', 'Unit'), p.r.recorte.unidade],
-    [t('Filtros e definições', 'Filters and definitions'), p.r.recorte.filtros],
-  ] as [string, string][]).filter(([, v]) => v);
-}
-
 function NotasVerificadas({ notas }: { notas: NotaMetodologica[] }) {
   if (!notas.length) return null;
   return (
@@ -871,19 +1044,57 @@ function NotasVerificadas({ notas }: { notas: NotaMetodologica[] }) {
   );
 }
 
-function Resposta({ p, estilo }: { p: RespostaPronta; estilo: Estilo }) {
+/** Recorte da análise: território, período solicitado e utilizado, fontes, unidade, filtros e agrupamentos. */
+function Recorte({ p }: { p: RespostaPronta }) {
+  const linhas = recorteDe(p);
+  if (!linhas.length) return null;
+  return (
+    <dl className="ia-ficha">
+      {linhas.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}
+    </dl>
+  );
+}
+
+/**
+ * Detalhes para reproduzir a análise: parâmetros da pergunta, versão das bases e, para cada consulta usada,
+ * as tabelas de origem e o SQL. O histórico completo (consultas refeitas, revisões) fica em "Como chegamos aqui".
+ */
+function Reproducao({ p, consultas, contexto }: { p: RespostaPronta; consultas: ItemConsulta[]; contexto?: ContextoIa }) {
+  const { meta } = useDados();
+  return (
+    <details className="ia-metodo">
+      <summary>{t('Detalhes para reprodução: parâmetros, bases e consultas SQL', 'Reproduction details: parameters, datasets and SQL queries')}</summary>
+      <dl className="ia-ficha">
+        {contexto && <div><dt>{t('Parâmetros', 'Parameters')}</dt><dd>{descreverContexto(contexto, p.periodo)}</dd></div>}
+        {p.bases.length > 0 && <div><dt>{t('Versão das bases', 'Dataset versions')}</dt><dd>{p.bases.join('; ')}</dd></div>}
+        <div><dt>{t('Dados processados em', 'Data processed on')}</dt><dd>{meta.geradoEm}</dd></div>
+      </dl>
+      {consultas.map((c) => (
+        <div key={c.id} className="ia-bloco">
+          <h4>{c.rotulo} · {c.objetivo || t('Consulta', 'Query')}</h4>
+          <p className="ia-nota">{t('Tabelas de origem', 'Source tables')}: {fontesConsultadas([c.sql]).join('; ') || '—'}</p>
+          <pre className="ia-sql">{c.sql}</pre>
+        </div>
+      ))}
+      <p className="ia-nota">{t('O histórico completo, com consultas refeitas e revisões da resposta, está em “Como chegamos aqui”.', 'The full history, with redone queries and answer reviews, is under “How we got here”.')}</p>
+    </details>
+  );
+}
+
+function Resposta({ p, modo, pergunta, consultas, contexto }: {
+  p: RespostaPronta; modo: Modo; pergunta: string; consultas: ItemConsulta[]; contexto?: ContextoIa;
+}) {
   const r = p.r;
-  const direta = estilo === 'direta';
+  const rapida = modo === 'rapida';
   const leituras = p.leituras.filter((l) => !l.motivo);
   const retiradas = p.leituras.length - leituras.length;
   const fonte = [p.fontes.join('; '), p.territorios.join('; ') || r.recorte.territorio, p.periodo ?? r.recorte.periodo].filter(Boolean).join(' · ');
-  const ficha = fichaDe(p);
   const blocoLeituras = (leituras.length > 0 || retiradas > 0) && (
     <section className="ia-bloco">
       <h4>{t('Leitura dos dados', 'Reading the data')}</h4>
       {leituras.length > 0 && (
         <ul className="ia-leituras">
-          {leituras.map((l, k) => <li key={k}>{l.texto} <span className="ia-nota">({l.consulta}: {l.colunas.join(', ')})</span></li>)}
+          {leituras.map((l, k) => <li key={k}>{l.texto} <span className="ia-nota ia-rastro">({l.consulta}: {l.colunas.join(', ')})</span></li>)}
         </ul>
       )}
       {retiradas > 0 && (
@@ -894,73 +1105,101 @@ function Resposta({ p, estilo }: { p: RespostaPronta; estilo: Estilo }) {
   const blocoHipoteses = p.hipoteses
     ? <section className="ia-bloco hipoteses"><h4>{t('Hipóteses (não testadas pelos dados)', 'Hypotheses (not tested by the data)')}</h4><TextoRico texto={p.hipoteses} /></section>
     : p.hipotesesOmitidas && (
-      <p className="ia-nota">{t('Hipóteses omitidas: a pergunta não pede explicações (ficam no apêndice técnico da exportação).', 'Hypotheses left out: the question does not ask for explanations (they are in the export’s technical appendix).')}</p>
+      <p className="ia-nota">{t('Hipóteses omitidas: a pergunta não pede explicações (ficam no apêndice de reprodução da exportação).', 'Hypotheses left out: the question does not ask for explanations (they are in the export’s reproduction appendix).')}</p>
     );
-  const blocoFicha = ficha.length > 0 && (
-    <dl className="ia-ficha">
-      {ficha.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}
-    </dl>
+  const destaques = p.destaques.length > 0 && (
+    <ul className="ia-destaques" aria-label={t('Números principais', 'Key numbers')}>
+      {p.destaques.map((x, k) => {
+        const [curto, longo] = TEXTO_CONFERENCIA(x.conferencia, x.d.consulta);
+        return (
+          <li key={k} className="ia-destaque">
+            <span className="ia-destaque-rotulo">{x.d.rotulo}</span>
+            <span className="ia-destaque-valor">{x.valor}</span>
+            {x.unidade && <span className="ia-destaque-unidade">{x.unidade}</span>}
+            {x.rotuloPeriodo && <span className="ia-destaque-periodo">{x.rotuloPeriodo}</span>}
+            {x.quebras.length > 0 && (
+              <span className="ia-destaque-quebra" title={x.quebras.map((n) => n.curta()).join(' ')}>
+                <span aria-hidden="true">⚠ </span>{t(`atravessa a quebra da RAIS (${anosDas(x.quebras)})`, `crosses the RAIS break (${anosDas(x.quebras)})`)}
+              </span>
+            )}
+            <span className={`ia-conferencia ${x.conferencia}`} title={longo}>
+              <span aria-hidden="true">{x.conferencia === 'conferido' ? '✓ ' : '⚠ '}</span>{curto}<span className="sr-only">. {longo}</span>
+            </span>
+          </li>
+        );
+      })}
+    </ul>
   );
+  // numeração das tabelas montadas (as que não puderam ser montadas não contam)
+  let numero = 0;
+  const tabelas = p.tabelas.length > 0 && (
+    <div className="ia-tabelas">
+      {p.tabelas.map((x, k) => <TabelaResposta key={k} x={x} numero={x.tabela ? ++numero : 0} pergunta={pergunta} />)}
+    </div>
+  );
+  const graficos = graficosVisiveis(p, modo).map((g, k) => <GraficoResposta key={k} p={g} />);
+  const ressalvas = r.limitacoes && <section className="ia-bloco ressalvas"><h4>{t('Ressalvas', 'Caveats')}</h4><TextoRico texto={r.limitacoes} /></section>;
   return (
-    <div className={`ia-resposta tipo-${r.tipo}`}>
+    <div className={`ia-resposta tipo-${r.tipo} modo-${modo}`}>
+      <p className="ia-modo-resposta">{rotuloModo(modo)}</p>
       {r.tipo !== 'resposta' && (
         <p className="ia-tipo">{r.tipo === 'esclarecimento' ? t('A IA precisa de um esclarecimento', 'The AI needs a clarification') : t('Fora da cobertura dos dados', 'Outside the data coverage')}</p>
       )}
       <p className="ia-conclusao">{r.conclusao}</p>
+      {p.faltantes.length > 0 && <aside className="ia-alerta-serie" role="note"><p><strong>{avisoFaltantes(p)}</strong></p></aside>}
       {p.alertas.length > 0 && <AlertaSerie notas={p.alertas} />}
-      {p.destaques.length > 0 && (
-        <ul className="ia-destaques" aria-label={t('Números principais', 'Key numbers')}>
-          {p.destaques.map((x, k) => {
-            const [curto, longo] = TEXTO_CONFERENCIA(x.conferencia, x.d.consulta);
-            return (
-              <li key={k} className="ia-destaque">
-                <span className="ia-destaque-rotulo">{x.d.rotulo}</span>
-                <span className="ia-destaque-valor">{x.valor}</span>
-                {x.unidade && <span className="ia-destaque-unidade">{x.unidade}</span>}
-                {x.rotuloPeriodo && <span className="ia-destaque-periodo">{x.rotuloPeriodo}</span>}
-                {x.quebras.length > 0 && (
-                  <span className="ia-destaque-quebra" title={x.quebras.map((n) => n.curta()).join(' ')}>
-                    <span aria-hidden="true">⚠ </span>{t(`atravessa a quebra da RAIS (${anosDas(x.quebras)})`, `crosses the RAIS break (${anosDas(x.quebras)})`)}
-                  </span>
-                )}
-                <span className={`ia-conferencia ${x.conferencia}`} title={longo}>
-                  <span aria-hidden="true">{x.conferencia === 'conferido' ? '✓ ' : '⚠ '}</span>{curto}<span className="sr-only">. {longo}</span>
-                </span>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      {graficosVisiveis(p, estilo).map((g, k) => <GraficoResposta key={k} p={g} />)}
-      {!direta && <TextoRico texto={r.explicacao} />}
-      {!direta && blocoLeituras}
-      {!direta && blocoHipoteses}
-      {r.limitacoes && <section className="ia-bloco ressalvas"><h4>{t('Ressalvas', 'Caveats')}</h4><TextoRico texto={r.limitacoes} /></section>}
-      {direta ? (
+      {rapida ? (
         <>
+          {destaques}
+          {tabelas}
+          {graficos}
+          {ressalvas}
           {fonte && <p className="ia-fonte">{t('Fonte', 'Source')}: {fonte}</p>}
-          {(r.explicacao || blocoLeituras || blocoHipoteses || ficha.length > 0 || p.notas.length > 0 || r.metodologia) && (
+          {(r.explicacao || blocoLeituras || blocoHipoteses || p.notas.length > 0 || r.metodologia || recorteDe(p).length > 0) && (
             <details className="ia-metodo">
-              <summary>{t('Detalhes da análise: dados observados, metodologia e notas', 'Analysis details: observed data, methodology and notes')}</summary>
+              <summary>{t('Detalhes da análise: dados observados, recorte, metodologia e notas', 'Analysis details: observed data, scope, methodology and notes')}</summary>
               {r.explicacao && <section className="ia-bloco"><h4>{t('Dados observados', 'Observed data')}</h4><TextoRico texto={r.explicacao} /></section>}
               {blocoLeituras}
               {blocoHipoteses}
-              {blocoFicha}
+              <Recorte p={p} />
               <NotasVerificadas notas={p.notas} />
-              {r.metodologia && <section className="ia-bloco"><h4>{t('Metodologia da resposta', 'Answer methodology')}</h4><TextoRico texto={r.metodologia} /></section>}
+              {r.metodologia && <section className="ia-bloco"><h4>{t('Metodologia', 'Methodology')}</h4><TextoRico texto={r.metodologia} /></section>}
             </details>
           )}
         </>
       ) : (
         <>
-          {blocoFicha}
-          {(p.notas.length > 0 || r.metodologia) && (
-            <details className="ia-metodo">
-              <summary>{t('Notas metodológicas', 'Methodological notes')}</summary>
-              <NotasVerificadas notas={p.notas} />
-              {r.metodologia && <section className="ia-bloco"><h4>{t('Metodologia da resposta', 'Answer methodology')}</h4><TextoRico texto={r.metodologia} /></section>}
-            </details>
+          <section className="ia-parte">
+            <h4 className="ia-parte-titulo">{t('Recorte da análise', 'Scope of the analysis')}</h4>
+            <Recorte p={p} />
+          </section>
+          {tabelas && (
+            <section className="ia-parte">
+              <h4 className="ia-parte-titulo">{t('Tabelas', 'Tables')}</h4>
+              {tabelas}
+            </section>
           )}
+          {graficos.length > 0 && <section className="ia-parte">{graficos}</section>}
+          {destaques && (
+            <section className="ia-parte">
+              <h4 className="ia-parte-titulo">{t('Números principais', 'Key numbers')}</h4>
+              {destaques}
+            </section>
+          )}
+          <section className="ia-parte">
+            <h4 className="ia-parte-titulo">{t('Análise dos resultados', 'Analysis of the results')}</h4>
+            <TextoRico texto={r.explicacao} />
+            {blocoLeituras}
+            {blocoHipoteses}
+            {ressalvas}
+          </section>
+          <section className="ia-parte">
+            <h4 className="ia-parte-titulo">{t('Metodologia e fontes', 'Methodology and sources')}</h4>
+            <TextoRico texto={r.metodologia} />
+            {p.fontes.length > 0 && <ul className="ia-notas">{p.fontes.map((f) => <li key={f}>{f}</li>)}</ul>}
+            <NotasVerificadas notas={p.notas} />
+            <Reproducao p={p} consultas={consultas} contexto={contexto} />
+          </section>
         </>
       )}
     </div>
@@ -1017,7 +1256,8 @@ function Turno({ i, turno, pronta, meta, resultados, ativo, progresso, ultimo, p
       </header>
       {ativo && meta && <Andamento progresso={progresso} inicio={meta.inicio} />}
       {pronta ? (
-        <Resposta p={pronta} estilo={meta?.contexto.estilo ?? 'direta'} />
+        <Resposta p={pronta} modo={meta?.contexto.modo ?? 'rapida'} pergunta={turno.pergunta} contexto={meta?.contexto}
+          consultas={consultasDoTurno(turno).filter((c) => pronta.usadas.has(c.rotulo))} />
       ) : turno.textoFinal ? (
         <div className="ia-resposta texto-livre">
           <TextoRico texto={turno.textoFinal} />
@@ -1029,7 +1269,9 @@ function Turno({ i, turno, pronta, meta, resultados, ativo, progresso, ultimo, p
         usadas={pronta?.usadas ?? new Set()} />
       {!ativo && respondida && (
         <div className="ia-acoes-turno">
-          <button type="button" className="botao-leve" onClick={copiar}>{copiado ? t('Copiada ✓', 'Copied ✓') : t('Copiar resposta', 'Copy answer')}</button>
+          <button type="button" className="botao-leve" onClick={copiar} title={t('Conclusão, análise, ressalvas, recorte e metodologia, em texto', 'Conclusion, analysis, caveats, scope and methodology, as text')}>
+            {copiado ? t('Copiado ✓', 'Copied ✓') : t('Copiar texto da análise', 'Copy analysis text')}
+          </button>
           {ultimo && <button type="button" className="botao-leve" onClick={aoEditar}>{t('Editar pergunta', 'Edit question')}</button>}
           {meta?.fim && (
             <span className="ia-tempo">
@@ -1097,8 +1339,9 @@ export function Ia() {
   const anoUrl = Number(busca.get('ano'));
   const ano = anos.includes(anoUrl) ? anoUrl : null;
   const territorio = useMemo(() => territorioDe(f.alvo, f.uf, entes), [f.alvo, f.uf, entes]);
-  const [estilo, setEstilo] = useState<Estilo>(() => (lerGuardado('ia-estilo') === 'tecnica' ? 'tecnica' : 'direta'));
-  const contexto = useMemo<ContextoIa>(() => ({ paineis: chavePaineis.split(',') as Painel[], territorio, ano, estilo }), [chavePaineis, territorio, ano, estilo]);
+  // modo guardado no navegador (o antigo "estilo técnico" vira análise para pesquisa)
+  const [modo, setModo] = useState<Modo>(() => lerModo(lerGuardado('ia-modo') ?? lerGuardado('ia-estilo')));
+  const contexto = useMemo<ContextoIa>(() => ({ paineis: chavePaineis.split(',') as Painel[], territorio, ano, modo }), [chavePaineis, territorio, ano, modo]);
 
   const [estado, setEstado] = useState<EstadoIa | null | undefined>(undefined);
   const [falhaEstado, setFalhaEstado] = useState<string | null>(null);
@@ -1128,9 +1371,9 @@ export function Ia() {
   // cada resposta pronta para mostrar: conferida com as consultas, com período, território e notas das consultas
   const prontas = useMemo(() => lista.map((turno) => (turno.resposta
     ? prepararResposta(turno.resposta, consultas, {
-      doTurno: consultasDoTurno(turno).map((c) => c.rotulo), pergunta: turno.pergunta, cadastro, ultimaCompetencia, fontes: meta.fontes,
+      doTurno: consultasDoTurno(turno).map((c) => c.rotulo), pergunta: turno.pergunta, cadastro, ultimaCompetencia, fontes: meta.fontes, cobertura,
     })
-    : null)), [lista, consultas, cadastro, ultimaCompetencia, meta.fontes]);
+    : null)), [lista, consultas, cadastro, ultimaCompetencia, meta.fontes, cobertura]);
 
   // nova pergunta: leva a página até ela (a margem do topo fixo está no CSS)
   const qtd = metas.length;
@@ -1178,7 +1421,7 @@ export function Ia() {
     try {
       const r = await perguntarIa({
         historico: mensagens, resultados, ultimaCompetencia, pergunta, contexto: contextoParaModelo(contexto), idioma: idioma(),
-        paineis: contexto.paineis, sinal: controle.signal,
+        paineis: contexto.paineis, sinal: controle.signal, modo: contexto.modo, cobertura,
         aoAtualizar: setMensagens,
         aoResultado: (id, res) => setResultados((m) => ({ ...m, [id]: res })),
         aoProgresso: setProgresso,
@@ -1243,9 +1486,10 @@ export function Ia() {
     else b.delete('ano');
     setBusca(b, { replace: true });
   };
-  const definirEstilo = (e: Estilo) => {
-    setEstilo(e);
-    guardar('ia-estilo', e);
+  const definirModo = (m: Modo) => {
+    setModo(m);
+    guardar('ia-modo', m);
+    guardar('ia-estilo', null);
   };
 
   const conversa = lista.length > 0;
@@ -1254,8 +1498,9 @@ export function Ia() {
   const exemplo = conversa ? t('Pergunte mais sobre isso…', 'Ask a follow-up…') : exemploPergunta(contexto.paineis, territorio, cobertura);
   const painelAjustes = ajustes && (
     <Ajustes paineis={paineis} alternarPainel={alternarPainel} travarPaineis={conversa || !!rodando} anos={anos} ano={ano}
-      definirAno={definirAno} estilo={estilo} definirEstilo={definirEstilo} />
+      definirAno={definirAno} />
   );
+  const seletorModo = <SeletorModo modo={modo} definir={definirModo} travado={!!rodando} />;
   const acesso = (
     <>
       {falhaEstado && (
@@ -1292,6 +1537,7 @@ export function Ia() {
           <BarraContexto rotulo={t('Contexto', 'Context')} contexto={contexto} aberto={ajustes} alternar={() => setAjustes(!ajustes)} />
           {painelAjustes}
           {acesso}
+          {seletorModo}
           {compositor}
           {aviso}
           <Sugestoes lista={sugestoes(contexto.paineis, territorio, cobertura, ano)} aoEscolher={usarTexto} />
@@ -1313,26 +1559,25 @@ export function Ia() {
             <div className="ia-cabeca-acoes">
               <div className="ia-exportar" role="group" aria-label={t('Exportar a conversa', 'Export the conversation')}>
                 <button type="button" className="botao-leve" disabled={!!rodando || !estado}
-                  onClick={() => imprimirPdf(lista, metas, prontas, resultados, estado?.email ?? '', contexto.paineis, apendice)}
+                  onClick={() => imprimirPdf(lista, metas, prontas, resultados, { email: estado?.email ?? '', paineis: contexto.paineis, apendice, geradoEm: meta.geradoEm })}
                   title={t('Abre a impressão do navegador; escolha "Salvar como PDF"', 'Opens the browser print dialog; choose "Save as PDF"')}>
                   {t('Exportar PDF', 'Export PDF')}
                 </button>
                 <button type="button" className="botao-leve" disabled={!!rodando} onClick={() => baixarExcel(lista, metas, prontas, resultados, contexto.paineis, apendice)}
-                  title={t('Resumo da conversa e as tabelas das consultas', 'Conversation summary and the query tables')}>
+                  title={t('Resumo da conversa e uma aba por tabela, com números e metadados', 'Conversation summary and one sheet per table, with numbers and metadata')}>
                   {t('Exportar Excel', 'Export Excel')}
                 </button>
                 <label className="caixa ia-apendice">
                   <input type="checkbox" checked={apendice} onChange={(e) => setApendice(e.target.checked)} />
-                  {' '}{t('com apêndice técnico', 'with technical appendix')}
+                  {' '}{t('incluir apêndice de reprodução', 'include reproduction appendix')}
                 </label>
               </div>
               <button type="button" className="botao-leve" disabled={!!rodando} onClick={novaConversa}>{t('Nova conversa', 'New conversation')}</button>
             </div>
             <p className="ia-nota ia-exportar-nota">
-              {apendice
-                ? t('Exportação completa: respostas, notas verificadas e o histórico de execução, com SQL, tabelas, consultas sem resultado e refeitas.',
-                  'Full export: answers, verified notes and the execution history, with SQL, tables, empty and redone queries.')
-                : t('Exportação sintética: conclusão, números principais, gráfico e ressalvas de cada resposta.', 'Summary export: conclusion, key numbers, chart and caveats of each answer.')}
+              {t('Cada resposta sai no modo em que foi feita: a resposta rápida com o essencial; a análise para pesquisa com recorte, tabelas completas, análise, metodologia e fontes.',
+                'Each answer is exported in the mode it was made: the quick answer with the essentials; the research analysis with scope, complete tables, analysis, methodology and sources.')}
+              {apendice && ` ${t('O apêndice de reprodução traz o SQL e o histórico de todas as consultas, inclusive as sem resultado e as refeitas.', 'The reproduction appendix adds the SQL and history of all queries, including empty and redone ones.')}`}
             </p>
           </header>
           <div className="ia-conversa">
@@ -1353,6 +1598,7 @@ export function Ia() {
             <BarraContexto rotulo={t('Próximas respostas', 'Next answers')} contexto={contexto} aberto={ajustes} alternar={() => setAjustes(!ajustes)} />
             {painelAjustes}
             {acesso}
+            {seletorModo}
             {compositor}
           </div>
           <Rodape estado={estado} paineis={contexto.paineis} conta={false} />

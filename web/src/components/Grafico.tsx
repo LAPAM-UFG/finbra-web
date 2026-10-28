@@ -183,6 +183,30 @@ export function linhas(anos: (number | string)[], series: Serie[], formato: (v: 
   });
 }
 
+/**
+ * Barras agrupadas (horizontais): uma cor por série, com legenda; com uma série só, o mesmo que barras().
+ * Os valores nulos ficam sem barra (ausência não é zero).
+ */
+export function barrasAgrupadas(categorias: string[], series: Serie[], formato: (v: number) => string) {
+  if (series.length <= 1) return barras(categorias, series[0]?.valores ?? [], formato, true);
+  return (t: Tokens): EChartsCoreOption => ({
+    grid: { left: 8, right: 72, top: 30, bottom: 8, containLabel: true },
+    legend: { top: 0, left: 0, icon: 'roundRect', itemWidth: 12, itemHeight: 12, textStyle: { color: t.tinta2 } },
+    tooltip: { ...tooltipBase(t), trigger: 'axis', axisPointer: { type: 'shadow' }, valueFormatter: (v: number) => (v === null || v === undefined ? '–' : formato(v)) },
+    xAxis: { ...eixoValor(t, formato), axisLabel: { show: false } },
+    yAxis: { ...eixoCategoria(t, categorias), inverse: true, axisLine: { show: false } },
+    series: series.map((s, i) => ({
+      name: s.nome,
+      type: 'bar',
+      data: s.valores,
+      barMaxWidth: 18,
+      barGap: '15%',
+      itemStyle: { color: t.series[i % t.series.length], borderRadius: [0, 4, 4, 0] },
+      label: { show: true, position: 'right', color: t.tinta2, fontSize: 10, formatter: (p: { value: number }) => (p.value === null || p.value === undefined ? '' : formato(p.value)) },
+    })),
+  });
+}
+
 /** Barras (horizontais por padrão): espessura até 24px, ponta arredondada de 4px, rótulo na ponta. */
 export function barras(categorias: string[], valores: (number | null)[], formato: (v: number) => string, horizontal = true) {
   return (t: Tokens): EChartsCoreOption => ({

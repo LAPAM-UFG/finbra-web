@@ -15,10 +15,12 @@ import { fileURLToPath } from 'node:url';
 import { basesAV, codigoConta, formatarPct } from '../src/calculos';
 import { consultaLivre, executar, tabelasIaTrabalho, usarMicrodadosNoTeste, usarMotorDeTeste } from '../src/dados';
 import {
-  comPergunta, conferir, consultasDaConversa, contextoParaModelo, dadosDoGrafico, executarConsulta, fontesConsultadas, lerResposta, paraModelo,
-  perguntarIa, prepararResposta, revisarResposta, rotulosConsultas, semUltimaPergunta, sugestoes, textoDaResposta, turnos, usarServidorIaNoTeste,
-  validarGrafico, validarSql, type ConsultaFeita, type ContextoIa, type GraficoIa, type Mensagem, type Resultado,
+  anosPedidos, comPergunta, conferir, consultasDaConversa, contextoParaModelo, dadosDoGrafico, executarConsulta, fontesConsultadas, lerModo, lerResposta,
+  paraModelo, pedeTabela, perguntarIa, prepararResposta, recorteDe, revisarResposta, rotulosConsultas, semNominal, semUltimaPergunta, sugestoes,
+  textoDaResposta, turnos, usarServidorIaNoTeste, validarGrafico, validarSql, type ConsultaFeita, type ContextoIa, type GraficoIa, type Mensagem,
+  type Resultado,
 } from '../src/ia';
+import { formatarCelulaT, montarTabela, tabelaExportavel, tabelaHtml, tabelaTsv, type EspecTabela } from '../src/ia_tabelas';
 import {
   competenciasNoTexto, contar, formatarCelula, formatarTabela, formatarValor, periodoDasConsultas, rotuloPeriodo, tipoColuna, unidadeLimpa,
 } from '../src/ia_formato';
@@ -448,7 +450,7 @@ describe('perguntas com IA', () => {
 });
 
 describe('IA: histórico, resposta estruturada e conferência', () => {
-  const ctx = contextoParaModelo({ paineis: ['trabalho'], territorio: { tipo: 'brasil' }, ano: null, estilo: 'direta' });
+  const ctx = contextoParaModelo({ paineis: ['trabalho'], territorio: { tipo: 'brasil' }, ano: null, modo: 'rapida' });
   const responder = (id: string, input: unknown) => ({ role: 'assistant' as const, content: [{ type: 'tool_use', id, name: 'responder', input }] });
   const consultar = (id: string, sql = 'SELECT 1 AS n') => ({ role: 'assistant' as const, content: [{ type: 'tool_use', id, name: 'consultar', input: { sql, objetivo: 'teste' } }] });
   const entrada = (o: Record<string, unknown> = {}) => ({
@@ -456,14 +458,14 @@ describe('IA: histórico, resposta estruturada e conferência', () => {
     recorte: { territorio: 'Brasil', periodo: '2025', unidade: 'vínculos', filtros: '' }, metodologia: '', graficos: [], aprofundar: [], ...o,
   });
 
-  test('contexto sem território manda não presumir lugar e o estilo vai junto', () => {
+  test('contexto sem território manda não presumir lugar e o modo vai junto', () => {
     assert.match(ctx, /Território selecionado: nenhum\. Não presuma/);
-    assert.match(ctx, /Estilo de resposta: direta/);
-    const go = contextoParaModelo({ paineis: ['trabalho'], territorio: { tipo: 'municipio', uf: 'GO', nome: 'Goiânia', cod: 5208707 }, ano: 2023, estilo: 'tecnica' });
+    assert.match(ctx, /Modo de resposta: rápida/);
+    const go = contextoParaModelo({ paineis: ['trabalho'], territorio: { tipo: 'municipio', uf: 'GO', nome: 'Goiânia', cod: 5208707 }, ano: 2023, modo: 'pesquisa' });
     assert.match(go, /Goiânia \(GO\), município\. Códigos: cod_ibge = 5208707 \(7 dígitos\) em trab_municipios, trab_grandes_setores, trab_setores, trab_caged/);
     assert.match(go, /municipio = 520870 \(6 dígitos\) só em rais_mun e rais_vinculos/);
     assert.match(go, /Ano de referência: 2023/);
-    assert.match(go, /técnica/);
+    assert.match(go, /Modo de resposta: pesquisa/);
   });
 
   test('perguntas: contexto e texto; resultado pendente de responder vai antes; limite de consultas mescla', () => {
@@ -760,7 +762,7 @@ describe('IA: código municipal e localização (regressão Andirá/PR)', () => 
   });
 
   test('contexto do município selecionado traz o código de cada tabela, sem "410110 no CAGED"', () => {
-    const c = contextoParaModelo({ paineis: ['trabalho'], territorio: { tipo: 'municipio', uf: 'PR', nome: 'Andirá', cod: ANDIRA }, ano: null, estilo: 'direta' });
+    const c = contextoParaModelo({ paineis: ['trabalho'], territorio: { tipo: 'municipio', uf: 'PR', nome: 'Andirá', cod: ANDIRA }, ano: null, modo: 'rapida' });
     assert.match(c, /cod_ibge = 4101101 \(7 dígitos\) em trab_municipios, trab_grandes_setores, trab_setores, trab_caged, trab_caged_anual e entes/);
     assert.match(c, /municipio = 410110 \(6 dígitos\) só em rais_mun e rais_vinculos/);
     assert.doesNotMatch(c, /na RAIS e no CAGED/);
@@ -1019,7 +1021,7 @@ describe('IA de ponta a ponta (Worker local e modelo)', { skip: !process.env.IA_
     usarServidorIaNoTeste(process.env.IA_URL ?? 'http://localhost:8787');
     const resultados: Record<string, Resultado> = {};
     let hist: Mensagem[] = [];
-    const contexto = contextoParaModelo({ paineis: ['trabalho'], territorio: { tipo: 'uf', uf: 'GO', nome: 'Goiás', cod: 52 }, ano: null, estilo: 'direta' });
+    const contexto = contextoParaModelo({ paineis: ['trabalho'], territorio: { tipo: 'uf', uf: 'GO', nome: 'Goiás', cod: 52 }, ano: null, modo: 'rapida' });
     for (const pergunta of [
       'Como evoluiu o número de empregos formais de 2020 a 2025?',
       'E a remuneração média de dezembro, em termos reais, no mesmo período?',
@@ -1063,7 +1065,7 @@ describe('IA de ponta a ponta (Worker local e modelo)', { skip: !process.env.IA_
     const ultima = Number(fontes.caged.ate);
     const resultados: Record<string, Resultado> = {};
     let hist: Mensagem[] = [];
-    const ctx: ContextoIa = { paineis: ['trabalho'], territorio: { tipo: 'municipio', uf: 'PR', nome: 'Andirá', cod: ANDIRA }, ano: null, estilo: 'direta' };
+    const ctx: ContextoIa = { paineis: ['trabalho'], territorio: { tipo: 'municipio', uf: 'PR', nome: 'Andirá', cod: ANDIRA }, ano: null, modo: 'rapida' };
     const competenciaCrua = /\b(19\d{2}|20\d{2})(0[1-9]|1[0-2])\b/;
     const falhas: string[] = [];
     const perguntas = [
@@ -1120,7 +1122,7 @@ describe('IA de ponta a ponta (Worker local e modelo)', { skip: !process.env.IA_
   test('sem lugar definido pede esclarecimento; fora da cobertura diz isso, sem inventar números', { timeout: 600_000 }, async () => {
     globalThis.fetch = FETCH;
     usarServidorIaNoTeste(process.env.IA_URL ?? 'http://localhost:8787');
-    const contexto = contextoParaModelo({ paineis: ['trabalho'], territorio: { tipo: 'brasil' }, ano: null, estilo: 'direta' });
+    const contexto = contextoParaModelo({ paineis: ['trabalho'], territorio: { tipo: 'brasil' }, ano: null, modo: 'rapida' });
     for (const [pergunta, esperado] of [
       ['Quantos empregos formais há no meu município?', 'esclarecimento'],
       ['Qual foi a taxa de desemprego em 2025?', 'fora_da_cobertura'],
@@ -1404,4 +1406,274 @@ describe('IA do mercado de trabalho: sigla da UF', () => {
     if ('erro' in m) throw new Error(m.erro);
     assert.equal(m.linhas[0][0], 'GO');
   });
+});
+
+/**
+ * Tabelas da resposta e modos (rápida e pesquisa). Caso de validação: vínculos ativos em 31/12 no Brasil nas
+ * classes CNAE da cadeia da carne, agrupadas em matéria-prima (0151-2), industrialização (1011-2 e 1013-9) e
+ * distribuição (4634-6 e 4722-9). A RAIS do painel começa em 2013: 2011 é um ano pedido sem dados.
+ */
+const semCubo = !existsSync(`${DATA}/gold/trabalho/cubo_uf`);
+const COBERTURA_RAIS = { nome: 'RAIS', anos: [2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025] };
+const SQL_CARNE = (anos: string) => `SELECT ano,
+    CASE WHEN starts_with(cnae_classe, '01512') THEN 'Matéria-prima'
+         WHEN starts_with(cnae_classe, '10112') OR starts_with(cnae_classe, '10139') THEN 'Industrialização'
+         ELSE 'Distribuição' END AS subsistema,
+    sum(vinculos) AS vinculos
+  FROM rais_uf
+  WHERE situacao = 1 AND ano IN (${anos})
+    AND (starts_with(cnae_classe, '01512') OR starts_with(cnae_classe, '10112') OR starts_with(cnae_classe, '10139')
+         OR starts_with(cnae_classe, '46346') OR starts_with(cnae_classe, '47229'))
+  GROUP BY ALL ORDER BY ano, subsistema`;
+const espec = (o: Partial<EspecTabela> = {}): EspecTabela => ({
+  consulta: 'C1', papel: 'principal', tipo: 'comparacao', titulo: 'Vínculos por subsistema', grupo: 'subsistema', periodo: 'ano', valor: 'vinculos',
+  colunas: [], de: '2011', ate: '2021', total: true, participacao: true, formato: 'inteiro', unidade: 'vínculos ativos em 31/12', nota: '', ...o,
+});
+const montar = (e: EspecTabela, resultado: Resultado, sql = 'SELECT ano FROM rais_uf') => {
+  const m = montarTabela(e, { rotulo: e.consulta, sql, resultado }, COBERTURA_RAIS);
+  assert.ok(m.ok, m.ok ? '' : m.motivo);
+  return m.ok ? m.tabela : null!;
+};
+const coluna = (tab: ReturnType<typeof montar>, nome: string) => tab.colunas.findIndex((c) => c.nome === nome);
+const linhaDe = (tab: ReturnType<typeof montar>, rotulo: string) => tab.linhas.find((l) => l[0].v === rotulo)!;
+
+describe('IA: tabelas da resposta e modos (validação)', () => {
+  test('pedido "em 2011 e 2021": 2011 indisponível, sem variação calculada, totais e participações só onde há dados', { skip: semCubo }, async () => {
+    await tabelasIaTrabalho();
+    const r = await executarConsulta({ sql: SQL_CARNE('2011, 2021') }, ['trabalho']);
+    assert.ok(!('erro' in r), JSON.stringify(r));
+    if ('erro' in r) return;
+    assert.ok(!r.linhas.some((l) => l[0] === 2011), 'a base não tem 2011');
+    const tab = montar(espec(), r);
+    assert.deepEqual(tab.faltantes, ['2011']);
+    assert.match(tab.notas.join(' '), /2011: não disponível — RAIS no painel cobre 2013–2025/);
+    assert.deepEqual(tab.colunas.map((c) => c.nome), ['Subsistema', '2011', '2021', 'Variação absoluta', 'Variação (%)',
+      'Participação 2011 (%)', 'Participação 2021 (%)', 'Diferença de participação (p.p.)']);
+    for (const l of tab.linhas) {
+      assert.equal(l[1].a, 'indisponivel', '2011 marcado como indisponível, não zero');
+      assert.equal(l[3].a, 'nao_calculada');
+      assert.equal(l[4].a, 'nao_calculada');
+    }
+    // total de 2021 = soma dos três grupos, conferida com uma consulta independente
+    const soma = await executarConsulta({ sql: `SELECT sum(vinculos) AS v FROM rais_uf WHERE situacao = 1 AND ano = 2021
+      AND (starts_with(cnae_classe, '01512') OR starts_with(cnae_classe, '10112') OR starts_with(cnae_classe, '10139')
+           OR starts_with(cnae_classe, '46346') OR starts_with(cnae_classe, '47229'))` }, ['trabalho']);
+    if ('erro' in soma) throw new Error(soma.erro);
+    assert.equal(linhaDe(tab, 'Total')[2].v, soma.linhas[0][0]);
+    const p21 = tab.linhas.slice(0, 3).reduce((s, l) => s + (l[6].v as number), 0);
+    assert.ok(Math.abs(p21 - 100) < 1e-9, `participações de 2021 somam ${p21}`);
+  });
+
+  test('alternativa 2013 e 2021: variações pelas fórmulas e iguais às de uma consulta independente', { skip: semCubo }, async () => {
+    await tabelasIaTrabalho();
+    const r = await executarConsulta({ sql: SQL_CARNE('2013, 2021') }, ['trabalho']);
+    if ('erro' in r) throw new Error(r.erro);
+    const tab = montar(espec({ papel: 'alternativa', de: '2013', ate: '2021' }), r);
+    assert.deepEqual(tab.faltantes, []);
+    const ind = linhaDe(tab, 'Industrialização');
+    const [a, b] = [ind[1].v as number, ind[2].v as number];
+    assert.equal(ind[3].v, b - a);
+    assert.ok(Math.abs((ind[4].v as number) - ((b / a - 1) * 100)) < 1e-9);
+    const sql = `SELECT sum(vinculos) FILTER (WHERE ano = 2013) AS v13, sum(vinculos) FILTER (WHERE ano = 2021) AS v21 FROM rais_uf
+      WHERE situacao = 1 AND ano IN (2013, 2021) AND (starts_with(cnae_classe, '10112') OR starts_with(cnae_classe, '10139'))`;
+    const c = await executarConsulta({ sql }, ['trabalho']);
+    if ('erro' in c) throw new Error(c.erro);
+    assert.deepEqual([a, b], c.linhas[0]);
+    const total = linhaDe(tab, 'Total');
+    assert.equal(total[1].v, tab.linhas.slice(0, 3).reduce((s, l) => s + (l[1].v as number), 0));
+  });
+
+  test('pedido "de 2011 a 2021": uma linha por ano do intervalo, lacunas de 2011 e 2012 sinalizadas', { skip: semCubo }, async () => {
+    await tabelasIaTrabalho();
+    const r = await executarConsulta({ sql: SQL_CARNE('2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021') }, ['trabalho']);
+    if ('erro' in r) throw new Error(r.erro);
+    const tab = montar(espec({ tipo: 'serie', participacao: false }), r);
+    assert.deepEqual(tab.linhas.map((l) => l[0].v), ['2011', '2012', '2013', '2014', '2015', '2016', '2017', '2018', '2019', '2020', '2021']);
+    assert.deepEqual(tab.faltantes, ['2011', '2012']);
+    assert.ok(tab.linhas.slice(0, 2).every((l) => l.slice(1).every((c) => c.a === 'indisponivel')));
+    assert.ok(tab.linhas.slice(2).every((l) => l.slice(1).every((c) => typeof c.v === 'number' && !c.a)));
+    const iTotal = coluna(tab, 'Total');
+    for (const l of tab.linhas.slice(2)) assert.equal(l[iTotal].v, l.slice(1, iTotal).reduce((s, c) => s + (c.v as number), 0));
+  });
+
+  test('anos pedidos cruzados com a base e vindos só com nulos contam como indisponíveis, não como período usado', () => {
+    const r: Resultado = {
+      colunas: ['ano', 'subsistema', 'vinculos'],
+      linhas: [[2011, 'A', null], [2011, 'B', null], [2012, 'A', null], [2012, 'B', null], [2013, 'A', 10], [2013, 'B', 4]],
+      total: 6,
+    };
+    const tab = montar(espec({ tipo: 'serie', de: '2011', ate: '2013', participacao: false }), r);
+    assert.deepEqual(tab.faltantes, ['2011', '2012']);
+    assert.equal(tab.linhas[0][1].a, 'indisponivel');
+    assert.equal(tab.linhas[2][3].v, 14);
+    const p = prepararResposta(lerResposta({ resposta: respostaBase({ tabelas: [espec({ tipo: 'serie', de: '2011', ate: '2013' })] }) })!,
+      new Map([feita('C1', 'SELECT ano, subsistema, vinculos FROM rais_uf WHERE ano BETWEEN 2011 AND 2013', r)]));
+    assert.equal(p.periodo, '2013');
+    assert.deepEqual(p.faltantes, ['2011', '2012']);
+  });
+
+  test('valor inicial zero ou ausente e grupo sem registro: nada de variação ou total inventados', () => {
+    const r: Resultado = {
+      colunas: ['ano', 'grupo', 'valor'],
+      linhas: [[2013, 'A', 0], [2021, 'A', 5], [2013, 'B', null], [2021, 'B', 3], [2021, 'C', 7], [2013, 'D', -4], [2021, 'D', 2]],
+      total: 7,
+    };
+    const tab = montar(espec({ grupo: 'grupo', valor: 'valor', de: '2013', ate: '2021', participacao: false }), r);
+    assert.equal(linhaDe(tab, 'A')[3].v, 5);
+    assert.equal(linhaDe(tab, 'A')[4].a, 'base_zero');
+    assert.equal(linhaDe(tab, 'B')[1].v, null);
+    assert.equal(linhaDe(tab, 'B')[4].a, 'nao_calculada');
+    assert.equal(linhaDe(tab, 'C')[1].a, 'sem_registro');
+    assert.equal(linhaDe(tab, 'D')[4].a, 'base_negativa');
+    assert.equal(linhaDe(tab, 'Total')[1].a, 'incompleto', 'total com grupo faltando não é total');
+    assert.equal(linhaDe(tab, 'Total')[2].v, 17);
+    const legenda = tab.notas.join(' ') + tabelaHtml(tab);
+    assert.match(legenda, /s\/ reg\. = grupo sem registro/);
+    assert.match(legenda, /n\.c\. = variação percentual não calculada: valor inicial zero/);
+    assert.match(legenda, /incompl\. = total não calculado/);
+    assert.match(legenda, /— = sem dado/);
+  });
+
+  test('percentuais comparam em pontos percentuais; repetição de período e grupo é recusada', () => {
+    const r: Resultado = { colunas: ['ano', 'setor', 'participacao_pct'], linhas: [[2013, 'X', 40], [2021, 'X', 45.5]], total: 2 };
+    const tab = montar(espec({ grupo: 'setor', valor: 'participacao_pct', de: '2013', ate: '2021', formato: 'percentual' }), r);
+    assert.deepEqual(tab.colunas.map((c) => c.nome), ['Setor', '2013', '2021', 'Diferença (p.p.)']);
+    assert.equal(formatarCelulaT(tab.linhas[0][3], tab.colunas[3]), '+5,5');
+    const dup = montarTabela(espec({ de: '2013', ate: '2021' }), { rotulo: 'C1', sql: '', resultado: { colunas: ['ano', 'subsistema', 'vinculos'], linhas: [[2013, 'A', 1], [2013, 'A', 2]], total: 2 } });
+    assert.ok(!dup.ok && /mais de uma linha/.test(dup.motivo));
+  });
+
+  test('a mesma tabela na tela, na cópia, no CSV/XLSX e no PDF: valores originais e números como números', () => {
+    const r: Resultado = { colunas: ['ano', 'subsistema', 'vinculos'], linhas: [[2013, 'A', 354796], [2021, 'A', 350944], [2013, 'B', 187326], [2021, 'B', 209544]], total: 4 };
+    const tab = montar(espec({ de: '2013', ate: '2021' }), r);
+    const exp = tabelaExportavel(tab);
+    assert.deepEqual(exp.linhas[0].slice(0, 4), ['A', 354796, 350944, -3852]);
+    assert.ok(exp.metadados.some(([k, v]) => k === 'Unidade' && v === 'vínculos ativos em 31/12'));
+    const tsv = tabelaTsv(tab);
+    assert.match(tsv, /^Vínculos por subsistema\nSubsistema\t2013\t2021\tVariação absoluta/);
+    assert.match(tsv, /\nA\t354796\t350944\t-3852\t-1,0856/);
+    const html = tabelaHtml(tab, { numero: 'Tabela 1' });
+    assert.match(html, /<caption>Tabela 1 — Vínculos por subsistema<\/caption><thead>/);
+    assert.match(html, /<td class="n">354\.796<\/td>/);
+    assert.match(html, /<tr class="total"><td class="t">Total<\/td><td class="n">542\.122<\/td><td class="n">560\.488<\/td>/);
+    assert.doesNotMatch(html, /\bC1\b/, 'sem identificador interno da consulta');
+    // gráfico de barras com os dois anos (serie = ano): as duas séries, com os mesmos valores da tabela
+    const v = validarGrafico({ consulta: 'C1', tipo: 'barras', titulo: 'Vínculos em 2013 e 2021', x: 'subsistema', y: ['vinculos'], serie: 'ano', formato: 'inteiro' }, r);
+    assert.ok(v.ok);
+    if (!v.ok) return;
+    assert.deepEqual(v.dados.series.map((s) => s.nome), ['2013', '2021']);
+    assert.deepEqual(v.dados.series[1].valores, [linhaDe(tab, 'A')[2].v, linhaDe(tab, 'B')[2].v]);
+    // formato largo (uma coluna por ano): as duas colunas viram séries, não só a primeira
+    const largo: Resultado = { colunas: ['subsistema', 'v2013', 'v2021'], linhas: [['A', 1, 2], ['B', 3, 4]], total: 2 };
+    const w = validarGrafico({ consulta: 'C1', tipo: 'barras', titulo: '', x: 'subsistema', y: ['v2013', 'v2021'], serie: '', formato: 'inteiro' }, largo);
+    assert.ok(w.ok && w.dados.series.length === 2);
+  });
+
+  test('revisão: tabela pedida nos dois modos, anos trocados, ano indisponível sem aviso e gráfico com ano que não mostra', () => {
+    const r: Resultado = { colunas: ['ano', 'subsistema', 'vinculos'], linhas: [[2013, 'A', 10], [2021, 'A', 12]], total: 2 };
+    const consultas = new Map([feita('C1', 'SELECT ano, subsistema, sum(vinculos) AS vinculos FROM rais_uf WHERE ano IN (2011, 2021) GROUP BY ALL', r)]);
+    const pergunta = 'Quantos vínculos existiam em 2011 e 2021? Apresente os valores absolutos, totais e variações percentuais.';
+    const preparar = (o: Record<string, unknown>) => prepararResposta(lerResposta({ resposta: respostaBase(o) })!, consultas, { pergunta, doTurno: ['C1'] });
+    // sem tabela: devolvida no modo rápido (a pergunta pede) e no modo pesquisa
+    assert.match(revisarResposta(preparar({}), { pergunta, modo: 'rapida' }).join(' '), /inclua em tabelas/);
+    assert.match(revisarResposta(preparar({}), { pergunta: 'Quantos vínculos há?', modo: 'pesquisa' }).join(' '), /Modo análise para pesquisa/);
+    assert.deepEqual(revisarResposta(preparar({}), { pergunta: 'Quantos vínculos há?', modo: 'rapida' }), []);
+    // trocou 2011 por 2013 em silêncio
+    const trocada = preparar({ tabelas: [espec({ de: '2013', ate: '2021' })] });
+    assert.match(revisarResposta(trocada, { pergunta }).join(' '), /pede 2011 e 2021: a tabela principal precisa usar de = "2011"/);
+    // manteve 2011, mas a conclusão não diz que ele falta
+    const semAviso = preparar({ tabelas: [espec()] });
+    assert.deepEqual(semAviso.faltantes, ['2011']);
+    assert.match(revisarResposta(semAviso, { pergunta }).join(' '), /O período pedido 2011 não está nos dados/);
+    const comAviso = preparar({ conclusao: 'Em 2021 eram 12 vínculos; 2011 não está disponível na RAIS do painel, então a comparação pedida não pôde ser completada.', tabelas: [espec(), espec({ papel: 'alternativa', de: '2013' })] });
+    assert.deepEqual(revisarResposta(comAviso, { pergunta, modo: 'pesquisa' }), []);
+    // gráfico cujo título cita 2021 mas só mostra 2013
+    const so2013: Resultado = { colunas: ['subsistema', 'vinculos_2013'], linhas: [['A', 10], ['B', 5]], total: 2 };
+    const c2 = new Map([...consultas, feita('C2', 'SELECT 1', so2013)]);
+    const g = prepararResposta(lerResposta({ resposta: respostaBase({ conclusao: comAviso.r.conclusao, tabelas: [espec()],
+      graficos: [{ consulta: 'C2', tipo: 'barras', titulo: 'Vínculos em 2013 e 2021', x: 'subsistema', y: ['vinculos_2013'], serie: '', formato: 'inteiro' }] }) })!, c2, { pergunta });
+    assert.match(revisarResposta(g, { pergunta }).join(' '), /o título cita 2021, que não aparece nos dados do gráfico/);
+  });
+
+  test('pedidos de anos, pedido de tabela, "nominal" só em reais, recorte com período solicitado e utilizado, modo guardado', () => {
+    assert.deepEqual(anosPedidos('em 2011 e 2021, nas atividades'), { tipo: 'pontos', de: 2011, ate: 2021 });
+    assert.deepEqual(anosPedidos('a série anual de 2011 a 2021'), { tipo: 'intervalo', de: 2011, ate: 2021 });
+    assert.deepEqual(anosPedidos('entre 2013 e 2021'), { tipo: 'pontos', de: 2013, ate: 2021 });
+    assert.deepEqual(anosPedidos('no período 2015–2025'), { tipo: 'intervalo', de: 2015, ate: 2025 });
+    assert.equal(anosPedidos('em 2025'), null);
+    assert.ok(pedeTabela('Apresente os valores absolutos, totais e variações percentuais'));
+    assert.ok(pedeTabela('Monte uma tabela por UF'));
+    assert.ok(!pedeTabela('Quantos municípios há em Goiás?'));
+    assert.equal(semNominal('Variação nominal', 'inteiro'), 'Variação');
+    assert.equal(semNominal('vínculos (nominal)', 'percentual'), 'vínculos');
+    assert.equal(semNominal('nominais', 'reais'), 'nominais');
+    const r: Resultado = { colunas: ['ano', 'subsistema', 'vinculos'], linhas: [[2021, 'A', 12]], total: 1 };
+    const p = prepararResposta(lerResposta({ resposta: respostaBase({
+      recorte: { territorio: 'Brasil', periodo_solicitado: '2011 e 2021', periodo: '2021', unidade: 'vínculos (nominal)', filtros: 'ativos em 31/12', agrupamentos: 'A = 01512' },
+      destaques: [{ rotulo: 'Variação nominal', valor: 12, formato: 'inteiro', unidade: 'vínculos nominais', consulta: 'C1', coluna: 'vinculos', de: '2021', ate: '2021' }],
+    }) })!, new Map([feita('C1', 'SELECT * FROM rais_uf WHERE ano IN (2011, 2021)', r)]));
+    const recorte = Object.fromEntries(recorteDe(p));
+    assert.equal(recorte['Período solicitado'], '2011 e 2021');
+    assert.equal(recorte['Período utilizado'], '2021', 'só o ano que veio nos dados, não o do filtro');
+    assert.equal(recorte.Unidade, 'vínculos');
+    assert.equal(recorte.Agrupamentos, 'A = 01512');
+    assert.equal(p.destaques[0].d.rotulo, 'Variação');
+    assert.equal(p.destaques[0].unidade, 'vínculos');
+    assert.doesNotMatch(textoDaResposta(p), /\bC1\b/, 'o texto copiado não leva identificadores internos');
+    assert.equal(lerModo('tecnica'), 'pesquisa');
+    assert.equal(lerModo('pesquisa'), 'pesquisa');
+    assert.equal(lerModo(null), 'rapida');
+  });
+});
+
+/**
+ * O caso de validação com o modelo de verdade (custa perguntas do dia): IA_CARNE=1 npm test, com o Worker
+ * local ligado. Três perguntas, cada uma numa conversa nova: "em 2011 e 2021" nos dois modos e "de 2011 a
+ * 2021" no modo pesquisa. A resposta final precisa passar na revisão da página e manter 2011 como pedido.
+ */
+describe('IA de ponta a ponta: cadeia da carne, 2011 e 2021 (Worker local e modelo)', { skip: !process.env.IA_CARNE }, () => {
+  const ATIVIDADES = 'nas atividades de criação de bovinos (CNAE 0151-2), abate de reses (1011-2), fabricação de produtos de carne (1013-9), '
+    + 'comércio atacadista de carnes (4634-6) e comércio varejista de carnes (4722-9)? Agrupe nos subsistemas matéria-prima, industrialização e distribuição.';
+  const CASOS: [string, 'rapida' | 'pesquisa'][] = [
+    [`Quantos vínculos empregatícios formais ativos em 31/12 existiam no Brasil, em 2011 e 2021, ${ATIVIDADES} Apresente os valores absolutos, totais e variações percentuais.`, 'pesquisa'],
+    [`Quantos vínculos empregatícios formais ativos em 31/12 existiam no Brasil, em 2011 e 2021, ${ATIVIDADES} Apresente os valores absolutos, totais e variações percentuais.`, 'rapida'],
+    [`Apresente a série anual de 2011 a 2021 dos vínculos empregatícios formais ativos em 31/12 no Brasil ${ATIVIDADES.replace(/\?/, '.')}`, 'pesquisa'],
+  ];
+  for (const [pergunta, modo] of CASOS) {
+    test(`${modo}: ${pergunta.slice(0, 90)}…`, { timeout: 900_000 }, async () => {
+      globalThis.fetch = FETCH;
+      usarServidorIaNoTeste(process.env.IA_URL ?? 'http://localhost:8787');
+      const cobertura = { rais: COBERTURA_RAIS.anos, caged: null, microdados: false, dca: [] };
+      const resultados: Record<string, Resultado> = {};
+      const contexto = contextoParaModelo({ paineis: ['trabalho'], territorio: { tipo: 'brasil' }, ano: null, modo });
+      const inicio = Date.now();
+      const r = await perguntarIa({
+        historico: [], pergunta, contexto, idioma: 'pt', paineis: ['trabalho'], sinal: new AbortController().signal, modo, cobertura,
+        aoAtualizar: () => undefined, aoResultado: (id, res) => { resultados[id] = res; },
+      });
+      const turno = turnos(r.mensagens).at(-1)!;
+      const consultas = consultasDaConversa(r.mensagens, resultados);
+      const doTurno = turno.itens.flatMap((i) => (i.tipo === 'consulta' ? [i.rotulo] : []));
+      const p = turno.resposta ? prepararResposta(turno.resposta, consultas, { doTurno, pergunta, cobertura }) : null;
+      const problemas = p ? revisarResposta(p, { pergunta, modo }) : ['sem resposta'];
+      console.log(JSON.stringify({
+        modo, desfecho: r.desfecho, segundos: Math.round((Date.now() - inicio) / 1000),
+        revisoes: turno.itens.filter((i) => i.tipo === 'revisao').map((i) => (i as { motivos: string[] }).motivos),
+        conclusao: turno.resposta?.conclusao, problemas, faltantes: p?.faltantes, periodo: p?.periodo, recorte: p && recorteDe(p),
+        tabelas: p?.tabelas.map((x) => ({ ...x.espec, motivo: x.motivo, linhas: x.tabela?.linhas.map((l) => l.map((c, j) => formatarCelulaT(c, x.tabela!.colunas[j]))) })),
+        graficos: p?.graficos.map((g) => [g.g.titulo, g.g.tipo, g.g.x, g.g.y.join('+'), g.g.serie, g.validacao.ok ? g.validacao.dados.series.map((s) => s.nome) : g.validacao.motivo]),
+        destaques: p?.destaques.map((x) => [x.d.rotulo, x.valor, x.unidade, x.conferencia]),
+        consultas: doTurno.map((k) => [k, consultas.get(k)?.objetivo, consultas.get(k)?.sql]),
+        analise: turno.resposta?.explicacao,
+      }, null, 1));
+      assert.equal(r.desfecho, 'resposta');
+      assert.deepEqual(problemas, [], 'a resposta final passa na revisão da página');
+      const principal = p!.tabelas.find((x) => x.espec.papel === 'principal' && x.tabela);
+      assert.ok(principal, 'há tabela principal montada');
+      assert.equal(principal!.espec.de, '2011');
+      assert.equal(principal!.espec.ate, '2021');
+      assert.ok(p!.faltantes.includes('2011'), '2011 sinalizado como indisponível');
+      assert.doesNotMatch(p!.periodo ?? '', /2011/, 'o período utilizado só tem anos com dado');
+    });
+  }
 });

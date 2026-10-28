@@ -60,11 +60,13 @@ describe('ferramentas', () => {
     }
   }
 
-  test('consultar, localizar e responder têm esquemas estritos válidos', () => {
+  test('só responder é estrita; esquemas válidos e sem enum (gramática dentro do limite da API)', () => {
     assert.deepEqual(FERRAMENTAS.map((f) => f.name), ['consultar', 'localizar', 'responder']);
+    // com as três estritas, ou com enum, a API recusou o pedido: "The compiled grammar is too large"
+    assert.deepEqual(FERRAMENTAS.map((f) => f.strict), [false, false, true]);
     for (const f of FERRAMENTAS) {
-      assert.equal(f.strict, true);
       conferirEstrito(f.input_schema, f.name);
+      assert.doesNotMatch(JSON.stringify(f.input_schema), /"enum"/, `${f.name}: enum`);
     }
   });
 
@@ -74,6 +76,27 @@ describe('ferramentas', () => {
     assert.equal(resposta.interpretacao.type, 'array');
     assert.deepEqual(resposta.interpretacao.items.required, ['texto', 'consulta', 'colunas']);
     assert.ok('substitui' in FERRAMENTAS[0].input_schema.properties, 'consultar registra a consulta que refaz');
+  });
+
+  test('tabelas: consulta, forma e períodos pedidos; recorte com período solicitado e agrupamentos', () => {
+    const resposta = FERRAMENTAS.find((f) => f.name === 'responder').input_schema.properties.resposta.properties;
+    const tabela = resposta.tabelas.items.properties;
+    assert.match(tabela.tipo.description, /serie.*comparacao.*tabela/);
+    assert.match(tabela.papel.description, /principal.*alternativa.*complemento/);
+    for (const k of ['consulta', 'grupo', 'periodo', 'valor', 'de', 'ate', 'total', 'participacao', 'unidade']) assert.ok(k in tabela, k);
+    for (const k of ['periodo_solicitado', 'periodo', 'agrupamentos']) assert.ok(k in resposta.recorte.properties, k);
+  });
+
+  test('modos e regras de tabela, período pedido e fórmulas nas instruções', () => {
+    const texto = instrucoes(['trabalho'], { manifesto: null, contextoTrabalho: {} }).map((b) => b.text).join('\n');
+    assert.match(texto, /## Modos/);
+    assert.match(texto, /rápida: [^\n]*inclua a tabela com esses dados \(tabelas\) também neste modo/);
+    assert.match(texto, /pesquisa: a tabela completa é o centro da resposta/);
+    assert.match(texto, /"de 2011 a 2021" pede todos os anos do intervalo/);
+    assert.match(texto, /só como tabela de papel "alternativa"/);
+    assert.match(texto, /"nominal" e "real" só para valores em reais/);
+    assert.match(texto, /variação percentual = \(final \/ inicial − 1\) × 100, só com valor inicial positivo/);
+    assert.doesNotMatch(texto, /## Estilo/);
   });
 });
 

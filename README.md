@@ -242,8 +242,9 @@ Campo de perguntas em linguagem natural, só para e-mails autorizados.
    **50 perguntas por pessoa e por dia** (horário de Brasília; contagem no R2, em `ia/uso/`, que
    não é servido em `/dados/`). Cada pergunta leva o **contexto da página**: território e ano dos
    filtros globais (`?uf=`, `?ente=`, `?ano=`), com os **códigos do território em cada formato das tabelas**,
-   e o estilo de resposta (direta ou técnica). A pergunta prevalece; sem território, a IA responde para o
-   Brasil e avisa, ou pede esclarecimento.
+   e o **modo de resposta**, escolhido junto ao campo e guardado no navegador: *Resposta rápida* (o
+   essencial) ou *Análise para pesquisa* (recorte, tabelas completas, análise, metodologia e fontes). A
+   pergunta prevalece; sem território, a IA responde para o Brasil e avisa, ou pede esclarecimento.
 2. O Worker chama o Claude (SDK oficial `@anthropic-ai/sdk`) com o esquema das tabelas e as regras de cada
    painel e com os anos e a cobertura lidos do manifesto.
 3. O Claude pede consultas SQL (ferramenta `consultar`) e acha lugares citados pelo nome com a ferramenta
@@ -254,21 +255,36 @@ Campo de perguntas em linguagem natural, só para e-mails autorizados.
    ao modelo como consulta "bloqueada", com o código certo. As consultas rodam no DuckDB numa conexão própria,
    canceláveis, e voltam com um identificador (C1, C2…).
 4. No fim, o Claude chama a ferramenta `responder` com a resposta estruturada (conclusão, até 4 números
-   destacados com o período de cada um, explicação, leituras com as colunas que as sustentam, hipóteses,
-   ressalvas, recorte, metodologia, gráficos e perguntas para aprofundar). **Antes de mostrar**, a página a
-   confere (`revisarResposta`, em `web/src/ia.ts`) e devolve ao modelo, até duas vezes: destaque que não está
-   na tabela citada, gráfico com coluna inexistente ou sobre uma linha só, leitura sem colunas de apoio,
-   hipóteses numa pergunta que não pede explicações e comparação de anos da RAIS que atravessa a quebra de
-   2022–2023 sem dizer isso na conclusão.
+   destacados com o período de cada um, explicação ou análise, leituras com as colunas que as sustentam,
+   hipóteses, ressalvas, recorte com período solicitado e utilizado, metodologia, **tabelas**, gráficos e
+   perguntas para aprofundar). As **tabelas** são montadas pela página com o resultado das consultas
+   (`web/src/ia_tabelas.ts`): o modelo só diz a consulta e a forma (série por período, comparação entre dois
+   períodos ou tabela simples) e os períodos pedidos; totais, variações absolutas e percentuais, participações
+   e diferenças em pontos percentuais são calculados ali, por regras fixas. Ausência não é zero: período
+   pedido sem dados fica "indisp." (com a cobertura da fonte na nota), grupo sem linha fica "s/ reg.", total
+   com grupo faltando não é calculado e variação sobre base zero, negativa ou ausente fica "n.c.".
+   **Antes de mostrar**, a página confere a resposta (`revisarResposta`, em `web/src/ia.ts`) e devolve ao
+   modelo, até duas vezes: destaque que não está na tabela citada, tabela ou gráfico que não podem ser
+   montados, tabela ausente quando a pergunta a pede (tabela, série, comparação, ranking, distribuição,
+   valores e variações) ou no modo pesquisa, anos pedidos trocados por outros ("em 2011 e 2021" exige os dois
+   anos; "de 2011 a 2021", todos), ano pedido indisponível sem aviso na conclusão, título de gráfico com anos
+   que ele não mostra, leitura sem colunas de apoio, hipóteses numa pergunta que não pede explicações e
+   comparação de anos da RAIS que atravessa a quebra de 2022–2023 sem dizer isso na conclusão. Outro recorte
+   (ex.: os anos disponíveis) só entra como tabela "alternativa", marcada como tal.
 5. A resposta mostra as **notas metodológicas verificadas** (`web/src/ia_notas.ts`: texto, documento, trecho
    literal e data de conferência; quebras da RAIS em 2022 e 2023 pelas notas técnicas do MTE) junto aos
    números e marca o ano da quebra nos gráficos. Período, território e fontes vêm das consultas, não do
    texto do modelo; números, competências (set/2025), códigos e reais seguem `web/src/ia_formato.ts`, igual na
-   tela, no PDF e na cópia. No estilo direto: conclusão, destaques, um gráfico e as ressalvas; o resto fica em
-   "Detalhes da análise".
+   tela, no PDF e na cópia. Na resposta rápida: conclusão, destaques, tabelas (quando pedidas), um gráfico e as
+   ressalvas; o resto fica em "Detalhes da análise". Na análise para pesquisa: recorte da análise, tabelas,
+   gráficos, análise dos resultados, metodologia e fontes, e os detalhes para reprodução (parâmetros, versão
+   das bases e SQL das consultas usadas). Cada tabela tem cópia para o Word e o Excel (HTML e tabulações),
+   CSV e Excel (números como números, com unidade, fonte, notas e legenda).
 6. As consultas, o SQL, as tabelas e as revisões ficam em "Como chegamos aqui" (consulta sem resultado,
-   recusada, refeita e usada na resposta), com exportação em CSV e Excel; a conversa inteira sai em PDF
-   (com os gráficos) ou Excel, na versão sintética ou com o apêndice técnico.
+   recusada, refeita e usada na resposta), com exportação em CSV e Excel. A conversa inteira sai em PDF ou
+   Excel, cada resposta no modo em que foi feita (tabelas e gráficos numerados, cabeçalho repetido nas
+   tabelas longas, fontes por extenso, sem identificadores internos), opcionalmente com o **apêndice de
+   reprodução** (SQL e histórico de todas as consultas).
 
 O modelo vem de `IA_MODELO` (variável do Worker ou `worker/.dev.vars`), entre os da lista `MODELOS`; o padrão
 é o Haiku, o mais barato. O Haiku não tem modelo reserva: se ele recusar um pedido por política de segurança,
@@ -279,7 +295,11 @@ e em `web/` (inclui o ciclo da conversa com um Worker simulado e as regressões 
 código municipal no formato errado, gráfico com colunas inexistentes, competências, quebra de série). Com o
 Worker local ligado, `IA_E2E=1 npm test` em `web/` faz perguntas de verdade (gasta perguntas do dia) e exige
 que os números destacados estejam nas tabelas citadas; `IA_ANDIRA=1` acrescenta as três perguntas de Andirá
-(`IA_GRAVAR=arquivo.json` guarda as respostas do modelo para repetir a conversa sem custo).
+(`IA_GRAVAR=arquivo.json` guarda as respostas do modelo para repetir a conversa sem custo); `IA_CARNE=1` faz o
+caso de validação das tabelas (vínculos da cadeia da carne por subsistema, "em 2011 e 2021" nos dois modos e
+"de 2011 a 2021"), em que 2011 não está na RAIS do painel. Só a ferramenta `responder` usa o modo estrito e os
+esquemas não têm `enum`: com as tabelas, a gramática estrita passava do limite da API ("compiled grammar is too
+large"); a página normaliza os valores (`lerResposta`).
 
 Configuração (uma vez):
 

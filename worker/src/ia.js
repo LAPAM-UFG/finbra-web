@@ -4,7 +4,7 @@
  * O Worker não roda SQL: o Claude propõe consultas (ferramenta "consultar"), o navegador as executa
  * no DuckDB com os mesmos Parquet do painel e devolve o resultado no próximo pedido; lugares citados pelo
  * nome passam pela ferramenta "localizar" (cadastro de entes, também no navegador). A resposta final vem
- * pela ferramenta "responder" (conclusão, destaques, gráficos, ressalvas), que a página confere com os
+ * pela ferramenta "responder" (conclusão, destaques, tabelas, gráficos, ressalvas), que a página confere com os
  * resultados das consultas antes de mostrar (o que não bate volta ao modelo). O histórico da conversa
  * fica no navegador e vem inteiro a cada pedido (a API não guarda estado).
  *
@@ -41,7 +41,9 @@ const MAX_CORPO = 600_000; // bytes
 const MAX_PERGUNTA = 2000; // caracteres
 const MAX_CONTEXTO = 1500; // caracteres do contexto da página que acompanha cada pergunta
 
-const FORMATOS = ['inteiro', 'decimal', 'reais', 'percentual'];
+// sem enum nos esquemas: com eles e as tabelas, a gramática do modo estrito passa do limite da API; a página
+// normaliza os valores (lerResposta)
+const FORMATO = '"inteiro", "decimal", "reais" ou "percentual" (0–100).';
 
 export const FERRAMENTAS = [
   {
@@ -52,7 +54,9 @@ export const FERRAMENTAS = [
       + '200 linhas em JSON, com o total de linhas. Use para obter qualquer número da resposta. '
       + 'Só SELECT ou WITH, uma instrução, sem ler arquivos ou URLs. Antes de rodar, a página confere os códigos de '
       + 'município e UF da consulta e recusa (erro "bloqueada") código no formato errado, inexistente ou buscado por aproximação.',
-    strict: true,
+    // só responder é estrita: com as três, a gramática do modo estrito passa do limite da API (a página confere
+    // a entrada de consultar e localizar antes de usá-la)
+    strict: false,
     input_schema: {
       type: 'object',
       properties: {
@@ -71,7 +75,7 @@ export const FERRAMENTAS = [
       + 'cod_ibge de 7 dígitos, municipio de 6 dígitos da RAIS, sigla e código da UF. Use antes de consultar um lugar '
       + 'citado na pergunta que não seja o do contexto da página; nunca procure códigos com LIKE ou por parte do código. '
       + 'Com nomes repetidos em mais de uma UF, devolve todos.',
-    strict: true,
+    strict: false,
     input_schema: {
       type: 'object',
       properties: {
@@ -90,8 +94,9 @@ export const FERRAMENTAS = [
       + 'das consultas desta conversa. Todos os campos vão dentro do objeto "resposta", em JSON; os sem conteúdo ficam '
       + 'vazios ("" ou []). Nos textos, nada de marcações (como <parameter> ou </conclusao>) e acentos escritos '
       + 'diretamente (á, ç, ã), sem sequências como \\u00e1. A página confere a resposta antes de mostrá-la e devolve '
-      + 'os problemas (destaque fora da tabela, gráfico com coluna inexistente, leitura sem colunas de apoio, '
-      + 'comparação que atravessa quebra de série sem dizer isso na conclusão) para você corrigir.',
+      + 'os problemas (destaque fora da tabela, tabela ou gráfico com coluna inexistente, tabela faltando quando a '
+      + 'pergunta ou o modo pesquisa a pedem, anos pedidos trocados, ano indisponível sem aviso na conclusão, leitura sem '
+      + 'colunas de apoio, comparação que atravessa quebra de série sem dizer isso na conclusão) para você corrigir.',
     strict: true,
     // um único parâmetro-objeto: o modelo o escreve como JSON, e os textos longos não se misturam com a
     // marcação de parâmetros da chamada (com campos de texto soltos, o Haiku às vezes fechava um campo com
@@ -104,8 +109,7 @@ export const FERRAMENTAS = [
           properties: {
             tipo: {
               type: 'string',
-              enum: ['resposta', 'esclarecimento', 'fora_da_cobertura'],
-              description: '"esclarecimento" quando falta uma informação indispensável; "fora_da_cobertura" quando os dados não respondem.',
+              description: '"resposta"; "esclarecimento" quando falta uma informação indispensável; "fora_da_cobertura" quando os dados não respondem.',
             },
             conclusao: {
               type: 'string',
@@ -119,7 +123,7 @@ export const FERRAMENTAS = [
                 properties: {
                   rotulo: { type: 'string', description: 'O que o número mede, em poucas palavras.' },
                   valor: { type: 'number', description: 'O número exato da célula do resultado, sem arredondar; percentuais na escala 0–100.' },
-                  formato: { type: 'string', enum: FORMATOS },
+                  formato: { type: 'string', description: FORMATO },
                   unidade: { type: 'string', description: 'Unidade curta, sem repetir o símbolo do formato: "vínculos em 31/12", "de dez/2025 (IPCA)", "dos vínculos".' },
                   consulta: { type: 'string', description: 'Identificador da consulta de onde vem o valor (ex.: C2).' },
                   coluna: { type: 'string', description: 'Nome exato da coluna no resultado.' },
@@ -130,7 +134,7 @@ export const FERRAMENTAS = [
                 additionalProperties: false,
               },
             },
-            explicacao: { type: 'string', description: 'Dados observados que sustentam a conclusão: parágrafos curtos ou itens começando com "- ".' },
+            explicacao: { type: 'string', description: 'Modo rápido: dados observados que sustentam a conclusão, em itens começando com "- ". Modo pesquisa: análise dos resultados em parágrafos, ligada aos valores das tabelas.' },
             interpretacao: {
               type: 'array',
               description: 'Leituras que vão além da descrição, cada uma com a consulta e as colunas que a sustentam (o indicador e a referência da comparação); [] se não houver.',
@@ -151,14 +155,44 @@ export const FERRAMENTAS = [
               type: 'object',
               properties: {
                 territorio: { type: 'string' },
-                periodo: { type: 'string' },
-                unidade: { type: 'string', description: 'Ex.: vínculos; R$ nominais; R$ de dez/2025 (IPCA).' },
-                filtros: { type: 'string', description: 'Definições e filtros aplicados, ex.: vínculos ativos em 31/12.' },
+                periodo_solicitado: { type: 'string', description: 'Período como a pergunta pediu (ex.: 2011 e 2021; 2011 a 2021).' },
+                periodo: { type: 'string', description: 'Período efetivamente usado nos dados (ex.: 2021; 2013 a 2021).' },
+                unidade: { type: 'string', description: 'Ex.: vínculos ativos em 31/12; R$ nominais; R$ de dez/2025 (IPCA). Nominal/real só para valores em reais.' },
+                filtros: { type: 'string', description: 'Definições e filtros aplicados, ex.: vínculos ativos em 31/12; CNAE classes 01512, 10112.' },
+                agrupamentos: { type: 'string', description: 'Grupos formados e o que entra em cada um, ou "".' },
               },
-              required: ['territorio', 'periodo', 'unidade', 'filtros'],
+              required: ['territorio', 'periodo_solicitado', 'periodo', 'unidade', 'filtros', 'agrupamentos'],
               additionalProperties: false,
             },
             metodologia: { type: 'string', description: 'Tabelas usadas, fórmulas e critérios, em texto simples.' },
+            tabelas: {
+              type: 'array',
+              description: 'Até 4 tabelas que a página monta com o resultado das consultas (a página faz totais, variações e '
+                + 'participações). serie: uma linha por período e uma coluna por grupo; comparacao: uma linha por grupo, '
+                + 'valores nos dois períodos, variação absoluta e percentual; tabela: o resultado como veio.',
+              items: {
+                type: 'object',
+                properties: {
+                  consulta: { type: 'string', description: 'Identificador da consulta (ex.: C2).' },
+                  papel: { type: 'string', description: '"principal" responde ao pedido; "alternativa" usa outro recorte (ex.: anos disponíveis), sem atender ao pedido por inteiro; "complemento" apoia a leitura.' },
+                  tipo: { type: 'string', description: '"serie", "comparacao" ou "tabela".' },
+                  titulo: { type: 'string', description: 'Título com o que mede, onde e quando (ex.: Vínculos ativos em 31/12 por subsistema — Brasil, 2011 e 2021).' },
+                  grupo: { type: 'string', description: 'Coluna dos grupos em formato longo (serie e comparacao), ou "".' },
+                  periodo: { type: 'string', description: 'Coluna do ano ou da competência, ou "" na tabela sem período.' },
+                  valor: { type: 'string', description: 'Coluna numérica (serie e comparacao), ou "" na tabela.' },
+                  colunas: { type: 'array', items: { type: 'string' }, description: 'Na tabela: colunas mostradas, na ordem ([] = todas). Nas outras: [].' },
+                  de: { type: 'string', description: 'Primeiro período pedido na pergunta (ano "2011" ou competência "2025-09"), mesmo que não esteja nos dados; "" se a pergunta não disser.' },
+                  ate: { type: 'string', description: 'Último período pedido (ano ou competência), ou "".' },
+                  total: { type: 'boolean', description: 'Acrescenta o total dos grupos (só quando somá-los faz sentido).' },
+                  participacao: { type: 'boolean', description: 'Na comparação com total: participação de cada grupo no total de cada período.' },
+                  formato: { type: 'string', description: FORMATO },
+                  unidade: { type: 'string', description: 'Unidade dos valores (ex.: vínculos ativos em 31/12; R$ de dez/2025 (IPCA)).' },
+                  nota: { type: 'string', description: 'Nota indispensável para ler a tabela (definição, filtro, quebra de série), ou "".' },
+                },
+                required: ['consulta', 'papel', 'tipo', 'titulo', 'grupo', 'periodo', 'valor', 'colunas', 'de', 'ate', 'total', 'participacao', 'formato', 'unidade', 'nota'],
+                additionalProperties: false,
+              },
+            },
             graficos: {
               type: 'array',
               description: 'Até 2 gráficos, só quando ajudam; a página os monta com os dados da consulta indicada. x e y são colunas '
@@ -167,12 +201,12 @@ export const FERRAMENTAS = [
                 type: 'object',
                 properties: {
                   consulta: { type: 'string' },
-                  tipo: { type: 'string', enum: ['linha', 'barras'] },
+                  tipo: { type: 'string', description: '"linha" ou "barras".' },
                   titulo: { type: 'string' },
                   x: { type: 'string', description: 'Coluna dos anos ou das categorias.' },
                   y: { type: 'array', items: { type: 'string' }, description: 'Até 3 colunas numéricas.' },
                   serie: { type: 'string', description: 'Coluna que separa as séries num resultado em formato longo (ex.: uf_sigla), ou "".' },
-                  formato: { type: 'string', enum: FORMATOS },
+                  formato: { type: 'string', description: FORMATO },
                 },
                 required: ['consulta', 'tipo', 'titulo', 'x', 'y', 'serie', 'formato'],
                 additionalProperties: false,
@@ -184,7 +218,7 @@ export const FERRAMENTAS = [
               description: 'Até 3 perguntas curtas de continuação que os dados disponíveis respondem.',
             },
           },
-          required: ['tipo', 'conclusao', 'destaques', 'explicacao', 'interpretacao', 'hipoteses', 'limitacoes', 'recorte', 'metodologia', 'graficos', 'aprofundar'],
+          required: ['tipo', 'conclusao', 'destaques', 'explicacao', 'interpretacao', 'hipoteses', 'limitacoes', 'recorte', 'metodologia', 'tabelas', 'graficos', 'aprofundar'],
           additionalProperties: false,
         },
       },

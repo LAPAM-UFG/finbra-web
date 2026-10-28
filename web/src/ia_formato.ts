@@ -258,8 +258,10 @@ export function competenciasNoTexto(s: string): string {
 // ---------------- período consultado ----------------
 
 /**
- * Anos e competências que as consultas leram: valores das colunas de tempo dos resultados e filtros fixos
- * no SQL (ano = 2025, ano BETWEEN 2015 AND 2025, competencia >= 202509…).
+ * Anos e competências que as consultas leram: valores das colunas de tempo dos resultados e, quando o
+ * resultado não traz a coluna de tempo, filtros fixos no SQL (ano = 2025, ano BETWEEN 2015 AND 2025,
+ * competencia >= 202509…). Com a coluna no resultado, valem só os períodos que vieram: um ano pedido no
+ * filtro e ausente da base (ano IN (2011, 2021) sem 2011) não conta como usado.
  */
 export function periodoDasConsultas(consultas: { sql: string; resultado?: Tabela | { erro: string } }[]): { anos: Periodo | null; meses: Periodo | null } {
   const anos: number[] = [];
@@ -269,22 +271,33 @@ export function periodoDasConsultas(consultas: { sql: string; resultado?: Tabela
     const r = c.resultado;
     if (!r || 'erro' in r) continue;
     const tipos = tiposDoResultado(r, c.sql);
+    const doResultado = { ano: [] as number[], mes: [] as number[] };
+    const tempo = (k: number) => tipos[k] === 'ano' || tipos[k] === 'competencia';
+    // linhas em que só o período tem número (os valores vieram nulos) não são período com dado; um resultado
+    // sem outras colunas numéricas (ex.: a lista de anos) vale inteiro
+    const valor = (l: Valor[]) => l.some((v, k) => !tempo(k) && typeof v === 'number');
+    const comDado = r.linhas.some(valor) ? r.linhas.filter(valor) : r.linhas;
     tipos.forEach((tipo, j) => {
-      const vals = r.linhas.map((l) => l[j]).filter((v): v is number => typeof v === 'number');
-      if (tipo === 'ano') anos.push(...vals);
-      if (tipo === 'competencia') comps.push(...vals);
+      const vals = comDado.map((l) => l[j]).filter((v): v is number => typeof v === 'number');
+      if (tipo === 'ano') doResultado.ano.push(...vals);
+      if (tipo === 'competencia') doResultado.mes.push(...vals);
     });
+    anos.push(...doResultado.ano);
+    comps.push(...doResultado.mes);
+    const doFiltro = { ano: [] as number[], mes: [] as number[] };
     const s = sqlSemTextos(c.sql);
     for (const m of s.matchAll(/\b(?:\w+\.)?(ano|exercicio|competencia)\s*(=|>=|<=|>|<)\s*(\d{4}|\d{6})\b/g)) {
       const mes = m[1] === 'competencia';
-      if (mes === (m[3].length === 6)) (mes ? comps : anos).push(ajuste(m[2], Number(m[3]), mes));
+      if (mes === (m[3].length === 6)) doFiltro[mes ? 'mes' : 'ano'].push(ajuste(m[2], Number(m[3]), mes));
     }
     for (const m of s.matchAll(/\b(?:\w+\.)?(ano|exercicio|competencia)\s+between\s+(\d{4}|\d{6})\s+and\s+(\d{4}|\d{6})\b/g)) {
-      (m[1] === 'competencia' ? comps : anos).push(Number(m[2]), Number(m[3]));
+      doFiltro[m[1] === 'competencia' ? 'mes' : 'ano'].push(Number(m[2]), Number(m[3]));
     }
     for (const m of s.matchAll(/\b(?:\w+\.)?(ano|exercicio|competencia)\s+in\s*\(([\d\s,]+)\)/g)) {
-      (m[1] === 'competencia' ? comps : anos).push(...m[2].split(',').map((x) => Number(x.trim())));
+      doFiltro[m[1] === 'competencia' ? 'mes' : 'ano'].push(...m[2].split(',').map((x) => Number(x.trim())));
     }
+    if (!doResultado.ano.length) anos.push(...doFiltro.ano);
+    if (!doResultado.mes.length) comps.push(...doFiltro.mes);
   }
   const a = anos.filter(ehAno);
   const c = comps.filter(ehCompetencia);

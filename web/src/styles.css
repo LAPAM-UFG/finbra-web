@@ -413,6 +413,61 @@ figure.grafico { margin: 0; }
 .ia-apendice { font-size: 12.5px; color: var(--tinta-2); margin: 0; }
 .ia-exportar-nota { flex-basis: 100%; margin: 0; }
 
+/* modo de resposta, junto ao campo da pergunta */
+.ia-modos { border: 0; margin: 0 0 8px; padding: 0; min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.ia-modo {
+  display: grid; grid-template-columns: auto 1fr; column-gap: 8px; align-items: baseline; cursor: pointer;
+  background: var(--superficie); border: 1px solid var(--borda); border-radius: 10px; padding: 7px 12px;
+}
+.ia-modo input { grid-row: span 2; margin: 0; }
+.ia-modo-nome { font-size: 13px; font-weight: 600; }
+.ia-modo-desc { font-size: 12px; color: var(--tinta-3); }
+.ia-modo.ativo { border-color: color-mix(in srgb, var(--serie-1) 60%, transparent); background: color-mix(in srgb, var(--serie-1) 8%, var(--superficie)); }
+.ia-modo:has(input:focus-visible) { outline: 2px solid var(--serie-1); outline-offset: 2px; }
+.ia-modo:has(input:disabled) { cursor: default; opacity: 0.7; }
+.ia-modo-resposta { margin: 0 0 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--tinta-3); }
+.modo-pesquisa .ia-modo-resposta { color: color-mix(in srgb, var(--serie-1) 70%, var(--tinta)); }
+
+/* partes da análise para pesquisa */
+.ia-parte { margin: 18px 0 0; }
+.ia-parte-titulo { margin: 0 0 8px; font-size: 12.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--tinta-2); border-bottom: 1px solid var(--grade); padding-bottom: 4px; }
+.ia-parte > .ia-ficha { margin-top: 0; padding-top: 0; border-top: 0; }
+
+/* tabelas da resposta: título, ações, números à direita, total em negrito, rodapé com unidade, fonte e notas */
+.ia-tabelas { display: flex; flex-direction: column; gap: 16px; margin: 0 0 14px; }
+.ia-tab { margin: 0; min-width: 0; }
+.ia-tab.papel-alternativa, .ia-tab.papel-complemento { border-left: 3px solid var(--eixo); padding-left: 12px; }
+.ia-tab-papel { margin: 0 0 4px; font-size: 12px; font-weight: 600; color: color-mix(in srgb, #c98a1a 60%, var(--tinta)); }
+.ia-tab.papel-complemento .ia-tab-papel { color: var(--tinta-3); }
+.ia-tab-cabeca { display: flex; justify-content: space-between; align-items: flex-end; gap: 8px 12px; flex-wrap: wrap; margin-bottom: 6px; }
+.ia-tab-titulo { font-size: 14px; font-weight: 600; max-width: 70ch; }
+.ia-tab-num { color: var(--tinta-3); font-weight: 600; margin-right: 4px; }
+.ia-tab-acoes { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.ia-tab-acoes .exportar { margin: 0; }
+.ia-tab-tabela { border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; min-width: min(100%, 420px); }
+.ia-tab-tabela th { text-transform: none; letter-spacing: 0; font-size: 12px; font-weight: 600; white-space: normal; vertical-align: bottom; padding: 6px 12px; border-bottom: 1.5px solid var(--eixo); }
+.ia-tab-tabela td { padding: 5px 12px; border-bottom: 1px solid var(--grade); }
+.ia-tab-tabela .ia-num { text-align: right; white-space: nowrap; }
+.ia-tab-tabela .ia-txt { text-align: left; min-width: 140px; }
+.ia-tab-tabela tbody tr:nth-child(even) { background: color-mix(in srgb, var(--superficie-2) 60%, transparent); }
+.ia-tab-tabela tr.ia-tab-total td { font-weight: 700; border-top: 1.5px solid var(--eixo); }
+.ia-tab-tabela td.ia-ausente { color: var(--tinta-3); font-style: italic; }
+.ia-tab-paginas { margin: 6px 0 0; font-size: 12px; color: var(--tinta-2); }
+.ia-tab-rodape { margin-top: 6px; font-size: 12px; color: var(--tinta-3); line-height: 1.45; max-width: 90ch; }
+.ia-tab-rodape p { margin: 0 0 2px; }
+
+/* impressão da própria página (Ctrl+P): só o conteúdo, sem botões nem referências internas das consultas */
+@media print {
+  .topo, .menu, .pular, .ia-rodape, .ia-cabeca-acoes, .ia-acoes-turno, .ia-aprofundar, .ia-processo, .ia-tab-acoes, .ia-tab-paginas button,
+  .ia-rastro, .ia-conferencia, .png, .ia-rodape-info, .ia-exportar-nota { display: none !important; }
+  .ia .rolagem { overflow: visible; max-height: none; }
+  .ia-resposta { box-shadow: none; border: 0; padding: 0; }
+  .ia-tab-tabela thead { display: table-header-group; }
+  .ia-tab-tabela tr { break-inside: avoid; }
+  .ia-tab-cabeca, .ia-parte-titulo { break-after: avoid; }
+  .ia-metodo:not([open]) { display: none; }
+}
+
 /* campo fixo no rodapé durante a conversa (solto quando os ajustes estão abertos) */
 .ia-rodape { position: sticky; bottom: 0; z-index: 5; padding: 14px 0 12px; background: linear-gradient(to top, var(--pagina) 82%, transparent); }
 .ia-rodape.aberto { position: static; }
@@ -425,6 +480,9 @@ figure.grafico { margin: 0; }
   .ia-destaque-valor { font-size: 18px; }
   .ia-ficha { grid-template-columns: 1fr; }
   .ia-ficha dd { margin-bottom: 6px; }
+  .ia-modos { grid-template-columns: 1fr; }
+  .ia-tab-tabela { font-size: 12px; }
+  .ia-tab-tabela th, .ia-tab-tabela td { padding: 4px 8px; }
   .ia-compositor textarea, .ia-compositor.grande textarea { font-size: 16px; }
   .ia-cabeca-acoes .botao-leve { font-size: 12px; }
 }

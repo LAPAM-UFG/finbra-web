@@ -3,8 +3,9 @@
  * execução, aqui no navegador, das consultas SQL que o Claude propõe.
  *
  * Cada pergunta leva o contexto da página (território com os códigos em cada formato, ano de referência,
- * estilo de resposta) e termina com a ferramenta "responder": uma resposta estruturada (conclusão,
- * destaques, gráficos, ressalvas). Antes de mostrá-la, a página a confere (revisarResposta): cada destaque
+ * modo de resposta) e termina com a ferramenta "responder": uma resposta estruturada (conclusão,
+ * destaques, tabelas, gráficos, ressalvas). As tabelas são montadas pela página com o resultado das
+ * consultas (ia_tabelas.ts). Antes de mostrá-la, a página a confere (revisarResposta): cada destaque
  * precisa estar na tabela citada, cada gráfico precisa de colunas que existem, cada leitura precisa de
  * colunas que a sustentem e toda comparação que atravessa uma quebra de série da RAIS precisa dizer isso
  * na conclusão; o que falhar volta ao modelo para ser corrigido. Antes de rodar uma consulta, a página
@@ -18,6 +19,7 @@ import {
   unidadeLimpa, type Formato, type Periodo,
 } from './ia_formato';
 import { citaQuebra, leRais, notasDasFontes, quebrasNoPeriodo, versaoDasBases, type NotaMetodologica } from './ia_notas';
+import { montarTabela, tabelaTem, type CoberturaFonte, type EspecTabela, type TabelaAnalitica } from './ia_tabelas';
 import {
   cadastro, codigosDaUf, codigosDoDf, codigosDoMunicipio, conferirCodigos, executarLocalizacao, nomeDaUf, territoriosNasConsultas,
   UF_NOMES, type Cadastro,
@@ -25,6 +27,7 @@ import {
 
 export { formatarValor, type Formato } from './ia_formato';
 export { nomeDaUf } from './ia_territorio';
+export type { EspecTabela, TabelaAnalitica } from './ia_tabelas';
 
 export type Bloco = { type: string; id?: string; name?: string; input?: unknown; text?: string; [k: string]: unknown };
 export type Mensagem = { role: 'user' | 'assistant'; content: string | Bloco[] };
@@ -92,14 +95,16 @@ const cancelado = () => new DOMException(t('pergunta cancelada', 'question cance
 
 // ---------------- contexto da página ----------------
 
-export type Estilo = 'direta' | 'tecnica';
+/** Modo de resposta: rápida (o essencial) ou análise para pesquisa (tabelas completas, análise, metodologia). */
+export type Modo = 'rapida' | 'pesquisa';
+export const MODOS: Modo[] = ['rapida', 'pesquisa'];
 export type Territorio =
   | { tipo: 'brasil' }
   | { tipo: 'uf'; uf: string; nome: string; cod: number }
   | { tipo: 'municipio'; uf: string; nome: string; cod: number }
   | { tipo: 'df' };
-/** O que acompanha cada pergunta: painéis, território e ano escolhidos na página e o estilo de resposta. */
-export type ContextoIa = { paineis: Painel[]; territorio: Territorio; ano: number | null; estilo: Estilo };
+/** O que acompanha cada pergunta: painéis, território e ano escolhidos na página e o modo de resposta. */
+export type ContextoIa = { paineis: Painel[]; territorio: Territorio; ano: number | null; modo: Modo };
 
 /** "Brasil", "Goiás (GO)", "Goiânia (GO)", "Distrito Federal". */
 export function rotuloTerritorio(tr: Territorio) {
@@ -108,12 +113,17 @@ export function rotuloTerritorio(tr: Territorio) {
   return `${tr.tipo === 'uf' ? nomeDaUf(tr.uf) : tr.nome} (${tr.uf})`;
 }
 
-export const rotuloEstilo = (e: Estilo) => (e === 'tecnica' ? t('Resposta técnica', 'Technical answer') : t('Resposta direta', 'Direct answer'));
+export const rotuloModo = (m: Modo) => (m === 'pesquisa' ? t('Análise para pesquisa', 'Research analysis') : t('Resposta rápida', 'Quick answer'));
+export const descricaoModo = (m: Modo) => (m === 'pesquisa'
+  ? t('Tabelas completas, análise detalhada, fontes e metodologia.', 'Complete tables, detailed analysis, sources and methodology.')
+  : t('Resumo dos resultados, com os dados essenciais.', 'Summary of the results, with the essential data.'));
+/** Modo guardado no navegador; o antigo "estilo técnico" vira análise para pesquisa. */
+export const lerModo = (v: string | null): Modo => (v === 'pesquisa' || v === 'tecnica' ? 'pesquisa' : 'rapida');
 /** Ano escolhido na página; sem ele, vale o período que a pergunta pedir (e a resposta mostra o consultado). */
 export const rotuloAno = (ano: number | null) => (ano ? t(`Ano de referência ${ano}`, `Reference year ${ano}`) : t('Sem ano de referência', 'No reference year'));
 
 export const mesmoContexto = (a: ContextoIa, b: ContextoIa) =>
-  rotuloTerritorio(a.territorio) === rotuloTerritorio(b.territorio) && a.ano === b.ano && a.estilo === b.estilo && a.paineis.join() === b.paineis.join();
+  rotuloTerritorio(a.territorio) === rotuloTerritorio(b.territorio) && a.ano === b.ano && a.modo === b.modo && a.paineis.join() === b.paineis.join();
 
 /**
  * Texto do contexto que acompanha a pergunta, para o modelo (em português, como as instruções), com os
@@ -133,7 +143,7 @@ export function contextoParaModelo(c: ContextoIa): string {
     'Contexto da página nesta pergunta (vale só para o que a pergunta não especificar; o que ela disser prevalece):',
     `- Território selecionado: ${territorio}`,
     `- Ano de referência: ${c.ano ?? 'não definido. Use o período que a pergunta pedir; sem período, use o ano mais recente disponível e diga qual.'}`,
-    `- Estilo de resposta: ${c.estilo === 'tecnica' ? 'técnica' : 'direta'}.`,
+    `- Modo de resposta: ${c.modo === 'pesquisa' ? 'pesquisa (análise para pesquisa)' : 'rápida (resposta rápida)'}.`,
   ].join('\n');
 }
 
@@ -348,8 +358,9 @@ export type RespostaFinal = {
   interpretacao: Leitura[];
   hipoteses: string;
   limitacoes: string;
-  recorte: { territorio: string; periodo: string; unidade: string; filtros: string };
+  recorte: { territorio: string; periodo_solicitado: string; periodo: string; unidade: string; filtros: string; agrupamentos: string };
   metodologia: string;
+  tabelas: EspecTabela[];
   graficos: GraficoIa[];
   aprofundar: string[];
 };
@@ -372,7 +383,7 @@ function lista<T>(v: unknown, ler: (x: Record<string, unknown>) => T | null, max
 const colunasDe = (v: unknown) => (Array.isArray(v) ? v.map((c) => linha(c, 120)).filter(Boolean).slice(0, 6) : []);
 
 /** Marcação da chamada de ferramenta que vazou para dentro de um texto: sinal de resposta malformada. */
-const MARCACAO = /<\/?(parameter|invoke|conclusao|destaques|explicacao|interpretacao|hipoteses|limitacoes|recorte|metodologia|graficos|aprofundar)\b/i;
+const MARCACAO = /<\/?(parameter|invoke|conclusao|destaques|explicacao|interpretacao|hipoteses|limitacoes|recorte|metodologia|tabelas|graficos|aprofundar)\b/i;
 
 /**
  * Entrada da ferramenta "responder" (os campos vêm no objeto "resposta"), conferida campo a campo.
@@ -401,8 +412,22 @@ export function lerResposta(v: unknown): RespostaFinal | null {
       : texto(o.interpretacao) ? [{ texto: texto(o.interpretacao, 1500), consulta: '', colunas: [] }] : [],
     hipoteses: texto(o.hipoteses),
     limitacoes: texto(o.limitacoes),
-    recorte: { territorio: linha(r.territorio, 300), periodo: linha(r.periodo, 300), unidade: linha(r.unidade, 300), filtros: linha(r.filtros, 600) },
+    recorte: {
+      territorio: linha(r.territorio, 300), periodo_solicitado: linha(r.periodo_solicitado, 300), periodo: linha(r.periodo, 300),
+      unidade: linha(r.unidade, 300), filtros: linha(r.filtros, 600), agrupamentos: linha(r.agrupamentos, 600),
+    },
     metodologia: texto(o.metodologia, 8000),
+    tabelas: lista(o.tabelas, (x) => (texto(x.consulta)
+      ? {
+        consulta: linha(x.consulta, 12),
+        papel: x.papel === 'alternativa' || x.papel === 'complemento' ? x.papel : 'principal',
+        tipo: x.tipo === 'serie' || x.tipo === 'comparacao' ? x.tipo : 'tabela',
+        titulo: linha(x.titulo, 200), grupo: linha(x.grupo, 120), periodo: linha(x.periodo, 120), valor: linha(x.valor, 120),
+        colunas: Array.isArray(x.colunas) ? x.colunas.map((c) => linha(c, 120)).filter(Boolean).slice(0, 20) : [],
+        de: linha(x.de, 20), ate: linha(x.ate, 20), total: x.total === true, participacao: x.participacao === true,
+        formato: umFormato(x.formato), unidade: linha(x.unidade, 120), nota: texto(x.nota, 600).replace(/\s*\n\s*/g, ' '),
+      } satisfies EspecTabela
+      : null), 4),
     graficos: lista(o.graficos, (g) => {
       const y = Array.isArray(g.y) ? g.y.map((c) => linha(c, 120)).filter(Boolean).slice(0, 3) : [];
       return texto(g.consulta) && texto(g.x) && y.length
@@ -517,8 +542,9 @@ export function validarGrafico(g: GraficoIa, r?: Resultado, sql = ''): Validacao
       valores: categorias.map((c) => num(r.linhas.find((l) => l[ix] === c && String(l[is] ?? '—') === nome)?.[iy[0]])),
     }));
   } else {
+    // barras com mais de uma coluna em y (ex.: vinculos_2013 e vinculos_2021): barras agrupadas, uma série por coluna
     const linhaDe = new Map(r.linhas.map((l) => [l[ix], l]));
-    series = (g.tipo === 'barras' ? iy.slice(0, 1) : iy).map((i) => ({
+    series = iy.map((i) => ({
       nome: r.colunas[i].replace(/_/g, ' '),
       valores: categorias.map((c) => num(linhaDe.get(c)?.[i])),
     }));
@@ -543,9 +569,14 @@ export type DestaquePronto = {
 };
 export type GraficoPronto = { g: GraficoIa; validacao: ValidacaoGrafico; quebras: NotaMetodologica[]; consulta?: ConsultaFeita };
 export type LeituraPronta = Leitura & { motivo: string | null };
+/** Tabela pedida pelo modelo: montada com o resultado da consulta, ou o motivo de não poder ser montada. */
+export type TabelaPronta = { espec: EspecTabela; tabela: TabelaAnalitica | null; motivo: string | null; consulta?: ConsultaFeita };
 export type RespostaPronta = {
   r: RespostaFinal;
   destaques: DestaquePronto[];
+  tabelas: TabelaPronta[];
+  /** Períodos pedidos que não vieram nas tabelas principais (ex.: 2011 numa comparação 2011–2021). */
+  faltantes: string[];
   graficos: GraficoPronto[];
   leituras: LeituraPronta[];
   /** Hipóteses mostradas: só quando a pergunta pede explicações (as demais ficam no apêndice, marcadas). */
@@ -565,6 +596,21 @@ export type RespostaPronta = {
 };
 
 const unicas = (notas: NotaMetodologica[]) => [...new Map(notas.map((n) => [n.id, n])).values()];
+
+/** Cobertura da fonte que a consulta lê (RAIS, Novo CAGED ou DCA), para explicar um período pedido que não veio. */
+export function coberturaDaFonte(sql: string, c?: Cobertura | null): CoberturaFonte | null {
+  if (!c) return null;
+  const s = sql.toLowerCase();
+  if (/\btrab_caged/.test(s)) return c.caged ? { nome: 'Novo CAGED', meses: c.caged } : null;
+  if (/\brais_(uf|mun|vinculos)\b|\btrab_(municipios|setores|setores_uf|grandes_setores)\b/.test(s)) return { nome: 'RAIS', anos: c.rais };
+  if (/\b(indicadores|lrf)\b/.test(s)) return { nome: t('DCA (SICONFI)', 'DCA (SICONFI)'), anos: c.dca };
+  return null;
+}
+
+/** "Nominal" e "real" só fazem sentido em valores monetários: saem do rótulo e da unidade das contagens. */
+export const semNominal = (s: string, f: Formato) => (f === 'reais' || /R\$/.test(s)
+  ? s
+  : s.replace(/\s*\b(nominal|nominais|em termos reais|real|reais)\b/gi, '').replace(/\(\s*\)/g, '').replace(/\s{2,}/g, ' ').trim());
 
 /** Período das consultas ampliado pelos períodos dos destaques (anos com anos, competências com competências). */
 function juntarPeriodos(c: { anos: Periodo | null; meses: Periodo | null }, extras: (Periodo | null)[]) {
@@ -618,14 +664,28 @@ function conferirLeitura(l: Leitura, consultas: Map<string, ConsultaFeita>): str
  */
 export function prepararResposta(r: RespostaFinal, consultas: Map<string, ConsultaFeita>, o: {
   doTurno?: string[]; pergunta?: string; cadastro?: Cadastro | null; ultimaCompetencia?: number | null; fontes?: Record<string, Record<string, unknown>>;
+  cobertura?: Cobertura | null;
 } = {}): RespostaPronta {
   const hipotesesOmitidas = !!r.hipoteses && o.pergunta !== undefined && !pedeExplicacao(o.pergunta);
+  // tabelas montadas pela página com o resultado das consultas (totais, variações e participações calculados aqui)
+  const tabelas = r.tabelas.map((espec): TabelaPronta => {
+    const c = consultas.get(espec.consulta);
+    if (!c) return { espec, tabela: null, motivo: t(`a consulta ${espec.consulta || '(vazia)'} não existe`, `query ${espec.consulta || '(empty)'} does not exist`) };
+    const m = montarTabela(espec, c, coberturaDaFonte(c.sql, o.cobertura));
+    if (!m.ok) return { espec, tabela: null, motivo: m.motivo, consulta: c };
+    return { espec, tabela: { ...m.tabela, fonte: fontesConsultadas([c.sql]).join('; ') }, motivo: null, consulta: c };
+  });
   const destaques = r.destaques.map((d): DestaquePronto => {
     const c = consultas.get(d.consulta);
     const periodo = periodoDoDestaque(d, c);
+    let conferencia = conferir(d, c?.resultado);
+    // números calculados pela página nas tabelas da mesma consulta (total, variação) também valem
+    if (conferencia === 'divergente' && tabelas.some((x) => x.tabela && x.espec.consulta === d.consulta && tabelaTem(x.tabela, d.valor, 0.5 * 10 ** -casas(d.valor) + 1e-9))) {
+      conferencia = 'conferido';
+    }
     return {
-      d, valor: formatarValor(d.valor, d.formato), unidade: unidadeLimpa(d.unidade, d.formato), conferencia: conferir(d, c?.resultado),
-      periodo, rotuloPeriodo: periodo ? rotuloPeriodo(periodo, o.ultimaCompetencia) : '', quebras: c && leRais(c.sql) ? quebrasNoPeriodo(periodo) : [],
+      d: { ...d, rotulo: semNominal(d.rotulo, d.formato) }, valor: formatarValor(d.valor, d.formato), unidade: semNominal(unidadeLimpa(d.unidade, d.formato), d.formato),
+      conferencia, periodo, rotuloPeriodo: periodo ? rotuloPeriodo(periodo, o.ultimaCompetencia) : '', quebras: c && leRais(c.sql) ? quebrasNoPeriodo(periodo) : [],
     };
   });
   const graficos = r.graficos.map((g): GraficoPronto => {
@@ -634,8 +694,8 @@ export function prepararResposta(r: RespostaFinal, consultas: Map<string, Consul
     return { g, validacao, quebras: quebrasDoGrafico(validacao, c), consulta: c };
   });
   const leituras = r.interpretacao.map((l): LeituraPronta => ({ ...l, motivo: conferirLeitura(l, consultas) }));
-  const usadas = new Set([...r.destaques.map((d) => d.consulta), ...r.graficos.map((g) => g.consulta), ...r.interpretacao.map((l) => l.consulta)]
-    .filter((x) => consultas.has(x)));
+  const usadas = new Set([...r.destaques.map((d) => d.consulta), ...r.tabelas.map((x) => x.consulta), ...r.graficos.map((g) => g.consulta),
+    ...r.interpretacao.map((l) => l.consulta)].filter((x) => consultas.has(x)));
   const ok = (c?: ConsultaFeita): c is ConsultaFeita => !!c?.resultado && !('erro' in c.resultado);
   const doTurno = (o.doTurno ?? []).map((x) => consultas.get(x)).filter(ok);
   const citadas = [...usadas].map((x) => consultas.get(x)).filter(ok);
@@ -643,14 +703,18 @@ export function prepararResposta(r: RespostaFinal, consultas: Map<string, Consul
   // 2025 tirado da série 2015–2025 é de 2025), não com o intervalo inteiro da consulta
   const proprias = o.doTurno ? citadas.filter((c) => o.doTurno!.includes(c.rotulo)) : citadas;
   const base = proprias.length ? proprias : citadas.length ? [] : doTurno;
-  const p = juntarPeriodos(periodoDasConsultas(base), destaques.map((d) => d.periodo));
+  // com tabelas montadas, o período utilizado é o que tinha dado nelas (consultas auxiliares com o filtro do pedido
+  // não contam); sem tabelas, o das consultas
+  const intervalos = tabelas.flatMap((x) => (x.tabela?.intervalo ? [x.tabela.intervalo] : []));
+  const p = juntarPeriodos(intervalos.length ? { anos: null, meses: null } : periodoDasConsultas(base), [...intervalos, ...destaques.map((d) => d.periodo)]);
   // números da RAIS lidos ao longo de anos que atravessam uma mudança de captação, mesmo sem destaque de variação
   const doPeriodo = quebrasNoPeriodo(periodoDasConsultas(base.filter((c) => leRais(c.sql))).anos);
   const alertas = unicas([...destaques.flatMap((d) => d.quebras), ...graficos.flatMap((g) => g.quebras), ...doPeriodo])
     .sort((a, b) => (a.quebra ?? 0) - (b.quebra ?? 0));
   const sqls = (doTurno.length ? doTurno : citadas).map((c) => c.sql);
+  const faltantes = [...new Set(tabelas.filter((x) => x.espec.papel === 'principal').flatMap((x) => x.tabela?.faltantes ?? []))];
   return {
-    r, destaques, graficos, leituras, alertas, hipoteses: hipotesesOmitidas ? '' : r.hipoteses, hipotesesOmitidas,
+    r, destaques, tabelas, faltantes, graficos, leituras, alertas, hipoteses: hipotesesOmitidas ? '' : r.hipoteses, hipotesesOmitidas,
     notas: unicas([...alertas, ...notasDasFontes(sqls)]),
     fontes: fontesConsultadas(sqls),
     bases: versaoDasBases(sqls, o.fontes),
@@ -665,15 +729,67 @@ const resumo = (s: string, n = 90) => (s.length > n ? `${s.slice(0, n - 1).trimE
 export const pedeExplicacao = (pergunta: string) =>
   /(por ?qu[eê]|porqu[eê]|causa|explica|motivo|fator|raz[ãõ]|o que levou|why|cause|explain|reason|driver|factor)/i.test(pergunta);
 
+/** A pergunta pede dados que pedem tabela (tabela, série, comparação, ranking, distribuição, valores e variações)? */
+export const pedeTabela = (pergunta: string) =>
+  /(tabela|s[ée]rie|compar|ranking|classifica[çc][ãa]o|distribui|evolu|varia[çc][ãa]o|valores absolutos|totais|\b(19|20)\d{2}\s*,?\s+(e|a|até)\s+(19|20)\d{2}\b|table|series|ranking|distribution|trend|\bchange\b)/i.test(pergunta);
+
+/**
+ * Anos pedidos na pergunta: intervalo ("de 2011 a 2021", "2011–2021": todos os anos) ou pontos ("em 2011 e
+ * 2021", "entre 2011 e 2021": os dois anos comparados).
+ */
+export function anosPedidos(pergunta: string): { tipo: 'intervalo' | 'pontos'; de: number; ate: number } | null {
+  const ano = '((?:19|20)\\d{2})';
+  const intervalo = new RegExp(`\\b(?:de|desde|from)\\s+${ano}\\s+(?:a|até|ate|to|until|through)\\s+${ano}\\b`, 'i').exec(pergunta)
+    ?? new RegExp(`\\b${ano}\\s*[–-]\\s*${ano}\\b`).exec(pergunta);
+  if (intervalo) return { tipo: 'intervalo', de: Math.min(+intervalo[1], +intervalo[2]), ate: Math.max(+intervalo[1], +intervalo[2]) };
+  const pontos = new RegExp(`\\b${ano}\\s*,?\\s+(?:e|and)\\s+${ano}\\b`, 'i').exec(pergunta);
+  return pontos ? { tipo: 'pontos', de: Math.min(+pontos[1], +pontos[2]), ate: Math.max(+pontos[1], +pontos[2]) } : null;
+}
+
+const INDISPONIVEL = /indispon|não est[áa]|não h[áa]|não tem|não t[êe]m|não consta|não inclui|não p[ôo]de|não foi poss|sem dados|ausen|fora da cobertura|não cobre|não existe|começa em|not available|unavailable|no data|missing|outside|does not (have|include)|could not/i;
+
 /**
  * Problemas que impedem mostrar a resposta como está (cada um vira um item da devolução ao modelo):
- * destaque fora da tabela citada, gráfico que não pode ser montado, leitura sem colunas que a sustentem,
- * hipóteses numa pergunta que não pede explicações e comparação que atravessa uma quebra de série da
- * RAIS sem dizer isso na conclusão.
+ * destaque fora da tabela citada, tabela ou gráfico que não podem ser montados, tabela ausente quando a
+ * pergunta (ou o modo de pesquisa) a pede, anos pedidos trocados por outros, período pedido indisponível
+ * sem aviso na conclusão, título de gráfico com anos que ele não mostra, leitura sem colunas que a
+ * sustentem, hipóteses numa pergunta que não pede explicações e comparação que atravessa uma quebra de
+ * série da RAIS sem dizer isso na conclusão.
  */
-export function revisarResposta(p: RespostaPronta, o: { pergunta?: string } = {}): string[] {
+export function revisarResposta(p: RespostaPronta, o: { pergunta?: string; modo?: Modo } = {}): string[] {
   if (p.r.tipo !== 'resposta') return [];
   const problemas: string[] = [];
+  for (const x of p.tabelas) if (x.motivo) problemas.push(`Tabela "${x.espec.titulo || x.espec.consulta}": ${x.motivo}.`);
+  if (!p.r.tabelas.length && o.modo === 'pesquisa') {
+    problemas.push('Modo análise para pesquisa: a tabela é o centro da resposta. Inclua em tabelas a tabela completa que responde à pergunta (tipo serie, comparacao ou tabela, com a consulta e as colunas exatas).');
+  } else if (!p.r.tabelas.length && o.pergunta !== undefined && pedeTabela(o.pergunta)) {
+    problemas.push('A pergunta pede tabela, série, comparação, ranking, distribuição ou valores e variações: inclua em tabelas a tabela com esses dados, mesmo na resposta rápida.');
+  }
+  const pedido = o.pergunta !== undefined ? anosPedidos(o.pergunta) : null;
+  if (pedido && p.r.tabelas.length) {
+    const ano = (s: string) => (/^\d{4}$/.test(s.trim()) ? Number(s.trim()) : null);
+    const atende = p.tabelas.some((x) => x.espec.papel === 'principal' && ano(x.espec.de) === pedido.de && ano(x.espec.ate) === pedido.ate
+      && (pedido.tipo === 'pontos' || x.espec.tipo !== 'comparacao'));
+    if (!atende) {
+      problemas.push(pedido.tipo === 'intervalo'
+        ? `A pergunta pede a série de ${pedido.de} a ${pedido.ate}: a tabela principal precisa ser do tipo serie (ou tabela com a coluna de período), com de = "${pedido.de}" e ate = "${pedido.ate}", mesmo que algum ano não esteja disponível (a página mostra cada ano do intervalo e marca as lacunas). Outro intervalo só numa tabela de papel "alternativa".`
+        : `A pergunta pede ${pedido.de} e ${pedido.ate}: a tabela principal precisa usar de = "${pedido.de}" e ate = "${pedido.ate}", mesmo que um dos anos não esteja disponível (a página o marca como indisponível e não calcula a variação). Outra combinação de anos só numa tabela de papel "alternativa", dizendo que ela não atende integralmente ao pedido.`);
+    }
+  }
+  if (p.faltantes.length) {
+    const naoCitados = p.faltantes.filter((f) => !p.r.conclusao.includes(f));
+    if (naoCitados.length || !INDISPONIVEL.test(p.r.conclusao)) {
+      problemas.push(`${p.faltantes.length === 1 ? 'O período pedido' : 'Os períodos pedidos'} ${p.faltantes.join(', ')} não ${p.faltantes.length === 1 ? 'está' : 'estão'} nos dados: diga isso na própria conclusão (a comparação ou série pedida não pôde ser completada) e, se houver tabela alternativa, apresente-a como alternativa, não como resposta ao pedido.`);
+    }
+  }
+  for (const g of p.graficos) {
+    if (!g.validacao.ok) continue;
+    const presentes = [...g.validacao.dados.rotulos, ...g.validacao.dados.series.map((s) => s.nome)].join(' ');
+    const faltam = [...new Set([...g.g.titulo.matchAll(/\b(?:19|20)\d{2}\b/g)].map((m) => m[0]))].filter((a) => !presentes.includes(a));
+    if (faltam.length) {
+      problemas.push(`Gráfico "${g.g.titulo}": o título cita ${faltam.join(' e ')}, que não ${faltam.length === 1 ? 'aparece' : 'aparecem'} nos dados do gráfico. Para comparar anos, use uma série por ano (serie = coluna do ano, em formato longo) ou uma coluna por ano em y; ou corrija o título.`);
+    }
+  }
   if (p.r.hipoteses && o.pergunta !== undefined && !pedeExplicacao(o.pergunta)) {
     problemas.push('Hipóteses: a pergunta não pede explicações (por quê, causas, fatores); deixe hipoteses vazio e descreva só o que os dados mostram.');
   }
@@ -701,24 +817,48 @@ export function revisarResposta(p: RespostaPronta, o: { pergunta?: string } = {}
 
 const CABECA_REVISAO = 'A resposta não foi mostrada: a página encontrou problemas. Corrija-os (com novas consultas, se precisar) e chame responder de novo, sozinha:';
 
-/** Resposta em texto corrido, para copiar. */
+/**
+ * Recorte da análise (o mesmo na tela, no PDF e na cópia): território, período solicitado e o efetivamente
+ * usado (das consultas), fontes, unidade, filtros e agrupamentos.
+ */
+export function recorteDe(p: RespostaPronta): [string, string][] {
+  const r = p.r;
+  return ([
+    [t('Território', 'Territory'), p.territorios.join('; ') || r.recorte.territorio],
+    [t('Período solicitado', 'Requested period'), r.recorte.periodo_solicitado],
+    [t('Período utilizado', 'Period used'), p.periodo ?? r.recorte.periodo],
+    [t('Fontes', 'Sources'), p.fontes.join('; ')],
+    [t('Bases', 'Datasets'), p.bases.join('; ')],
+    [t('Unidade', 'Unit'), semNominal(r.recorte.unidade, p.tabelas.some((x) => x.espec.formato === 'reais') || p.destaques.some((x) => x.d.formato === 'reais') ? 'reais' : 'inteiro')],
+    [t('Filtros e definições', 'Filters and definitions'), r.recorte.filtros],
+    [t('Agrupamentos', 'Groupings'), r.recorte.agrupamentos],
+  ] as [string, string][]).filter(([, v]) => v);
+}
+
+/** Aviso de pedido não atendido por inteiro (períodos pedidos sem dados), para a tela, o PDF e a cópia. */
+export const avisoFaltantes = (p: RespostaPronta) => (p.faltantes.length
+  ? t(`O pedido não pôde ser atendido por inteiro: ${p.faltantes.join(', ')} sem dados na base. As tabelas marcam ${p.faltantes.length === 1 ? 'esse período' : 'esses períodos'} como indisponível e não calculam variações com ${p.faltantes.length === 1 ? 'ele' : 'eles'}.`,
+    `The request could not be fully met: ${p.faltantes.join(', ')} not in the data. The tables mark ${p.faltantes.length === 1 ? 'this period' : 'these periods'} as unavailable and compute no changes with ${p.faltantes.length === 1 ? 'it' : 'them'}.`)
+  : '');
+
+/**
+ * Texto analítico para copiar (sem identificadores internos das consultas): conclusão, avisos, números
+ * principais, análise, leituras, hipóteses, ressalvas, recorte e metodologia. As tabelas têm cópia própria.
+ */
 export function textoDaResposta(p: RespostaPronta): string {
   const r = p.r;
   const partes = [r.conclusao];
+  if (p.faltantes.length) partes.push(`⚠ ${avisoFaltantes(p)}`);
   if (p.alertas.length) partes.push(p.alertas.map((n) => `⚠ ${n.curta()} (${n.documento}: ${n.url})`).join('\n'));
   if (p.destaques.length) {
-    partes.push(p.destaques.map((x) => `- ${x.d.rotulo}: ${x.valor}${x.unidade ? ` ${x.unidade}` : ''} (${[x.rotuloPeriodo, x.d.consulta].filter(Boolean).join('; ')})`).join('\n'));
+    partes.push(p.destaques.map((x) => `- ${x.d.rotulo}: ${x.valor}${x.unidade ? ` ${x.unidade}` : ''}${x.rotuloPeriodo ? ` (${x.rotuloPeriodo})` : ''}`).join('\n'));
   }
   if (r.explicacao) partes.push(r.explicacao);
   const leituras = p.leituras.filter((l) => !l.motivo);
-  if (leituras.length) partes.push(`${t('Leitura dos dados', 'Reading the data')}:\n${leituras.map((l) => `- ${l.texto} (${l.consulta}: ${l.colunas.join(', ')})`).join('\n')}`);
+  if (leituras.length) partes.push(`${t('Leitura dos dados', 'Reading the data')}:\n${leituras.map((l) => `- ${l.texto}`).join('\n')}`);
   if (p.hipoteses) partes.push(`${t('Hipóteses (não testadas)', 'Hypotheses (not tested)')}: ${p.hipoteses}`);
   if (r.limitacoes) partes.push(`${t('Ressalvas', 'Caveats')}: ${r.limitacoes}`);
-  const ficha = [
-    [t('Fontes consultadas', 'Sources queried'), p.fontes.join('; ')], [t('Bases', 'Datasets'), p.bases.join('; ')],
-    [t('Território', 'Territory'), p.territorios.join('; ') || r.recorte.territorio], [t('Período consultado', 'Period queried'), p.periodo ?? r.recorte.periodo],
-    [t('Unidade', 'Unit'), r.recorte.unidade], [t('Filtros', 'Filters'), r.recorte.filtros],
-  ].filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`);
+  const ficha = recorteDe(p).map(([k, v]) => `${k}: ${v}`);
   if (ficha.length) partes.push(ficha.join('\n'));
   if (r.metodologia) partes.push(`${t('Metodologia', 'Methodology')}: ${r.metodologia}`);
   return partes.join('\n\n');
@@ -815,7 +955,7 @@ export type Desfecho = 'resposta' | 'texto' | 'limite' | 'recusa' | 'longa';
  */
 export async function perguntarIa(o: {
   historico: Mensagem[]; pergunta: string; contexto: string; idioma: string; paineis: Painel[]; sinal: AbortSignal;
-  resultados?: Record<string, Resultado>; ultimaCompetencia?: number | null;
+  resultados?: Record<string, Resultado>; ultimaCompetencia?: number | null; modo?: Modo; cobertura?: Cobertura | null;
   aoAtualizar: (mensagens: Mensagem[]) => void;
   aoResultado: (id: string, r: Resultado) => void;
   aoProgresso?: (p: Progresso) => void;
@@ -848,8 +988,9 @@ export async function perguntarIa(o: {
       o.aoProgresso?.({ fase: 'revisao' });
       const cad = await cadastro().catch(() => null);
       const doTurno = turnos(hist).at(-1)?.itens.flatMap((i) => (i.tipo === 'consulta' ? [i.rotulo] : [])) ?? [];
-      problemas = revisarResposta(prepararResposta(resposta, consultasDaConversa(hist, resultados), { doTurno, cadastro: cad, ultimaCompetencia: o.ultimaCompetencia }),
-        { pergunta: o.pergunta });
+      problemas = revisarResposta(prepararResposta(resposta, consultasDaConversa(hist, resultados), {
+        doTurno, cadastro: cad, ultimaCompetencia: o.ultimaCompetencia, cobertura: o.cobertura,
+      }), { pergunta: o.pergunta, modo: o.modo });
       // sem problemas, ou já devolvida o bastante (ou sem rodada para refazer): a página mostra com os avisos
       if (!problemas.length || revisoes >= MAX_REVISOES || rodada >= MAX_RODADAS - 1) return { mensagens: hist, desfecho: 'resposta' };
       revisoes++;
