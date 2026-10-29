@@ -329,3 +329,30 @@ export function periodoDasConsultas(consultas: { sql: string; resultado?: Tabela
     meses: c.length ? { tipo: 'mes', de: Math.min(...c), ate: Math.max(...c) } : null,
   };
 }
+
+export type BlocoTexto = { tipo: 'paragrafo'; texto: string } | { tipo: 'lista'; itens: string[] };
+
+/** Texto da IA em parágrafos e listas ("- " no começo da linha), o mesmo na página e no PDF. */
+export function blocosDeTexto(texto: string): BlocoTexto[] {
+  const blocos: BlocoTexto[] = [];
+  let itens: string[] = [];
+  let paragrafo: string[] = [];
+  const fechar = () => {
+    if (itens.length) blocos.push({ tipo: 'lista', itens });
+    if (paragrafo.length) blocos.push({ tipo: 'paragrafo', texto: paragrafo.join(' ') });
+    itens = [];
+    paragrafo = [];
+  };
+  for (const linha of (texto ?? '').split('\n').map((l) => l.trim())) {
+    if (!linha) fechar();
+    else if (/^[-•–]\s+/.test(linha)) {
+      if (paragrafo.length) fechar();
+      itens.push(linha.replace(/^[-•–]\s+/, ''));
+    } else {
+      if (itens.length) fechar();
+      paragrafo.push(linha);
+    }
+  }
+  fechar();
+  return blocos;
+}

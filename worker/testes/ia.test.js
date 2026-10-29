@@ -189,5 +189,6 @@ describe('acesso à IA', () => {
     assert.match(texto, /exatamente a do filtro executado/);
     assert.match(texto, /despesa_saude_liquidada, despesa_saude_paga/);
     assert.match(texto, /mesmo intervalo do ano anterior/);
+    assert.match(texto, /Códigos mais amplos que o pedido: .*superestima o recorte pedido\. Faça isso mesmo quando a pessoa der os códigos/);
   });
 });

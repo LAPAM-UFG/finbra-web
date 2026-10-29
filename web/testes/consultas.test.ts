@@ -22,7 +22,7 @@ import {
 } from '../src/ia';
 import { formatarCelulaT, montarTabela, tabelaExportavel, tabelaHtml, tabelaTsv, type EspecTabela } from '../src/ia_tabelas';
 import {
-  competenciasNoTexto, contar, formatarCelula, formatarTabela, formatarValor, periodoDasConsultas, periodosComoNumero, rotuloColuna, rotuloPeriodo, tipoColuna, tiposDoResultado, unidadeLimpa,
+  blocosDeTexto, competenciasNoTexto, contar, formatarCelula, formatarTabela, formatarValor, periodoDasConsultas, periodosComoNumero, rotuloColuna, rotuloPeriodo, tipoColuna, tiposDoResultado, unidadeLimpa,
 } from '../src/ia_formato';
 import { citaQuebra } from '../src/ia_notas';
 import { cadastro, conferirCodigos, executarLocalizacao, localizar } from '../src/ia_territorio';
@@ -1753,6 +1753,30 @@ describe('IA: auditoria das cinco perguntas (regressão)', () => {
     const r: Resultado = { colunas: ['ano', 'vinculos'], linhas: [[2025, 10]], total: 1 };
     const p = prepararResposta(lerResposta({ resposta: respostaBase() })!, new Map([feita('C1', "SELECT ano, sum(vinculos) AS vinculos FROM rais_uf WHERE starts_with(cbo, '2235') GROUP BY 1", r)]), { doTurno: ['C1'] });
     assert.deepEqual(recorteDe(p).find(([k]) => k === 'Códigos filtrados nas consultas'), ['Códigos filtrados nas consultas', 'CBO: começa com 2235']);
+  });
+
+  test('códigos da cadeia da carne: uma lista só, das consultas usadas, sem as de exploração; análise com lista', () => {
+    const classes = ['01512', '10112', '10139', '46346', '47229'];
+    const r: Resultado = { colunas: ['ano', 'vinculos'], linhas: [[2011, 623026], [2021, 682824]], total: 2 };
+    const consultas = new Map([
+      ...['0151', '1011', '1013', '4634', '4722'].map((x, i) => feita(`C${i + 1}`, `SELECT cnae_classe, sum(vinculos) FROM rais_uf WHERE starts_with(cnae_classe, '${x}') GROUP BY 1`, r)),
+      feita('C6', `SELECT ano, sum(vinculos) AS vinculos FROM rais_uf WHERE situacao = 1 AND cnae_classe IN ('10112', '10139') OR cnae_classe IN ('46346', '47229') GROUP BY 1`, r),
+      feita('C7', `SELECT ano, CASE WHEN cnae_classe = '01512' THEN 'M' WHEN cnae_classe IN ('10112', '10139') THEN 'I' END AS s, sum(vinculos) AS vinculos
+        FROM rais_uf WHERE cnae_classe IN ('47229', '46346', '01512', '10112', '10139') GROUP BY ALL`, r),
+    ]);
+    const destaques = [{ rotulo: 'Vínculos', valor: 682824, formato: 'inteiro', unidade: 'vínculos', consulta: 'C7', coluna: 'vinculos' },
+      { rotulo: 'Vínculos', valor: 623026, formato: 'inteiro', unidade: 'vínculos', consulta: 'C6', coluna: 'vinculos' }];
+    const p = prepararResposta(lerResposta({ resposta: respostaBase({ destaques }) })!, consultas, { doTurno: [...consultas.keys()] });
+    assert.deepEqual(p.codigos, [`CNAE (classe): ${classes.join(', ')}`]);
+    // sem consulta citada, valem as do turno (prefixos e lista)
+    const s = prepararResposta(lerResposta({ resposta: respostaBase() })!, consultas, { doTurno: [...consultas.keys()] });
+    assert.deepEqual(s.codigos, [`CNAE (classe): começa com 0151; começa com 1011; começa com 1013; começa com 4634; começa com 4722; ${classes.join(', ')}`]);
+    // "- " no começo da linha vira lista (página e PDF usam a mesma leitura)
+    assert.deepEqual(blocosDeTexto('- O total subiu.\n- A matéria-prima caiu.\nEm resumo, cresceu.\n\nOutro parágrafo\ncontinua.'), [
+      { tipo: 'lista', itens: ['O total subiu.', 'A matéria-prima caiu.'] },
+      { tipo: 'paragrafo', texto: 'Em resumo, cresceu.' },
+      { tipo: 'paragrafo', texto: 'Outro parágrafo continua.' },
+    ]);
   });
 
   test('colunas: contagens não viram R$, competência em texto volta a ser competência, unidade linha a linha não leva símbolo único', () => {

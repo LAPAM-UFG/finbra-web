@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { Ente, Meta } from '../api';
 import { BotoesExportar } from '../components/Exportar';
@@ -15,7 +15,7 @@ import {
   type GraficoPronto, type ItemTurno, type Mensagem, type Modo, type Painel, type Progresso, type RespostaPronta, type Resultado,
   type Sugestao, type TabelaPronta, type Territorio, type TurnoIa,
 } from '../ia';
-import { contar, formatarTabela, formatarValor, rotuloCompetencia, tiposDoResultado, type TabelaFormatada } from '../ia_formato';
+import { blocosDeTexto, contar, formatarTabela, formatarValor, rotuloCompetencia, tiposDoResultado, type TabelaFormatada } from '../ia_formato';
 import { dataDaNota, type NotaMetodologica } from '../ia_notas';
 import {
   ehTexto, formatarCelulaT, rodapeTabela, tabelaExportavel, tabelaHtml, tabelaTsv, type TabelaAnalitica,
@@ -332,9 +332,14 @@ const notasHtml = (notas: NotaMetodologica[]) => (notas.length
  * principais, tabelas, gráfico, ressalvas e fonte. Pesquisa: conclusão, avisos, recorte da análise, tabelas
  * completas, gráficos, análise dos resultados, ressalvas, metodologia e fontes. Sem identificadores internos.
  */
+/** Texto da IA no PDF: os mesmos parágrafos e listas da página. */
+const textoHtml = (v: string) => `<div class="texto">${blocosDeTexto(v).map((b) => (b.tipo === 'lista'
+  ? `<ul>${b.itens.map((x) => `<li>${html(x)}</li>`).join('')}</ul>`
+  : `<p>${html(b.texto)}</p>`)).join('')}</div>`;
+
 function respostaHtml(p: RespostaPronta, modo: Modo, n: Contador) {
   const r = p.r;
-  const texto = (titulo: string, v: string) => (v ? `<h4>${html(titulo)}</h4><div class="texto">${html(v)}</div>` : '');
+  const texto = (titulo: string, v: string) => (v ? `<h4>${html(titulo)}</h4>${textoHtml(v)}` : '');
   const leituras = p.leituras.filter((l) => !l.motivo);
   const destaques = p.destaques.map((x) => `<div class="destaque"><span class="rotulo">${html(x.d.rotulo)}</span><strong>${html(x.valor)}</strong>`
     + `${x.unidade ? `<span class="unidade">${html(x.unidade)}</span>` : ''}${x.rotuloPeriodo ? `<span class="periodo">${html(x.rotuloPeriodo)}</span>` : ''}`
@@ -355,7 +360,7 @@ function respostaHtml(p: RespostaPronta, modo: Modo, n: Contador) {
     + `<h3>${html(t('Recorte da análise', 'Scope of the analysis'))}</h3>${fichaHtml(recorteDe(p))}`
     + `${p.tabelas.length ? `<h3>${html(t('Tabelas', 'Tables'))}</h3>${tabelasHtml(p, n)}` : ''}`
     + `${graficosHtml(p, modo, n)}`
-    + `<h3>${html(t('Análise dos resultados', 'Analysis of the results'))}</h3>${r.explicacao ? `<div class="texto">${html(r.explicacao)}</div>` : ''}`
+    + `<h3>${html(t('Análise dos resultados', 'Analysis of the results'))}</h3>${r.explicacao ? textoHtml(r.explicacao) : ''}`
     + `${leituras.length ? `<ul>${leituras.map((l) => `<li>${html(l.texto)}</li>`).join('')}</ul>` : ''}`
     + `${texto(t('Hipóteses (não testadas pelos dados)', 'Hypotheses (not tested by the data)'), p.hipoteses)}`
     + `${texto(t('Ressalvas', 'Caveats'), r.limitacoes)}`
@@ -366,14 +371,14 @@ function respostaHtml(p: RespostaPronta, modo: Modo, n: Contador) {
 function apendiceHtml(turno: TurnoIa, p: RespostaPronta | null, resultados: Record<string, Resultado>) {
   const partes: string[] = [];
   if (p) {
-    if (p.hipotesesOmitidas) partes.push(`<h4>${html(t('Hipóteses (omitidas da resposta: a pergunta não pedia explicações)', 'Hypotheses (left out of the answer: the question did not ask for explanations)'))}</h4><div class="texto">${html(p.r.hipoteses)}</div>`);
+    if (p.hipotesesOmitidas) partes.push(`<h4>${html(t('Hipóteses (omitidas da resposta: a pergunta não pedia explicações)', 'Hypotheses (left out of the answer: the question did not ask for explanations)'))}</h4>${textoHtml(p.r.hipoteses)}`);
     const leituras = p.leituras.filter((l) => !l.motivo);
     if (leituras.length) partes.push(`<h4>${html(t('Leituras e colunas que as sustentam', 'Readings and supporting columns'))}</h4><ul>${leituras.map((l) => `<li>${html(l.texto)} <span class="nota">(${html(`${l.consulta}: ${l.colunas.join(', ')}`)})</span></li>`).join('')}</ul>`);
     const conferencia = p.destaques.map((x) => `<li>${html(x.d.rotulo)}: ${html(x.valor)} <span class="nota">(${html(x.conferencia === 'conferido' ? t(`conferido na consulta ${x.d.consulta}, coluna ${x.d.coluna}`, `checked in query ${x.d.consulta}, column ${x.d.coluna}`) : t(`não encontrado na consulta ${x.d.consulta}`, `not found in query ${x.d.consulta}`))})</span></li>`).join('');
     if (conferencia) partes.push(`<h4>${html(t('Conferência dos números principais', 'Check of the key numbers'))}</h4><ul>${conferencia}</ul>`);
     const origem = p.tabelas.filter((x) => x.tabela).map((x) => `<li>${html(x.tabela!.titulo)}: ${html(t(`consulta ${x.espec.consulta}`, `query ${x.espec.consulta}`))} (${html(x.espec.tipo)}${x.espec.grupo ? `, ${html(t('grupo', 'group'))} ${html(x.espec.grupo)}` : ''}${x.espec.periodo ? `, ${html(t('período', 'period'))} ${html(x.espec.periodo)}` : ''}${x.espec.valor ? `, ${html(t('valor', 'value'))} ${html(x.espec.valor)}` : ''})</li>`).join('');
     if (origem) partes.push(`<h4>${html(t('Origem das tabelas', 'Table sources'))}</h4><ul>${origem}</ul>`);
-  } else if (turno.textoFinal) partes.push(`<div class="texto">${html(turno.textoFinal)}</div>`);
+  } else if (turno.textoFinal) partes.push(textoHtml(turno.textoFinal));
   const refeita = refeitas(consultasDoTurno(turno), resultados);
   const passos = turno.itens.map((item) => {
     if (item.tipo === 'nota') return `<p class="nota">${html(item.texto)}</p>`;
@@ -411,7 +416,7 @@ function imprimirPdf(lista: TurnoIa[], metas: MetaTurno[], prontas: (RespostaPro
   const corpo = lista.map((turno, i) => {
     const p = prontas[i];
     const modo = metas[i]?.contexto.modo ?? 'rapida';
-    const resposta = p ? respostaHtml(p, modo, n) : turno.textoFinal ? `<div class="texto">${html(turno.textoFinal)}</div>` : '';
+    const resposta = p ? respostaHtml(p, modo, n) : turno.textoFinal ? textoHtml(turno.textoFinal) : '';
     return `<section class="pergunta"><h2>${i + 1}. ${html(turno.pergunta)}</h2>`
       + `<p class="nota">${html(rotuloModo(modo))}${metas[i] ? ` · ${html(descreverContexto(metas[i].contexto, p?.periodo, false))}` : ''}</p>${resposta}</section>`;
   }).join('');
@@ -446,7 +451,8 @@ function imprimirPdf(lista: TurnoIa[], metas: MetaTurno[], prontas: (RespostaPro
       .titulo-grafico { font-weight: 600; margin: 0 0 2px; font-size: 9.5pt; break-after: avoid; }
       .aviso { font-size: 9pt; color: #8a2a2a; }
       .papel { font-size: 8.5pt; font-weight: 600; color: #8a5a00; margin: 8px 0 0; break-after: avoid; }
-      .texto { white-space: pre-wrap; margin: 4px 0; }
+      .texto { margin: 4px 0; }
+      .texto p { margin: 0 0 6px; }
       .consulta, .passo { border-left: 3px solid #a4bc0b; padding-left: 8px; margin: 10px 0; }
       .revisao { border-left-color: #c98a1a; }
       pre { font: 8pt/1.35 Consolas, monospace; background: #f1eee4; padding: 6px 8px; white-space: pre-wrap; word-break: break-word; }
@@ -495,32 +501,13 @@ function imprimirPdf(lista: TurnoIa[], metas: MetaTurno[], prontas: (RespostaPro
 /** Texto da IA em parágrafos e listas ("- " no começo da linha); nada de HTML vindo do modelo. */
 function TextoRico({ texto }: { texto: string }) {
   if (!texto) return null;
-  const blocos: ReactNode[] = [];
-  let itens: string[] = [];
-  let paragrafo: string[] = [];
-  const fecharItens = () => {
-    if (itens.length) blocos.push(<ul key={blocos.length}>{itens.map((x, i) => <li key={i}>{x}</li>)}</ul>);
-    itens = [];
-  };
-  const fecharParagrafo = () => {
-    if (paragrafo.length) blocos.push(<p key={blocos.length}>{paragrafo.join(' ')}</p>);
-    paragrafo = [];
-  };
-  for (const linha of texto.split('\n').map((l) => l.trim())) {
-    if (!linha) {
-      fecharItens();
-      fecharParagrafo();
-    } else if (/^[-•–]\s+/.test(linha)) {
-      fecharParagrafo();
-      itens.push(linha.replace(/^[-•–]\s+/, ''));
-    } else {
-      fecharItens();
-      paragrafo.push(linha);
-    }
-  }
-  fecharItens();
-  fecharParagrafo();
-  return <div className="ia-texto">{blocos}</div>;
+  return (
+    <div className="ia-texto">
+      {blocosDeTexto(texto).map((b, i) => (b.tipo === 'lista'
+        ? <ul key={i}>{b.itens.map((x, j) => <li key={j}>{x}</li>)}</ul>
+        : <p key={i}>{b.texto}</p>))}
+    </div>
+  );
 }
 
 function Chips({ contexto, rotulo, pequenos, periodo }: { contexto: ContextoIa; rotulo: string; pequenos?: boolean; periodo?: string | null }) {

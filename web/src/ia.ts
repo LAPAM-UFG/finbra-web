@@ -716,17 +716,27 @@ const CLASSIFICACOES: Record<string, string> = {
   cnae_divisao: 'CNAE (divisão)', divisao: 'CNAE (divisão)', cnae_secao: 'CNAE (seção)', secao: 'CNAE (seção)',
 };
 
+const EXATOS = ' exatos';
+
 /**
  * Filtros de CBO e CNAE das consultas, lidos do SQL: prefixos (starts_with, LIKE '…%'), listas (IN, =) e
- * limites (<, >, BETWEEN). Ex.: "CBO: começa com 2235; menor que 223570".
+ * limites (<, >, BETWEEN). Ex.: "CBO: começa com 2235; menor que 223570". Os códigos exatos de todas as
+ * consultas (IN e =) saem numa lista só, ordenada e sem repetição.
  */
 export function codigosDoSql(sqls: string[]): string[] {
-  const porVar = new Map<string, Set<string>>();
-  const pos = (v: string, x: string) => {
+  const porVar = new Map<string, { itens: Set<string>; exatos: Set<string> }>();
+  const grupo = (v: string) => {
     const k = CLASSIFICACOES[v.toLowerCase()];
-    if (!k) return;
-    if (!porVar.has(k)) porVar.set(k, new Set());
-    porVar.get(k)!.add(x);
+    if (!k) return null;
+    if (!porVar.has(k)) porVar.set(k, { itens: new Set(), exatos: new Set() });
+    return porVar.get(k)!;
+  };
+  const pos = (v: string, x: string) => grupo(v)?.itens.add(x);
+  const exatos = (v: string, codigos: string[]) => {
+    const g = grupo(v);
+    if (!g) return;
+    g.itens.add(EXATOS);
+    for (const c of codigos) g.exatos.add(c);
   };
   const col = String.raw`(?:cast\s*\(\s*)?(?:\w+\.)?(cbo|cbo_grande_grupo|cnae_classe|cnae_subclasse|cnae_divisao|divisao|cnae_secao|secao)\b(?:\s+as\s+\w+\s*\))?`;
   for (const sql of sqls) {
@@ -734,10 +744,13 @@ export function codigosDoSql(sqls: string[]): string[] {
     for (const m of sql.matchAll(new RegExp(String.raw`${col}\s+i?like\s+'([0-9A-Z]+)%'`, 'gi'))) pos(m[1], t(`começa com ${m[2]}`, `starts with ${m[2]}`));
     for (const m of sql.matchAll(new RegExp(String.raw`${col}\s+(not\s+)?in\s*\(([^)]*)\)`, 'gi'))) {
       const lista = [...m[3].matchAll(/'([0-9A-Z]+)'/gi)].map((x) => x[1]);
-      if (lista.length) pos(m[1], `${m[2] ? t('exceto ', 'except ') : ''}${lista.join(', ')}`);
+      if (lista.length && !m[2]) exatos(m[1], lista);
+      else if (lista.length) pos(m[1], `${t('exceto ', 'except ')}${lista.join(', ')}`);
     }
     for (const m of sql.matchAll(new RegExp(String.raw`${col}\s*(<>|!=|=)\s*'([0-9A-Z]+)'`, 'gi'))) {
-      if (m[3].toUpperCase() !== 'TOTAL') pos(m[1], `${m[2] === '=' ? '' : t('exceto ', 'except ')}${m[3]}`); // 'TOTAL' = todas as seções
+      if (m[3].toUpperCase() === 'TOTAL') continue; // 'TOTAL' = todas as seções
+      if (m[2] === '=') exatos(m[1], [m[3]]);
+      else pos(m[1], `${t('exceto ', 'except ')}${m[3]}`);
     }
     for (const m of sql.matchAll(new RegExp(String.raw`${col}\s*(<=|>=|<|>)\s*'([0-9A-Z]+)'`, 'gi'))) {
       const nome = { '<': t('menor que', 'below'), '<=': t('até', 'up to'), '>': t('maior que', 'above'), '>=': t('a partir de', 'from') }[m[2]];
@@ -745,7 +758,7 @@ export function codigosDoSql(sqls: string[]): string[] {
     }
     for (const m of sql.matchAll(new RegExp(String.raw`${col}\s+between\s+'([0-9A-Z]+)'\s+and\s+'([0-9A-Z]+)'`, 'gi'))) pos(m[1], t(`de ${m[2]} a ${m[3]}`, `${m[2]} to ${m[3]}`));
   }
-  return [...porVar].map(([k, v]) => `${k}: ${[...v].join('; ')}`);
+  return [...porVar].map(([k, g]) => `${k}: ${[...g.itens].map((x) => (x === EXATOS ? [...g.exatos].sort().join(', ') : x)).join('; ')}`);
 }
 
 /** A pergunta pede a tabela com uma linha por município (ex.: "apresente tabela municipal")? */
@@ -887,7 +900,8 @@ export function prepararResposta(r: RespostaFinal, consultas: Map<string, Consul
   return {
     r, destaques, tabelas, faltantes, graficos, leituras, alertas, hipoteses: hipotesesOmitidas ? '' : r.hipoteses, hipotesesOmitidas,
     notas: unicas([...alertas, ...notasDasFontes(sqls)]),
-    codigos: codigosDoSql(sqls),
+    // só as consultas que sustentam a resposta: as de exploração (achar os códigos, testar um filtro) não são o recorte
+    codigos: codigosDoSql((citadas.length ? citadas : doTurno).map((c) => c.sql)),
     fontes: fontesConsultadas(sqls),
     bases: versaoDasBases(sqls, o.fontes),
     territorios: territoriosNasConsultas((base.length ? base : citadas).map((c) => c.sql), o.cadastro ?? null),
