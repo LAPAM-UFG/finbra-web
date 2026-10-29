@@ -245,7 +245,14 @@ Campo de perguntas em linguagem natural, só para e-mails autorizados.
    filtros globais (`?uf=`, `?ente=`, `?ano=`), com os **códigos do território em cada formato das tabelas**,
    e o **modo de resposta**, escolhido junto ao campo e guardado no navegador: *Resposta rápida* (o
    essencial) ou *Análise para pesquisa* (recorte, tabelas completas, análise, metodologia e fontes). A
-   pergunta prevalece; sem território, a IA responde para o Brasil e avisa, ou pede esclarecimento.
+   pergunta prevalece; sem território, a IA responde para o Brasil e avisa, ou pede esclarecimento. O ano de
+   referência vai com as fontes que têm e não têm dado nele (o seletor inclui o ano corrente, que só o Novo CAGED
+   cobre, até o último mês). O quadro "Dados disponíveis" sai do manifesto: RAIS, Novo CAGED, DCA, PIB municipal,
+   Bolsa Família e INSS, SIOPE, SIOPS e a LRF (anunciada só quando publicada).
+   Sem login, com a sessão expirada ou com e-mail fora de `IA_EMAILS`, o Worker responde com o motivo (401
+   `sem_login`/`expirado`, 403 `nao_autorizado`) e a página mostra a mensagem de cada caso; "Entrar" passa pelo
+   Access e volta para o mesmo endereço (`/api/ia/entrar?volta=/ia?...`, só caminhos de `/ia`), com território,
+   ano e painéis, e a pergunta fica guardada no campo (sessão do navegador).
 2. O Worker chama o Claude (SDK oficial `@anthropic-ai/sdk`) com o esquema das tabelas e as regras de cada
    painel e com os anos e a cobertura lidos do manifesto.
 3. O Claude pede consultas SQL (ferramenta `consultar`) e acha lugares citados pelo nome com a ferramenta
@@ -270,7 +277,9 @@ Campo de perguntas em linguagem natural, só para e-mails autorizados.
    valores e variações) ou no modo pesquisa, anos pedidos trocados por outros ("em 2011 e 2021" exige os dois
    anos; "de 2011 a 2021", todos), ano pedido indisponível sem aviso na conclusão, título de gráfico com anos
    que ele não mostra, leitura sem colunas de apoio, hipóteses numa pergunta que não pede explicações e
-   comparação de anos da RAIS que atravessa a quebra de 2022–2023 sem dizer isso na conclusão. Outro recorte
+   comparação de anos da RAIS que atravessa a quebra de 2022–2023 sem dizer isso na conclusão, texto com
+   caractere de controle no lugar de letra acentuada, tabela municipal pedida e não entregue e tabela principal
+   montada com só parte do resultado. Outro recorte
    (ex.: os anos disponíveis) só entra como tabela "alternativa", marcada como tal.
 5. A resposta mostra as **notas metodológicas verificadas** (`web/src/ia_notas.ts`: texto, documento, trecho
    literal e data de conferência; quebras da RAIS em 2022 e 2023 pelas notas técnicas do MTE) junto aos
@@ -279,8 +288,11 @@ Campo de perguntas em linguagem natural, só para e-mails autorizados.
    tela, no PDF e na cópia. Na resposta rápida: conclusão, destaques, tabelas (quando pedidas), um gráfico e as
    ressalvas; o resto fica em "Detalhes da análise". Na análise para pesquisa: recorte da análise, tabelas,
    gráficos, análise dos resultados, metodologia e fontes, e os detalhes para reprodução (parâmetros, versão
-   das bases e SQL das consultas usadas). Cada tabela tem cópia para o Word e o Excel (HTML e tabulações),
-   CSV e Excel (números como números, com unidade, fonte, notas e legenda).
+   das bases e SQL das consultas usadas). O recorte lista os **códigos de CBO e CNAE lidos do SQL executado**
+   (`codigosDoSql`), para o descrito não divergir do executado. Cada tabela tem cópia para o Word e o Excel (HTML
+   e tabulações), CSV e Excel (números como números, com unidade, fonte, notas e legenda); a tela pagina e
+   carrega até 2.000 linhas por consulta, e a exportação de uma tabela maior roda a consulta de novo e leva todas
+   (até 200 mil).
 6. As consultas, o SQL, as tabelas e as revisões ficam em "Como chegamos aqui" (consulta sem resultado,
    recusada, refeita e usada na resposta), com exportação em CSV e Excel. A conversa inteira sai em PDF ou
    Excel, cada resposta no modo em que foi feita (tabelas e gráficos numerados, cabeçalho repetido nas
@@ -302,6 +314,14 @@ caso de validação das tabelas (vínculos da cadeia da carne por subsistema, "e
 esquemas não têm `enum`: com as tabelas, a gramática estrita passava do limite da API ("compiled grammar is too
 large"). Como ainda passa em alguns pedidos, o Worker repete o pedido recusado por isso sem modo estrito; a
 página normaliza e confere a resposta do mesmo jeito (`lerResposta`, `revisarResposta`).
+
+**Auditoria com perguntas de pesquisa.** `IA_AUDITORIA=arquivo.json npm test` em `web/` (Worker local ligado;
+`IA_AUDITORIA_SO=A,C` para algumas) faz as cinco perguntas de referência (dependência do FPM em Goiás,
+enfermeiros por sexo, CAGED em Goiás em 2026, SIOPS × DCA em Goiânia, PIB per capita × remuneração) e guarda
+pergunta, contexto, modo, SQL, resultados e resposta. `py pipeline/auditoria_ia.py --saida referencia.json
+--plataforma arquivo.json --relatorio comparacao.md` recalcula os mesmos números nas camadas de origem (DCA conta
+a conta com os códigos do FPM de cada ementário, microdados da RAIS, movimentações do CAGED, SIOPS como veio do
+TABNET, PIB do IBGE), sem as tabelas da IA, e compara: confere, divergente ou não apresentado.
 
 Configuração (uma vez):
 

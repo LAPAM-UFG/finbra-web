@@ -24,7 +24,7 @@
  * Segredo: ANTHROPIC_API_KEY (wrangler secret put ANTHROPIC_API_KEY).
  */
 import Anthropic from '@anthropic-ai/sdk';
-import { identificar } from './acesso.js';
+import { acesso, destinoSeguro } from './acesso.js';
 import { instrucoes, paineisDoPedido } from './sistema_geral.js';
 
 // Modelo: IA_MODELO (variável do Worker ou worker/.dev.vars), entre os da lista; padrão Haiku, o mais barato
@@ -237,7 +237,7 @@ const IDIOMA = {
 
 const resposta = (corpo, status = 200) =>
   new Response(JSON.stringify(corpo), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } });
-const erro = (mensagem, status) => resposta({ erro: mensagem }, status);
+const erro = (mensagem, status, codigo) => resposta({ erro: mensagem, ...(codigo ? { codigo } : {}) }, status);
 
 // ---------------- uso diário ----------------
 
@@ -299,11 +299,15 @@ export function validar(mensagens) {
 // ---------------- rotas ----------------
 
 export async function rotaIa(request, env, url) {
-  const email = await identificar(request, env);
-  if (!email) return erro('login necessário', 401);
+  const { email, motivo, emailNegado } = await acesso(request, env);
+  // depois do login do Access, volta para a página de onde a pessoa saiu (com território, ano e painéis)
+  if (url.pathname === '/api/ia/entrar' && (email || motivo === 'nao_autorizado')) {
+    return Response.redirect(destinoSeguro(url.searchParams.get('volta'), url), 302);
+  }
+  if (motivo === 'nao_autorizado') return erro(`o e-mail ${emailNegado} entrou, mas não está autorizado a usar a IA`, 403, 'nao_autorizado');
+  if (!email) return erro(motivo === 'expirado' ? 'sessão expirada: entre de novo' : 'login necessário', 401, motivo === 'expirado' ? 'expirado' : 'sem_login');
 
   const chave = await chaveDeUso(email);
-  if (url.pathname === '/api/ia/entrar') return Response.redirect(new URL('/ia', url).href, 302);
   if (url.pathname === '/api/ia/estado' && request.method === 'GET') {
     const uso = await lerUso(env, chave);
     return resposta({ email, restantes: Math.max(0, LIMITE_PERGUNTAS - uso.perguntas), limite: LIMITE_PERGUNTAS, configurada: !!env.ANTHROPIC_API_KEY, modelo: modeloDe(env) });

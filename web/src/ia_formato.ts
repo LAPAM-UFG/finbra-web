@@ -106,9 +106,13 @@ export type TipoColuna = 'competencia' | 'ano' | 'codigo' | 'percentual' | 'reai
 
 const RE_ANO = /^(ano|exercicio)(_[a-z0-9_]+)?$|^[a-z0-9_]+_(ano|exercicio)$/i;
 const RE_CODIGO = /^(cod|codigo|id)(_\w+)?$|^\w+_(cod|codigo|id)$|^(cod_ibge|municipio|municipio_trab|uf|cbo(_\w+)?|cnae(_\w+)?|divisao|classe|subclasse|secao|grupo|natureza_juridica(_\w+)?|ibge_subsetor)$/i;
+// diferença entre percentuais, em pontos percentuais: "var_part_pp", "dif_p_p"
+const RE_PONTOS = /(^|_)(pp|p_p)(_|$)/i;
 const RE_PERCENTUAL = /(^|_)(pct|perc|percent|percentual|participacao|proporcao|taxa|share)(_|$)|%/i;
 const RE_CONTAGEM_EXPLICITA = /^(n|qtd|num|numero|quantidade)_|_n$/i;
-const RE_REAIS = /(^|_)(rem|remuneracao|salario|salarios|massa|valor|valores|receita|receitas|despesa|despesas|renda|rendimento|reais|pib|vab|rcl|dcl|divida|patrimonio|investimentos|deducoes|fpm|icms|ipva|iptu|iss|itbi|transferencias|custo|gasto|gastos|preco)(_|$)|^ativo$/i;
+// contagens de entes, vínculos, meses…: vêm antes de reais ("municipios_com_receita" conta municípios, não é R$)
+const RE_CONTAGEM_PREFIXO = /^(municipios|entes|lacunas|excluidos|ativos|vinculos|empregos|estabelecimentos|familias|pessoas|profissionais|meses|anos|admissoes|desligamentos|observacoes|linhas|pares)(_|$)/i;
+const RE_REAIS = /(^|_)(rem|remuneracao|salario|salarios|massa|valor|valores|receita|receitas|despesa|despesas|renda|rendimento|reais|pib|vab|rcl|dcl|divida|patrimonio|investimentos|deducoes|fpm|icms|ipva|iptu|iss|itbi|transferencias|custo|gasto|gastos|preco|rc|receita_corrente)(_|$)|^ativo$/i;
 const RE_CONTAGEM = /(^|_)(vinculos|empregos|admissoes|desligamentos|saldo|estabelecimentos|mulheres|homens|municipios|entes|meses|familias|beneficios|aposentadorias|pensoes|afastados|ativos|desligados|pessoas|trabalhadores|linhas|registros|populacao|total|soma)(_|$)/i;
 
 /**
@@ -123,8 +127,9 @@ export function tipoColuna(nome: string, valores: Valor[], tempo?: 'ano' | 'mes'
   if ((tempo === 'ano' || RE_ANO.test(nome)) && todosNumeros && nums.every(ehAno)) return 'ano';
   if (RE_CODIGO.test(nome)) return 'codigo';
   if (presentes.length > 0 && !todosNumeros) return 'texto';
-  if (RE_PERCENTUAL.test(nome)) return 'percentual';
+  if (RE_PERCENTUAL.test(nome) || RE_PONTOS.test(nome)) return 'percentual';
   if (RE_CONTAGEM_EXPLICITA.test(nome)) return 'contagem';
+  if (RE_CONTAGEM_PREFIXO.test(nome) && nums.every(Number.isInteger)) return 'contagem';
   if (RE_REAIS.test(nome)) return 'reais';
   if (RE_CONTAGEM.test(nome)) return 'contagem';
   return 'numero';
@@ -150,7 +155,8 @@ export function formatarCelula(v: Valor | undefined, tipo: TipoColuna): string {
 /** Cabeçalho legível: "salario medio admissao (R$)", "variacao (%)", "primeira (mês)". */
 export function rotuloColuna(nome: string, tipo: TipoColuna): string {
   let s = nome.replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
-  if (tipo === 'percentual' && !s.includes('%')) s = `${s.replace(/\bpct\b/i, '').replace(/\s+/g, ' ').trim()} (%)`.trim();
+  if (tipo === 'percentual' && RE_PONTOS.test(nome)) s = `${s.replace(/\b(pp|p p)\b/i, '').replace(/\s+/g, ' ').trim()} (p.p.)`;
+  else if (tipo === 'percentual' && !s.includes('%')) s =`${s.replace(/\bpct\b/i, '').replace(/\s+/g, ' ').trim()} (%)`.trim();
   if (tipo === 'reais') s += ' (R$)';
   if (tipo === 'competencia' && !/compet/i.test(nome)) s += t(' (mês)', ' (month)');
   return s.startsWith('(') ? s.slice(1, -1) : s;
@@ -215,11 +221,28 @@ function emLinhas(r: Tabela, tipos: TipoColuna[]): TabelaFormatada {
 /** Tipos das colunas de um resultado, com as de tempo reconhecidas também pela consulta. */
 export function tiposDoResultado(r: Tabela, sql = ''): TipoColuna[] {
   const tempo = tempoNoSql(sql);
-  return r.colunas.map((c, j) => tipoColuna(c, r.linhas.map((l) => l[j]), tempo.get(c.toLowerCase())));
+  const tipos = r.colunas.map((c, j) => tipoColuna(c, r.linhas.map((l) => l[j]), tempo.get(c.toLowerCase())));
+  // unidade dita linha a linha (ex.: indicadores do SIOPS em %, R$ e R$/hab): a coluna de valores não leva unidade única
+  const iu = r.colunas.findIndex((c) => /^unidade$/i.test(c));
+  if (iu >= 0 && new Set(r.linhas.map((l) => l[iu])).size > 1) return tipos.map((x) => (x === 'reais' || x === 'percentual' ? 'numero' : x));
+  return tipos;
+}
+
+/**
+ * Anos e competências que a consulta devolveu como texto ('2025', '202508', comum depois de um CAST para usar
+ * substr) voltam a ser números, para a tabela reconhecer o período e mostrar a competência como ago/2025.
+ */
+export function periodosComoNumero(r: Tabela): Tabela {
+  const conv = r.colunas.map((c, j) => /^(ano|exercicio|competencia)(_\w+)?$|_(ano|exercicio|competencia)$/i.test(c)
+    && r.linhas.some((l) => typeof l[j] === 'string')
+    && r.linhas.every((l) => l[j] === null || (typeof l[j] === 'string' && /^\d{4}(\d{2})?$/.test((l[j] as string).trim())) || typeof l[j] === 'number'));
+  if (!conv.some(Boolean)) return r;
+  return { ...r, linhas: r.linhas.map((l) => l.map((v, j) => (conv[j] && typeof v === 'string' ? Number(v.trim()) : v))) };
 }
 
 /** Resultado de consulta formatado; com uma linha só e muitas colunas, vira linhas. */
-export function formatarTabela(r: Tabela, sql = '', limite = Infinity): TabelaFormatada {
+export function formatarTabela(bruta: Tabela, sql = '', limite = Infinity): TabelaFormatada {
+  const r = periodosComoNumero(bruta);
   const tipos = tiposDoResultado(r, sql);
   if (r.linhas.length === 1 && r.colunas.length > 6) return emLinhas(r, tipos);
   const linhas = r.linhas.slice(0, limite).map((l) => l.map((v, j) => formatarCelula(v, tipos[j])));

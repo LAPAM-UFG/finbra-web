@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import Anthropic from '@anthropic-ai/sdk';
 import { FERRAMENTAS, SEM_ESTRITO, gramaticaGrande, validar } from '../src/ia.js';
+import { acesso, destinoSeguro } from '../src/acesso.js';
 import { instrucoes, paineisDoPedido } from '../src/sistema_geral.js';
 import { contextoDosDados } from '../src/sistema.js';
 
@@ -162,5 +163,31 @@ describe('instruções', () => {
     assert.deepEqual(paineisDoPedido(['trabalho', 'x']), ['trabalho']);
     assert.deepEqual(paineisDoPedido([]), ['financas', 'trabalho']);
     assert.deepEqual(paineisDoPedido('trabalho'), ['financas', 'trabalho']);
+  });
+});
+
+describe('acesso à IA', () => {
+  const url = new URL('https://finbra-web.exemplo.dev/api/ia/entrar');
+  test('depois do login volta para a aba da IA com os filtros, nunca para outro site', () => {
+    assert.equal(destinoSeguro('/ia?uf=GO&ano=2026&paineis=trabalho', url), 'https://finbra-web.exemplo.dev/ia?uf=GO&ano=2026&paineis=trabalho');
+    assert.equal(destinoSeguro('/ia', url), 'https://finbra-web.exemplo.dev/ia');
+    for (const ruim of ['https://outro.site/ia', '//outro.site/ia', '/iaa', '/ia\@outro', '/ia\r\nLocation: x', null, '/despesas']) {
+      assert.equal(destinoSeguro(ruim, url), 'https://finbra-web.exemplo.dev/ia', String(ruim));
+    }
+  });
+  test('sem token: motivo sem_login; no computador local, o e-mail de desenvolvimento', async () => {
+    const pedido = (host) => new Request(`https://${host}/api/ia/estado`);
+    assert.deepEqual(await acesso(pedido('finbra-web.exemplo.dev'), { ACCESS_TEAM: 'x', ACCESS_AUD: 'y' }), { email: null, motivo: 'sem_login', emailNegado: null });
+    assert.deepEqual(await acesso(pedido('localhost'), { IA_DEV_EMAIL: 'dev@exemplo.org' }), { email: 'dev@exemplo.org', motivo: null });
+  });
+  test('instruções: tabelas municipais, razão dos totais × média das razões, cobertura, chaves do cruzamento e códigos executados', () => {
+    const texto = instrucoes(['financas', 'trabalho'], { manifesto: null, contextoTrabalho: null }).map((b) => b.text).join('\n');
+    assert.match(texto, /nunca diga que ela não cabe/);
+    assert.match(texto, /média ou a mediana das razões/);
+    assert.match(texto, /lacuna da declaração, não zero/);
+    assert.match(texto, /confira a chave .* a unicidade .* e as perdas do cruzamento/);
+    assert.match(texto, /exatamente a do filtro executado/);
+    assert.match(texto, /despesa_saude_liquidada, despesa_saude_paga/);
+    assert.match(texto, /mesmo intervalo do ano anterior/);
   });
 });

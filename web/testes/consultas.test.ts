@@ -13,16 +13,16 @@ import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { basesAV, codigoConta, formatarPct } from '../src/calculos';
-import { consultaLivre, executar, tabelasIaTrabalho, usarMicrodadosNoTeste, usarMotorDeTeste } from '../src/dados';
+import { consultaLivre, executar, tabelasEducacaoSaude, tabelasIaTrabalho, usarMicrodadosNoTeste, usarMotorDeTeste } from '../src/dados';
 import {
-  anosPedidos, comPergunta, conferir, consultasDaConversa, contextoParaModelo, dadosDoGrafico, executarConsulta, fontesConsultadas, lerModo, lerResposta,
+  anosPedidos, chamarIa, coberturaDaFonte, codigosDoSql, comPergunta, conferir, consultasDaConversa, contextoParaModelo, descreverCobertura, disponibilidadeNoAno, pedeTabelaMunicipal, dadosDoGrafico, executarConsulta, fontesConsultadas, lerModo, lerResposta,
   paraModelo, pedeTabela, perguntarIa, prepararResposta, recorteDe, revisarResposta, rotulosConsultas, semNominal, semUltimaPergunta, sugestoes,
   textoDaResposta, turnos, usarServidorIaNoTeste, validarGrafico, validarSql, type ConsultaFeita, type ContextoIa, type GraficoIa, type Mensagem,
   type Resultado,
 } from '../src/ia';
 import { formatarCelulaT, montarTabela, tabelaExportavel, tabelaHtml, tabelaTsv, type EspecTabela } from '../src/ia_tabelas';
 import {
-  competenciasNoTexto, contar, formatarCelula, formatarTabela, formatarValor, periodoDasConsultas, rotuloPeriodo, tipoColuna, unidadeLimpa,
+  competenciasNoTexto, contar, formatarCelula, formatarTabela, formatarValor, periodoDasConsultas, periodosComoNumero, rotuloColuna, rotuloPeriodo, tipoColuna, tiposDoResultado, unidadeLimpa,
 } from '../src/ia_formato';
 import { citaQuebra } from '../src/ia_notas';
 import { cadastro, conferirCodigos, executarLocalizacao, localizar } from '../src/ia_territorio';
@@ -1682,6 +1682,259 @@ describe('IA de ponta a ponta: cadeia da carne (Worker local e modelo)', { skip:
       assert.deepEqual(p!.faltantes, faltam, 'só os anos fora da base aparecem como indisponíveis');
       if (faltam.length) assert.doesNotMatch(p!.periodo ?? '', new RegExp(faltam[0]), 'o período utilizado só tem anos com dado');
       else assert.doesNotMatch(turno.resposta!.conclusao, /indispon|não pôde ser completada/i, 'com os dados completos, nada de aviso de ausência');
+    });
+  }
+});
+
+/**
+ * Regressões da auditoria das cinco perguntas (FPM em Goiás, enfermeiros, CAGED em Goiás, SIOPS × DCA em
+ * Goiânia, PIB per capita × remuneração). Os números esperados vêm da conferência independente
+ * (pipeline/auditoria_ia.py), feita nas camadas de origem, não das tabelas que a IA consulta.
+ */
+describe('IA: auditoria das cinco perguntas (regressão)', () => {
+  const semIndicadores = !existsSync(`${DATA}/gold/indicadores.parquet`);
+  const semSiops = !existsSync(`${DATA}/gold/siops/indicadores.parquet`);
+  const sql = async (s: string, paineis: ('financas' | 'trabalho')[] = ['financas', 'trabalho']) => {
+    const r = await executarConsulta({ sql: s }, paineis);
+    if ('erro' in r) throw new Error(r.erro);
+    return r;
+  };
+
+  test('FPM: com municípios sem FPM declarado, a razão só fecha com o mesmo conjunto no numerador e no denominador', { skip: semIndicadores }, async () => {
+    const r = await sql(`SELECT exercicio,
+        count(*) FILTER (WHERE receita_bruta > 0 AND fpm IS NULL) AS sem_fpm,
+        100.0 * sum(fpm) FILTER (WHERE receita_bruta > 0 AND fpm IS NOT NULL AND receita_corrente > 0)
+              / sum(receita_corrente) FILTER (WHERE receita_bruta > 0 AND fpm IS NOT NULL AND receita_corrente > 0) AS razao_mesmo_conjunto,
+        100.0 * sum(fpm) FILTER (WHERE receita_bruta > 0) / sum(receita_corrente) FILTER (WHERE receita_bruta > 0) AS razao_conjuntos_diferentes
+      FROM indicadores WHERE uf = 'GO' AND esfera = 'M' AND exercicio IN (2022, 2023, 2024) GROUP BY 1 ORDER BY 1`);
+    const [a22, a23, a24] = r.linhas;
+    // lacunas da declaração (FPM lançado em outras contas em 2023 e 2024): contadas, não tratadas como zero
+    assert.deepEqual([a22[1], a23[1], a24[1]], [0, 18, 16]);
+    quase(a23[2] as number, 17.60156945852438);
+    quase(a24[2] as number, 18.03360975756144);
+    assert.ok((a23[2] as number) - (a23[3] as number) > 0.3, 'a receita de quem não tem FPM no denominador subestima a dependência');
+    assert.equal(a22[2], a22[3], 'sem lacunas, as duas contas coincidem');
+  });
+
+  test('FPM: conta-mãe ou contas irmãs de cada ementário, nunca as duas (2015, 2019 e 2023 contra a DCA conta a conta)', { skip: semIndicadores }, async () => {
+    const contas: Record<number, string[]> = {
+      2015: ['RO1.7.2.1.01.02', 'RO1.7.2.1.01.03', 'RO1.7.2.1.01.04'],
+      2019: ['RO1.7.1.8.01.2', 'RO1.7.1.8.01.3', 'RO1.7.1.8.01.4'],
+      2023: ['RO1.7.1.1.51'],
+    };
+    for (const [ano, chaves] of Object.entries(contas)) {
+      // a DCA conta a conta não é tabela da IA (a página recusa read_parquet): consulta direta, só no teste
+      const r = await consultaLivre(`WITH d AS (SELECT cod_ibge, sum(valor) AS fpm FROM read_parquet('${DATA}/silver/dca/exercicio=${ano}.parquet')
+          WHERE anexo = 'I-C' AND coluna = 'Receitas Brutas Realizadas' AND chave IN (${chaves.map((c) => `'${c}'`).join(', ')}) GROUP BY 1)
+        SELECT count(*) AS n, count(*) FILTER (WHERE abs(i.fpm - d.fpm) > 0.01) AS diferentes
+        FROM indicadores i JOIN d USING (cod_ibge) WHERE i.exercicio = ${ano} AND i.uf = 'GO' AND i.esfera = 'M'`, 10);
+      assert.ok((r.linhas[0][0] as number) > 200, `${ano}: municípios com FPM`);
+      assert.equal(r.linhas[0][1], 0, `${ano}: o FPM do painel é a soma das contas do fundo, sem dupla contagem`);
+    }
+  });
+
+  test('remuneração: denominador = vínculos com remuneração em dezembro, não todos os ativos (enfermeiros, 2025)', { skip: semCubo }, async () => {
+    await tabelasIaTrabalho();
+    const r = await sql(`SELECT sum(vinculos) AS ativos, sum(rem_dez_n) AS com_rem, sum(rem_dez_soma) / sum(rem_dez_n) AS media,
+        sum(rem_dez_soma) / sum(vinculos) AS media_errada FROM rais_uf WHERE ano = 2025 AND situacao = 1 AND starts_with(cbo, '2235')`, ['trabalho']);
+    const [ativos, comRem, media, errada] = r.linhas[0] as number[];
+    assert.equal(ativos, 513887);
+    assert.equal(comRem, 439339, 'contagem igual à dos microdados (ativos com remuneração de dezembro > 0)');
+    quase(media, 6990.805446932784);
+    assert.ok(media / errada - 1 > 0.15, 'dividir pela soma dos ativos subestima a média em mais de 15%');
+  });
+
+  test('códigos executados aparecem no recorte, lidos do SQL (o descrito pode divergir do executado)', () => {
+    const c = codigosDoSql([
+      "SELECT ... FROM rais_uf WHERE starts_with(cast(cbo AS varchar), '2235') AND cbo < '223570'",
+      "SELECT ... WHERE cnae_classe IN ('10112', '10139') OR starts_with(cnae_classe, '01512')",
+    ]);
+    assert.deepEqual(c, ['CBO: começa com 2235; menor que 223570', 'CNAE (classe): começa com 01512; 10112, 10139']);
+    const r: Resultado = { colunas: ['ano', 'vinculos'], linhas: [[2025, 10]], total: 1 };
+    const p = prepararResposta(lerResposta({ resposta: respostaBase() })!, new Map([feita('C1', "SELECT ano, sum(vinculos) AS vinculos FROM rais_uf WHERE starts_with(cbo, '2235') GROUP BY 1", r)]), { doTurno: ['C1'] });
+    assert.deepEqual(recorteDe(p).find(([k]) => k === 'Códigos filtrados nas consultas'), ['Códigos filtrados nas consultas', 'CBO: começa com 2235']);
+  });
+
+  test('colunas: contagens não viram R$, competência em texto volta a ser competência, unidade linha a linha não leva símbolo único', () => {
+    const r: Resultado = {
+      colunas: ['exercicio', 'municipios_com_receita', 'municipios_fpm_e_rc', 'fpm_real', 'participacao_fpm_pct'],
+      linhas: [[2023, 246, 228, 7212.87, 17.6]], total: 1,
+    };
+    assert.deepEqual(tiposDoResultado(r), ['ano', 'contagem', 'contagem', 'reais', 'percentual']);
+    assert.deepEqual(tiposDoResultado({ colunas: ['lacunas_fpm_sem_valor', 'rc_por_hab_nominal', 'ativos_sem_rem_dez', 'var_part_pp'], linhas: [[18, 3500.5, 74548, -1.2]], total: 1 }),
+      ['contagem', 'reais', 'contagem', 'percentual']);
+    assert.equal(rotuloColuna('var_part_pp', 'percentual'), 'var part (p.p.)');
+    assert.deepEqual(codigosDoSql(["SELECT * FROM trab_caged_uf WHERE escopo = 'GO' AND secao = 'TOTAL'"]), []);
+    const siops: Resultado = { colunas: ['codigo', 'unidade', 'valor'], linhas: [['3.2', '%', 21.77], ['d_total', 'R$', 2257118974.13]], total: 2 };
+    assert.equal(tiposDoResultado(siops)[2], 'numero');
+    const caged: Resultado = { colunas: ['competencia', 'ano', 'saldo'], linhas: [['202601', '2026', 10934], ['202602', '2026', 14980]], total: 2 };
+    const n = periodosComoNumero(caged);
+    assert.deepEqual(n.linhas[0], [202601, 2026, 10934]);
+    assert.deepEqual(formatarTabela(caged).linhas[0].slice(0, 2), ['jan/2026', '2026']);
+    const tab = montar(espec({ tipo: 'serie', grupo: '', periodo: 'competencia', valor: 'saldo', de: '2026-01', ate: '2026-02', total: false, participacao: false }), caged,
+      "SELECT CAST(competencia AS VARCHAR) AS competencia FROM trab_caged_uf");
+    assert.deepEqual(tab.linhas.map((l) => l[0].v), ['jan/2026', 'fev/2026']);
+  });
+
+  test('queda de conexão antes da resposta (ECONNRESET): uma nova tentativa; duas quedas viram erro', async () => {
+    usarServidorIaNoTeste('');
+    let n = 0;
+    const responder = (falhas: number) => (async () => {
+      n += 1;
+      if (n <= falhas) throw new TypeError('fetch failed');
+      return new Response(JSON.stringify({ conteudo: [], parada: 'end_turn', restantes: 49 }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }) as typeof fetch;
+    globalThis.fetch = responder(1);
+    assert.equal((await chamarIa([], 'pt', ['financas'])).parada, 'end_turn');
+    assert.equal(n, 2);
+    n = 0;
+    globalThis.fetch = responder(2);
+    await assert.rejects(chamarIa([], 'pt', ['financas']), /fetch failed/);
+    globalThis.fetch = FETCH;
+  });
+
+  test('revisão: texto com tabulação no lugar de acento volta para o modelo', () => {
+    const consultas = new Map([feita('C1', 'SELECT 1 AS x', { colunas: ['x'], linhas: [[1]], total: 1 })]);
+    const p = (conclusao: string) => prepararResposta(lerResposta({ resposta: respostaBase({ conclusao }) })!, consultas, { doTurno: ['C1'] });
+    assert.match(revisarResposta(p('Goi\ts fechou com saldo de 50.529.')).join(' '), /Texto corrompido em conclusao.*Goi⟨\?⟩s/);
+    assert.deepEqual(revisarResposta(p('Goiás fechou com saldo de 50.529.')), []);
+  });
+
+  test('revisão: tabela municipal pedida precisa vir (a página mostra e exporta todas as linhas)', () => {
+    const pergunta = 'Nos municípios de Goiás, qual é a relação entre PIB per capita e remuneração? Apresente tabela municipal e correlações.';
+    assert.ok(pedeTabelaMunicipal(pergunta));
+    assert.ok(!pedeTabelaMunicipal('Qual a correlação entre PIB per capita e remuneração em Goiás?'));
+    const cor: Resultado = { colunas: ['medida', 'coeficiente'], linhas: [['Pearson', 0.46]], total: 1 };
+    const mun: Resultado = { colunas: ['nome', 'cod_ibge', 'pib_per_capita', 'rem_dez_media'], linhas: Array.from({ length: 246 }, (_, i) => [`M${i}`, 5200000 + i, 1000 + i, 2000 + i]), total: 246 };
+    const consultas = new Map([feita('C1', 'SELECT 1', cor), feita('C2', 'SELECT 2', mun)]);
+    const tabela = (consulta: string) => espec({ consulta, tipo: 'tabela', grupo: '', periodo: '', valor: '', de: '', ate: '', total: false, participacao: false, formato: 'decimal' });
+    const so = prepararResposta(lerResposta({ resposta: respostaBase({ tabelas: [tabela('C1')] }) })!, consultas, { doTurno: ['C1', 'C2'] });
+    assert.match(revisarResposta(so, { pergunta }).join(' '), /pede a tabela municipal/);
+    const com = prepararResposta(lerResposta({ resposta: respostaBase({ tabelas: [tabela('C1'), tabela('C2')] }) })!, consultas, { doTurno: ['C1', 'C2'] });
+    assert.deepEqual(revisarResposta(com, { pergunta }), []);
+  });
+
+  test('revisão: tabela principal com resultado truncado não passa', () => {
+    const r: Resultado = { colunas: ['nome', 'valor'], linhas: Array.from({ length: 2000 }, (_, i) => [`M${i}`, i]), total: 5570 };
+    const consultas = new Map([feita('C1', 'SELECT nome, valor FROM indicadores', r)]);
+    const p = prepararResposta(lerResposta({ resposta: respostaBase({ tabelas: [espec({ tipo: 'tabela', grupo: '', periodo: '', valor: '', de: '', ate: '', total: false, participacao: false })] }) })!, consultas, { doTurno: ['C1'] });
+    assert.match(revisarResposta(p).join(' '), /tem 5570 linhas e a página só carrega 2000/);
+    assert.match(p.tabelas[0].tabela!.notas.join(' '), /a exportação \(CSV ou Excel\) roda a consulta de novo e traz todas/);
+  });
+
+  test('cobertura do catálogo: todas as fontes, PIB com o próprio intervalo e o ano corrente só no CAGED', () => {
+    const m = { rais: Array.from({ length: 16 }, (_, i) => 2010 + i), caged: { de: 202001, ate: 202608 }, microdados: false, dca: Array.from({ length: 13 }, (_, i) => 2013 + i),
+      pib: { de: 2010, ate: 2023, setorial_ate: 2021 }, siope: Array.from({ length: 13 }, (_, i) => 2013 + i), siopeRemuneracao: [202412, 202512], siops: Array.from({ length: 13 }, (_, i) => 2013 + i),
+      lrf: null, bolsa: { de: 2013, ate: 2026, mes: 202608 }, inss: [2017, 2019, 2020, 2021] };
+    const linhas = descreverCobertura(['financas', 'trabalho'], m).join('\n');
+    assert.match(linhas, /PIB municipal \(IBGE\) 2010–2023, valor adicionado por setor até 2021/);
+    assert.match(linhas, /SIOPS \(saúde\) 2013–2025/);
+    assert.match(linhas, /SIOPE \(educação\) 2013–2025/);
+    assert.match(linhas, /benefícios do INSS 2017, 2019–2021/);
+    assert.match(linhas, /RREO e RGF \(LRF\): em preparação/);
+    assert.deepEqual(coberturaDaFonte('SELECT pib / populacao FROM indicadores', m)?.anos, Array.from({ length: 11 }, (_, i) => 2013 + i));
+    assert.equal(coberturaDaFonte("SELECT valor FROM siops_indicadores WHERE codigo = 'd_total'", m)?.nome, 'SIOPS');
+    const d = disponibilidadeNoAno(2026, ['financas', 'trabalho'], m);
+    assert.match(d, /com dados nesse ano: Novo CAGED \(jan\/2026 a ago\/2026, ano incompleto\)/);
+    assert.match(d, /sem dados nesse ano: RAIS \(2010–2025\); DCA \(2013–2025\); PIB municipal \(2010–2023\); SIOPE; SIOPS/);
+    assert.match(contextoParaModelo({ paineis: ['trabalho'], territorio: { tipo: 'brasil' }, ano: 2026, modo: 'rapida' }, m), /Ano de referência: 2026 \(com dados nesse ano: Novo CAGED/);
+  });
+
+  test('CAGED em Goiás: jan–ago de 2026 contra o mesmo intervalo de 2025 (série com ajustes, conferida nas movimentações)', { skip: !existsSync(`${DATA}/gold/trabalho/caged_uf.parquet`) }, async () => {
+    await tabelasIaTrabalho();
+    const r = await sql(`SELECT competencia // 100 AS ano, count(*) AS meses, sum(admissoes) AS adm, sum(desligamentos) AS desl, sum(saldo) AS saldo
+      FROM trab_caged_uf WHERE escopo = 'GO' AND secao = 'TOTAL' AND competencia % 100 BETWEEN 1 AND 8 AND competencia // 100 IN (2025, 2026) GROUP BY 1 ORDER BY 1`, ['trabalho']);
+    assert.deepEqual(r.linhas, [[2025, 8, 724483, 649839, 74644], [2026, 8, 704074, 653545, 50529]]);
+  });
+
+  test('SIOPS × DCA (Goiânia, 2024): nenhum estágio da função Saúde coincide com a despesa total do SIOPS', { skip: semIndicadores || semSiops }, async () => {
+    await tabelasEducacaoSaude();
+    const r = await sql(`SELECT s.valor AS siops, i.despesa_saude, i.despesa_saude_liquidada, i.despesa_saude_paga
+      FROM indicadores i JOIN siops_indicadores s ON s.cod_ibge = i.cod_ibge AND s.ano = i.exercicio AND s.codigo = 'd_total'
+      WHERE i.cod_ibge = 5208707 AND i.exercicio = 2024`, ['financas']);
+    const [siops, emp, liq, pago] = r.linhas[0] as number[];
+    quase(siops, 2257118974.13);
+    quase(emp, 2157573979.74);
+    quase(liq, 2156666960.32);
+    quase(pago, 2068845703.41);
+    for (const v of [emp, liq, pago]) assert.ok(Math.abs(siops / v - 1) > 0.04, 'diferença maior que 4% em todos os estágios');
+  });
+
+  test('cruzamento PIB × RAIS (Goiás, 2023): chave única nos dois lados, sem perdas, correlações iguais às da conferência', { skip: semIndicadores }, async () => {
+    await tabelasIaTrabalho();
+    const r = await sql(`WITH f AS (SELECT cod_ibge, pib / populacao AS pib_pc FROM indicadores WHERE exercicio = 2023 AND uf = 'GO' AND esfera = 'M'),
+        t AS (SELECT cod_ibge, massa_dez / nullif(n_rem_dez, 0) AS rem FROM trab_municipios WHERE ano = 2023 AND uf = 'GO'),
+        j AS (SELECT * FROM f JOIN t USING (cod_ibge))
+      SELECT (SELECT count(*) FROM f), (SELECT count(DISTINCT cod_ibge) FROM f), (SELECT count(*) FROM t), (SELECT count(DISTINCT cod_ibge) FROM t),
+        count(*), corr(pib_pc, rem), (SELECT corr(a, b) FROM (SELECT rank() OVER (ORDER BY pib_pc) AS a, rank() OVER (ORDER BY rem) AS b FROM j))
+      FROM j`);
+    const [nf, df, nt, dt, pares, pearson, spearman] = r.linhas[0] as number[];
+    assert.deepEqual([nf, df, nt, dt, pares], [246, 246, 246, 246, 246]);
+    quase(pearson, 0.4604464377083938, 1e-9);
+    quase(spearman, 0.487452214024743, 1e-9);
+  });
+});
+
+/**
+ * Auditoria com o modelo de verdade (custa perguntas do dia): IA_AUDITORIA=arquivo.json npm test, com o
+ * Worker local ligado (IA_URL). Cada pergunta numa conversa nova, com os dois painéis e sem território; o
+ * arquivo guarda pergunta, contexto, modo, consultas (SQL e resultado) e resposta, para a conferência
+ * independente (pipeline/auditoria_ia.py). IA_AUDITORIA_SO=A,C roda só algumas.
+ */
+const AUDITORIA: [string, 'rapida' | 'pesquisa', string][] = [
+  ['A', 'pesquisa', 'Como evoluiu a dependência do FPM nos municípios de Goiás entre 2013 e 2025? Apresente uma tabela anual com FPM, receita corrente, participação do FPM, valores por habitante e cobertura dos municípios.'],
+  ['B', 'pesquisa', 'Para enfermeiros no Brasil, de 2015 a 2025, apresente vínculos ativos em 31/12, remuneração média de dezembro nominal e real, participação feminina e diferença salarial entre mulheres e homens.'],
+  ['C', 'pesquisa', 'Qual foi o saldo mensal de empregos formais em Goiás de janeiro a agosto de 2026? Mostre admissões, desligamentos, saldo mensal e acumulado, comparando o mesmo intervalo de 2025.'],
+  ['D', 'pesquisa', 'Em Goiânia, em 2024, a despesa com saúde informada no SIOPS coincide com a despesa por função Saúde da DCA? Apresente os indicadores disponíveis, seus valores e as razões metodológicas de eventuais diferenças.'],
+  ['E', 'pesquisa', 'Nos municípios de Goiás, qual é a relação entre PIB per capita e remuneração média dos empregos formais em 2025? Apresente tabela municipal e correlações.'],
+  ['C-rapida', 'rapida', 'Qual foi o saldo mensal de empregos formais em Goiás de janeiro a agosto de 2026? Mostre admissões, desligamentos, saldo mensal e acumulado, comparando o mesmo intervalo de 2025.'],
+];
+describe('IA: auditoria das cinco perguntas (Worker local e modelo)', { skip: !process.env.IA_AUDITORIA }, () => {
+  const so = process.env.IA_AUDITORIA_SO?.split(',');
+  const registros: unknown[] = [];
+  after(async () => { await writeFile(process.env.IA_AUDITORIA!, JSON.stringify(registros, null, 1)); });
+  for (const [id, modo, pergunta] of AUDITORIA.filter(([id]) => !so || so.includes(id))) {
+    test(`${id} (${modo})`, { timeout: 1_200_000 }, async () => {
+      globalThis.fetch = FETCH;
+      usarServidorIaNoTeste(process.env.IA_URL ?? 'http://localhost:8787');
+      const m = JSON.parse(await readFile(`${DATA}/gold/manifesto.json`, 'utf8'));
+      const cobertura = { rais: m.fontes.rais.anos, caged: { de: m.fontes.caged.de, ate: m.fontes.caged.ate }, microdados: false, dca: m.anos };
+      const paineis: ('financas' | 'trabalho')[] = ['financas', 'trabalho'];
+      const resultados: Record<string, Resultado> = {};
+      const contexto = contextoParaModelo({ paineis, territorio: { tipo: 'brasil' }, ano: null, modo });
+      const inicio = Date.now();
+      let parcial: Mensagem[] = [];
+      const r = await perguntarIa({
+        historico: [], pergunta, contexto, idioma: 'pt', paineis, sinal: new AbortController().signal, modo, cobertura,
+        ultimaCompetencia: cobertura.caged.ate, aoAtualizar: (h) => { parcial = h; }, aoResultado: (k, res) => { resultados[k] = res; },
+      }).catch((e: unknown) => {
+        // a falha também fica registrada, com as consultas feitas até ela
+        const consultas = consultasDaConversa(parcial, resultados);
+        registros.push({ id, modo, pergunta, contexto, falha: e instanceof Error ? `${e.message} ${String((e as { cause?: unknown }).cause ?? '')}` : String(e), mensagens: parcial, segundos: Math.round((Date.now() - inicio) / 1000),
+          consultas: [...consultas.values()].map((c) => ({ id: c.rotulo, objetivo: c.objetivo, sql: c.sql, resultado: c.resultado })) });
+        throw e;
+      });
+      const turno = turnos(r.mensagens).at(-1)!;
+      const consultas = consultasDaConversa(r.mensagens, resultados);
+      const doTurno = turno.itens.flatMap((i) => (i.tipo === 'consulta' ? [i.rotulo] : []));
+      const p = turno.resposta ? prepararResposta(turno.resposta, consultas, { doTurno, pergunta, cobertura, ultimaCompetencia: cobertura.caged.ate }) : null;
+      const problemas = p ? revisarResposta(p, { pergunta, modo }) : ['sem resposta'];
+      registros.push({
+        id, modo, pergunta, contexto, desfecho: r.desfecho, detalhe: r.detalhe ?? null, segundos: Math.round((Date.now() - inicio) / 1000),
+        chamadas: r.mensagens.filter((x) => x.role === 'assistant').length,
+        revisoes: turno.itens.filter((i) => i.tipo === 'revisao').map((i) => (i as { motivos: string[] }).motivos),
+        problemas, faltantes: p?.faltantes ?? null, periodo: p?.periodo ?? null, recorte: p && recorteDe(p),
+        consultas: doTurno.map((k) => {
+          const c = consultas.get(k);
+          const res = c?.resultado as Resultado | undefined;
+          return { id: k, objetivo: c?.objetivo, sql: c?.sql, ...(res && 'erro' in res ? { erro: res.erro } : res ? { colunas: res.colunas, total: res.total, linhas: res.linhas } : {}) };
+        }),
+        resposta: turno.resposta,
+        tabelas: p?.tabelas.map((x) => ({ espec: x.espec, motivo: x.motivo, colunas: x.tabela?.colunas.map((c) => c.nome), linhas: x.tabela?.linhas.map((l) => l.map((c, j) => formatarCelulaT(c, x.tabela!.colunas[j]))), notas: x.tabela?.notas })),
+        destaques: p?.destaques.map((x) => ({ rotulo: x.d.rotulo, valor: x.valor, unidade: x.unidade, conferencia: x.conferencia })),
+        texto: p ? textoDaResposta(p) : null,
+      });
+      assert.equal(r.desfecho, 'resposta');
     });
   }
 });

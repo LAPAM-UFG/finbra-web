@@ -48,6 +48,11 @@ POR_CHAVE = {
     "investimentos": ("I-D", "Despesas Empenhadas", "DO4.4"),
     "despesa_saude": ("I-E", "Despesas Empenhadas", "F10"),
     "despesa_educacao": ("I-E", "Despesas Empenhadas", "F12"),
+    # saúde e educação nos outros estágios: para comparar com o SIOPS e o SIOPE sem presumir o estágio
+    "despesa_saude_liquidada": ("I-E", "Despesas Liquidadas", "F10"),
+    "despesa_saude_paga": ("I-E", "Despesas Pagas", "F10"),
+    "despesa_educacao_liquidada": ("I-E", "Despesas Liquidadas", "F12"),
+    "despesa_educacao_paga": ("I-E", "Despesas Pagas", "F12"),
     # I-E: as funções somam a despesa exceto intraorçamentária; é a base de saúde e educação
     "despesa_empenhada_sem_intra": ("I-E", "Despesas Empenhadas", "TotalExcetoIntra"),
     "despesa_liquidada_sem_intra": ("I-E", "Despesas Liquidadas", "TotalExcetoIntra"),
@@ -300,7 +305,7 @@ def tabela_familias(con):
                          ON k.uf = m.uf AND k.siafi = m.siafi)
             SELECT cod_ibge::BIGINT // 10 AS cod_ibge6, exercicio,
                    sum(familias) FILTER (mes = 12) AS familias, sum(valor) AS valor,
-                   count(DISTINCT mes) AS meses, string_agg(DISTINCT programa, ' + ') AS programa
+                   count(DISTINCT mes) AS meses, string_agg(DISTINCT programa, ' + ' ORDER BY programa) AS programa
             FROM m GROUP BY ALL"""
     else:
         bf = "SELECT NULL::BIGINT AS cod_ibge6, NULL::BIGINT AS exercicio, NULL::DOUBLE AS familias, NULL::DOUBLE AS valor, NULL::BIGINT AS meses, NULL::VARCHAR AS programa WHERE false"
@@ -398,12 +403,20 @@ def fonte_trabalho(con):
 
 
 def fonte_lrf(con):
-    """RREO e RGF (lrf.py): exercícios e entes com cada relatório; vazio se ainda não processados."""
+    """RREO e RGF (lrf.py): exercícios e entes com cada relatório; vazio se ainda não processados.
+
+    Só entram os exercícios com relatório de pelo menos 90% dos entes: uma extração parcial (amostra de
+    teste, carga interrompida) não é anunciada no manifesto, que é o que o site e a IA leem."""
     arquivo = GOLD / "lrf.parquet"
     if not arquivo.exists():
         return {}
+    esperados = con.execute(f"SELECT count(*) FROM '{SILVER.as_posix()}/entes.parquet' WHERE esfera IN ('M', 'E', 'D')").fetchone()[0]
     por_ano = con.execute(f"""SELECT exercicio, count(rreo_tipo)::INTEGER, count(rgf_tipo)::INTEGER
-                              FROM '{arquivo.as_posix()}' GROUP BY 1 ORDER BY 1""").fetchall()
+                              FROM '{arquivo.as_posix()}' GROUP BY 1
+                              HAVING count(*) FILTER (rreo_tipo IS NOT NULL OR rgf_tipo IS NOT NULL) >= 0.9 * {esperados}
+                              ORDER BY 1""").fetchall()
+    if not por_ano:
+        return {}
     return {"siconfi_lrf": {"anos": [por_ano[0][0], por_ano[-1][0]] if por_ano else None,
                             "exercicios": [r[0] for r in por_ano],
                             "entes": {str(r[0]): {"rreo": r[1], "rgf": r[2]} for r in por_ano},

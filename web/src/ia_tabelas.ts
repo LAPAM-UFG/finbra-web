@@ -9,7 +9,7 @@
  * ("incompleto"); variação percentual sobre base zero, negativa ou ausente não é calculada.
  */
 import {
-  ehCompetencia, formatarCelula, lerMarco, rotuloColuna, rotuloCompetencia, tiposDoResultado,
+  ehCompetencia, formatarCelula, lerMarco, periodosComoNumero, rotuloColuna, rotuloCompetencia, tiposDoResultado,
   type Formato, type Tabela, type TipoColuna, type Valor,
 } from './ia_formato';
 import { local, t } from './idioma';
@@ -160,8 +160,8 @@ const somar = (cs: CelulaT[]): CelulaT => (cs.every((c) => typeof c.v === 'numbe
 export function montarTabela(e: EspecTabela, c: { rotulo: string; sql: string; resultado?: Tabela | { erro: string } },
   cobertura: CoberturaFonte | null = null): Montagem {
   const nao = (motivo: string): Montagem => ({ ok: false, motivo });
-  const r = c.resultado;
-  if (!r || 'erro' in r) return nao(t(`a consulta ${e.consulta} não existe ou falhou`, `query ${e.consulta} does not exist or failed`));
+  if (!c.resultado || 'erro' in c.resultado) return nao(t(`a consulta ${e.consulta} não existe ou falhou`, `query ${e.consulta} does not exist or failed`));
+  const r = periodosComoNumero(c.resultado);
   if (!r.linhas.length) return nao(t(`a consulta ${e.consulta} não trouxe linhas`, `query ${e.consulta} returned no rows`));
   const exigidas = e.tipo === 'tabela' ? [...e.colunas, ...(e.periodo ? [e.periodo] : [])] : [e.periodo, e.valor, ...(e.grupo ? [e.grupo] : [])];
   const faltam = exigidas.filter((x) => !x || !r.colunas.includes(x));
@@ -333,8 +333,8 @@ function montarSimples(e: EspecTabela, r: Tabela, tipos: TipoColuna[], base: Omi
     intervalo = intervaloDe(usados, tipoP);
   }
   if (r.total > r.linhas.length) {
-    notas.push(t(`A consulta tem ${r.total.toLocaleString(local())} linhas; a página carregou as primeiras ${r.linhas.length.toLocaleString(local())} (a exportação traz as mesmas).`,
-      `The query has ${r.total.toLocaleString(local())} rows; the page loaded the first ${r.linhas.length.toLocaleString(local())} (the export has the same ones).`));
+    notas.push(t(`A consulta tem ${r.total.toLocaleString(local())} linhas; a página mostra as primeiras ${r.linhas.length.toLocaleString(local())}, e a exportação (CSV ou Excel) roda a consulta de novo e traz todas.`,
+      `The query has ${r.total.toLocaleString(local())} rows; the page shows the first ${r.linhas.length.toLocaleString(local())}, and the export (CSV or Excel) runs the query again and includes all of them.`));
   }
   return { ok: true, tabela: { ...base, colunas, linhas, linhaTotal: null, pedidos, faltantes, usado, intervalo, notas } };
 }

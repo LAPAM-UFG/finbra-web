@@ -8,9 +8,9 @@ import { tabelasIaTrabalho } from '../dados';
 import { baixarArquivo, nomeArquivo, paraXlsxAbas, type Celula, type Planilha } from '../exportar';
 import { idioma, local, t } from '../idioma';
 import {
-  avisoFaltantes, consultasDaConversa, contextoParaModelo, descreverCobertura, descricaoModo, estadoIa, exemploPergunta, foiCancelado,
+  avisoFaltantes, consultasDaConversa, contextoParaModelo, descreverCobertura, descricaoModo, ErroAcesso, estadoIa, exemploPergunta, foiCancelado,
   fontesConsultadas, lerModo, LINHAS_TELA, MAX_PERGUNTA, mesmoContexto, MODOS, nomeDaUf, PAINEIS, perguntarIa, prepararResposta,
-  recorteDe, rotuloAno, rotuloModo, rotuloTerritorio, semUltimaPergunta, sugestoes, textoDaResposta, turnos,
+  recorteDe, rotuloAno, rotuloModo, rotuloTerritorio, semUltimaPergunta, sugestoes, tabelaInteira, textoDaResposta, turnos, urlEntrar,
   type Cobertura, type ConsultaFeita, type ContextoIa, type DadosGrafico, type Desfecho, type EstadoIa, type GraficoIa,
   type GraficoPronto, type ItemTurno, type Mensagem, type Modo, type Painel, type Progresso, type RespostaPronta, type Resultado,
   type Sugestao, type TabelaPronta, type Territorio, type TurnoIa,
@@ -51,10 +51,31 @@ function guardar(chave: string, valor: string | null, sessao = false) {
   }
 }
 
+/** Cobertura de cada fonte, do manifesto dos dados (o mesmo catálogo que o Worker passa ao modelo). */
 function coberturaDe(meta: Meta, microdados: boolean): Cobertura {
-  const rais = (meta.fontes.rais as { anos?: number[] } | undefined)?.anos ?? [];
-  const caged = meta.fontes.caged as { de?: number; ate?: number } | undefined;
-  return { rais, caged: caged?.de && caged?.ate ? { de: caged.de, ate: caged.ate } : null, microdados, dca: meta.anos };
+  const f = meta.fontes as Record<string, Record<string, unknown> | undefined>;
+  const anos = (v: unknown) => (Array.isArray(v) ? v.filter(Number.isInteger) as number[] : []);
+  const par = (v: unknown) => {
+    const a = anos(v);
+    return a.length >= 2 ? { de: a[0], ate: a.at(-1)! } : null;
+  };
+  const caged = f.caged as { de?: number; ate?: number } | undefined;
+  const pib = par(f.ibge_pib?.anos);
+  const bolsa = par(f.bolsa_familia?.anos);
+  return {
+    rais: anos(f.rais?.anos), caged: caged?.de && caged?.ate ? { de: caged.de, ate: caged.ate } : null, microdados, dca: meta.anos,
+    pib: pib && { ...pib, setorial_ate: Number(f.ibge_pib?.setorial_ate) || undefined },
+    siope: anos(f.siope?.anos), siopeRemuneracao: anos(f.siope?.remuneracao), siops: anos(f.siops?.anos),
+    lrf: par(f.siconfi_lrf?.anos), bolsa: bolsa && { ...bolsa, mes: Number(f.bolsa_familia?.ultimo_mes) || bolsa.ate * 100 + 12 },
+    inss: anos(f.inss?.exercicios),
+  };
+}
+
+/** Ano do seletor: os que só têm o Novo CAGED (ex.: o ano corrente) dizem isso, com o último mês. */
+function rotuloDoAno(a: number, c: Cobertura, paineis: Painel[]) {
+  const outras = (paineis.includes('trabalho') && c.rais.includes(a)) || (paineis.includes('financas') && c.dca.includes(a));
+  if (outras || !c.caged || Math.floor(c.caged.ate / 100) !== a || c.caged.ate % 100 === 12) return String(a);
+  return t(`${a} (só Novo CAGED, até ${rotuloCompetencia(c.caged.ate)})`, `${a} (New CAGED only, up to ${rotuloCompetencia(c.caged.ate)})`);
 }
 
 /** Território dos filtros globais (?uf=, ?ente=): município, UF, DF ou nenhum (Brasil). */
@@ -186,7 +207,10 @@ const temTabelas = (p: RespostaPronta | null) => !!p?.tabelas.some((x) => x.tabe
  * Respostas sem tabela levam as consultas usadas. Com o apêndice de reprodução: todas as consultas
  * (inclusive as sem resultado e as recusadas), com SQL e situação, e uma aba com o histórico de execução.
  */
-function baixarExcel(lista: TurnoIa[], metas: MetaTurno[], prontas: (RespostaPronta | null)[], resultados: Record<string, Resultado>, paineis: Painel[], apendice: boolean) {
+async function baixarExcel(lista: TurnoIa[], metas: MetaTurno[], prontas: (RespostaPronta | null)[], resultados: Record<string, Resultado>, paineis: Painel[], apendice: boolean,
+  cobertura: Cobertura) {
+  // tabelas com mais linhas do que a tela: a consulta roda de novo para a planilha levar todas
+  const inteiras = await Promise.all(prontas.map((p) => Promise.all((p?.tabelas ?? []).map((x) => tabelaInteira(x, cobertura).catch(() => x.tabela)))));
   const resumo: Planilha = {
     nome: t('Conversa', 'Conversation'),
     linhas: [
@@ -205,11 +229,12 @@ function baixarExcel(lista: TurnoIa[], metas: MetaTurno[], prontas: (RespostaPro
     const consultas = consultasDoTurno(turno);
     const refeita = refeitas(consultas, resultados);
     const nomes: string[] = [];
-    for (const x of p?.tabelas ?? []) {
-      if (!x.tabela) continue;
+    for (const [k, x] of (p?.tabelas ?? []).entries()) {
+      const tab = inteiras[i][k] ?? x.tabela;
+      if (!tab) continue;
       n += 1;
-      const e = tabelaExportavel(x.tabela, [[t('Pergunta', 'Question'), turno.pergunta]]);
-      const nome = `${t('Tabela', 'Table')} ${n} ${x.tabela.titulo}`;
+      const e = tabelaExportavel(tab, [[t('Pergunta', 'Question'), turno.pergunta]]);
+      const nome = `${t('Tabela', 'Table')} ${n} ${tab.titulo}`;
       nomes.push(nome.slice(0, 31));
       abas.push({ nome, linhas: [...e.metadados.map(([k, v]): Celula[] => [k, v]), [], e.colunas, ...e.linhas] });
     }
@@ -521,9 +546,9 @@ function BarraContexto({ rotulo, contexto, aberto, alternar }: { rotulo: string;
   );
 }
 
-function Ajustes({ paineis, alternarPainel, travarPaineis, anos, ano, definirAno }: {
+function Ajustes({ paineis, alternarPainel, travarPaineis, anos, ano, definirAno, rotulo }: {
   paineis: Painel[]; alternarPainel: (p: Painel) => void; travarPaineis: boolean;
-  anos: number[]; ano: number | null; definirAno: (a: number | null) => void;
+  anos: number[]; ano: number | null; definirAno: (a: number | null) => void; rotulo: (a: number) => string;
 }) {
   const { entes } = useDados();
   const f = useFiltros();
@@ -566,7 +591,7 @@ function Ajustes({ paineis, alternarPainel, travarPaineis, anos, ano, definirAno
           <label htmlFor="ia-ano" className="sr-only">{t('Ano de referência', 'Reference year')}</label>
           <select id="ia-ano" value={ano ?? ''} onChange={(e) => definirAno(e.target.value ? Number(e.target.value) : null)}>
             <option value="">{t('O da pergunta (sem ano, o mais recente)', 'From the question (otherwise the latest)')}</option>
-            {[...anos].reverse().map((a) => <option key={a} value={a}>{a}</option>)}
+            {[...anos].reverse().map((a) => <option key={a} value={a}>{rotulo(a)}</option>)}
           </select>
         </div>
       </fieldset>
@@ -906,6 +931,7 @@ async function copiarTabela(tab: TabelaAnalitica): Promise<boolean> {
  */
 function TabelaResposta({ x, numero, pergunta }: { x: TabelaPronta; numero: number; pergunta: string }) {
   const { meta } = useDados();
+  const cobertura = coberturaDe(meta, false);
   const [todas, setTodas] = useState(false);
   const [copiada, setCopiada] = useState<boolean | null>(null);
   const tab = x.tabela;
@@ -936,7 +962,7 @@ function TabelaResposta({ x, numero, pergunta }: { x: TabelaPronta; numero: numb
           <button type="button" className="botao-leve" onClick={copiar} title={t('Cola em linhas e colunas no Word e no Excel', 'Pastes as rows and columns in Word and Excel')}>
             {copiada === true ? t('Copiada ✓', 'Copied ✓') : copiada === false ? t('Não foi possível copiar', 'Could not copy') : t('Copiar tabela', 'Copy table')}
           </button>
-          <BotoesExportar nome={`tabela_${numero}_${tab.titulo}`} obter={() => tabelaExportavel(tab, [
+          <BotoesExportar nome={`tabela_${numero}_${tab.titulo}`} obter={async () => tabelaExportavel((await tabelaInteira(x, cobertura)) ?? tab, [
             [t('Pergunta', 'Question'), pergunta],
             [t('Dados processados em', 'Data processed on'), meta.geradoEm],
             [t('Exportado em', 'Exported on'), new Date().toISOString()],
@@ -1332,10 +1358,17 @@ export function Ia() {
     };
   }, []);
   const cobertura = useMemo(() => coberturaDe(meta, microdados), [meta, microdados]);
-  const anos = useMemo(() => [...new Set([
-    ...(chavePaineis.includes('trabalho') ? cobertura.rais : []),
-    ...(chavePaineis.includes('financas') ? cobertura.dca : []),
-  ])].sort((a, b) => a - b), [cobertura, chavePaineis]);
+  // anos do seletor: os da RAIS e da DCA e, no mercado de trabalho, os das competências do Novo CAGED (o ano corrente)
+  const anos = useMemo(() => {
+    const caged = chavePaineis.includes('trabalho') && cobertura.caged
+      ? Array.from({ length: Math.floor(cobertura.caged.ate / 100) - Math.floor(cobertura.caged.de / 100) + 1 }, (_, i) => Math.floor(cobertura.caged!.de / 100) + i)
+      : [];
+    return [...new Set([
+      ...(chavePaineis.includes('trabalho') ? cobertura.rais : []),
+      ...caged,
+      ...(chavePaineis.includes('financas') ? cobertura.dca : []),
+    ])].sort((a, b) => a - b);
+  }, [cobertura, chavePaineis]);
   const anoUrl = Number(busca.get('ano'));
   const ano = anos.includes(anoUrl) ? anoUrl : null;
   const territorio = useMemo(() => territorioDe(f.alvo, f.uf, entes), [f.alvo, f.uf, entes]);
@@ -1351,7 +1384,7 @@ export function Ia() {
   const [texto, setTexto] = useState(() => lerGuardado('ia-rascunho', true) ?? '');
   const [rodando, setRodando] = useState<AbortController | null>(null);
   const [progresso, setProgresso] = useState<Progresso | null>(null);
-  const [falha, setFalha] = useState<{ mensagem: string; pergunta: string } | null>(null);
+  const [falha, setFalha] = useState<{ mensagem: string; pergunta: string; entrar?: boolean } | null>(null);
   const [status, setStatus] = useState('');
   const [ajustes, setAjustes] = useState(false);
   const [apendice, setApendice] = useState(false);
@@ -1420,7 +1453,7 @@ export function Ia() {
     focarCampo();
     try {
       const r = await perguntarIa({
-        historico: mensagens, resultados, ultimaCompetencia, pergunta, contexto: contextoParaModelo(contexto), idioma: idioma(),
+        historico: mensagens, resultados, ultimaCompetencia, pergunta, contexto: contextoParaModelo(contexto, cobertura), idioma: idioma(),
         paineis: contexto.paineis, sinal: controle.signal, modo: contexto.modo, cobertura,
         aoAtualizar: setMensagens,
         aoResultado: (id, res) => setResultados((m) => ({ ...m, [id]: res })),
@@ -1438,7 +1471,7 @@ export function Ia() {
       // a pergunta volta para o campo, sem apagar o que tenha sido escrito enquanto ela rodava
       setTexto((atual) => (atual.trim() ? atual : pergunta));
       if (foiCancelado(e)) setStatus(t('Pergunta cancelada. Ela voltou para o campo de texto.', 'Question cancelled. It is back in the text box.'));
-      else setFalha({ mensagem: e instanceof Error ? e.message : String(e), pergunta });
+      else setFalha({ mensagem: e instanceof Error ? e.message : String(e), pergunta, entrar: e instanceof ErroAcesso && e.tipo === 'sessao' });
     } finally {
       setRodando(null);
       setProgresso(null);
@@ -1498,6 +1531,7 @@ export function Ia() {
   const exemplo = conversa ? t('Pergunte mais sobre isso…', 'Ask a follow-up…') : exemploPergunta(contexto.paineis, territorio, cobertura);
   const painelAjustes = ajustes && (
     <Ajustes paineis={paineis} alternarPainel={alternarPainel} travarPaineis={conversa || !!rodando} anos={anos} ano={ano}
+      rotulo={(a) => rotuloDoAno(a, cobertura, contexto.paineis)}
       definirAno={definirAno} />
   );
   const seletorModo = <SeletorModo modo={modo} definir={definirModo} travado={!!rodando} />;
@@ -1509,7 +1543,7 @@ export function Ia() {
       {estado === null && (
         <div className="cartao ia-entrar">
           <p>{t('O acesso é restrito a e-mails autorizados pelo LAPAM.', 'Access is restricted to emails authorized by LAPAM.')}</p>
-          <a className="botao" href="/api/ia/entrar">{t('Entrar', 'Sign in')}</a>
+          <a className="botao" href={urlEntrar()}>{t('Entrar', 'Sign in')}</a>
         </div>
       )}
     </>
@@ -1521,8 +1555,12 @@ export function Ia() {
   const aviso = falha && (
     <div className="ia-falha" role="alert">
       <p><strong>{t('Não foi possível concluir a pergunta.', 'The question could not be completed.')}</strong> {falha.mensagem}</p>
-      <p className="ia-nota">{t('A pergunta voltou para o campo de texto; nada foi perdido.', 'The question is back in the text box; nothing was lost.')}</p>
-      <button type="button" className="botao" onClick={() => enviar(falha.pergunta)} disabled={!!bloqueio}>{t('Tentar de novo', 'Try again')}</button>
+      <p className="ia-nota">{falha.entrar
+        ? t('A pergunta voltou para o campo de texto e fica guardada, com o território, o ano e os painéis, enquanto você entra de novo.', 'The question is back in the text box and is kept, with the territory, year and dashboards, while you sign in again.')
+        : t('A pergunta voltou para o campo de texto; nada foi perdido.', 'The question is back in the text box; nothing was lost.')}</p>
+      {falha.entrar
+        ? <a className="botao" href={urlEntrar()}>{t('Entrar de novo', 'Sign in again')}</a>
+        : <button type="button" className="botao" onClick={() => enviar(falha.pergunta)} disabled={!!bloqueio}>{t('Tentar de novo', 'Try again')}</button>}
     </div>
   );
 
@@ -1563,7 +1601,7 @@ export function Ia() {
                   title={t('Abre a impressão do navegador; escolha "Salvar como PDF"', 'Opens the browser print dialog; choose "Save as PDF"')}>
                   {t('Exportar PDF', 'Export PDF')}
                 </button>
-                <button type="button" className="botao-leve" disabled={!!rodando} onClick={() => baixarExcel(lista, metas, prontas, resultados, contexto.paineis, apendice)}
+                <button type="button" className="botao-leve" disabled={!!rodando} onClick={() => void baixarExcel(lista, metas, prontas, resultados, contexto.paineis, apendice, cobertura)}
                   title={t('Resumo da conversa e uma aba por tabela, com números e metadados', 'Conversation summary and one sheet per table, with numbers and metadata')}>
                   {t('Exportar Excel', 'Export Excel')}
                 </button>

@@ -38,6 +38,8 @@ export type Resultado = { colunas: string[]; linhas: (string | number | boolean 
 
 /** Linhas da consulta mostradas na página e enviadas ao modelo. */
 export const LINHAS_TELA = 2000;
+/** Linhas da exportação de uma tabela maior do que a tela: a consulta roda de novo, inteira, até este limite. */
+export const LINHAS_EXPORTACAO = 200_000;
 const LINHAS_MODELO = 200;
 const TAMANHO_MODELO = 40_000; // caracteres do resultado enviado ao modelo
 /** Iguais aos do Worker (worker/src/ia.js). */
@@ -55,10 +57,24 @@ export function usarServidorIaNoTeste(endereco: string) {
 }
 const emLocalhost = () => (typeof location === 'undefined' ? /\/\/localhost[:/]/.test(`${servidor}/`) : location.hostname === 'localhost');
 
+/** Falta de acesso, separada das falhas técnicas: sem login ou sessão expirada (entrar de novo) e e-mail sem autorização. */
+export class ErroAcesso extends Error {
+  constructor(mensagem: string, readonly tipo: 'sessao' | 'negado') {
+    super(mensagem);
+  }
+}
+const negado = (corpo: { erro?: string } | null) => new ErroAcesso(corpo?.erro
+  ? `${corpo.erro}. ${t('Peça a inclusão do seu e-mail ao LAPAM.', 'Ask LAPAM to add your email.')}`
+  : t('seu e-mail não está autorizado a usar a IA. Peça a inclusão ao LAPAM.', 'your email is not authorized to use the AI. Ask LAPAM to add it.'), 'negado');
+
+/** Endereço do login: passa pelo Access e volta para esta página, com os filtros (território, ano, painéis). */
+export const urlEntrar = () => `/api/ia/entrar${typeof location === 'undefined' ? '' : `?volta=${encodeURIComponent(location.pathname + location.search)}`}`;
+
 /** Login e perguntas restantes; null quando não há login (o Access redireciona para a tela de entrada). */
 export async function estadoIa(): Promise<EstadoIa | null> {
   const r = await fetch(`${servidor}/api/ia/estado`, { redirect: 'manual', credentials: 'same-origin' });
-  if (r.type === 'opaqueredirect' || r.status === 401 || r.status === 403) return null;
+  if (r.status === 403) throw negado(await r.json().catch(() => null));
+  if (r.type === 'opaqueredirect' || r.status === 401) return null;
   // no computador local, 502/504 = o Vite não achou o Worker da IA (npx wrangler dev, porta 8787)
   if ((r.status === 502 || r.status === 504) && emLocalhost()) {
     throw new Error(t('O servidor local da IA não está ligado (em worker/: npx wrangler dev, com a chave em worker/.dev.vars).',
@@ -76,7 +92,7 @@ export async function chamarIa(mensagens: Mensagem[], idioma: string, paineis: P
   const contexto = paineis.includes('trabalho') ? await tabelasIaTrabalho() : undefined;
   // o manifesto só é usado pelo Worker local (wrangler dev), que não tem o do R2
   const manifesto = emLocalhost() && paineis.includes('financas') ? await manifestoDados() : undefined;
-  const r = await fetch(`${servidor}/api/ia`, {
+  const enviar = () => fetch(`${servidor}/api/ia`, {
     method: 'POST',
     redirect: 'manual',
     credentials: 'same-origin',
@@ -84,8 +100,17 @@ export async function chamarIa(mensagens: Mensagem[], idioma: string, paineis: P
     body: JSON.stringify({ idioma, mensagens, paineis, contexto, manifesto }),
     signal: sinal,
   });
-  if (r.type === 'opaqueredirect' || r.status === 401) throw new Error(t('sessão expirada: entre de novo', 'session expired: sign in again'));
+  // falha de rede antes de qualquer resposta (ex.: conexão reaproveitada que o servidor fechou enquanto as
+  // consultas longas rodavam no navegador): uma nova tentativa; o histórico vai inteiro, então repetir é seguro
+  const r = await enviar().catch(async (e: unknown) => {
+    if (sinal?.aborted || foiCancelado(e) || !(e instanceof TypeError)) throw e;
+    await new Promise((ok) => setTimeout(ok, 800));
+    return enviar();
+  });
+  // o Access redireciona (sessão do Access vencida) ou o Worker recusa o token: entrar de novo, sem perder a pergunta
+  if (r.type === 'opaqueredirect' || r.status === 401) throw new ErroAcesso(t('sessão expirada: entre de novo', 'session expired: sign in again'), 'sessao');
   const corpo = await r.json().catch(() => null);
+  if (r.status === 403) throw negado(corpo);
   if (!r.ok) throw new Error(corpo?.erro ?? `${t('falha', 'failure')} (${r.status})`);
   return corpo;
 }
@@ -130,7 +155,33 @@ export const mesmoContexto = (a: ContextoIa, b: ContextoIa) =>
  * códigos do território em cada formato das tabelas dos painéis marcados. Sem território, o modelo não
  * deve presumir um: responde para o Brasil, dizendo isso, ou pede esclarecimento.
  */
-export function contextoParaModelo(c: ContextoIa): string {
+/**
+ * Fontes com e sem dado no ano de referência, para o modelo não supor que todas o têm (ex.: 2026 só no Novo
+ * CAGED, até o último mês; o PIB municipal sai com cerca de dois anos de atraso).
+ */
+export function disponibilidadeNoAno(ano: number, paineis: Painel[], c: Cobertura): string {
+  const tem: string[] = [];
+  const nao: string[] = [];
+  const marcar = (nome: string, ok: boolean, detalhe = '') => (ok ? tem : nao).push(`${nome}${detalhe}`);
+  if (paineis.includes('trabalho')) {
+    marcar('RAIS', c.rais.includes(ano), c.rais.length ? ` (${c.rais[0]}–${c.rais.at(-1)})` : '');
+    if (c.caged) {
+      const de = Math.max(c.caged.de, ano * 100 + 1);
+      const ate = Math.min(c.caged.ate, ano * 100 + 12);
+      marcar('Novo CAGED', de <= ate, de <= ate ? ` (${rotuloCompetencia(de)} a ${rotuloCompetencia(ate)}${ate % 100 < 12 ? ', ano incompleto' : ''})` : '');
+    }
+  }
+  if (paineis.includes('financas')) {
+    marcar('DCA', c.dca.includes(ano), c.dca.length ? ` (${c.dca[0]}–${c.dca.at(-1)})` : '');
+    if (c.pib) marcar('PIB municipal', ano >= c.pib.de && ano <= c.pib.ate, ` (${c.pib.de}–${c.pib.ate})`);
+    if (c.siope?.length) marcar('SIOPE', c.siope.includes(ano));
+    if (c.siops?.length) marcar('SIOPS', c.siops.includes(ano));
+  }
+  return [tem.length ? `com dados nesse ano: ${tem.join('; ')}` : 'nenhuma fonte tem dados nesse ano', nao.length ? `sem dados nesse ano: ${nao.join('; ')}` : '']
+    .filter(Boolean).join('. ');
+}
+
+export function contextoParaModelo(c: ContextoIa, cobertura?: Cobertura | null): string {
   const tr = c.territorio;
   const territorio = tr.tipo === 'brasil'
     ? 'nenhum. Não presuma um território: se a pergunta não indicar um, responda para o Brasil e diga isso; se ela depender de um lugar que não foi dito (ex.: "meu município"), peça esse esclarecimento.'
@@ -142,15 +193,24 @@ export function contextoParaModelo(c: ContextoIa): string {
   return [
     'Contexto da página nesta pergunta (vale só para o que a pergunta não especificar; o que ela disser prevalece):',
     `- Território selecionado: ${territorio}`,
-    `- Ano de referência: ${c.ano ?? 'não definido. Use o período que a pergunta pedir; sem período, use o ano mais recente disponível e diga qual.'}`,
+    `- Ano de referência: ${c.ano
+      ? `${c.ano}${cobertura ? ` (${disponibilidadeNoAno(c.ano, c.paineis, cobertura)})` : ''}`
+      : 'não definido. Use o período que a pergunta pedir; sem período, use o ano mais recente disponível e diga qual.'}`,
     `- Modo de resposta: ${c.modo === 'pesquisa' ? 'pesquisa (análise para pesquisa)' : 'rápida (resposta rápida)'}.`,
   ].join('\n');
 }
 
 // ---------------- sugestões da tela inicial ----------------
 
-/** Anos e meses com dados em cada painel (do manifesto), para as sugestões só pedirem o que existe. */
-export type Cobertura = { rais: number[]; caged: { de: number; ate: number } | null; microdados: boolean; dca: number[] };
+/**
+ * Anos e meses com dados em cada fonte (do manifesto): para as sugestões só pedirem o que existe, para o quadro
+ * "Dados disponíveis" e para marcar nas tabelas o período pedido que a fonte não tem.
+ */
+export type Cobertura = {
+  rais: number[]; caged: { de: number; ate: number } | null; microdados: boolean; dca: number[];
+  pib?: { de: number; ate: number; setorial_ate?: number } | null; siope?: number[]; siopeRemuneracao?: number[]; siops?: number[];
+  lrf?: { de: number; ate: number } | null; bolsa?: { de: number; ate: number; mes: number } | null; inss?: number[];
+};
 export type Sugestao = { categoria: string; texto: string };
 
 /** Formas do território nas frases: "em Goiás" / "no Pará"; sujeito "o Pará"; "de Goiás" / "do Pará". */
@@ -257,6 +317,18 @@ export function exemploPergunta(paineis: Painel[], tr: Territorio, c: Cobertura)
 /** O que cada painel marcado tem, em uma linha por fonte. */
 export function descreverCobertura(paineis: Painel[], c: Cobertura): string[] {
   const linhas: string[] = [];
+  const faixa = (de: number, ate: number) => (de === ate ? String(de) : `${de}–${ate}`);
+  // anos seguidos viram intervalos: 2017, 2019–2025
+  const anosLista = (a: number[]) => {
+    const partes: string[] = [];
+    for (let i = 0; i < a.length; i++) {
+      let j = i;
+      while (j + 1 < a.length && a[j + 1] === a[j] + 1) j++;
+      partes.push(faixa(a[i], a[j]));
+      i = j;
+    }
+    return partes.join(', ');
+  };
   if (paineis.includes('trabalho') && c.rais.length) {
     linhas.push(t(`RAIS ${c.rais[0]}–${c.rais.at(-1)}: vínculos de emprego formal${c.microdados ? ', com microdados por vínculo' : ''}`,
       `RAIS ${c.rais[0]}–${c.rais.at(-1)}: formal employment records${c.microdados ? ', with job-level microdata' : ''}`));
@@ -268,6 +340,31 @@ export function descreverCobertura(paineis: Painel[], c: Cobertura): string[] {
   if (paineis.includes('financas') && c.dca.length) {
     linhas.push(t(`DCA ${c.dca[0]}–${c.dca.at(-1)}: receitas, despesas e patrimônio de municípios, estados e DF, com PIB, IPCA, Bolsa Família e INSS`,
       `DCA ${c.dca[0]}–${c.dca.at(-1)}: revenue, expenditure and balance sheets of municipalities, states and DF, with GDP, IPCA, Bolsa Família and INSS`));
+  }
+  if (paineis.includes('financas') && c.pib) {
+    linhas.push(t(`PIB municipal (IBGE) ${faixa(c.pib.de, c.pib.ate)}${c.pib.setorial_ate ? `, valor adicionado por setor até ${c.pib.setorial_ate}` : ''}: anos posteriores ainda não publicados`,
+      `Municipal GDP (IBGE) ${faixa(c.pib.de, c.pib.ate)}${c.pib.setorial_ate ? `, value added by sector up to ${c.pib.setorial_ate}` : ''}: later years not yet published`));
+  }
+  if (paineis.includes('financas') && (c.bolsa || c.inss?.length)) {
+    const partes = [
+      c.bolsa && t(`Bolsa Família ${faixa(c.bolsa.de, c.bolsa.ate)} (até ${rotuloCompetencia(c.bolsa.mes)})`, `Bolsa Família ${faixa(c.bolsa.de, c.bolsa.ate)} (up to ${rotuloCompetencia(c.bolsa.mes)})`),
+      c.inss?.length && t(`benefícios do INSS ${anosLista(c.inss)}`, `INSS benefits ${anosLista(c.inss)}`),
+    ].filter(Boolean);
+    linhas.push(t(`${partes.join('; ')}: municípios e DF`, `${partes.join('; ')}: municipalities and DF`));
+  }
+  if (paineis.includes('financas') && c.siope?.length) {
+    const rem = c.siopeRemuneracao?.length ? c.siopeRemuneracao.map(rotuloCompetencia).join(', ') : '';
+    linhas.push(t(`SIOPE (educação) ${anosLista(c.siope)}: indicadores, receitas e despesas declarados por municípios, estados e DF${rem ? `; remuneração dos profissionais em ${rem}` : ''}`,
+      `SIOPE (education) ${anosLista(c.siope)}: indicators, revenue and expenditure reported by municipalities, states and DF${rem ? `; staff pay in ${rem}` : ''}`));
+  }
+  if (paineis.includes('financas') && c.siops?.length) {
+    linhas.push(t(`SIOPS (saúde) ${anosLista(c.siops)}: indicadores declarados pelos municípios (sem estados nem DF)`,
+      `SIOPS (health) ${anosLista(c.siops)}: indicators reported by municipalities (no states or DF)`));
+  }
+  if (paineis.includes('financas')) {
+    linhas.push(c.lrf
+      ? t(`RREO e RGF (LRF) ${faixa(c.lrf.de, c.lrf.ate)}: RCL, pessoal, dívida e mínimos de saúde e educação`, `RREO and RGF (LRF) ${faixa(c.lrf.de, c.lrf.ate)}: net current revenue, personnel, debt and health and education minimums`)
+      : t('RREO e RGF (LRF): em preparação, ainda não consultáveis pela IA', 'RREO and RGF (LRF): in preparation, not yet available to the AI'));
   }
   return linhas;
 }
@@ -574,6 +671,20 @@ export type GraficoPronto = { g: GraficoIa; validacao: ValidacaoGrafico; quebras
 export type LeituraPronta = Leitura & { motivo: string | null };
 /** Tabela pedida pelo modelo: montada com o resultado da consulta, ou o motivo de não poder ser montada. */
 export type TabelaPronta = { espec: EspecTabela; tabela: TabelaAnalitica | null; motivo: string | null; consulta?: ConsultaFeita };
+
+/**
+ * A tabela com todas as linhas da consulta, para exportar: se a página carregou só parte do resultado, roda a
+ * consulta de novo sem o limite da tela (até LINHAS_EXPORTACAO) e monta a tabela outra vez.
+ */
+export async function tabelaInteira(x: TabelaPronta, cobertura?: Cobertura | null): Promise<TabelaAnalitica | null> {
+  const tab = x.tabela;
+  if (!tab || !x.consulta || tab.registros <= tab.carregados) return tab;
+  const r = await executarConsulta({ sql: x.consulta.sql }, PAINEIS, undefined, Math.min(tab.registros, LINHAS_EXPORTACAO));
+  if ('erro' in r) throw new Error(r.erro);
+  const m = montarTabela(x.espec, { rotulo: x.consulta.rotulo, sql: x.consulta.sql, resultado: r }, coberturaDaFonte(x.consulta.sql, cobertura));
+  if (!m.ok) throw new Error(m.motivo);
+  return { ...m.tabela, fonte: tab.fonte };
+}
 export type RespostaPronta = {
   r: RespostaFinal;
   destaques: DestaquePronto[];
@@ -596,16 +707,73 @@ export type RespostaPronta = {
   periodo: string | null;
   /** Consultas citadas na resposta (destaques, gráficos e leituras). */
   usadas: Set<string>;
+  /** Códigos de CBO e CNAE filtrados nas consultas, como foram executados (o recorte real, não o descrito). */
+  codigos: string[];
 };
+
+const CLASSIFICACOES: Record<string, string> = {
+  cbo: 'CBO', cbo_grande_grupo: 'CBO (grande grupo)', cnae_classe: 'CNAE (classe)', cnae_subclasse: 'CNAE (subclasse)',
+  cnae_divisao: 'CNAE (divisão)', divisao: 'CNAE (divisão)', cnae_secao: 'CNAE (seção)', secao: 'CNAE (seção)',
+};
+
+/**
+ * Filtros de CBO e CNAE das consultas, lidos do SQL: prefixos (starts_with, LIKE '…%'), listas (IN, =) e
+ * limites (<, >, BETWEEN). Ex.: "CBO: começa com 2235; menor que 223570".
+ */
+export function codigosDoSql(sqls: string[]): string[] {
+  const porVar = new Map<string, Set<string>>();
+  const pos = (v: string, x: string) => {
+    const k = CLASSIFICACOES[v.toLowerCase()];
+    if (!k) return;
+    if (!porVar.has(k)) porVar.set(k, new Set());
+    porVar.get(k)!.add(x);
+  };
+  const col = String.raw`(?:cast\s*\(\s*)?(?:\w+\.)?(cbo|cbo_grande_grupo|cnae_classe|cnae_subclasse|cnae_divisao|divisao|cnae_secao|secao)\b(?:\s+as\s+\w+\s*\))?`;
+  for (const sql of sqls) {
+    for (const m of sql.matchAll(new RegExp(String.raw`starts_with\s*\(\s*${col}\s*,\s*'([0-9A-Z]+)'\s*\)`, 'gi'))) pos(m[1], t(`começa com ${m[2]}`, `starts with ${m[2]}`));
+    for (const m of sql.matchAll(new RegExp(String.raw`${col}\s+i?like\s+'([0-9A-Z]+)%'`, 'gi'))) pos(m[1], t(`começa com ${m[2]}`, `starts with ${m[2]}`));
+    for (const m of sql.matchAll(new RegExp(String.raw`${col}\s+(not\s+)?in\s*\(([^)]*)\)`, 'gi'))) {
+      const lista = [...m[3].matchAll(/'([0-9A-Z]+)'/gi)].map((x) => x[1]);
+      if (lista.length) pos(m[1], `${m[2] ? t('exceto ', 'except ') : ''}${lista.join(', ')}`);
+    }
+    for (const m of sql.matchAll(new RegExp(String.raw`${col}\s*(<>|!=|=)\s*'([0-9A-Z]+)'`, 'gi'))) {
+      if (m[3].toUpperCase() !== 'TOTAL') pos(m[1], `${m[2] === '=' ? '' : t('exceto ', 'except ')}${m[3]}`); // 'TOTAL' = todas as seções
+    }
+    for (const m of sql.matchAll(new RegExp(String.raw`${col}\s*(<=|>=|<|>)\s*'([0-9A-Z]+)'`, 'gi'))) {
+      const nome = { '<': t('menor que', 'below'), '<=': t('até', 'up to'), '>': t('maior que', 'above'), '>=': t('a partir de', 'from') }[m[2]];
+      pos(m[1], `${nome} ${m[3]}`);
+    }
+    for (const m of sql.matchAll(new RegExp(String.raw`${col}\s+between\s+'([0-9A-Z]+)'\s+and\s+'([0-9A-Z]+)'`, 'gi'))) pos(m[1], t(`de ${m[2]} a ${m[3]}`, `${m[2]} to ${m[3]}`));
+  }
+  return [...porVar].map(([k, v]) => `${k}: ${[...v].join('; ')}`);
+}
+
+/** A pergunta pede a tabela com uma linha por município (ex.: "apresente tabela municipal")? */
+export const pedeTabelaMunicipal = (pergunta: string) =>
+  /\btabela\s+(municipal|por\s+munic[ií]pio|dos\s+munic[ií]pios|com\s+(os|todos\s+os)\s+munic[ií]pios)|\blista\s+(dos|de)\s+munic[ií]pios|\bcada\s+munic[ií]pio\b/i.test(pergunta);
+
+/** Caracteres de controle no meio do texto: o modelo errou o escape de um acento ("Goi\ts" no lugar de "Goiás"). */
+const CONTROLE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\t]/;
 
 const unicas = (notas: NotaMetodologica[]) => [...new Map(notas.map((n) => [n.id, n])).values()];
 
-/** Cobertura da fonte que a consulta lê (RAIS, Novo CAGED ou DCA), para explicar um período pedido que não veio. */
+/** Cobertura da fonte que a consulta lê (RAIS, Novo CAGED, DCA, PIB, SIOPE, SIOPS), para explicar um período pedido que não veio. */
 export function coberturaDaFonte(sql: string, c?: Cobertura | null): CoberturaFonte | null {
   if (!c) return null;
   const s = sql.toLowerCase();
   if (/\btrab_caged/.test(s)) return c.caged ? { nome: 'Novo CAGED', meses: c.caged } : null;
   if (/\brais_(uf|mun|vinculos)\b|\btrab_(municipios|setores|setores_uf|grandes_setores)\b/.test(s)) return { nome: 'RAIS', anos: c.rais };
+  if (/\bsiops_/.test(s)) return c.siops ? { nome: 'SIOPS', anos: c.siops } : null;
+  if (/\bsiope_/.test(s)) return c.siope ? { nome: 'SIOPE', anos: c.siope } : null;
+  // PIB e valor adicionado: só os anos publicados pelo IBGE que também têm DCA
+  if (/\bindicadores\b/.test(s) && /\b(pib|vab_\w+)\b/.test(s) && c.pib) {
+    const pib = c.pib;
+    return { nome: t('PIB municipal (IBGE)', 'Municipal GDP (IBGE)'), anos: c.dca.filter((a) => a >= pib.de && a <= pib.ate) };
+  }
+  if (/\blrf\b/.test(s) && c.lrf) {
+    const lrf = c.lrf;
+    return { nome: 'RREO/RGF', anos: c.dca.filter((a) => a >= lrf.de && a <= lrf.ate) };
+  }
   if (/\b(indicadores|lrf)\b/.test(s)) return { nome: t('DCA (SICONFI)', 'DCA (SICONFI)'), anos: c.dca };
   return null;
 }
@@ -719,6 +887,7 @@ export function prepararResposta(r: RespostaFinal, consultas: Map<string, Consul
   return {
     r, destaques, tabelas, faltantes, graficos, leituras, alertas, hipoteses: hipotesesOmitidas ? '' : r.hipoteses, hipotesesOmitidas,
     notas: unicas([...alertas, ...notasDasFontes(sqls)]),
+    codigos: codigosDoSql(sqls),
     fontes: fontesConsultadas(sqls),
     bases: versaoDasBases(sqls, o.fontes),
     territorios: territoriosNasConsultas((base.length ? base : citadas).map((c) => c.sql), o.cadastro ?? null),
@@ -763,6 +932,29 @@ export function revisarResposta(p: RespostaPronta, o: { pergunta?: string; modo?
   if (p.r.tipo !== 'resposta') return [];
   const problemas: string[] = [];
   for (const x of p.tabelas) if (x.motivo) problemas.push(`Tabela "${x.espec.titulo || x.espec.consulta}": ${x.motivo}.`);
+  // texto com tabulação ou outro caractere de controle no lugar de letras acentuadas
+  const textos: [string, string][] = [
+    ['conclusao', p.r.conclusao], ['explicacao', p.r.explicacao], ['limitacoes', p.r.limitacoes], ['metodologia', p.r.metodologia],
+    ['hipoteses', p.r.hipoteses], ...Object.entries(p.r.recorte).map(([k, v]): [string, string] => [`recorte.${k}`, v]),
+    ...p.r.tabelas.flatMap((x): [string, string][] => [['tabelas.titulo', x.titulo], ['tabelas.nota', x.nota]]),
+    ...p.r.destaques.flatMap((x): [string, string][] => [['destaques.rotulo', x.rotulo], ['destaques.unidade', x.unidade]]),
+  ];
+  const comControle = textos.filter(([, v]) => CONTROLE.test(v));
+  if (comControle.length) {
+    const [campo, v] = comControle[0];
+    const i = v.search(CONTROLE);
+    problemas.push(`Texto corrompido em ${comControle.map(([k]) => k).join(', ')}: há tabulação ou caractere de controle no lugar de letras (ex.: "${v.slice(Math.max(0, i - 12), i + 12).replace(/[\u0000-\u001F]/g, '⟨?⟩')}" em ${campo}). Reescreva esses campos com os acentos digitados diretamente (á, ã, õ, ç), sem sequências de escape.`);
+  }
+  // tabela montada com só uma parte do resultado (mais linhas do que a página carrega)
+  for (const x of p.tabelas) {
+    if (x.tabela && x.espec.papel === 'principal' && x.tabela.registros > x.tabela.carregados) {
+      problemas.push(`Tabela "${x.tabela.titulo}": a consulta ${x.espec.consulta} tem ${x.tabela.registros} linhas e a página só carrega ${x.tabela.carregados}; a tabela principal não pode ser parcial. Agregue ou filtre a consulta para que o resultado venha inteiro.`);
+    }
+  }
+  if (o.pergunta !== undefined && pedeTabelaMunicipal(o.pergunta)
+    && !p.tabelas.some((x) => x.tabela && x.tabela.carregados >= 10 && x.tabela.colunas.some((c) => /^(nome|munic[ií]pio|cod[ _]ibge)/i.test(c.nome)))) {
+    problemas.push('A pergunta pede a tabela municipal: inclua em tabelas uma tabela (tipo tabela) com uma linha por município, com o nome, o código e os indicadores pedidos. A página mostra a tabela inteira com paginação e a exporta completa (até 2.000 linhas por consulta); você vê só as primeiras linhas do resultado, mas isso não limita a tabela.');
+  }
   if (!p.r.tabelas.length && o.modo === 'pesquisa') {
     problemas.push('Modo análise para pesquisa: a tabela é o centro da resposta. Inclua em tabelas a tabela completa que responde à pergunta (tipo serie, comparacao ou tabela, com a consulta e as colunas exatas).');
   } else if (!p.r.tabelas.length && o.pergunta !== undefined && pedeTabela(o.pergunta)) {
@@ -834,6 +1026,7 @@ export function recorteDe(p: RespostaPronta): [string, string][] {
     [t('Bases', 'Datasets'), p.bases.join('; ')],
     [t('Unidade', 'Unit'), semNominal(r.recorte.unidade, p.tabelas.some((x) => x.espec.formato === 'reais') || p.destaques.some((x) => x.d.formato === 'reais') ? 'reais' : 'inteiro')],
     [t('Filtros e definições', 'Filters and definitions'), r.recorte.filtros],
+    [t('Códigos filtrados nas consultas', 'Codes filtered in the queries'), p.codigos.join(' · ')],
     [t('Agrupamentos', 'Groupings'), r.recorte.agrupamentos],
   ] as [string, string][]).filter(([, v]) => v);
 }
@@ -1082,7 +1275,7 @@ export function validarSql(sql: string): string | null {
  * Roda a consulta proposta pelo modelo (entrada da ferramenta "consultar"); o sinal a cancela. Antes, confere
  * o SQL e os códigos de território: o que for recusado volta como erro "bloqueada", sem rodar.
  */
-export async function executarConsulta(entrada: unknown, paineis: Painel[] = PAINEIS, sinal?: AbortSignal): Promise<Resultado> {
+export async function executarConsulta(entrada: unknown, paineis: Painel[] = PAINEIS, sinal?: AbortSignal, limite = LINHAS_TELA): Promise<Resultado> {
   const e = entrada as { sql?: unknown };
   if (!e || typeof e.sql !== 'string') return { erro: 'entrada inválida: falta o campo sql', bloqueada: true };
   const motivo = validarSql(e.sql);
@@ -1095,7 +1288,7 @@ export async function executarConsulta(entrada: unknown, paineis: Painel[] = PAI
     // a tabela da LRF só é baixada quando alguma consulta a usa; as do SIOPE e do SIOPS, idem
     if (paineis.includes('financas') && /\blrf\b/i.test(e.sql)) await tabelaLrf();
     if (paineis.includes('financas') && /\bsiop[es]_/i.test(e.sql)) await tabelasEducacaoSaude();
-    return await consultaLivre(e.sql, LINHAS_TELA, sinal);
+    return await consultaLivre(e.sql, limite, sinal);
   } catch (err) {
     if (sinal?.aborted || foiCancelado(err)) throw cancelado();
     return { erro: err instanceof Error ? err.message : String(err) };

@@ -20,7 +20,7 @@ indicadores — uma linha por ente e exercício (ano). Valores em R$ correntes (
   faixa_grupo INTEGER: faixa populacional do município (liga com faixas.grupo; nulo para estados e DF)
   Receita (domínio "receita", anexo I-C da DCA, coluna Receitas Brutas Realizadas, sem as receitas intraorçamentárias):
     receita_bruta (total), receita_corrente, receita_capital, receita_impostos_taxas (impostos, taxas e contribuições de melhoria),
-    transferencias_correntes, fpm (cota-parte do Fundo de Participação dos Municípios), icms, ipva (cotas-partes recebidas pelos municípios),
+    transferencias_correntes, fpm (cota-parte do Fundo de Participação dos Municípios: a conta inteira, com a cota mensal e as cotas extraordinárias de 1%, lida no nó mais alto da classificação de cada ano; os códigos mudaram em 2015, 2018 e 2022, e o painel nunca soma a conta-mãe com as subcontas), icms, ipva (cotas-partes recebidas pelos municípios),
     iptu, iss, itbi
     deducoes: soma, em valor absoluto, das deduções da receita (FUNDEB, transferências constitucionais e outras)
     receita_liquida = receita_bruta − deducoes
@@ -28,6 +28,7 @@ indicadores — uma linha por ente e exercício (ano). Valores em R$ correntes (
     despesa_empenhada, despesa_liquidada, despesa_paga (totais, incluindo as intraorçamentárias)
     despesa_empenhada_sem_intra, despesa_liquidada_sem_intra, despesa_paga_sem_intra; despesa_intra (empenhada intraorçamentária)
     despesa_pessoal (pessoal e encargos, empenhada), investimentos (empenhada), despesa_saude (função 10, empenhada), despesa_educacao (função 12, empenhada)
+    despesa_saude_liquidada, despesa_saude_paga, despesa_educacao_liquidada, despesa_educacao_paga: as mesmas funções nos estágios liquidado e pago (anexo I-E, sem as intraorçamentárias)
     O padrão do painel para comparar despesa é sem as intraorçamentárias (as colunas _sem_intra).
   Patrimônio (domínio "patrimonio", anexo I-AB): ativo, patrimonio_liquido
   Socioeconômicos (domínio "externo"):
@@ -61,8 +62,9 @@ ipca — deflator: exercicio (o ano; não há coluna ano), ipca_pct (variação 
    Para um ente específico, mostre o valor declarado e avise se houver alerta.
 3. Não misture esferas: "municípios" = esfera 'M'; "estados" = esfera 'E'; o DF (esfera 'D') só entra quando pedido. Um agregado de UF para municípios usa esfera = 'M' AND uf = '..'.
 4. Per capita em grupos = soma do valor ÷ soma da população, só dos entes que têm o valor e entram no agregado (mesmo conjunto no numerador e no denominador). Nunca use média de per capitas, salvo se pedido.
-5. Razões em grupos (ex.: dependência do FPM = fpm ÷ receita_corrente; dependência de transferências = transferencias_correntes ÷ receita_corrente; participação = parte ÷ total) = soma do numerador ÷ soma do denominador, só dos entes com os dois valores.
-6. Comparações entre anos de valores monetários: use valores reais (IPCA, ano-base informado) e diga isso. Para um único ano, valores nominais bastam.
+5. Razões em grupos (ex.: dependência do FPM = fpm ÷ receita_corrente; dependência de transferências = transferencias_correntes ÷ receita_corrente; participação = parte ÷ total) = soma do numerador ÷ soma do denominador, só dos entes com os dois valores (razão dos totais, a do painel). A média ou a mediana das razões de cada ente é outra medida (cada município pesa igual, e os pequenos puxam o valor): quando a pergunta for sobre dependência ou peso de uma receita nos municípios, apresente a razão dos totais e a média (ou mediana) das razões, com nomes que as distingam, e diga qual é qual.
+5a. Cobertura em grupos: entes que entram ÷ entes esperados (conte os esperados em entes: esfera 'M' e a UF), por ano, numa coluna da tabela. Ente com receita declarada e sem o valor (ex.: fpm nulo com receita_corrente declarada) é lacuna da declaração, não zero: conte esses casos e diga isso; o painel não corrige declarações (um ente pode ter lançado o valor em outra conta). Contagens de entes são números inteiros, não reais.
+6. Comparações entre anos de valores monetários: use valores reais (IPCA, ano-base informado) e diga isso. Para um único ano, valores nominais bastam. Numa série pedida com "valores" (totais ou por habitante), mostre os nominais e os reais, e diga o deflator: IPCA dezembro a dezembro, valor real = nominal × (índice de dezembro do ano-base ÷ índice de dezembro do ano). Valores por habitante: um para cada variável monetária pedida, com o mesmo conjunto de entes no numerador e no denominador.
 7. Rankings: considere só entes com o valor no domínio, fora dos excluídos; informe quantos entraram.
 
 ## Ao responder sobre finanças
@@ -111,7 +113,8 @@ siope_gerais — ano, cod_ibge, uf, esfera, populacao, data_declaracao, receita_
     partes.push(`SIOPS (Ministério da Saúde), saúde, municípios, ${intervalo(f.siops.anos)}: série histórica de indicadores do TABNET (o nível que a fonte publica para todos os municípios).
 siops_indicadores — ano, cod_ibge, uf, codigo, indicador, unidade ('%', 'R$', 'R$/hab', 'habitantes'), valor; uma linha por indicador
   codigo: populacao; 1.1 a 1.6 (receitas e transferências, %); 2.1 (despesa total com saúde por habitante, R$/hab); 2.2 a 2.5 (pessoal, medicamentos, serviços de terceiros e investimentos, % da despesa total com saúde); 2.10 a 2.30 (subfunções, % da despesa total com saúde; só até cerca de 2018); 3.1 (transferências do SUS / despesa total com saúde, %); 3.2 (receita própria aplicada em saúde, EC 29/LC 141, mínimo de 15%); r_impostos_transf, r_transf_sus, d_pessoal, d_recursos_proprios, d_total (R$); r_transf_sus_hab, d_recursos_proprios_hab (R$/hab).
-  Para pôr indicadores lado a lado: max(valor) FILTER (WHERE codigo = '3.2') AS ec29_pct etc. Em grupos, recalcule razões com soma ÷ soma dos valores em R$, não a média dos percentuais.`);
+  Para pôr indicadores lado a lado: max(valor) FILTER (WHERE codigo = '3.2') AS ec29_pct etc. Em grupos, recalcule razões com soma ÷ soma dos valores em R$, não a média dos percentuais.
+  SIOPS × DCA: d_total (despesa total com saúde declarada ao SIOPS) e despesa_saude (função 10 da DCA, empenhada, sem intraorçamentárias) são declarações a sistemas diferentes, com regras próprias de apuração; o estágio da despesa (empenhada, liquidada ou paga) do d_total não está documentado nesta base. Não afirme que devem coincidir nem escolha indicadores pela semelhança do nome: compare d_total com os três estágios da função 10 (despesa_saude, despesa_saude_liquidada, despesa_saude_paga), mostre as diferenças e diga que a equivalência não está demonstrada. A população do SIOPS (codigo populacao) pode diferir de indicadores.populacao: diga qual entra em cada valor por habitante.`);
   }
   return partes.join('\n');
 }
