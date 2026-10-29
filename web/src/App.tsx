@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
+import { HistoricoIa } from './components/HistoricoIa';
 import { ProvedorDados } from './contexto';
 import { definirIdioma, t, useIdioma } from './idioma';
 import { Demonstrativos } from './pages/Demonstrativos';
@@ -131,7 +132,7 @@ export function App() {
         <AlternarTema />
       </header>
       <div className="casca">
-        <nav className="menu" aria-label={t('Páginas', 'Pages')}>
+        <nav className={`menu${area === 'ia' ? ' menu-ia' : ''}`} aria-label={t('Páginas', 'Pages')}>
           {({ financas: menu, trabalho: menuTrabalho, ia: menuIa }[area])().map(([grupo, itens]) => (
             <div key={grupo} style={{ display: 'contents' }}>
               <h4>{grupo}</h4>
@@ -142,6 +143,7 @@ export function App() {
               ))}
             </div>
           ))}
+          {area === 'ia' && <HistoricoIa />}
         </nav>
         {/* a chave refaz as páginas ao trocar o idioma: gráficos e textos memorizados são recalculados */}
         <main key={idioma} id="conteudo" tabIndex={-1}>

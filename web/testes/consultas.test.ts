@@ -18,13 +18,17 @@ import {
   anosPedidos, chamarIa, coberturaDaFonte, codigosDoSql, comPergunta, conferir, consultasDaConversa, contextoParaModelo, descreverCobertura, disponibilidadeNoAno, pedeTabelaMunicipal, dadosDoGrafico, executarConsulta, fontesConsultadas, lerModo, lerResposta,
   paraModelo, pedeTabela, perguntarIa, prepararResposta, recorteDe, revisarResposta, rotulosConsultas, semNominal, semUltimaPergunta, sugestoes,
   textoDaResposta, turnos, usarServidorIaNoTeste, validarGrafico, validarSql, type ConsultaFeita, type ContextoIa, type GraficoIa, type Mensagem,
-  type Resultado,
+  type Bloco, type Resultado,
 } from '../src/ia';
 import { formatarCelulaT, montarTabela, tabelaExportavel, tabelaHtml, tabelaTsv, type EspecTabela } from '../src/ia_tabelas';
 import {
   blocosDeTexto, competenciasNoTexto, contar, formatarCelula, formatarTabela, formatarValor, periodoDasConsultas, periodosComoNumero, rotuloColuna, rotuloPeriodo, tipoColuna, tiposDoResultado, unidadeLimpa,
 } from '../src/ia_formato';
-import { citaQuebra } from '../src/ia_notas';
+import { citaQuebra, NOTAS } from '../src/ia_notas';
+import {
+  desatualizada, exportarConversa, filtrarResumos, FORMATO_CONVERSA, guardarNota, historico, lerConversaExportada, lerNota, novaVersaoComDadosAtuais, paraImportar,
+  repositorioEmMemoria, resumoDe, tituloAutomatico, usarRepositorio, VERSAO_CONVERSA, versoesDosDados, type Conversa,
+} from '../src/ia_historico';
 import { cadastro, conferirCodigos, executarLocalizacao, localizar } from '../src/ia_territorio';
 import { crc32, paraCsv, paraXlsx, paraXlsxAbas } from '../src/exportar';
 import { ordenarBusca } from '../src/contexto';
@@ -1961,4 +1965,138 @@ describe('IA: auditoria das cinco perguntas (Worker local e modelo)', { skip: !p
       assert.equal(r.desfecho, 'resposta');
     });
   }
+});
+
+describe('IA: histórico de conversas', () => {
+  const CTX: ContextoIa = { paineis: ['trabalho'], territorio: { tipo: 'uf', uf: 'GO', nome: 'Goiás', cod: 52 }, ano: 2021, modo: 'pesquisa' };
+  const R1: Resultado = { colunas: ['ano', 'vinculos'], linhas: [[2011, 623026], [2021, 682824]], total: 2 };
+  const SQL = "SELECT ano, sum(vinculos) AS vinculos FROM rais_uf WHERE situacao = 1 AND cnae_classe = '01512' GROUP BY 1";
+  const conversa = (o: Partial<Conversa> = {}): Conversa => ({
+    formato: FORMATO_CONVERSA, versao: VERSAO_CONVERSA, id: 'c-1', titulo: tituloAutomatico('Quantos vínculos na criação de bovinos em Goiás?'), tituloManual: false,
+    criadaEm: 1000, atualizadaEm: 2000,
+    mensagens: [
+      { role: 'user', content: [{ type: 'text', text: 'Contexto da página' }, { type: 'text', text: 'Quantos vínculos na criação de bovinos em Goiás?' }] },
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'tu1', name: 'consultar', input: { sql: SQL, objetivo: 'vínculos por ano' } }] },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tu1', content: paraModelo(R1, 'C1') }] },
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'tu2', name: 'responder', input: { resposta: respostaBase({ conclusao: 'Os vínculos subiram 9,6% entre 2011 e 2021.' }) } }] },
+    ],
+    metas: [{ contexto: CTX, inicio: 1000, fim: 1500, desfecho: 'resposta', dados: '2026-10-28T00:00:00+00:00', registro: { fontes: ['RAIS'], bases: ['RAIS 2010–2025'], notas: [], codigos: ['CNAE (classe): 01512'] } }],
+    resultados: { tu1: R1 },
+    fontes: { '2026-10-28T00:00:00+00:00': { rais: { anos: [2010, 2025] } } },
+    origem: { tipo: 'nova' }, conta: null, ...o,
+  });
+
+  test('a conversa só tem dados que o navegador grava (notas sem funções), e a nota volta com os mesmos textos', () => {
+    const nota = NOTAS.find((n) => n.id === 'rais-vinculos')!;
+    const c = conversa({ metas: [{ ...conversa().metas[0], registro: { fontes: ['RAIS'], notas: [guardarNota(nota)], codigos: [] } }] });
+    // o IndexedDB usa o mesmo algoritmo de cópia do structuredClone: uma função recusaria a gravação
+    assert.doesNotThrow(() => structuredClone(c));
+    assert.throws(() => structuredClone({ ...c, metas: [{ ...c.metas[0], registro: { ...c.metas[0].registro, notas: [nota] } }] }));
+    const volta = lerNota(structuredClone(c).metas[0].registro!.notas[0]);
+    assert.equal(volta.titulo(), nota.titulo());
+    assert.equal(volta.texto(), nota.texto());
+    assert.equal(volta.url, nota.url);
+  });
+
+  test('título automático, resumo e busca sem acentos', () => {
+    assert.equal(tituloAutomatico('a '.repeat(10).trim()), 'a a a a a a a a a a');
+    const longo = tituloAutomatico('Quantos vínculos formais ativos existiam no Brasil nas atividades de criação de bovinos e abate de reses?');
+    assert.ok(longo.length <= 80 && longo.endsWith('…') && !longo.includes(' …'), longo);
+    const r = resumoDe(conversa());
+    assert.equal(r.perguntas, 1);
+    assert.equal(r.territorio, 'Goiás (GO)');
+    assert.deepEqual(r.dados, ['2026-10-28T00:00:00+00:00']);
+    assert.equal(filtrarResumos([r], 'vinculos BOVINOS').length, 1);
+    assert.equal(filtrarResumos([r], 'subiram 9,6%').length, 1, 'a busca também olha as conclusões');
+    assert.equal(filtrarResumos([r], 'suínos').length, 0);
+  });
+
+  test('exportar e importar: o mesmo conteúdo; arquivo inválido é recusado com o motivo; id repetido vira cópia', () => {
+    const c = conversa();
+    const lida = lerConversaExportada(exportarConversa(c));
+    assert.deepEqual(lida, c);
+    assert.throws(() => lerConversaExportada('{'), /JSON válido/);
+    assert.throws(() => lerConversaExportada(JSON.stringify({ formato: 'outro' })), /não é uma conversa exportada/);
+    assert.throws(() => lerConversaExportada(JSON.stringify({ ...c, versao: VERSAO_CONVERSA + 1 })), /versão mais nova/);
+    assert.throws(() => lerConversaExportada(JSON.stringify({ ...c, resultados: null })), /resultados/);
+    assert.deepEqual(paraImportar(c, null), { conversa: c, repetida: false });
+    assert.equal(paraImportar(c, c).repetida, true);
+    const copia = paraImportar(c, { ...c, atualizadaEm: 9999 }).conversa;
+    assert.notEqual(copia.id, c.id);
+    assert.deepEqual(copia.origem, { tipo: 'importada', em: copia.origem.tipo === 'importada' ? copia.origem.em : 0, id: 'c-1' });
+    assert.match(copia.titulo, /\(importada\)$/);
+  });
+
+  test('retomada: a conversa reaberta leva ao modelo as consultas e os resultados anteriores', async () => {
+    usarRepositorio(repositorioEmMemoria());
+    assert.equal(await historico.salvar(conversa()), true);
+    const c = await historico.ler('c-1');
+    assert.ok(c);
+    // a próxima pergunta vai com o histórico inteiro: o SQL e o resultado da C1 continuam lá
+    const proxima = comPergunta(c.mensagens, 'agora faça por habitante', 'Contexto da página');
+    const texto = JSON.stringify(proxima);
+    assert.ok(texto.includes(SQL.replaceAll("'", "\\u0027")) || texto.includes('cnae_classe'), 'SQL anterior no histórico');
+    assert.ok(texto.includes('682824'), 'resultado anterior no histórico');
+    assert.equal(proxima.at(-1)!.role, 'user');
+    // e a página monta as mesmas consultas, sem rodar nada
+    assert.deepEqual(consultasDaConversa(c.mensagens, c.resultados).get('C1')?.resultado, R1);
+    assert.equal(c.metas[0].contexto.territorio.tipo, 'uf');
+    assert.deepEqual(c.metas[0].registro?.codigos, ['CNAE (classe): 01512']);
+  });
+
+  test('renomear vale sobre o título automático de uma gravação posterior; excluída não volta; importar abre', async () => {
+    usarRepositorio(repositorioEmMemoria());
+    await historico.salvar(conversa());
+    assert.equal(await historico.renomear('c-1', '  Cadeia da carne  '), true);
+    // a resposta de uma pergunta que começou antes do novo título chega depois, com o título automático
+    await historico.salvar(conversa({ atualizadaEm: 3000 }));
+    assert.equal((await historico.ler('c-1'))?.titulo, 'Cadeia da carne');
+    assert.equal(historico.estado().resumos[0].titulo, 'Cadeia da carne');
+    assert.ok(historico.estado().gravadas['c-1'] >= 3000);
+    await historico.excluir('c-1');
+    await historico.salvar(conversa({ atualizadaEm: 4000 }));
+    assert.equal(await historico.ler('c-1'), null, 'a pergunta que terminou depois da exclusão não ressuscita a conversa');
+    const r = await historico.importar(exportarConversa(conversa()));
+    assert.deepEqual(r, { id: 'c-1', repetida: false });
+    assert.equal(historico.estado().resumos.length, 1);
+  });
+
+  test('falha na gravação vira aviso visível, com a saída de exportar', async () => {
+    usarRepositorio({ ...repositorioEmMemoria(), salvar: async () => { throw Object.assign(new Error('cheio'), { name: 'QuotaExceededError' }); } });
+    assert.equal(await historico.salvar(conversa()), false);
+    assert.match(historico.estado().erro ?? '', /não foi salva neste navegador: o navegador está sem espaço.*Exporte-a em JSON/);
+    historico.limparErro();
+    assert.equal(historico.estado().erro, null);
+  });
+
+  test('nova versão com os dados atuais: consultas refeitas no navegador, original intacta, texto da IA marcado como não regenerado', async () => {
+    const original = conversa();
+    const antes = JSON.stringify(original);
+    const R2: Resultado = { colunas: ['ano', 'vinculos'], linhas: [[2011, 623030], [2021, 682900]], total: 2 };
+    const pedidos: string[] = [];
+    const nova = await novaVersaoComDadosAtuais(original, {
+      executar: async (sql, paineis) => {
+        pedidos.push(`${paineis.join(',')}|${sql}`);
+        return R2;
+      },
+      dados: '2026-11-05T00:00:00+00:00', fontes: { rais: { anos: [2010, 2025] } }, agora: 5000,
+    });
+    assert.equal(JSON.stringify(original), antes, 'a original não muda');
+    assert.deepEqual(pedidos, [`trabalho|${SQL}`]);
+    assert.notEqual(nova.id, original.id);
+    assert.deepEqual(nova.origem, { tipo: 'versao', de: 'c-1', titulo: original.titulo, em: 5000, dados: '2026-11-05T00:00:00+00:00' });
+    assert.deepEqual(nova.resultados.tu1, R2);
+    assert.deepEqual(nova.metas[0].reexecucao, { em: 5000, dados: '2026-11-05T00:00:00+00:00', original: '2026-10-28T00:00:00+00:00', falhas: 0 });
+    assert.equal(nova.metas[0].registro?.bases, undefined, 'versões das bases saem do catálogo novo');
+    // o modelo, nas perguntas seguintes, relê os resultados novos
+    const devolvido = (nova.mensagens[2].content as Bloco[])[0];
+    assert.match(String(devolvido.content), /682900/);
+    assert.doesNotMatch(String(devolvido.content), /682824/);
+    // o texto escrito pela IA não muda
+    assert.deepEqual(nova.mensagens[3], original.mensagens[3]);
+    assert.equal(desatualizada(original.metas, '2026-11-05T00:00:00+00:00'), true);
+    assert.equal(desatualizada(nova.metas, '2026-11-05T00:00:00+00:00'), false);
+    assert.deepEqual(versoesDosDados(nova.metas), ['2026-11-05T00:00:00+00:00']);
+    assert.ok(nova.fontes['2026-10-28T00:00:00+00:00'] && nova.fontes['2026-11-05T00:00:00+00:00']);
+  });
 });

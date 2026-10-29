@@ -96,6 +96,9 @@ main { padding: 20px 24px 48px; min-width: 0; }
   .menu h4 { display: none; }
   .menu a { white-space: nowrap; border-left: 0; border-bottom: 3px solid transparent; }
   .menu a.ativo { border-bottom-color: var(--acento); }
+  .menu.menu-ia { display: block; overflow-x: visible; position: static; max-height: none; }
+  .menu.menu-ia > div > a { display: inline-block; }
+  .ia-historico { margin-top: 4px; }
   main { padding: 16px; }
 }
 
@@ -351,6 +354,34 @@ figure.grafico { margin: 0; }
 .ia-aviso-turno p { margin: 0 0 8px; }
 .ia-falha { margin: 12px 0; border: 1px solid color-mix(in srgb, var(--ruim) 45%, transparent); background: color-mix(in srgb, var(--ruim) 7%, var(--superficie)); border-radius: 10px; padding: 12px 14px; }
 .ia-falha p { margin: 0 0 6px; }
+
+/* histórico de conversas (lateral da aba da IA) */
+/* fica à vista enquanto a conversa rola (abaixo do topo fixo) */
+.menu.menu-ia { position: sticky; top: 56px; align-self: start; max-height: calc(100vh - 56px); overflow-y: auto; box-sizing: border-box; }
+.ia-historico { margin: 14px 0 0; }
+.ia-historico > summary { margin: 0 10px 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--tinta-3); cursor: pointer; }
+.ia-historico-nova { display: block; width: calc(100% - 4px); margin: 4px 2px 8px; }
+.ia-historico-busca { width: 100%; box-sizing: border-box; padding: 5px 8px; border: 1px solid var(--borda); border-radius: 6px; background: var(--superficie); color: var(--tinta); font: inherit; font-size: 13px; }
+.ia-historico-lista { list-style: none; margin: 8px 0; padding: 0; }
+.ia-historico-lista li { border-radius: 6px; padding: 2px 0 4px; }
+.ia-historico-lista li.ativa { background: var(--superficie-2); }
+.menu .ia-historico-lista a { padding: 5px 8px; border-left: 3px solid transparent; }
+.menu .ia-historico-lista li.ativa a { border-left-color: var(--acento); color: var(--tinta); }
+.ia-historico-titulo { display: block; font-size: 13px; line-height: 1.3; overflow-wrap: anywhere; }
+.ia-historico-data { display: block; font-size: 11px; color: var(--tinta-3); margin-top: 2px; }
+.ia-historico-acoes { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 8px; }
+.ia-historico-acoes .botao-leve { font-size: 11px; padding: 1px 6px; }
+.ia-historico-renomear { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 6px; }
+.ia-historico-renomear input { flex: 1 1 100%; padding: 4px 6px; border: 1px solid var(--borda); border-radius: 6px; font: inherit; font-size: 13px; background: var(--superficie); color: var(--tinta); }
+.ia-historico-importar { display: inline-block; margin: 4px 0; }
+.ia-historico-nota { padding: 0 4px; }
+.ia-id code { font-size: 11px; overflow-wrap: anywhere; }
+.ia-versao, .ia-reexecutada {
+  margin: 12px 0; border-left: 3px solid var(--acento); border-radius: 6px; padding: 10px 14px;
+  background: color-mix(in srgb, var(--acento) 12%, var(--superficie)); font-size: 13px;
+}
+.ia-versao p, .ia-reexecutada p { margin: 0 0 6px; }
+.ia-versao-acoes { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .ia-acoes-turno { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 .ia-aprofundar { margin-top: 12px; }
 .ia-aprofundar ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
