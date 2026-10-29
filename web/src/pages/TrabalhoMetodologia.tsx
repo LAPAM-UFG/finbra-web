@@ -30,7 +30,7 @@ export function TrabalhoMetodologia() {
               {t('Para UFs e municípios a consulta lê os microdados; para o Brasil, as tabelas somadas.', 'For states and municipalities the query reads the microdata; for Brazil, the summed tables.')}</li>
           )}
           <li><strong>{t('Banco Central', 'Central Bank of Brazil')}</strong> — {t('IPCA mensal (SGS 433), para a remuneração real, e salário mínimo (SGS 1619), para o filtro do salário de admissão do CAGED.', 'monthly IPCA (SGS 433), for real pay, and minimum wage (SGS 1619), for the CAGED hiring-wage filter.')}</li>
-          <li><strong>IBGE</strong> — {t('nomes das seções e divisões da CNAE 2.0 e população dos municípios (a mesma usada no painel de finanças), para empregos por mil habitantes.', 'names of CNAE 2.0 sections and divisions and municipal population (the same used in the finance dashboard), for jobs per thousand inhabitants.')}</li>
+          <li><strong>IBGE</strong> — {t('nomes das seções e divisões da CNAE 2.0 e população dos municípios, para empregos por mil habitantes: a mesma do painel de finanças desde 2013; antes, a do IBGE (Censo de 2010, tabela 1378, e estimativas de 2011 e 2012, tabela 6579 do SIDRA).', 'names of CNAE 2.0 sections and divisions and municipal population, for jobs per thousand inhabitants: the same as the finance dashboard from 2013; before that, IBGE’s (2010 Census, table 1378, and 2011–2012 estimates, SIDRA table 6579).')}</li>
         </ul>
         <p className="nota-base">{t(
           'Os arquivos públicos não identificam pessoas nem empresas (sem CPF, PIS, nome ou CNPJ). Processamento: LAPAM/UFG.',

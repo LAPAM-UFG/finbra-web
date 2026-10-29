@@ -227,6 +227,8 @@ export const FERRAMENTAS = [
     },
   },
 ];
+export const SEM_ESTRITO = FERRAMENTAS.map((f) => ({ ...f, strict: false }));
+export const gramaticaGrande = (e) => e instanceof Anthropic.BadRequestError && /grammar is too large/i.test(e.message ?? '');
 
 const IDIOMA = {
   pt: 'Responda em português do Brasil.',
@@ -351,15 +353,26 @@ export async function rotaIa(request, env, url) {
     tools: FERRAMENTAS,
     messages: mensagens,
   };
+  // mesmo só com responder estrita, a gramática às vezes passa do limite da API (400 "compiled grammar is too
+  // large", não cobrado): repete sem modo estrito; a página confere e normaliza a resposta do mesmo jeito
+  const criar = async (cliente) => {
+    try {
+      return await cliente.messages.create(pedido);
+    } catch (e) {
+      if (!gramaticaGrande(e)) throw e;
+      console.log(JSON.stringify({ ia: { estrito: false } }));
+      return cliente.messages.create({ ...pedido, tools: SEM_ESTRITO });
+    }
+  };
   let msg;
   try {
     // chaves de API vão no cabeçalho x-api-key; as chaves de usuário do console novo (sk-ant-usr-…) podem
     // exigir Authorization: Bearer. Recusada a primeira forma (401, não cobrado), tenta a outra.
     try {
-      msg = await new Anthropic({ apiKey: segredo }).messages.create(pedido);
+      msg = await criar(new Anthropic({ apiKey: segredo }));
     } catch (e) {
       if (!(e instanceof Anthropic.AuthenticationError)) throw e;
-      msg = await new Anthropic({ apiKey: null, authToken: segredo }).messages.create(pedido);
+      msg = await criar(new Anthropic({ apiKey: null, authToken: segredo }));
       console.log(JSON.stringify({ ia: { autenticacao: 'bearer' } }));
     }
   } catch (e) {

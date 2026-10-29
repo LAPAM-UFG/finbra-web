@@ -170,8 +170,9 @@ Microdados do PDET (Ministério do Trabalho), baixados à mão do FTP para a pas
 | Totais do painel | `pipeline/trabalho.py`: `silver/trabalho` (somas por município, divisão CNAE e perfil) e `gold/trabalho` (páginas de mercado de trabalho) |
 | Microdados | `pipeline/microdados.py`: uma linha por vínculo da RAIS (ativos ou não em 31/12), por estabelecimento e por movimentação do CAGED, com todas as colunas e nomes padronizados entre os anos. Fica em `D:/LVBERNARDELLI/finbra_micro/silver/trabalho/micro/` (fora do Dropbox; ~25–30 GB), em arquivos por ano e UF ordenados por município, CNAE e CBO. Sobe para o R2 com `py pipeline/r2.py enviar --raiz D:/LVBERNARDELLI/finbra_micro --camadas silver` (o `indice.json` vai por último); o `baixar` os pula, a menos que se passe `--com-micro` |
 | Tabelas da consulta na web | o mesmo script soma os microdados em `gold/trabalho/cubo_uf/ano=AAAA.parquet` (UF × classe CNAE × CBO × sexo × situação × afastamento) e `gold/trabalho/cubo_mun/ano=AAAA.parquet` (município × divisão CNAE × grande grupo CBO × …), ~90 MB por ano; `py pipeline/microdados.py --so cubos` refaz só elas |
+| População | anos da RAIS sem a população do painel de finanças (2010–2012): IBGE, Censo de 2010 (SIDRA 1378) e estimativas (SIDRA 6579), em `silver/trabalho/populacao_ibge.parquet`; de 2013 em diante, a mesma do painel de finanças |
 | Dicionário | `pipeline/dicionario_trabalho.csv` (CBO, CNAE, afastamento, desligamento, vínculo…), montado a partir dos layouts do PDET; vira `gold/trabalho/dicionario.parquet` no `trabalho.py` |
-| Tempo | algumas horas para 2013–2023 e o CAGED desde 2020; retomável (pula o que já terminou) |
+| Tempo | algumas horas para a RAIS 2010–2025 e o CAGED desde 2020; retomável (pula o que já terminou) |
 
 A página **Consulta personalizada** (`/trabalho/consulta`) escolhe a fonte sozinha: se houver
 `silver/trabalho/micro/indice.json` (no R2 ou, no servidor local, na pasta `finbra_micro`), UFs e municípios
@@ -297,9 +298,10 @@ Worker local ligado, `IA_E2E=1 npm test` em `web/` faz perguntas de verdade (gas
 que os números destacados estejam nas tabelas citadas; `IA_ANDIRA=1` acrescenta as três perguntas de Andirá
 (`IA_GRAVAR=arquivo.json` guarda as respostas do modelo para repetir a conversa sem custo); `IA_CARNE=1` faz o
 caso de validação das tabelas (vínculos da cadeia da carne por subsistema, "em 2011 e 2021" nos dois modos e
-"de 2011 a 2021"), em que 2011 não está na RAIS do painel. Só a ferramenta `responder` usa o modo estrito e os
+"de 2009 a 2021", em que 2009 não está na RAIS do painel). Só a ferramenta `responder` usa o modo estrito e os
 esquemas não têm `enum`: com as tabelas, a gramática estrita passava do limite da API ("compiled grammar is too
-large"); a página normaliza os valores (`lerResposta`).
+large"). Como ainda passa em alguns pedidos, o Worker repete o pedido recusado por isso sem modo estrito; a
+página normaliza e confere a resposta do mesmo jeito (`lerResposta`, `revisarResposta`).
 
 Configuração (uma vez):
 

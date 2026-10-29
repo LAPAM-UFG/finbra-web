@@ -507,6 +507,9 @@ describe('IA: histórico, resposta estruturada e conferência', () => {
 
   test('resposta: campos no objeto "resposta"; marcação vazada ou sem conclusão não vale', () => {
     assert.equal(lerResposta({ resposta: entrada() })?.conclusao, 'São 10.');
+    // sem o modo estrito, o objeto pode vir como texto JSON
+    assert.equal(lerResposta({ resposta: JSON.stringify(entrada()) })?.conclusao, 'São 10.');
+    assert.equal(lerResposta({ resposta: '{quebrado' }), null);
     assert.equal(lerResposta(entrada({ conclusao: '  ' })), null);
     assert.equal(lerResposta(null), null);
     // o modelo fechou o campo com a marcação errada e engoliu os seguintes: a resposta não é mostrada
@@ -1411,10 +1414,10 @@ describe('IA do mercado de trabalho: sigla da UF', () => {
 /**
  * Tabelas da resposta e modos (rápida e pesquisa). Caso de validação: vínculos ativos em 31/12 no Brasil nas
  * classes CNAE da cadeia da carne, agrupadas em matéria-prima (0151-2), industrialização (1011-2 e 1013-9) e
- * distribuição (4634-6 e 4722-9). A RAIS do painel começa em 2013: 2011 é um ano pedido sem dados.
+ * distribuição (4634-6 e 4722-9). A RAIS do painel começa em 2010: 2009 é um ano pedido sem dados.
  */
 const semCubo = !existsSync(`${DATA}/gold/trabalho/cubo_uf`);
-const COBERTURA_RAIS = { nome: 'RAIS', anos: [2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025] };
+const COBERTURA_RAIS = { nome: 'RAIS', anos: Array.from({ length: 16 }, (_, i) => 2010 + i) };
 const SQL_CARNE = (anos: string) => `SELECT ano,
     CASE WHEN starts_with(cnae_classe, '01512') THEN 'Matéria-prima'
          WHEN starts_with(cnae_classe, '10112') OR starts_with(cnae_classe, '10139') THEN 'Industrialização'
@@ -1438,19 +1441,19 @@ const coluna = (tab: ReturnType<typeof montar>, nome: string) => tab.colunas.fin
 const linhaDe = (tab: ReturnType<typeof montar>, rotulo: string) => tab.linhas.find((l) => l[0].v === rotulo)!;
 
 describe('IA: tabelas da resposta e modos (validação)', () => {
-  test('pedido "em 2011 e 2021": 2011 indisponível, sem variação calculada, totais e participações só onde há dados', { skip: semCubo }, async () => {
+  test('pedido "em 2009 e 2021": 2009 indisponível, sem variação calculada, totais e participações só onde há dados', { skip: semCubo }, async () => {
     await tabelasIaTrabalho();
-    const r = await executarConsulta({ sql: SQL_CARNE('2011, 2021') }, ['trabalho']);
+    const r = await executarConsulta({ sql: SQL_CARNE('2009, 2021') }, ['trabalho']);
     assert.ok(!('erro' in r), JSON.stringify(r));
     if ('erro' in r) return;
-    assert.ok(!r.linhas.some((l) => l[0] === 2011), 'a base não tem 2011');
-    const tab = montar(espec(), r);
-    assert.deepEqual(tab.faltantes, ['2011']);
-    assert.match(tab.notas.join(' '), /2011: não disponível — RAIS no painel cobre 2013–2025/);
-    assert.deepEqual(tab.colunas.map((c) => c.nome), ['Subsistema', '2011', '2021', 'Variação absoluta', 'Variação (%)',
-      'Participação 2011 (%)', 'Participação 2021 (%)', 'Diferença de participação (p.p.)']);
+    assert.ok(!r.linhas.some((l) => l[0] === 2009), 'a base não tem 2009');
+    const tab = montar(espec({ de: '2009' }), r);
+    assert.deepEqual(tab.faltantes, ['2009']);
+    assert.match(tab.notas.join(' '), /2009: não disponível — RAIS no painel cobre 2010–2025/);
+    assert.deepEqual(tab.colunas.map((c) => c.nome), ['Subsistema', '2009', '2021', 'Variação absoluta', 'Variação (%)',
+      'Participação 2009 (%)', 'Participação 2021 (%)', 'Diferença de participação (p.p.)']);
     for (const l of tab.linhas) {
-      assert.equal(l[1].a, 'indisponivel', '2011 marcado como indisponível, não zero');
+      assert.equal(l[1].a, 'indisponivel', '2009 marcado como indisponível, não zero');
       assert.equal(l[3].a, 'nao_calculada');
       assert.equal(l[4].a, 'nao_calculada');
     }
@@ -1464,18 +1467,18 @@ describe('IA: tabelas da resposta e modos (validação)', () => {
     assert.ok(Math.abs(p21 - 100) < 1e-9, `participações de 2021 somam ${p21}`);
   });
 
-  test('alternativa 2013 e 2021: variações pelas fórmulas e iguais às de uma consulta independente', { skip: semCubo }, async () => {
+  test('pedido "em 2011 e 2021" (RAIS desde 2010): variações pelas fórmulas e iguais às de uma consulta independente', { skip: semCubo }, async () => {
     await tabelasIaTrabalho();
-    const r = await executarConsulta({ sql: SQL_CARNE('2013, 2021') }, ['trabalho']);
+    const r = await executarConsulta({ sql: SQL_CARNE('2011, 2021') }, ['trabalho']);
     if ('erro' in r) throw new Error(r.erro);
-    const tab = montar(espec({ papel: 'alternativa', de: '2013', ate: '2021' }), r);
+    const tab = montar(espec(), r);
     assert.deepEqual(tab.faltantes, []);
     const ind = linhaDe(tab, 'Industrialização');
     const [a, b] = [ind[1].v as number, ind[2].v as number];
     assert.equal(ind[3].v, b - a);
     assert.ok(Math.abs((ind[4].v as number) - ((b / a - 1) * 100)) < 1e-9);
-    const sql = `SELECT sum(vinculos) FILTER (WHERE ano = 2013) AS v13, sum(vinculos) FILTER (WHERE ano = 2021) AS v21 FROM rais_uf
-      WHERE situacao = 1 AND ano IN (2013, 2021) AND (starts_with(cnae_classe, '10112') OR starts_with(cnae_classe, '10139'))`;
+    const sql = `SELECT sum(vinculos) FILTER (WHERE ano = 2011) AS v11, sum(vinculos) FILTER (WHERE ano = 2021) AS v21 FROM rais_uf
+      WHERE situacao = 1 AND ano IN (2011, 2021) AND (starts_with(cnae_classe, '10112') OR starts_with(cnae_classe, '10139'))`;
     const c = await executarConsulta({ sql }, ['trabalho']);
     if ('erro' in c) throw new Error(c.erro);
     assert.deepEqual([a, b], c.linhas[0]);
@@ -1483,13 +1486,13 @@ describe('IA: tabelas da resposta e modos (validação)', () => {
     assert.equal(total[1].v, tab.linhas.slice(0, 3).reduce((s, l) => s + (l[1].v as number), 0));
   });
 
-  test('pedido "de 2011 a 2021": uma linha por ano do intervalo, lacunas de 2011 e 2012 sinalizadas', { skip: semCubo }, async () => {
+  test('pedido "de 2008 a 2014": uma linha por ano do intervalo, lacunas de 2008 e 2009 sinalizadas', { skip: semCubo }, async () => {
     await tabelasIaTrabalho();
-    const r = await executarConsulta({ sql: SQL_CARNE('2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021') }, ['trabalho']);
+    const r = await executarConsulta({ sql: SQL_CARNE('2008, 2009, 2010, 2011, 2012, 2013, 2014') }, ['trabalho']);
     if ('erro' in r) throw new Error(r.erro);
-    const tab = montar(espec({ tipo: 'serie', participacao: false }), r);
-    assert.deepEqual(tab.linhas.map((l) => l[0].v), ['2011', '2012', '2013', '2014', '2015', '2016', '2017', '2018', '2019', '2020', '2021']);
-    assert.deepEqual(tab.faltantes, ['2011', '2012']);
+    const tab = montar(espec({ tipo: 'serie', de: '2008', ate: '2014', participacao: false }), r);
+    assert.deepEqual(tab.linhas.map((l) => l[0].v), ['2008', '2009', '2010', '2011', '2012', '2013', '2014']);
+    assert.deepEqual(tab.faltantes, ['2008', '2009']);
     assert.ok(tab.linhas.slice(0, 2).every((l) => l.slice(1).every((c) => c.a === 'indisponivel')));
     assert.ok(tab.linhas.slice(2).every((l) => l.slice(1).every((c) => typeof c.v === 'number' && !c.a)));
     const iTotal = coluna(tab, 'Total');
@@ -1628,18 +1631,22 @@ describe('IA: tabelas da resposta e modos (validação)', () => {
 
 /**
  * O caso de validação com o modelo de verdade (custa perguntas do dia): IA_CARNE=1 npm test, com o Worker
- * local ligado. Três perguntas, cada uma numa conversa nova: "em 2011 e 2021" nos dois modos e "de 2011 a
- * 2021" no modo pesquisa. A resposta final precisa passar na revisão da página e manter 2011 como pedido.
+ * local ligado. Cada pergunta numa conversa nova: "em 2011 e 2021" (com dados) nos dois modos, "em 2009 e 2021"
+ * e "de 2009 a 2021" (2009 fora da RAIS do painel). A resposta final precisa passar na revisão da página, usar
+ * os anos pedidos e sinalizar só os que faltam.
  */
-describe('IA de ponta a ponta: cadeia da carne, 2011 e 2021 (Worker local e modelo)', { skip: !process.env.IA_CARNE }, () => {
+describe('IA de ponta a ponta: cadeia da carne (Worker local e modelo)', { skip: !process.env.IA_CARNE }, () => {
   const ATIVIDADES = 'nas atividades de criação de bovinos (CNAE 0151-2), abate de reses (1011-2), fabricação de produtos de carne (1013-9), '
     + 'comércio atacadista de carnes (4634-6) e comércio varejista de carnes (4722-9)? Agrupe nos subsistemas matéria-prima, industrialização e distribuição.';
-  const CASOS: [string, 'rapida' | 'pesquisa'][] = [
-    [`Quantos vínculos empregatícios formais ativos em 31/12 existiam no Brasil, em 2011 e 2021, ${ATIVIDADES} Apresente os valores absolutos, totais e variações percentuais.`, 'pesquisa'],
-    [`Quantos vínculos empregatícios formais ativos em 31/12 existiam no Brasil, em 2011 e 2021, ${ATIVIDADES} Apresente os valores absolutos, totais e variações percentuais.`, 'rapida'],
-    [`Apresente a série anual de 2011 a 2021 dos vínculos empregatícios formais ativos em 31/12 no Brasil ${ATIVIDADES.replace(/\?/, '.')}`, 'pesquisa'],
+  const comparar = (ano: number) => `Quantos vínculos empregatícios formais ativos em 31/12 existiam no Brasil, em ${ano} e 2021, ${ATIVIDADES} Apresente os valores absolutos, totais e variações percentuais.`;
+  // [pergunta, modo, primeiro ano pedido, anos que faltam]
+  const CASOS: [string, 'rapida' | 'pesquisa', string, string[]][] = [
+    [comparar(2011), 'pesquisa', '2011', []],
+    [comparar(2011), 'rapida', '2011', []],
+    [comparar(2009), 'rapida', '2009', ['2009']],
+    [`Apresente a série anual de 2009 a 2021 dos vínculos empregatícios formais ativos em 31/12 no Brasil ${ATIVIDADES.replace(/\?/, '.')}`, 'pesquisa', '2009', ['2009']],
   ];
-  for (const [pergunta, modo] of CASOS) {
+  for (const [pergunta, modo, de, faltam] of CASOS) {
     test(`${modo}: ${pergunta.slice(0, 90)}…`, { timeout: 900_000 }, async () => {
       globalThis.fetch = FETCH;
       usarServidorIaNoTeste(process.env.IA_URL ?? 'http://localhost:8787');
@@ -1670,10 +1677,11 @@ describe('IA de ponta a ponta: cadeia da carne, 2011 e 2021 (Worker local e mode
       assert.deepEqual(problemas, [], 'a resposta final passa na revisão da página');
       const principal = p!.tabelas.find((x) => x.espec.papel === 'principal' && x.tabela);
       assert.ok(principal, 'há tabela principal montada');
-      assert.equal(principal!.espec.de, '2011');
+      assert.equal(principal!.espec.de, de);
       assert.equal(principal!.espec.ate, '2021');
-      assert.ok(p!.faltantes.includes('2011'), '2011 sinalizado como indisponível');
-      assert.doesNotMatch(p!.periodo ?? '', /2011/, 'o período utilizado só tem anos com dado');
+      assert.deepEqual(p!.faltantes, faltam, 'só os anos fora da base aparecem como indisponíveis');
+      if (faltam.length) assert.doesNotMatch(p!.periodo ?? '', new RegExp(faltam[0]), 'o período utilizado só tem anos com dado');
+      else assert.doesNotMatch(turno.resposta!.conclusao, /indispon|não pôde ser completada/i, 'com os dados completos, nada de aviso de ausência');
     });
   }
 });

@@ -6,7 +6,8 @@
  */
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { FERRAMENTAS, validar } from '../src/ia.js';
+import Anthropic from '@anthropic-ai/sdk';
+import { FERRAMENTAS, SEM_ESTRITO, gramaticaGrande, validar } from '../src/ia.js';
 import { instrucoes, paineisDoPedido } from '../src/sistema_geral.js';
 import { contextoDosDados } from '../src/sistema.js';
 
@@ -68,6 +69,15 @@ describe('ferramentas', () => {
       conferirEstrito(f.input_schema, f.name);
       assert.doesNotMatch(JSON.stringify(f.input_schema), /"enum"/, `${f.name}: enum`);
     }
+  });
+
+  test('gramática grande demais: repete com as mesmas ferramentas, sem modo estrito', () => {
+    assert.deepEqual(SEM_ESTRITO.map((f) => f.strict), [false, false, false]);
+    assert.deepEqual(SEM_ESTRITO.map((f) => f.input_schema), FERRAMENTAS.map((f) => f.input_schema));
+    const recusa = (texto) => new Anthropic.BadRequestError(400, { type: 'error', error: { type: 'invalid_request_error', message: texto } }, texto, new Headers());
+    assert.ok(gramaticaGrande(recusa('The compiled grammar is too large, which would cause performance issues.')));
+    assert.ok(!gramaticaGrande(recusa('messages: field required')));
+    assert.ok(!gramaticaGrande(new Error('The compiled grammar is too large')));
   });
 
   test('destaques levam o período (de, ate); leituras levam a consulta e as colunas de apoio', () => {

@@ -392,7 +392,10 @@ const MARCACAO = /<\/?(parameter|invoke|conclusao|destaques|explicacao|interpret
 export function lerResposta(v: unknown): RespostaFinal | null {
   if (!v || typeof v !== 'object') return null;
   const bruto = v as Record<string, unknown>;
-  const o = (bruto.resposta && typeof bruto.resposta === 'object' ? bruto.resposta : bruto) as Record<string, unknown>;
+  // sem o modo estrito (o Worker repete sem ele quando a API recusa a gramática) o objeto pode vir como texto JSON
+  let dentro = bruto.resposta;
+  if (typeof dentro === 'string') try { dentro = JSON.parse(dentro); } catch { /* fica o texto: sem conclusão, volta null */ }
+  const o = (dentro && typeof dentro === 'object' ? dentro : bruto) as Record<string, unknown>;
   const conclusao = texto(o.conclusao, 2000);
   if (!conclusao || MARCACAO.test(JSON.stringify(o))) return null;
   const r = (o.recorte && typeof o.recorte === 'object' ? o.recorte : {}) as Record<string, unknown>;
