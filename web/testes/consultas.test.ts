@@ -30,6 +30,7 @@ import {
   repositorioConta, repositorioEmMemoria, resumoDe, soNoNavegador, tituloAutomatico, usarRepositorio, VERSAO_CONVERSA, versoesDosDados,
   type ApiConversas, type Conversa,
 } from '../src/ia_historico';
+import { pedidoConferencia } from '../src/ia_conferencia';
 import { cadastro, conferirCodigos, executarLocalizacao, localizar } from '../src/ia_territorio';
 import { crc32, paraCsv, paraXlsx, paraXlsxAbas } from '../src/exportar';
 import { ordenarBusca } from '../src/contexto';
@@ -2263,5 +2264,140 @@ describe('IA: histórico de conversas', () => {
     assert.deepEqual(await historico.levarParaConta(), { levadas: 2, falhas: 0 });
     assert.deepEqual([...s.m.keys()].sort(), ['local-1', 'local-2']);
     assert.deepEqual(historico.estado().resumos.map((r) => r.conta), ['a@x.org', 'a@x.org']);
+  });
+});
+
+describe('IA: pedido de conferência pelo especialista RAIS (conferencia-rais/1)', () => {
+  const original = globalThis.fetch;
+  after(() => {
+    globalThis.fetch = original;
+  });
+  const ID_PEDIDO = /^[A-Za-z0-9_-]{8,64}$/;
+  const AUTORIZADO = 'luanviniciusbernardelli@gmail.com';
+  const dadosAtuais = { geradoEm: '2026-10-30T07:39:57+00:00', fontes: { rais_micro: { processado_em: '2026-10-27T09:10:56+00:00' } } };
+  const usarRespostas = (passos: ((ms: Mensagem[]) => unknown)[]) => {
+    let n = 0;
+    globalThis.fetch = (async (_u: unknown, init?: { body?: string }) => {
+      const ms = JSON.parse(String(init?.body)).mensagens as Mensagem[];
+      const passo = passos[n++];
+      if (!passo) throw new Error(`chamada a mais ao modelo: ${JSON.stringify(ms.at(-1)!.content).slice(0, 600)}`);
+      return new Response(JSON.stringify(passo(ms)), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }) as typeof fetch;
+  };
+  const devolvido = (ms: Mensagem[], id: string) => JSON.parse(String((ms.at(-1)!.content as Bloco[]).find((b) => b.tool_use_id === id)!.content));
+  const respostaRais = (consulta: string, valor: number) => ({
+    tipo: 'resposta', conclusao: `Rio Branco tinha ${valor} vínculos ativos em 31/12/2017.`, explicacao: '', interpretacao: '', hipoteses: '', limitacoes: '', metodologia: '',
+    destaques: [{ rotulo: 'Vínculos em Rio Branco', valor, formato: 'inteiro', unidade: 'vínculos', consulta, coluna: 'vinculos_ativos', de: '', ate: '' }],
+    tabelas: [{ consulta, papel: 'principal', tipo: 'tabela', titulo: 'Vínculos por município', grupo: '', colunas: [], ordem: '', nota: '' }],
+    recorte: { territorio: 'Acre', periodo: '2017', unidade: 'vínculos', filtros: '' }, graficos: [], aprofundar: [], ressalvas: [],
+  });
+
+  test('conversa do painel de trabalho: SQL final, resultado como voltou ao modelo e entrada de responder',
+    { skip: !existsSync(`${DATA}/gold/trabalho/cubo_mun/ano=2017.parquet`) }, async () => {
+      usarServidorIaNoTeste('');
+      const porMunicipio = 'SELECT municipio, sum(vinculos) AS vinculos_ativos FROM rais_mun WHERE ano = 2017 AND uf = 12 AND situacao = 1 GROUP BY municipio ORDER BY municipio';
+      let resposta: unknown = null;
+      usarRespostas([
+        // rodada 1: uma consulta com erro e uma que depois é refeita
+        () => ({ parada: 'tool_use', restantes: 49, conteudo: [
+          { type: 'tool_use', id: 'c1', name: 'consultar', input: { sql: 'SELECT coluna_que_nao_existe FROM rais_mun', objetivo: 'Teste com erro', substitui: '' } },
+          { type: 'tool_use', id: 'c2', name: 'consultar', input: { sql: 'SELECT municipio, sum(vinculos) AS vinculos_ativos FROM rais_mun WHERE ano = 2017 AND uf = 12 GROUP BY municipio', objetivo: 'Vínculos por município (sem situação)', substitui: '' } },
+        ] }),
+        // rodada 2: refaz C2 só com os ativos em 31/12
+        () => ({ parada: 'tool_use', restantes: 49, conteudo: [
+          { type: 'tool_use', id: 'c3', name: 'consultar', input: { sql: porMunicipio, objetivo: 'Vínculos ativos em 31/12 por município do Acre, 2017', substitui: 'C2' } },
+        ] }),
+        (ms) => {
+          const r = devolvido(ms, 'c3');
+          const rioBranco = r.linhas.find((l: number[]) => l[0] === 120040)[1];
+          resposta = respostaRais('C3', rioBranco);
+          return { parada: 'tool_use', restantes: 49, conteudo: [{ type: 'tool_use', id: 'r1', name: 'responder', input: { resposta } }] };
+        },
+      ]);
+      const contexto: ContextoIa = { paineis: ['trabalho'], territorio: { tipo: 'uf', uf: 'AC', nome: 'Acre', cod: 12 }, ano: 2017, modo: 'rapida' };
+      const textoContexto = contextoParaModelo(contexto);
+      const pergunta = 'Quantos vínculos ativos em 31/12 havia em cada município do Acre em 2017?';
+      const r = await perguntarIa({
+        historico: [], pergunta, contexto: textoContexto, idioma: 'pt', paineis: ['trabalho'],
+        sinal: new AbortController().signal, aoAtualizar: () => undefined, aoResultado: () => undefined,
+      });
+      assert.equal(r.desfecho, 'resposta');
+      const meta = { contexto, inicio: Date.now(), dados: dadosAtuais.geradoEm, modelo: 'claude-haiku-5-5' };
+      const feito = pedidoConferencia({
+        mensagens: r.mensagens, turno: 0, meta, solicitante: AUTORIZADO, modelo: meta.modelo, fontes: { [dadosAtuais.geradoEm]: dadosAtuais.fontes },
+        dadosAtuais, conversa: 'https://finbra-web.exemplo.dev/ia?conversa=x', agora: new Date('2026-10-30T17:00:00Z'),
+      });
+      assert.ok(!('erro' in feito), 'erro' in feito ? feito.erro : '');
+      const p = feito.pedido;
+      assert.equal(p.versao, 'conferencia-rais/1');
+      assert.match(p.id, ID_PEDIDO);
+      assert.match(p.criado_em, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d$/);
+      assert.equal(new Date(p.criado_em).toISOString(), '2026-10-30T17:00:00.000Z');
+      assert.equal(p.pergunta, pergunta);
+      assert.equal(p.contexto, textoContexto);
+      assert.deepEqual(p.paineis, ['trabalho']);
+      assert.equal(p.modelo_site, 'claude-haiku-5-5');
+      assert.deepEqual(p.manifesto, { gerado_em: dadosAtuais.geradoEm, rais_micro_processado_em: '2026-10-27T09:10:56+00:00' });
+      // sem a consulta com erro (C1) e sem a refeita (C2): só o SQL final
+      assert.deepEqual(p.consultas.map((c) => c.id), ['C3']);
+      const c3 = p.consultas[0];
+      assert.equal(c3.sql, porMunicipio);
+      // exatamente o que voltou ao modelo
+      const aoModelo = JSON.parse(String((r.mensagens.flatMap((m) => (Array.isArray(m.content) ? m.content : [])).find((b) => b.tool_use_id === 'c3')!).content));
+      assert.deepEqual([c3.colunas, c3.linhas, c3.total_linhas], [aoModelo.colunas, aoModelo.linhas, aoModelo.total_linhas]);
+      assert.equal(c3.total_linhas, 22);
+      assert.deepEqual(p.resposta, resposta);
+      assert.equal(JSON.parse(feito.json).id, p.id);
+      assert.ok(new TextEncoder().encode(feito.json).length <= 600_000);
+      // arquivo para o validador do agente local (PEDIDO_CONFERENCIA_DIR=E:/Agent/RAIS/entrada/pedidos)
+      if (process.env.PEDIDO_CONFERENCIA_DIR) await writeFile(path.join(process.env.PEDIDO_CONFERENCIA_DIR, `${p.id}.json`), feito.json, 'utf8');
+    });
+
+  /** Conversa sintética: n consultas com `linhas` linhas cada; a resposta cita as de `citadas`. */
+  const conversaGrande = (n: number, linhas: number, citadas: string[]): Mensagem[] => {
+    const usos: Bloco[] = Array.from({ length: n }, (_, i) => ({ type: 'tool_use', id: `c${i + 1}`, name: 'consultar', input: { sql: `SELECT ${i + 1} AS n FROM rais_mun`, objetivo: `Consulta ${i + 1}`, substitui: '' } }));
+    const resultados: Bloco[] = usos.map((u, i) => ({ type: 'tool_result', tool_use_id: u.id, content: paraModelo({ colunas: ['n', 't'], linhas: Array.from({ length: linhas }, () => [i + 1, 'x'.repeat(150)]), total: linhas + 50 }, `C${i + 1}`) }));
+    return [
+      { role: 'user', content: [{ type: 'text', text: 'Contexto' }, { type: 'text', text: 'Pergunta grande?' }] },
+      { role: 'assistant', content: usos },
+      { role: 'user', content: resultados },
+      // a primeira chamada de responder foi devolvida pela página; vale a segunda, cuja entrada veio como texto JSON
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'r1', name: 'responder', input: { resposta: { conclusao: 'recusada' } } }] },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'r1', is_error: true, content: 'A resposta tem problemas:\n- x' }] },
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'r2', name: 'responder', input: { resposta: JSON.stringify({ conclusao: 'ok', destaques: citadas.map((c) => ({ consulta: c })) }) } }] },
+    ];
+  };
+  const montar = (mensagens: Mensagem[]) => pedidoConferencia({
+    mensagens, turno: 0, solicitante: AUTORIZADO, modelo: 'claude-haiku-5-5', fontes: {}, dadosAtuais,
+    meta: { contexto: { paineis: ['trabalho'], territorio: { tipo: 'brasil' }, ano: null, modo: 'rapida' }, inicio: 0 },
+  });
+
+  test('limites: até 20 consultas, 200 linhas cada e 600 KB, mantendo as citadas na resposta', () => {
+    const feito = montar(conversaGrande(25, 200, ['C24', 'C25']));
+    assert.ok(!('erro' in feito));
+    const p = feito.pedido;
+    assert.ok(p.consultas.length <= 20 && p.consultas.length >= 2);
+    assert.ok(p.consultas.every((c) => c.linhas.length <= 200));
+    assert.ok(new TextEncoder().encode(feito.json).length <= 600_000);
+    assert.ok(['C24', 'C25'].every((c) => p.consultas.some((x) => x.id === c)), 'as citadas ficam');
+    // em ordem, e a entrada de responder que valeu (a segunda), lida do texto JSON
+    const numeros = p.consultas.map((c) => Number(c.id.slice(1)));
+    assert.deepEqual(numeros, [...numeros].sort((a, b) => a - b));
+    assert.equal(p.resposta.conclusao, 'ok');
+    assert.equal(p.manifesto.gerado_em, dadosAtuais.geradoEm);
+    const pouca = montar(conversaGrande(3, 5, []));
+    assert.ok(!('erro' in pouca) && pouca.pedido.consultas.length === 3 && pouca.pedido.consultas[0].total_linhas === 55);
+  });
+
+  test('sem resposta estruturada ou sem consulta com resultado, não monta', () => {
+    const semResposta = conversaGrande(2, 5, []).slice(0, 3);
+    assert.match((montar(semResposta) as { erro: string }).erro, /resposta estruturada/);
+    const soErros: Mensagem[] = [
+      { role: 'user', content: 'Pergunta?' },
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'c1', name: 'consultar', input: { sql: 'SELECT x', objetivo: 'o', substitui: '' } }] },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'c1', is_error: true, content: '{"consulta":"C1","erro":"falhou"}' }] },
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'r1', name: 'responder', input: { resposta: { conclusao: 'ok' } } }] },
+    ];
+    assert.match((montar(soErros) as { erro: string }).erro, /nenhuma consulta/);
   });
 });

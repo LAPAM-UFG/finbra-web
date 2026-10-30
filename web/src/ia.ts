@@ -31,7 +31,8 @@ export type { EspecTabela, TabelaAnalitica } from './ia_tabelas';
 
 export type Bloco = { type: string; id?: string; name?: string; input?: unknown; text?: string; [k: string]: unknown };
 export type Mensagem = { role: 'user' | 'assistant'; content: string | Bloco[] };
-export type EstadoIa = { email: string; restantes: number; limite: number; configurada: boolean; modelo?: string };
+/** pode_conferir: o e-mail pode pedir a conferência das respostas pelo especialista RAIS (ia_conferencia.ts). */
+export type EstadoIa = { email: string; restantes: number; limite: number; configurada: boolean; modelo?: string; pode_conferir?: boolean };
 export type RespostaIa = { conteudo: Bloco[]; parada: string; recusa?: string | null; restantes: number };
 /** Resultado de uma consulta; bloqueada = a página recusou a consulta antes de rodá-la (SQL ou códigos). */
 export type Resultado = { colunas: string[]; linhas: (string | number | boolean | null)[][]; total: number } | { erro: string; bloqueada?: boolean };

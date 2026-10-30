@@ -33,6 +33,8 @@ export type MetaTurno = {
   contexto: ContextoIa; inicio: number; fim?: number; desfecho?: Desfecho; detalhe?: string | null;
   /** Versão dos dados (manifesto.geradoEm) quando a pergunta foi feita. */
   dados?: string;
+  /** Modelo do Worker (IA_MODELO) quando a pergunta foi feita. */
+  modelo?: string;
   registro?: RegistroTurno;
   reexecucao?: Reexecucao;
 };

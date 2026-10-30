@@ -24,6 +24,7 @@ import { dataDaNota, type NotaMetodologica } from '../ia_notas';
 import {
   ehTexto, formatarCelulaT, rodapeTabela, tabelaExportavel, tabelaHtml, tabelaTsv, type TabelaAnalitica,
 } from '../ia_tabelas';
+import { pedidoConferencia } from '../ia_conferencia';
 import { cadastro as carregarCadastro, type Cadastro } from '../ia_territorio';
 
 const LINHAS_INICIAIS = 25;
@@ -1295,12 +1296,15 @@ function Incompleta({ meta, aoUsar }: { meta?: MetaTurno; aoUsar: (s: string) =>
   );
 }
 
-function Turno({ i, turno, pronta, meta, resultados, ativo, progresso, ultimo, paineis, feitas, aoEditar, aoUsar, aoCopiar }: {
+function Turno({ i, turno, pronta, meta, resultados, ativo, progresso, ultimo, paineis, feitas, aoEditar, aoUsar, aoCopiar, aoPedirConferencia }: {
   i: number; turno: TurnoIa; pronta: RespostaPronta | null; meta?: MetaTurno; resultados: Record<string, Resultado>;
   ativo: boolean; progresso: Progresso | null; ultimo: boolean; paineis: Painel[]; feitas: Set<string>;
   aoEditar: () => void; aoUsar: (s: string) => void; aoCopiar: (texto: string) => Promise<boolean>;
+  /** Baixa o pedido de conferência (só para quem pode pedir); devolve o motivo se não der para montá-lo. */
+  aoPedirConferencia?: () => string | null;
 }) {
   const [copiado, setCopiado] = useState(false);
+  const [falhaConferencia, setFalhaConferencia] = useState<string | null>(null);
   const aprofundar = (turno.resposta?.aprofundar ?? []).filter((p) => !feitas.has(chavePergunta(p)));
   const nConsultas = consultasDoTurno(turno).length;
   const respondida = !!(pronta || turno.textoFinal);
@@ -1354,11 +1358,19 @@ function Turno({ i, turno, pronta, meta, resultados, ativo, progresso, ultimo, p
             {copiado ? t('Copiado ✓', 'Copied ✓') : t('Copiar texto da análise', 'Copy analysis text')}
           </button>
           {ultimo && <button type="button" className="botao-leve" onClick={aoEditar}>{t('Editar pergunta', 'Edit question')}</button>}
+          {aoPedirConferencia && turno.resposta && (
+            <button type="button" className="botao-leve" onClick={() => setFalhaConferencia(aoPedirConferencia())}
+              title={t('Arquivo .json com a pergunta, as consultas e a resposta, para a conferência pelo especialista RAIS. Montado neste navegador; nada é enviado.',
+                'A .json file with the question, queries and answer, for review by the RAIS specialist. Built in this browser; nothing is sent.')}>
+              {t('Baixar pedido de conferência', 'Download review request')}
+            </button>
+          )}
           {meta?.fim && (
             <span className="ia-tempo">
               {t(`Concluída em ${segundos} s`, `Finished in ${segundos} s`)} · {contar(nConsultas, t('consulta', 'query'), t('consultas', 'queries'))}
             </span>
           )}
+          {falhaConferencia && <p className="ia-nota" role="status">{t('Pedido de conferência não gerado', 'Review request not generated')}: {falhaConferencia}</p>}
         </div>
       )}
       {!ativo && ultimo && turno.resposta && aprofundar.length > 0 && (
@@ -1644,7 +1656,7 @@ export function Ia() {
     }
     const naTela = () => montada.current && idNaTela.current === id;
     const controle = new AbortController();
-    const inicio: MetaTurno = { contexto, inicio: Date.now(), dados: meta.geradoEm };
+    const inicio: MetaTurno = { contexto, inicio: Date.now(), dados: meta.geradoEm, ...(estado?.modelo ? { modelo: estado.modelo } : {}) };
     // resultados da conversa com os desta pergunta, para gravá-la mesmo que a página já não esteja nela
     const res: Record<string, Resultado> = { ...resultados };
     setTexto('');
@@ -1730,6 +1742,22 @@ export function Ia() {
   };
   const abrirConversa = (id: string) => setBusca(new URLSearchParams({ conversa: id }));
   const conversaAtual = (): Conversa | null => (aberta ? { ...aberta, mensagens, metas, resultados } : null);
+  // pedido de conferência pelo especialista RAIS: só para os e-mails autorizados no Worker e respostas que usaram o
+  // painel de trabalho; montado aqui, com o que a conversa já tem (nada vai ao servidor nem à Anthropic)
+  const conferencia = (i: number) => {
+    const m = metas[i];
+    if (!estado?.pode_conferir || !aberta || !m?.contexto.paineis.includes('trabalho')) return undefined;
+    return () => {
+      const r = pedidoConferencia({
+        mensagens, turno: i, meta: m, solicitante: estado.email, modelo: m.modelo ?? estado.modelo ?? '',
+        fontes: aberta.fontes, dadosAtuais: { geradoEm: meta.geradoEm, fontes: meta.fontes },
+        conversa: `${location.origin}/ia?conversa=${encodeURIComponent(aberta.id)}`,
+      });
+      if ('erro' in r) return r.erro;
+      baixarArquivo(`${r.pedido.id}.json`, r.json, 'application/json');
+      return null;
+    };
+  };
   const exportarJson = () => {
     const c = conversaAtual();
     if (c) baixarArquivo(`${nomeArquivo(c.titulo)}.json`, exportarConversa(c), 'application/json');
@@ -1984,7 +2012,7 @@ export function Ia() {
             {lista.map((turno, i) => (
               <Turno key={i} i={i} turno={turno} pronta={prontas[i]} meta={metas[i]} resultados={resultados}
                 ativo={!!rodando && i === lista.length - 1} progresso={progresso} ultimo={i === lista.length - 1} paineis={contexto.paineis}
-                feitas={feitas} aoEditar={editarUltima} aoUsar={usarTexto} aoCopiar={copiar} />
+                feitas={feitas} aoEditar={editarUltima} aoUsar={usarTexto} aoCopiar={copiar} aoPedirConferencia={conferencia(i)} />
             ))}
             {aviso}
           </div>

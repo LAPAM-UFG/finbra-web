@@ -7,8 +7,9 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import Anthropic from '@anthropic-ai/sdk';
-import { FERRAMENTAS, SEM_ESTRITO, gramaticaGrande, validar } from '../src/ia.js';
+import { FERRAMENTAS, SEM_ESTRITO, gramaticaGrande, rotaIa, validar } from '../src/ia.js';
 import { acesso, destinoSeguro } from '../src/acesso.js';
+import { podeConferir } from '../src/conferencia.js';
 import { limparResumo, rotaConversas } from '../src/conversas.js';
 import { instrucoes, paineisDoPedido } from '../src/sistema_geral.js';
 import { contextoDosDados } from '../src/sistema.js';
@@ -191,6 +192,50 @@ describe('acesso à IA', () => {
     assert.match(texto, /despesa_saude_liquidada, despesa_saude_paga/);
     assert.match(texto, /mesmo intervalo do ano anterior/);
     assert.match(texto, /Códigos mais amplos que o pedido: .*superestima o recorte pedido\. Faça isso mesmo quando a pessoa der os códigos/);
+  });
+});
+
+describe('conferência pelo especialista RAIS (pode_conferir)', () => {
+  const LISTA = 'luanviniciusbernardelli@gmail.com, camilapbernardelli@gmail.com';
+  // R2 vazio: o estado só lê a contagem do dia
+  const dados = { get: async () => null };
+  const estado = async (host, env) => {
+    const url = new URL(`https://${host}/api/ia/estado`);
+    const r = await rotaIa(new Request(url), { DADOS: dados, CONFERENCIA_EMAILS: LISTA, ...env }, url);
+    return { status: r.status, corpo: await r.json() };
+  };
+
+  test('e-mail autorizado: true, sem diferença de maiúsculas nem espaços', async () => {
+    const { status, corpo } = await estado('localhost', { IA_DEV_EMAIL: 'camilapbernardelli@gmail.com' });
+    assert.equal(status, 200);
+    assert.equal(corpo.pode_conferir, true);
+    // o resto do estado continua igual
+    assert.equal(corpo.email, 'camilapbernardelli@gmail.com');
+    assert.equal(corpo.restantes, 50);
+    assert.equal(podeConferir(' LuanViniciusBernardelli@Gmail.com ', { CONFERENCIA_EMAILS: LISTA }), true);
+  });
+
+  test('e-mail com login na IA, mas fora da lista: false', async () => {
+    const { status, corpo } = await estado('localhost', { IA_DEV_EMAIL: 'outra.pessoa@ufg.br' });
+    assert.equal(status, 200);
+    assert.equal(corpo.pode_conferir, false);
+    assert.equal(corpo.email, 'outra.pessoa@ufg.br');
+    // sem a variável, ninguém pede conferência
+    assert.equal((await estado('localhost', { IA_DEV_EMAIL: 'camilapbernardelli@gmail.com', CONFERENCIA_EMAILS: undefined })).corpo.pode_conferir, false);
+    // um trecho do e-mail não basta
+    assert.equal(podeConferir('bernardelli@gmail.com', { CONFERENCIA_EMAILS: LISTA }), false);
+  });
+
+  test('sem login: 401 como antes, com pode_conferir false', async () => {
+    const { status, corpo } = await estado('finbra-web.exemplo.dev', { ACCESS_TEAM: 'x.cloudflareaccess.com', ACCESS_AUD: 'y' });
+    assert.equal(status, 401);
+    assert.equal(corpo.codigo, 'sem_login');
+    assert.equal(corpo.pode_conferir, false);
+    assert.equal(podeConferir(null, { CONFERENCIA_EMAILS: LISTA }), false);
+    // as outras rotas sem login não mudam
+    const url = new URL('https://finbra-web.exemplo.dev/api/ia');
+    const r = await rotaIa(new Request(url, { method: 'POST', body: '{}' }), { DADOS: dados, ACCESS_TEAM: 'x', ACCESS_AUD: 'y' }, url);
+    assert.deepEqual(await r.json(), { erro: 'login necessário', codigo: 'sem_login' });
   });
 });
 

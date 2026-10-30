@@ -12,6 +12,8 @@
   },
   // login da IA (Cloudflare Access): ACCESS_TEAM = <equipe>.cloudflareaccess.com e ACCESS_AUD = Application Audience
   // da aplicação que protege /api/ia. A chave da Anthropic é segredo: wrangler secret put ANTHROPIC_API_KEY
+  // quem pode pedir conferência das respostas (src/conferencia.js) também fica fora deste arquivo, que é público:
+  // wrangler secret put CONFERENCIA_EMAILS (e-mails separados por vírgula)
   "vars": { "ACCESS_TEAM": "icy-breeze-2aa0.cloudflareaccess.com", "ACCESS_AUD": "b9f953be729d05835209504ba7d3ee7c01cd9135dfa5182ebca9c7f3e323da13" },
   // bucket privado com os Parquet: só o Worker lê
   "r2_buckets": [{ "binding": "DADOS", "bucket_name": "lapam-finbra" }],

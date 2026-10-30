@@ -8,7 +8,7 @@
  * resultados das consultas antes de mostrar (o que não bate volta ao modelo). O histórico da conversa
  * fica no navegador e vem inteiro a cada pedido (a API não guarda estado).
  *
- *   GET  /api/ia/estado   e-mail e perguntas restantes no dia
+ *   GET  /api/ia/estado   e-mail, perguntas restantes no dia e se pode pedir conferência (conferencia.js)
  *   GET  /api/ia/entrar   passa pelo login do Access e volta para /ia
  *   POST /api/ia          { idioma, mensagens, paineis?, contexto?, manifesto? } -> { conteudo, parada, restantes }
  *   /api/ia/conversas*    histórico das conversas na conta (conversas.js)
@@ -26,6 +26,7 @@
  */
 import Anthropic from '@anthropic-ai/sdk';
 import { acesso, destinoSeguro } from './acesso.js';
+import { podeConferir } from './conferencia.js';
 import { rotaConversas } from './conversas.js';
 import { instrucoes, paineisDoPedido } from './sistema_geral.js';
 
@@ -243,7 +244,7 @@ const IDIOMA = {
 
 const resposta = (corpo, status = 200) =>
   new Response(JSON.stringify(corpo), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' } });
-const erro = (mensagem, status, codigo) => resposta({ erro: mensagem, ...(codigo ? { codigo } : {}) }, status);
+const erro = (mensagem, status, codigo, extra = {}) => resposta({ erro: mensagem, ...(codigo ? { codigo } : {}), ...extra }, status);
 
 // ---------------- uso diário ----------------
 
@@ -310,14 +311,16 @@ export async function rotaIa(request, env, url) {
   if (url.pathname === '/api/ia/entrar' && (email || motivo === 'nao_autorizado')) {
     return Response.redirect(destinoSeguro(url.searchParams.get('volta'), url), 302);
   }
-  if (motivo === 'nao_autorizado') return erro(`o e-mail ${emailNegado} entrou, mas não está autorizado a usar a IA`, 403, 'nao_autorizado');
-  if (!email) return erro(motivo === 'expirado' ? 'sessão expirada: entre de novo' : 'login necessário', 401, motivo === 'expirado' ? 'expirado' : 'sem_login');
+  // sem acesso, o estado também diz que não há conferência (o resto da resposta continua o mesmo)
+  const semConferir = url.pathname === '/api/ia/estado' ? { pode_conferir: false } : {};
+  if (motivo === 'nao_autorizado') return erro(`o e-mail ${emailNegado} entrou, mas não está autorizado a usar a IA`, 403, 'nao_autorizado', semConferir);
+  if (!email) return erro(motivo === 'expirado' ? 'sessão expirada: entre de novo' : 'login necessário', 401, motivo === 'expirado' ? 'expirado' : 'sem_login', semConferir);
 
   if (url.pathname === '/api/ia/conversas' || url.pathname.startsWith('/api/ia/conversas/')) return rotaConversas(request, env, url, email);
   const chave = await chaveDeUso(email);
   if (url.pathname === '/api/ia/estado' && request.method === 'GET') {
     const uso = await lerUso(env, chave);
-    return resposta({ email, restantes: Math.max(0, LIMITE_PERGUNTAS - uso.perguntas), limite: LIMITE_PERGUNTAS, configurada: !!env.ANTHROPIC_API_KEY, modelo: modeloDe(env) });
+    return resposta({ email, restantes: Math.max(0, LIMITE_PERGUNTAS - uso.perguntas), limite: LIMITE_PERGUNTAS, configurada: !!env.ANTHROPIC_API_KEY, modelo: modeloDe(env), pode_conferir: podeConferir(email, env) });
   }
   if (url.pathname !== '/api/ia') return erro('não encontrado', 404);
   if (request.method !== 'POST') return erro('método não permitido', 405);
