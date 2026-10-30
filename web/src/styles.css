@@ -375,6 +375,8 @@ figure.grafico { margin: 0; }
 .ia-historico-renomear input { flex: 1 1 100%; padding: 4px 6px; border: 1px solid var(--borda); border-radius: 6px; font: inherit; font-size: 13px; background: var(--superficie); color: var(--tinta); }
 .ia-historico-importar { display: inline-block; margin: 4px 0; }
 .ia-historico-nota { padding: 0 4px; }
+.ia-historico-levar { display: flex; flex-direction: column; gap: 2px; margin: 6px 0; padding: 0 2px; }
+.ia-historico-levar .ia-nota { margin: 0; font-size: 11px; }
 .ia-id code { font-size: 11px; overflow-wrap: anywhere; }
 .ia-versao, .ia-reexecutada {
   margin: 12px 0; border-left: 3px solid var(--acento); border-radius: 6px; padding: 10px 14px;

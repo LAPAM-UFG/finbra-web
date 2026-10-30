@@ -11,6 +11,7 @@
  *   GET  /api/ia/estado   e-mail e perguntas restantes no dia
  *   GET  /api/ia/entrar   passa pelo login do Access e volta para /ia
  *   POST /api/ia          { idioma, mensagens, paineis?, contexto?, manifesto? } -> { conteudo, parada, restantes }
+ *   /api/ia/conversas*    histórico das conversas na conta (conversas.js)
  *
  * Uma IA para todos os painéis (aba "Pergunte aos dados"): paineis diz quais entram na conversa
  * (['financas', 'trabalho']; vazio = todos) e as instruções juntam a seção de cada um (sistema_geral.js).
@@ -25,6 +26,7 @@
  */
 import Anthropic from '@anthropic-ai/sdk';
 import { acesso, destinoSeguro } from './acesso.js';
+import { rotaConversas } from './conversas.js';
 import { instrucoes, paineisDoPedido } from './sistema_geral.js';
 
 // Modelo: IA_MODELO (variável do Worker ou worker/.dev.vars), entre os da lista; padrão Haiku, o mais barato
@@ -307,6 +309,7 @@ export async function rotaIa(request, env, url) {
   if (motivo === 'nao_autorizado') return erro(`o e-mail ${emailNegado} entrou, mas não está autorizado a usar a IA`, 403, 'nao_autorizado');
   if (!email) return erro(motivo === 'expirado' ? 'sessão expirada: entre de novo' : 'login necessário', 401, motivo === 'expirado' ? 'expirado' : 'sem_login');
 
+  if (url.pathname === '/api/ia/conversas' || url.pathname.startsWith('/api/ia/conversas/')) return rotaConversas(request, env, url, email);
   const chave = await chaveDeUso(email);
   if (url.pathname === '/api/ia/estado' && request.method === 'GET') {
     const uso = await lerUso(env, chave);

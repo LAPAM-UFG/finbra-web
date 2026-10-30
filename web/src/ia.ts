@@ -56,6 +56,8 @@ export function usarServidorIaNoTeste(endereco: string) {
   servidor = endereco.replace(/\/$/, '');
 }
 const emLocalhost = () => (typeof location === 'undefined' ? /\/\/localhost[:/]/.test(`${servidor}/`) : location.hostname === 'localhost');
+/** Endereço de uma rota do Worker da IA (ex.: /api/ia/conversas). */
+export const enderecoIa = (caminho: string) => `${servidor}${caminho}`;
 
 /** Falta de acesso, separada das falhas técnicas: sem login ou sessão expirada (entrar de novo) e e-mail sem autorização. */
 export class ErroAcesso extends Error {

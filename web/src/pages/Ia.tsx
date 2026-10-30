@@ -1463,9 +1463,6 @@ export function Ia() {
       montada.current = false;
     };
   }, []);
-  useEffect(() => {
-    if (!historico.estado().carregado) void historico.recarregar();
-  }, []);
   const mostrar = (c: Conversa | null) => {
     idNaTela.current = c?.id ?? null;
     setMensagens(c?.mensagens ?? []);
@@ -1504,8 +1501,10 @@ export function Ia() {
       return;
     }
     if (idUrl === idNaTela.current) return;
-    let vivo = true;
     setAbrindo(true);
+    // sem saber ainda se há login, não dá para saber se a conversa está na conta
+    if (!h.verificado) return;
+    let vivo = true;
     historico.ler(idUrl).then((c) => {
       if (!vivo) return;
       const b = new URLSearchParams(busca);
@@ -1534,7 +1533,7 @@ export function Ia() {
     return () => {
       vivo = false;
     };
-  }, [idUrl, nova]);
+  }, [idUrl, nova, h.verificado, h.conta]);
 
   // a resposta de uma pergunta que continuou fora da tela (ou um título novo) foi gravada: a tela relê a conversa
   const gravadaEm = aberta ? h.gravadas[aberta.id] : undefined;
@@ -1546,9 +1545,18 @@ export function Ia() {
     }, () => undefined);
   }, [gravadaEm, rodando]);
 
+  // o login decide onde ficam as conversas: com e-mail, na conta; sem login, só neste navegador. Com o servidor fora
+  // do ar, vale a cópia da última conta usada aqui
   const carregar = () => {
     setFalhaEstado(null);
-    estadoIa().then(setEstado, (e) => setFalhaEstado(e instanceof Error ? e.message : String(e)));
+    estadoIa().then((e) => {
+      setEstado(e);
+      guardar('ia-conta', e?.email ?? null);
+      historico.conectar(e?.email ?? null);
+    }, (e) => {
+      setFalhaEstado(e instanceof Error ? e.message : String(e));
+      historico.conectar(e instanceof ErroAcesso ? null : lerGuardado('ia-conta'));
+    });
   };
   useEffect(carregar, []);
   useEffect(() => guardar('ia-rascunho', texto, true), [texto]);
@@ -1622,7 +1630,7 @@ export function Ia() {
     // a primeira pergunta cria a conversa: identificador e endereço (?conversa=) desde já
     const base: Cabecalho = aberta ?? {
       formato: FORMATO_CONVERSA, versao: VERSAO_CONVERSA, id: novoId(), titulo: tituloAutomatico(pergunta), tituloManual: false,
-      criadaEm: Date.now(), atualizadaEm: Date.now(), fontes: {}, origem: { tipo: 'nova' }, conta: null,
+      criadaEm: Date.now(), atualizadaEm: Date.now(), fontes: {}, origem: { tipo: 'nova' }, conta: h.conta,
     };
     const id = base.id;
     if (!aberta) {
@@ -1664,8 +1672,9 @@ export function Ia() {
         aoRestantes: (n) => setEstado((e) => (e ? { ...e, restantes: n } : e)),
       });
       const feita: MetaTurno = { ...inicio, fim: Date.now(), desfecho: r.desfecho, detalhe: r.detalhe, registro: registroDoTurno(r.mensagens, res, pergunta) };
+      // com login, a conversa (inclusive uma que estava só neste navegador) é gravada na conta
       const conversa: Conversa = {
-        ...base, atualizadaEm: Date.now(), mensagens: r.mensagens, metas: [...antes.metas, feita], resultados: res,
+        ...base, conta: h.conta ?? base.conta, atualizadaEm: Date.now(), mensagens: r.mensagens, metas: [...antes.metas, feita], resultados: res,
         fontes: { ...base.fontes, [meta.geradoEm]: meta.fontes },
       };
       if (naTela()) {
@@ -1874,9 +1883,16 @@ export function Ia() {
         <section className="ia-inicio" aria-labelledby="ia-titulo">
           {naoAchada && (
             <div className="ia-falha" role="alert">
-              <p><strong>{t('Esta conversa não está neste navegador.', 'This conversation is not in this browser.')}</strong>{' '}
-                {t('O endereço de uma conversa só a reabre no navegador em que ela foi feita; ainda não serve para compartilhar nem para abrir em outro computador. Para levá-la a outro computador, exporte-a em JSON lá e importe aqui, pelo histórico.',
-                  'A conversation address only reopens it in the browser where it was made; it cannot be shared or opened on another computer yet. To move it to another computer, export it as JSON there and import it here, from the history.')}</p>
+              {h.conta ? (
+                <p><strong>{t(`Esta conversa não está na sua conta (${h.conta}) nem neste navegador.`, `This conversation is not in your account (${h.conta}) or in this browser.`)}</strong>{' '}
+                  {t('Ela pode ter sido excluída, estar na conta de outro e-mail (cada pessoa só abre as próprias conversas) ou ter sido feita sem login em outro navegador; nesse caso, exporte-a em JSON lá e importe aqui, pelo histórico.',
+                    'It may have been deleted, belong to another email’s account (each person only opens their own conversations) or have been made without signing in on another browser; in that case, export it as JSON there and import it here, from the history.')}</p>
+              ) : (
+                <p><strong>{t('Esta conversa não está neste navegador.', 'This conversation is not in this browser.')}</strong>{' '}
+                  {t('Se ela foi salva numa conta, entre com o mesmo e-mail para abri-la. Sem login, o endereço só reabre a conversa no navegador em que ela foi feita; para levá-la a outro computador, exporte-a em JSON lá e importe aqui, pelo histórico.',
+                    'If it was saved in an account, sign in with the same email to open it. Without signing in, the address only reopens the conversation in the browser where it was made; to move it to another computer, export it as JSON there and import it here, from the history.')}
+                  {estado === null && <>{' '}<a href={urlEntrar()}>{t('Entrar', 'Sign in')}</a></>}</p>
+              )}
             </div>
           )}
           {avisoHistorico}
@@ -1905,12 +1921,19 @@ export function Ia() {
               <h2 className="titulo-pagina">{aberta?.titulo ?? t('Pergunte aos dados', 'Ask the data')}</h2>
               {aberta && (
                 <p className="ia-nota ia-id">
-                  {t('Conversa', 'Conversation')} <code>{aberta.id}</code> · {t(`criada em ${dataHora(aberta.criadaEm)}, salva neste navegador em ${dataHora(aberta.atualizadaEm)}`,
-                    `created on ${dataHora(aberta.criadaEm)}, saved in this browser on ${dataHora(aberta.atualizadaEm)}`)}{' '}
+                  {t('Conversa', 'Conversation')} <code>{aberta.id}</code> · {aberta.conta
+                    ? t(`criada em ${dataHora(aberta.criadaEm)}, salva na sua conta em ${dataHora(aberta.atualizadaEm)}`, `created on ${dataHora(aberta.criadaEm)}, saved in your account on ${dataHora(aberta.atualizadaEm)}`)
+                    : t(`criada em ${dataHora(aberta.criadaEm)}, salva neste navegador em ${dataHora(aberta.atualizadaEm)}`, `created on ${dataHora(aberta.criadaEm)}, saved in this browser on ${dataHora(aberta.atualizadaEm)}`)}{' '}
                   <button type="button" className="botao-leve" onClick={() => void copiarEndereco()}>{copiouEndereco ? t('Endereço copiado ✓', 'Address copied ✓') : t('Copiar endereço', 'Copy address')}</button>
                   <br />
-                  {t('O endereço reabre esta conversa só neste navegador: ainda não serve para compartilhar nem para abrir em outro computador (para isso, exporte em JSON e importe no outro navegador).',
-                    'The address reopens this conversation only in this browser: it cannot be shared or opened on another computer yet (for that, export it as JSON and import it in the other browser).')}
+                  {aberta.conta
+                    ? t(`O endereço abre esta conversa em qualquer computador em que você entrar com ${aberta.conta}. Só você tem acesso a ela: não serve para compartilhar (para isso, exporte em JSON, PDF ou Excel).`,
+                      `The address opens this conversation on any computer where you sign in with ${aberta.conta}. Only you can access it: it cannot be shared (for that, export it as JSON, PDF or Excel).`)
+                    : h.conta
+                      ? t('Esta conversa está só neste navegador. Ela vai para a sua conta na próxima pergunta ou pelo botão “Levar para a minha conta”, no histórico.',
+                        'This conversation is only in this browser. It goes to your account with the next question or with the “Move to my account” button in the history.')
+                      : t('O endereço reabre esta conversa só neste navegador. Entre com seu e-mail para guardá-la na sua conta e abri-la em outro computador.',
+                        'The address reopens this conversation only in this browser. Sign in with your email to keep it in your account and open it on another computer.')}
                 </p>
               )}
               {aberta?.origem.tipo === 'versao' && (
@@ -1948,8 +1971,11 @@ export function Ia() {
               {t('Cada resposta sai no modo em que foi feita: a resposta rápida com o essencial; a análise para pesquisa com recorte, tabelas completas, análise, metodologia e fontes.',
                 'Each answer is exported in the mode it was made: the quick answer with the essentials; the research analysis with scope, complete tables, analysis, methodology and sources.')}
               {apendice && ` ${t('O apêndice de reprodução traz o SQL e o histórico de todas as consultas, inclusive as sem resultado e as refeitas.', 'The reproduction appendix adds the SQL and history of all queries, including empty and redone ones.')}`}
-              {` ${t('A conversa fica salva neste navegador; as perguntas à IA seguem o caminho de sempre (servidor do LAPAM e Anthropic). Limpar os dados de navegação apaga o histórico: exporte em JSON o que for importante.',
-                'The conversation is saved in this browser; questions to the AI follow the usual path (LAPAM server and Anthropic). Clearing browsing data erases the history: export what matters as JSON.')}`}
+              {` ${aberta?.conta
+                ? t('A conversa fica salva na sua conta, no servidor do LAPAM (quem administra o servidor tem acesso a ela), com uma cópia neste navegador; as perguntas à IA seguem o caminho de sempre (servidor do LAPAM e Anthropic).',
+                  'The conversation is saved in your account, on the LAPAM server (server administrators can access it), with a copy in this browser; questions to the AI follow the usual path (LAPAM server and Anthropic).')
+                : t('A conversa fica salva neste navegador; as perguntas à IA seguem o caminho de sempre (servidor do LAPAM e Anthropic). Limpar os dados de navegação apaga o histórico: exporte em JSON o que for importante.',
+                  'The conversation is saved in this browser; questions to the AI follow the usual path (LAPAM server and Anthropic). Clearing browsing data erases the history: export what matters as JSON.')}`}
             </p>
           </header>
           {avisoHistorico}

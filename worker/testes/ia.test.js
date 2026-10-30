@@ -9,6 +9,7 @@ import { describe, test } from 'node:test';
 import Anthropic from '@anthropic-ai/sdk';
 import { FERRAMENTAS, SEM_ESTRITO, gramaticaGrande, validar } from '../src/ia.js';
 import { acesso, destinoSeguro } from '../src/acesso.js';
+import { limparResumo, rotaConversas } from '../src/conversas.js';
 import { instrucoes, paineisDoPedido } from '../src/sistema_geral.js';
 import { contextoDosDados } from '../src/sistema.js';
 
@@ -190,5 +191,91 @@ describe('acesso à IA', () => {
     assert.match(texto, /despesa_saude_liquidada, despesa_saude_paga/);
     assert.match(texto, /mesmo intervalo do ano anterior/);
     assert.match(texto, /Códigos mais amplos que o pedido: .*superestima o recorte pedido\. Faça isso mesmo quando a pessoa der os códigos/);
+  });
+});
+
+describe('conversas na conta', () => {
+  // R2 em memória com o que conversas.js usa: get/put (com onlyIf.etagMatches), delete e list com metadados
+  const r2 = () => {
+    const m = new Map();
+    let n = 0;
+    const objeto = (v) => ({ etag: v.etag, body: v.valor, json: async () => JSON.parse(v.valor) });
+    return {
+      m,
+      get: async (k) => (m.has(k) ? objeto(m.get(k)) : null),
+      put: async (k, valor, o = {}) => {
+        if (o.onlyIf?.etagMatches && m.get(k)?.etag !== o.onlyIf.etagMatches) return null;
+        m.set(k, { valor: String(valor), etag: `e${++n}`, customMetadata: o.customMetadata });
+        return { etag: `e${n}` };
+      },
+      delete: async (k) => void m.delete(k),
+      list: async ({ prefix }) => ({
+        objects: [...m.entries()].filter(([k]) => k.startsWith(prefix)).map(([key, v]) => ({ key, customMetadata: v.customMetadata })),
+        truncated: false,
+      }),
+    };
+  };
+  const ID = '6f1c2a3b-0000-4000-8000-000000000001';
+  const conversa = (id = ID, titulo = 'Vínculos em Goiás') => ({ formato: 'lapam-ia-conversa', versao: 1, id, titulo, mensagens: [], metas: [], resultados: {}, conta: 'a@x.org' });
+  const resumo = (id = ID, titulo = 'Vínculos em Goiás') => ({ id, titulo, criadaEm: 1, atualizadaEm: 2, perguntas: 1, paineis: ['trabalho'], territorio: 'Goiás', modo: 'rápida', dados: ['d'], origem: { tipo: 'nova' }, busca: 'vinculos em goias' });
+  const pedir = (env, email, metodo, caminho, corpo, origem) => rotaConversas(new Request(`https://site.exemplo${caminho}`, {
+    method: metodo, ...(corpo ? { body: JSON.stringify(corpo) } : {}), headers: origem ? { Origin: origem } : {},
+  }), env, new URL(`https://site.exemplo${caminho}`), email);
+
+  test('grava, lista e abre só para a mesma pessoa', async () => {
+    const env = { DADOS: r2() };
+    assert.equal((await pedir(env, 'a@x.org', 'PUT', `/api/ia/conversas/${ID}`, { conversa: conversa(), resumo: resumo() })).status, 200);
+    const lista = await (await pedir(env, 'a@x.org', 'GET', '/api/ia/conversas')).json();
+    assert.deepEqual(lista.resumos.map((r) => [r.id, r.titulo, r.busca]), [[ID, 'Vínculos em Goiás', 'vinculos em goias']]);
+    assert.equal((await (await pedir(env, 'a@x.org', 'GET', `/api/ia/conversas/${ID}`)).json()).titulo, 'Vínculos em Goiás');
+    // outra pessoa logada não vê nem abre
+    assert.deepEqual((await (await pedir(env, 'b@x.org', 'GET', '/api/ia/conversas')).json()).resumos, []);
+    assert.equal((await pedir(env, 'b@x.org', 'GET', `/api/ia/conversas/${ID}`)).status, 404);
+    // o e-mail não aparece nas chaves
+    assert.ok([...env.DADOS.m.keys()].every((k) => /^ia\/conversas\/[0-9a-f]{64}\//.test(k) && !k.includes('x.org')));
+  });
+
+  test('a última gravação vale e excluir apaga de vez', async () => {
+    const env = { DADOS: r2() };
+    await pedir(env, 'a@x.org', 'PUT', `/api/ia/conversas/${ID}`, { conversa: conversa(), resumo: resumo() });
+    await pedir(env, 'a@x.org', 'PUT', `/api/ia/conversas/${ID}`, { conversa: conversa(ID, 'Outro título'), resumo: resumo(ID, 'Outro título') });
+    assert.deepEqual((await (await pedir(env, 'a@x.org', 'GET', '/api/ia/conversas')).json()).resumos.map((r) => r.titulo), ['Outro título']);
+    assert.equal((await pedir(env, 'a@x.org', 'DELETE', `/api/ia/conversas/${ID}`)).status, 200);
+    assert.equal((await pedir(env, 'a@x.org', 'GET', `/api/ia/conversas/${ID}`)).status, 404);
+    assert.deepEqual((await (await pedir(env, 'a@x.org', 'GET', '/api/ia/conversas')).json()).resumos, []);
+  });
+
+  test('a lista recupera do metadado uma conversa que o índice perdeu', async () => {
+    const env = { DADOS: r2() };
+    const outro = '6f1c2a3b-0000-4000-8000-000000000002';
+    await pedir(env, 'a@x.org', 'PUT', `/api/ia/conversas/${ID}`, { conversa: conversa(), resumo: resumo() });
+    await pedir(env, 'a@x.org', 'PUT', `/api/ia/conversas/${outro}`, { conversa: conversa(outro, 'Segunda'), resumo: resumo(outro, 'Segunda') });
+    // simula duas abas gravando o índice ao mesmo tempo: a segunda entrada se perdeu
+    const indice = [...env.DADOS.m.keys()].find((k) => k.endsWith('/indice.json'));
+    await env.DADOS.put(indice, JSON.stringify([resumo()]));
+    const lista = (await (await pedir(env, 'a@x.org', 'GET', '/api/ia/conversas')).json()).resumos;
+    assert.deepEqual(lista.map((r) => r.titulo).sort(), ['Segunda', 'Vínculos em Goiás']);
+  });
+
+  test('recusa identificador, conversa ou origem inválidos', async () => {
+    const env = { DADOS: r2() };
+    assert.equal((await pedir(env, 'a@x.org', 'PUT', '/api/ia/conversas/x', { conversa: conversa(), resumo: resumo() })).status, 400);
+    assert.equal((await pedir(env, 'a@x.org', 'PUT', `/api/ia/conversas/${ID}`, { conversa: conversa('6f1c2a3b-0000-4000-8000-000000000009'), resumo: resumo() })).status, 400);
+    assert.equal((await pedir(env, 'a@x.org', 'PUT', `/api/ia/conversas/${ID}`, { conversa: { ...conversa(), formato: 'outro' }, resumo: resumo() })).status, 400);
+    assert.equal((await pedir(env, 'a@x.org', 'DELETE', `/api/ia/conversas/${ID}`, null, 'https://malicioso.exemplo')).status, 403);
+    assert.equal((await pedir(env, 'a@x.org', 'PUT', `/api/ia/conversas/${ID}`, { conversa: conversa(), resumo: resumo() }, 'https://site.exemplo')).status, 200);
+    // no computador local, o Vite (5180) repassa ao Worker (8787); localhost só vale com o Worker em localhost
+    const local = (origem) => rotaConversas(new Request(`http://localhost:8787/api/ia/conversas/${ID}`, { method: 'DELETE', headers: { Origin: origem } }),
+      env, new URL(`http://localhost:8787/api/ia/conversas/${ID}`), 'a@x.org');
+    assert.equal((await local('http://localhost:5180')).status, 200);
+    assert.equal((await pedir(env, 'a@x.org', 'DELETE', `/api/ia/conversas/${ID}`, null, 'http://localhost:5180')).status, 403);
+  });
+
+  test('o resumo guardado tem só os campos da lista, com tamanho limitado', () => {
+    const r = limparResumo({ ...resumo(), busca: 'x'.repeat(50_000), extra: 'não', titulo: 't'.repeat(1000) }, ID);
+    assert.equal(r.busca.length, 20_000);
+    assert.equal(r.titulo.length, 300);
+    assert.equal('extra' in r, false);
+    assert.equal(limparResumo(resumo(), 'outro-id-qualquer'), null);
   });
 });

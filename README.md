@@ -323,25 +323,36 @@ pergunta, contexto, modo, SQL, resultados e resposta. `py pipeline/auditoria_ia.
 a conta com os códigos do FPM de cada ementário, microdados da RAIS, movimentações do CAGED, SIOPS como veio do
 TABNET, PIB do IBGE), sem as tabelas da IA, e compara: confere, divergente ou não apresentado.
 
-**Histórico de conversas (neste navegador).** A lateral da aba da IA (`web/src/components/HistoricoIa.tsx`) tem
+**Histórico de conversas (na conta e no navegador).** A lateral da aba da IA (`web/src/components/HistoricoIa.tsx`) tem
 "Nova conversa", busca (título, perguntas e conclusões) e as conversas anteriores, com renomear, exportar e
-excluir; no celular, fica recolhida. Cada conversa é gravada inteira no IndexedDB do navegador
-(`web/src/ia_historico.ts`) ao fim de cada resposta, mesmo se a pessoa já saiu da página: as mensagens trocadas
+excluir; no celular, fica recolhida. Cada conversa é gravada inteira (`web/src/ia_historico.ts`) ao fim de cada
+resposta, mesmo se a pessoa já saiu da página: as mensagens trocadas
 com o modelo (com os resultados das ferramentas, que ele relê no seguimento), os resultados das consultas, o
 contexto de cada pergunta (painéis, território, ano, modo), a versão dos dados (`manifesto.geradoEm`) e o
 catálogo das fontes dessa versão, além das fontes, notas e códigos como saíram na resposta. Reabrir
 (`/ia?conversa=<uuid>`) não roda consultas nem chama a IA; a página volta ao recorte da última pergunta, e o
-seguimento ("agora por habitante", "esses mesmos municípios") tem o mesmo histórico que tinha antes. O endereço
-só funciona no navegador onde a conversa foi feita; para levá-la a outro computador, "Exportar conversa (JSON)"
-e "Importar conversa" (formato `lapam-ia-conversa`, versão 1, o mesmo da gravação). Com dados publicados depois
+seguimento ("agora por habitante", "esses mesmos municípios") tem o mesmo histórico que tinha antes.
+
+- **Com login**, a conversa vai para a conta, no R2, pelas rotas `/api/ia/conversas` do Worker
+  (`worker/src/conversas.js`, atrás do mesmo Access): `ia/conversas/<SHA-256 do e-mail>/<id>.json` e um
+  `indice.json` com os resumos da lista e da busca. Cada pessoa só lista e abre as próprias conversas (a pasta
+  vem do e-mail do token, nunca do pedido), e o endereço abre a conversa em qualquer computador com o mesmo
+  login. Vale a última gravação (a mesma conversa continuada em dois computadores), e excluir apaga do servidor
+  de vez. Uma cópia fica no IndexedDB do navegador: a lista abre rápido, e, sem resposta do servidor, a página
+  mostra a cópia com um aviso; o que for gravado nesse meio-tempo fica pendente e vai para a conta na próxima
+  vez que a lista carregar. A atualização dos dados (`r2.py enviar --limpar`) só apaga dentro de `bronze/`,
+  `silver/` e `gold/`, longe de `ia/`.
+- **Sem login**, a conversa fica só no IndexedDB do navegador, e o endereço só funciona nele. Com login, essas
+  conversas aparecem marcadas "só neste navegador", com "Levar para a minha conta"; uma delas continuada com
+  login passa sozinha para a conta. As cópias de uma conta não aparecem para quem está sem login.
+
+Para levar uma conversa a outro lugar sem conta, "Exportar conversa (JSON)" e "Importar conversa" (formato
+`lapam-ia-conversa`, versão 1, o mesmo da gravação). Com dados publicados depois
 da conversa, a página avisa e oferece uma **nova versão**: as consultas rodam de novo no navegador (sem IA, sem
 gastar o limite), a original fica como estava e cada resposta da versão nova diz que o texto da IA não foi
 regenerado; refazer a pergunta com a IA gasta o limite. Exportações de uma resposta com dados de outra versão
 levam as linhas guardadas, sem refazer a consulta. Falhas de gravação (sem espaço, bloqueio) aparecem na página,
-com "Tentar salvar de novo" e a exportação em JSON. Limpar os dados do navegador apaga o histórico.
-Histórico por conta (próxima etapa): o armazenamento fica atrás de `RepositorioConversas` (hoje
-`repositorioLocal`); os identificadores são UUID e cada conversa tem `conta: null`, para que as conversas locais
-possam ser enviadas à conta no mesmo formato da exportação.
+com "Tentar salvar de novo" e a exportação em JSON. Sem login, limpar os dados do navegador apaga o histórico.
 
 Configuração (uma vez):
 

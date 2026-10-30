@@ -3,13 +3,14 @@
  * resultados das ferramentas, que ele relê nas perguntas seguintes), resultados das consultas, contexto e versão
  * dos dados de cada pergunta — para reabrir sem rodar nada de novo e continuar perguntando a partir dela.
  *
- * O armazenamento fica atrás de RepositorioConversas: hoje o IndexedDB deste navegador (repositorioLocal); depois,
- * a conta do usuário. O formato exportado (JSON, FORMATO_CONVERSA/VERSAO_CONVERSA) é o mesmo da gravação, para
- * backup, transferência entre computadores e, mais tarde, a migração das conversas locais para a conta.
+ * O armazenamento fica atrás de RepositorioConversas. Com login, a conta (repositorioConta: servidor do LAPAM, rotas
+ * /api/ia/conversas do Worker), com uma cópia no IndexedDB deste navegador para a lista abrir rápido e para não
+ * perder o que foi gravado sem conexão; sem login, só o IndexedDB (repositorioLocal). O formato exportado (JSON,
+ * FORMATO_CONVERSA/VERSAO_CONVERSA) é o mesmo da gravação, para backup e transferência entre computadores.
  */
 import { useSyncExternalStore } from 'react';
 import {
-  ehPergunta, paraModelo, rotuloModo, rotulosConsultas, rotuloTerritorio, textoDaPergunta, turnos,
+  ehPergunta, enderecoIa, ErroAcesso, paraModelo, rotuloModo, rotulosConsultas, rotuloTerritorio, textoDaPergunta, turnos,
   type ContextoIa, type Desfecho, type Mensagem, type Painel, type Resultado,
 } from './ia';
 import type { NotaMetodologica } from './ia_notas';
@@ -55,14 +56,17 @@ export type Conversa = {
   /** Catálogo das fontes (manifesto.fontes) de cada versão dos dados usada, pela data de processamento. */
   fontes: Record<string, Record<string, Record<string, unknown>>>;
   origem: OrigemConversa;
-  /** Reservado para o histórico por conta (etapa 2): null = só neste navegador. */
-  conta: null;
+  /** E-mail da conta em que a conversa está guardada; null = só neste navegador. */
+  conta: string | null;
 };
 
 /** O que a lista do histórico mostra e onde a busca procura, sem carregar as tabelas. */
 export type ResumoConversa = {
   id: string; titulo: string; criadaEm: number; atualizadaEm: number; perguntas: number;
   paineis: Painel[]; territorio: string; modo: string; dados: string[]; origem: OrigemConversa; busca: string;
+  conta?: string | null;
+  /** Gravada neste navegador, mas ainda não no servidor (sem conexão): vai na próxima vez que a lista carregar. */
+  pendente?: boolean;
 };
 
 export const novoId = () => (typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -96,6 +100,7 @@ export function resumoDe(c: Conversa): ResumoConversa {
     paineis: ultima?.paineis ?? [], territorio: ultima ? rotuloTerritorio(ultima.territorio) : '', modo: ultima ? rotuloModo(ultima.modo) : '',
     dados: versoesDosDados(c.metas), origem: c.origem,
     busca: normalizar([c.titulo, ...perguntas, ...conclusoes].join(' ')),
+    conta: c.conta ?? null,
   };
 }
 
@@ -215,13 +220,16 @@ export async function novaVersaoComDadosAtuais(c: Conversa, o: {
 
 // ---------------- armazenamento ----------------
 
-/** Onde as conversas ficam. Hoje, o navegador; a conta do usuário entra como outra implementação. */
+/** Onde as conversas ficam: este navegador (sem login) ou a conta, com uma cópia neste navegador. */
 export interface RepositorioConversas {
   readonly onde: 'navegador' | 'conta';
   listar(): Promise<ResumoConversa[]>;
   ler(id: string): Promise<Conversa | null>;
-  salvar(c: Conversa): Promise<void>;
+  /** pendente: só na cópia do navegador, ainda sem ir ao servidor. */
+  salvar(c: Conversa, o?: { pendente?: boolean }): Promise<void>;
   excluir(id: string): Promise<void>;
+  /** Motivo de a lista ter vindo da cópia deste navegador (servidor fora do ar), ou null. */
+  situacao?(): string | null;
 }
 
 const BANCO = 'lapam-ia';
@@ -261,13 +269,14 @@ function transacao<T>(lojas: string[], modo: IDBTransactionMode, fazer: (tx: IDB
   }));
 }
 
-export const repositorioLocal: RepositorioConversas = {
+/** Tudo o que está no IndexedDB deste navegador: as conversas só daqui e as cópias das que estão numa conta. */
+export const armazemNavegador: RepositorioConversas = {
   onde: 'navegador',
   listar: () => transacao<ResumoConversa[]>([RESUMOS], 'readonly', (tx) => tx.objectStore(RESUMOS).getAll()).then((r) => r ?? []),
   ler: (id) => transacao<Conversa>([CONVERSAS], 'readonly', (tx) => tx.objectStore(CONVERSAS).get(id)).then((r) => r ?? null),
-  salvar: (c) => transacao([CONVERSAS, RESUMOS], 'readwrite', (tx) => {
+  salvar: (c, o) => transacao([CONVERSAS, RESUMOS], 'readwrite', (tx) => {
     tx.objectStore(CONVERSAS).put(c);
-    tx.objectStore(RESUMOS).put(resumoDe(c));
+    tx.objectStore(RESUMOS).put({ ...resumoDe(c), pendente: !!o?.pendente });
   }).then(() => undefined),
   excluir: (id) => transacao([CONVERSAS, RESUMOS], 'readwrite', (tx) => {
     tx.objectStore(CONVERSAS).delete(id);
@@ -275,17 +284,158 @@ export const repositorioLocal: RepositorioConversas = {
   }).then(() => undefined),
 };
 
+/** Sem login: só as conversas deste navegador; as cópias das que estão numa conta não aparecem nem abrem. */
+export function soNoNavegador(base: RepositorioConversas): RepositorioConversas {
+  return {
+    onde: 'navegador',
+    listar: async () => (await base.listar()).filter((r) => !r.conta),
+    ler: async (id) => {
+      const c = await base.ler(id);
+      return c && !c.conta ? c : null;
+    },
+    salvar: (c) => base.salvar({ ...c, conta: null }),
+    excluir: (id) => base.excluir(id),
+  };
+}
+
+export const repositorioLocal = soNoNavegador(armazemNavegador);
+
 /** Repositório em memória (testes e navegadores sem IndexedDB: vale só nesta visita). */
 export function repositorioEmMemoria(): RepositorioConversas {
-  const m = new Map<string, Conversa>();
+  const m = new Map<string, { c: Conversa; pendente: boolean }>();
   // mesmo algoritmo de cópia do IndexedDB: o que ele não grava falha aqui também
   const copia = <T>(v: T): T => structuredClone(v);
   return {
     onde: 'navegador',
-    listar: async () => [...m.values()].map(resumoDe),
-    ler: async (id) => (m.has(id) ? copia(m.get(id)!) : null),
-    salvar: async (c) => void m.set(c.id, copia(c)),
+    listar: async () => [...m.values()].map((x) => ({ ...resumoDe(x.c), pendente: x.pendente })),
+    ler: async (id) => (m.has(id) ? copia(m.get(id)!.c) : null),
+    salvar: async (c, o) => void m.set(c.id, { c: copia(c), pendente: !!o?.pendente }),
     excluir: async (id) => void m.delete(id),
+  };
+}
+
+// ---------------- conta (servidor do LAPAM) ----------------
+
+/** As rotas /api/ia/conversas do Worker: só as conversas do e-mail do login. */
+export interface ApiConversas {
+  listar(): Promise<ResumoConversa[]>;
+  ler(id: string): Promise<Conversa | null>;
+  salvar(c: Conversa, resumo: ResumoConversa): Promise<void>;
+  excluir(id: string): Promise<void>;
+}
+
+export function apiConversas(): ApiConversas {
+  const pedir = async (caminho: string, init: RequestInit = {}) => {
+    const r = await fetch(enderecoIa(`/api/ia/conversas${caminho}`), { redirect: 'manual', credentials: 'same-origin', ...init });
+    // o Access redireciona quando a sessão venceu
+    if (r.type === 'opaqueredirect' || r.status === 401) throw new ErroAcesso(t('a sessão expirou: entre de novo', 'the session expired: sign in again'), 'sessao');
+    if (!r.ok && r.status !== 404) {
+      const corpo = await r.json().catch(() => null) as { erro?: string } | null;
+      throw new Error(corpo?.erro ?? `${t('o servidor respondeu', 'the server answered')} ${r.status}`);
+    }
+    return r;
+  };
+  const caminho = (id: string) => `/${encodeURIComponent(id)}`;
+  return {
+    listar: async () => ((await (await pedir('')).json()) as { resumos: ResumoConversa[] }).resumos,
+    async ler(id) {
+      const r = await pedir(caminho(id));
+      return r.status === 404 ? null : lerConversaExportada(await r.text());
+    },
+    async salvar(c, resumo) {
+      await pedir(caminho(c.id), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ conversa: c, resumo }) });
+    },
+    async excluir(id) {
+      await pedir(caminho(id), { method: 'DELETE' });
+    },
+  };
+}
+
+/**
+ * Conversas na conta, com cópia neste navegador. A lista vem do servidor (e cai na cópia se ele não responder);
+ * gravar vai primeiro para a cópia, marcada como pendente, e depois para o servidor; o que ficou pendente segue
+ * na próxima vez que a lista carregar. Vale a gravação mais recente (a mesma conversa em dois computadores).
+ * As conversas só deste navegador (sem conta) continuam na lista; uma delas continuada aqui passa para a conta.
+ */
+export function repositorioConta(email: string, api: ApiConversas, copia: RepositorioConversas): RepositorioConversas {
+  let conhecidas: Map<string, ResumoConversa> | null = null;
+  let semServidor: string | null = null;
+  const naConta = (c: Conversa): Conversa => ({ ...c, conta: email });
+  const guardarCopia = (c: Conversa, pendente: boolean) => copia.salvar(c, { pendente }).catch(() => undefined);
+  return {
+    onde: 'conta',
+    situacao: () => semServidor,
+    async listar() {
+      const locais = await copia.listar().catch(() => [] as ResumoConversa[]);
+      const minhas = locais.filter((r) => r.conta === email);
+      const soAqui = locais.filter((r) => !r.conta);
+      let remotas: ResumoConversa[];
+      try {
+        remotas = await api.listar();
+      } catch (e) {
+        if (e instanceof ErroAcesso) throw e;
+        semServidor = motivoFalha(e);
+        return [...minhas, ...soAqui];
+      }
+      semServidor = null;
+      const porId = new Map(remotas.map((r): [string, ResumoConversa] => [r.id, { ...r, conta: email }]));
+      // gravadas aqui enquanto o servidor não respondia: vão agora, se continuarem as mais recentes
+      for (const r of minhas.filter((x) => x.pendente)) {
+        const remota = porId.get(r.id);
+        if (remota && remota.atualizadaEm > r.atualizadaEm) continue;
+        const c = await copia.ler(r.id).catch(() => null);
+        if (!c) continue;
+        try {
+          await api.salvar(c, resumoDe(c));
+          await guardarCopia(c, false);
+          porId.set(r.id, resumoDe(c));
+        } catch {
+          porId.set(r.id, r);
+        }
+      }
+      // excluídas em outro computador saem da cópia deste navegador
+      for (const r of minhas) if (!porId.has(r.id)) await copia.excluir(r.id).catch(() => undefined);
+      conhecidas = porId;
+      return [...porId.values(), ...soAqui];
+    },
+    async ler(id) {
+      const local = await copia.ler(id).catch(() => null);
+      if (local && !local.conta) return local;
+      if (local && local.conta !== email) return null;
+      // a cópia daqui basta quando é a mesma (ou mais nova) que a do servidor
+      const conhecida = conhecidas?.get(id);
+      if (local && conhecida && conhecida.atualizadaEm <= local.atualizadaEm) return local;
+      let remota: Conversa | null;
+      try {
+        remota = await api.ler(id);
+      } catch (e) {
+        if (local) return local;
+        throw e;
+      }
+      if (!remota) return local;
+      const c = naConta(remota);
+      if (local && local.atualizadaEm >= c.atualizadaEm) return local;
+      await guardarCopia(c, false);
+      return c;
+    },
+    async salvar(c) {
+      const final = naConta(c);
+      await guardarCopia(final, true);
+      try {
+        await api.salvar(final, resumoDe(final));
+      } catch (e) {
+        throw new Error(t(`${motivoFalha(e)}; ela ficou guardada neste navegador e vai para a conta na próxima vez que o histórico carregar`,
+          `${motivoFalha(e)}; it was kept in this browser and goes to the account the next time the history loads`));
+      }
+      await guardarCopia(final, false);
+      conhecidas?.set(final.id, resumoDe(final));
+    },
+    async excluir(id) {
+      const local = await copia.ler(id).catch(() => null);
+      if (!local || local.conta) await api.excluir(id);
+      await copia.excluir(id).catch(() => undefined);
+      conhecidas?.delete(id);
+    },
   };
 }
 
@@ -293,6 +443,7 @@ export function repositorioEmMemoria(): RepositorioConversas {
 export function motivoFalha(e: unknown) {
   const nome = (e as { name?: string } | null)?.name;
   if (nome === 'QuotaExceededError') return t('o navegador está sem espaço para guardar a conversa', 'the browser has no room left to store the conversation');
+  if (e instanceof TypeError) return t('sem conexão com o servidor', 'no connection to the server');
   // sem o ponto final: a frase do aviso continua depois do motivo
   return (e instanceof Error ? e.message : String(e)).trim().replace(/\.+$/, '');
 }
@@ -302,16 +453,25 @@ export function motivoFalha(e: unknown) {
 type EstadoHistorico = {
   resumos: ResumoConversa[];
   carregado: boolean;
+  /** Já se sabe se há login (e com que e-mail): antes disso, nem a lista nem uma conversa pelo endereço abrem. */
+  verificado: boolean;
+  /** E-mail da conta em uso; null = só este navegador. */
+  conta: string | null;
   /** Última falha de gravação ou leitura, para o aviso visível. */
   erro: string | null;
+  /** Lista vinda da cópia deste navegador porque o servidor não respondeu (com o motivo). */
+  semServidor: string | null;
   /** Conversas com uma pergunta rodando (inclusive fora da tela: a resposta é gravada quando chegar). */
   emAndamento: string[];
   /** Quando cada conversa foi gravada pela última vez nesta visita (a página recarrega se não for a dela). */
   gravadas: Record<string, number>;
 };
 
+const inicial = (conta: string | null, verificado: boolean): EstadoHistorico => ({
+  resumos: [], carregado: false, verificado, conta, erro: null, semServidor: null, emAndamento: [], gravadas: {},
+});
 let repo: RepositorioConversas = repositorioLocal;
-let estado: EstadoHistorico = { resumos: [], carregado: false, erro: null, emAndamento: [], gravadas: {} };
+let estado: EstadoHistorico = inicial(null, false);
 const ouvintes = new Set<() => void>();
 const excluidas = new Set<string>();
 const mudar = (novo: Partial<EstadoHistorico>) => {
@@ -319,9 +479,10 @@ const mudar = (novo: Partial<EstadoHistorico>) => {
   for (const f of ouvintes) f();
 };
 
-export function usarRepositorio(r: RepositorioConversas) {
+/** Troca o armazenamento (testes); conta = e-mail quando o repositório é o da conta. */
+export function usarRepositorio(r: RepositorioConversas, conta: string | null = null) {
   repo = r;
-  estado = { resumos: [], carregado: false, erro: null, emAndamento: [], gravadas: {} };
+  estado = inicial(conta, true);
   excluidas.clear();
 }
 
@@ -333,9 +494,18 @@ export const historico = {
     ouvintes.add(f);
     return () => void ouvintes.delete(f);
   },
+  /** Com o resultado do login: e-mail = conversas na conta; null = só neste navegador. */
+  conectar(email: string | null) {
+    if (estado.verificado && estado.conta === email) return;
+    repo = email ? repositorioConta(email, apiConversas(), armazemNavegador) : repositorioLocal;
+    excluidas.clear();
+    mudar({ ...inicial(email, true), emAndamento: estado.emAndamento, gravadas: estado.gravadas });
+    void historico.recarregar();
+  },
   async recarregar() {
     try {
-      mudar({ resumos: await repo.listar(), carregado: true });
+      const resumos = await repo.listar();
+      mudar({ resumos, carregado: true, semServidor: repo.situacao?.() ?? null });
     } catch (e) {
       mudar({ carregado: true, erro: t(`Não foi possível ler o histórico: ${motivoFalha(e)}.`, `Could not read the history: ${motivoFalha(e)}.`) });
     }
@@ -357,8 +527,13 @@ export const historico = {
       await historico.recarregar();
       return true;
     } catch (e) {
-      mudar({ erro: t(`A conversa não foi salva neste navegador: ${motivoFalha(e)}. Exporte-a em JSON para não perdê-la.`,
-        `The conversation was not saved in this browser: ${motivoFalha(e)}. Export it as JSON so you do not lose it.`) });
+      mudar({
+        erro: repo.onde === 'conta'
+          ? t(`A conversa não foi salva na sua conta: ${motivoFalha(e)}.`, `The conversation was not saved in your account: ${motivoFalha(e)}.`)
+          : t(`A conversa não foi salva neste navegador: ${motivoFalha(e)}. Exporte-a em JSON para não perdê-la.`,
+            `The conversation was not saved in this browser: ${motivoFalha(e)}. Export it as JSON so you do not lose it.`),
+      });
+      if (repo.onde === 'conta') await historico.recarregar();
       return false;
     }
   },
@@ -386,6 +561,24 @@ export const historico = {
     const { conversa, repetida } = paraImportar(c, await repo.ler(c.id));
     if (!repetida && !(await historico.salvar(conversa))) throw new Error(estado.erro ?? '');
     return { id: conversa.id, repetida };
+  },
+  /** Leva para a conta as conversas que estão só neste navegador. */
+  async levarParaConta(): Promise<{ levadas: number; falhas: number }> {
+    let levadas = 0;
+    let falhas = 0;
+    if (repo.onde !== 'conta') return { levadas, falhas };
+    for (const r of estado.resumos.filter((x) => !x.conta)) {
+      try {
+        const c = await repo.ler(r.id);
+        if (!c) throw new Error(r.id);
+        await repo.salvar(c);
+        levadas += 1;
+      } catch {
+        falhas += 1;
+      }
+    }
+    await historico.recarregar();
+    return { levadas, falhas };
   },
   marcar(id: string, rodando: boolean) {
     const resto = estado.emAndamento.filter((x) => x !== id);

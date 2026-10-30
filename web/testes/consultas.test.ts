@@ -27,7 +27,8 @@ import {
 import { citaQuebra, NOTAS } from '../src/ia_notas';
 import {
   desatualizada, exportarConversa, filtrarResumos, FORMATO_CONVERSA, guardarNota, historico, lerConversaExportada, lerNota, novaVersaoComDadosAtuais, paraImportar,
-  repositorioEmMemoria, resumoDe, tituloAutomatico, usarRepositorio, VERSAO_CONVERSA, versoesDosDados, type Conversa,
+  repositorioConta, repositorioEmMemoria, resumoDe, soNoNavegador, tituloAutomatico, usarRepositorio, VERSAO_CONVERSA, versoesDosDados,
+  type ApiConversas, type Conversa,
 } from '../src/ia_historico';
 import { cadastro, conferirCodigos, executarLocalizacao, localizar } from '../src/ia_territorio';
 import { crc32, paraCsv, paraXlsx, paraXlsxAbas } from '../src/exportar';
@@ -2098,5 +2099,100 @@ describe('IA: histórico de conversas', () => {
     assert.equal(desatualizada(nova.metas, '2026-11-05T00:00:00+00:00'), false);
     assert.deepEqual(versoesDosDados(nova.metas), ['2026-11-05T00:00:00+00:00']);
     assert.ok(nova.fontes['2026-10-28T00:00:00+00:00'] && nova.fontes['2026-11-05T00:00:00+00:00']);
+  });
+  // servidor simulado da conta: guarda o que recebe; fora = sem conexão
+  const servidor = () => {
+    const m = new Map<string, Conversa>();
+    const s = { m, fora: false, pedidos: 0 };
+    const api: ApiConversas = {
+      listar: async () => {
+        s.pedidos += 1;
+        if (s.fora) throw new TypeError('Failed to fetch');
+        return [...m.values()].map(resumoDe);
+      },
+      ler: async (id) => {
+        s.pedidos += 1;
+        if (s.fora) throw new TypeError('Failed to fetch');
+        return m.has(id) ? structuredClone(m.get(id)!) : null;
+      },
+      salvar: async (c) => {
+        s.pedidos += 1;
+        if (s.fora) throw new TypeError('Failed to fetch');
+        m.set(c.id, structuredClone(c));
+      },
+      excluir: async (id) => {
+        s.pedidos += 1;
+        if (s.fora) throw new TypeError('Failed to fetch');
+        m.delete(id);
+      },
+    };
+    return { s, api };
+  };
+
+  test('conta: grava no servidor e na cópia do navegador; outra conta e o modo sem login não veem a cópia', async () => {
+    const { s, api } = servidor();
+    const copia = repositorioEmMemoria();
+    usarRepositorio(repositorioConta('a@x.org', api, copia), 'a@x.org');
+    assert.equal(await historico.salvar(conversa()), true);
+    assert.equal(s.m.get('c-1')?.conta, 'a@x.org');
+    assert.equal((await copia.ler('c-1'))?.conta, 'a@x.org');
+    assert.deepEqual(historico.estado().resumos.map((r) => [r.id, r.conta]), [['c-1', 'a@x.org']]);
+    // a cópia é da conta a@x.org: com outro login ou sem login ela não aparece nem abre
+    const outra = repositorioConta('b@x.org', servidor().api, copia);
+    assert.deepEqual(await outra.listar(), []);
+    assert.equal(await outra.ler('c-1'), null);
+    assert.deepEqual(await soNoNavegador(copia).listar(), []);
+    assert.equal(await soNoNavegador(copia).ler('c-1'), null);
+  });
+
+  test('conta: sem conexão a lista vem da cópia, o que foi salvo fica pendente e segue quando o servidor volta', async () => {
+    const { s, api } = servidor();
+    const copia = repositorioEmMemoria();
+    usarRepositorio(repositorioConta('a@x.org', api, copia), 'a@x.org');
+    await historico.salvar(conversa());
+    s.fora = true;
+    assert.equal(await historico.salvar(conversa({ atualizadaEm: 3000, titulo: 'Editada sem conexão' })), false);
+    assert.match(historico.estado().erro ?? '', /não foi salva na sua conta: sem conexão com o servidor; ela ficou guardada neste navegador/);
+    assert.equal(historico.estado().semServidor, 'sem conexão com o servidor');
+    assert.deepEqual(historico.estado().resumos.map((r) => [r.titulo, r.pendente]), [['Editada sem conexão', true]]);
+    assert.equal((await historico.ler('c-1'))?.titulo, 'Editada sem conexão', 'abre a cópia daqui');
+    s.fora = false;
+    await historico.recarregar();
+    assert.equal(s.m.get('c-1')?.titulo, 'Editada sem conexão');
+    assert.equal(historico.estado().semServidor, null);
+    assert.deepEqual(historico.estado().resumos.map((r) => [r.titulo, !!r.pendente]), [['Editada sem conexão', false]]);
+  });
+
+  test('conta: vale a gravação mais recente; excluída em outro computador sai da cópia; excluir apaga do servidor', async () => {
+    const { s, api } = servidor();
+    const copia = repositorioEmMemoria();
+    const repo = repositorioConta('a@x.org', api, copia);
+    await repo.salvar(conversa());
+    // outro computador continuou a conversa
+    s.m.set('c-1', { ...conversa({ atualizadaEm: 9000, titulo: 'Continuada no outro computador' }), conta: 'a@x.org' });
+    await repo.listar();
+    assert.equal((await repo.ler('c-1'))?.titulo, 'Continuada no outro computador');
+    assert.equal((await copia.ler('c-1'))?.atualizadaEm, 9000, 'a cópia daqui foi atualizada');
+    // e depois a excluiu
+    s.m.delete('c-1');
+    assert.deepEqual(await repo.listar(), []);
+    assert.equal(await copia.ler('c-1'), null);
+    await repo.salvar(conversa({ id: 'c-2' }));
+    await repo.excluir('c-2');
+    assert.equal(s.m.has('c-2'), false);
+    assert.equal(await copia.ler('c-2'), null);
+  });
+
+  test('conta: as conversas só deste navegador aparecem marcadas e vão para a conta pelo botão', async () => {
+    const { s, api } = servidor();
+    const copia = repositorioEmMemoria();
+    await copia.salvar(conversa({ id: 'local-1' }));
+    await copia.salvar(conversa({ id: 'local-2' }));
+    usarRepositorio(repositorioConta('a@x.org', api, copia), 'a@x.org');
+    await historico.recarregar();
+    assert.deepEqual(historico.estado().resumos.map((r) => r.conta ?? null), [null, null]);
+    assert.deepEqual(await historico.levarParaConta(), { levadas: 2, falhas: 0 });
+    assert.deepEqual([...s.m.keys()].sort(), ['local-1', 'local-2']);
+    assert.deepEqual(historico.estado().resumos.map((r) => r.conta), ['a@x.org', 'a@x.org']);
   });
 });
