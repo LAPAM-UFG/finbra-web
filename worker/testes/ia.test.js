@@ -220,10 +220,17 @@ describe('conferência pelo especialista RAIS (pode_conferir)', () => {
     assert.equal(status, 200);
     assert.equal(corpo.pode_conferir, false);
     assert.equal(corpo.email, 'outra.pessoa@ufg.br');
-    // sem a variável, ninguém pede conferência
-    assert.equal((await estado('localhost', { IA_DEV_EMAIL: 'camilapbernardelli@gmail.com', CONFERENCIA_EMAILS: undefined })).corpo.pode_conferir, false);
     // um trecho do e-mail não basta
     assert.equal(podeConferir('bernardelli@gmail.com', { CONFERENCIA_EMAILS: LISTA }), false);
+  });
+
+  test('sem CONFERENCIA_EMAILS: todos com acesso à IA podem pedir', async () => {
+    for (const vazia of [undefined, '', '  ']) {
+      const { status, corpo } = await estado('localhost', { IA_DEV_EMAIL: 'outra.pessoa@ufg.br', CONFERENCIA_EMAILS: vazia });
+      assert.equal(status, 200);
+      assert.equal(corpo.pode_conferir, true, String(vazia));
+    }
+    assert.equal(podeConferir(null, {}), false);
   });
 
   test('sem login: 401 como antes, com pode_conferir false', async () => {
@@ -232,6 +239,8 @@ describe('conferência pelo especialista RAIS (pode_conferir)', () => {
     assert.equal(corpo.codigo, 'sem_login');
     assert.equal(corpo.pode_conferir, false);
     assert.equal(podeConferir(null, { CONFERENCIA_EMAILS: LISTA }), false);
+    const semLista = await estado('finbra-web.exemplo.dev', { ACCESS_TEAM: 'x.cloudflareaccess.com', ACCESS_AUD: 'y', CONFERENCIA_EMAILS: undefined });
+    assert.deepEqual([semLista.status, semLista.corpo.pode_conferir], [401, false]);
     // as outras rotas sem login não mudam
     const url = new URL('https://finbra-web.exemplo.dev/api/ia');
     const r = await rotaIa(new Request(url, { method: 'POST', body: '{}' }), { DADOS: dados, ACCESS_TEAM: 'x', ACCESS_AUD: 'y' }, url);
