@@ -9,9 +9,9 @@ Uso:
     py pipeline/r2.py enviar --camadas gold
     py pipeline/r2.py enviar --camadas gold --limpar   # também apaga do bucket o que não existe mais localmente
     py pipeline/r2.py enviar --ignorar 'silver/lrf/*' gold/lrf.parquet   # sem os arquivos ainda incompletos
-    py pipeline/r2.py enviar --raiz D:/LVBERNARDELLI/finbra_micro --camadas silver   # microdados (fora do Dropbox)
+    py pipeline/r2.py enviar --raiz E:/finbra/micro --camadas silver   # microdados (no HD externo)
     py pipeline/r2.py baixar --camadas silver gold   # monta o data/ local a partir do R2 (sem os microdados)
-    py pipeline/r2.py baixar --camadas silver --com-micro --raiz D:/LVBERNARDELLI/finbra_micro
+    py pipeline/r2.py baixar --camadas silver --com-micro --raiz E:/finbra/micro
 """
 import argparse
 import hashlib
@@ -154,9 +154,9 @@ def main():
                    help="com enviar: apaga do bucket os arquivos dessas camadas que não existem localmente")
     p.add_argument("--ignorar", nargs="+", default=[], help="com enviar: padrões de caminho que não sobem (ex.: 'silver/lrf/*')")
     p.add_argument("--raiz", type=Path, default=DATA,
-                   help="pasta com as camadas (ex.: D:/LVBERNARDELLI/finbra_micro para os microdados)")
+                   help="pasta com as camadas (ex.: E:/finbra/micro para os microdados)")
     p.add_argument("--com-micro", action="store_true",
-                   help=f"com baixar: inclui os microdados ({MICRO}, ~33 GB); use com --raiz fora do Dropbox")
+                   help=f"com baixar: inclui os microdados ({MICRO}, ~33 GB); use com --raiz no HD externo")
     args = p.parse_args()
     if args.limpar and args.ignorar:
         sys.exit("--limpar com --ignorar apagaria do bucket os arquivos ignorados; use um ou outro")

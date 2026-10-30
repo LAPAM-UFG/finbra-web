@@ -1,8 +1,8 @@
 """Mercado de trabalho: RAIS (vínculos e estabelecimentos) e Novo CAGED → silver/trabalho e gold/trabalho.
 
 Os microdados brutos (PDET/Ministério do Trabalho, ~3,5 GB compactados por ano da RAIS e ~50 MB por mês
-do CAGED) ficam fora do projeto e do Dropbox, na pasta --brutos (padrão: TRABALHO_BRUTOS ou
-D:/LVBERNARDELLI/finbra_brutos), com a estrutura rais/AAAA/*.7z e caged/AAAAMM/*.7z.
+do CAGED) ficam fora do projeto, no HD externo, na pasta --brutos (padrão: TRABALHO_BRUTOS ou
+E:/finbra/brutos), com a estrutura rais/AAAA/*.7z e caged/AAAAMM/*.7z.
 Cada arquivo é descompactado numa pasta temporária, somado com o DuckDB e apagado em seguida.
 
 silver/trabalho/rais_vinculos/ano=AAAA.parquet   vínculos ativos em 31/12 por município, divisão CNAE,
@@ -18,6 +18,7 @@ gold/trabalho/caged.parquet        competência × município: admissões, desli
                                    no prazo + fora do prazo − exclusões, pela competência da movimentação)
 gold/trabalho/caged_uf.parquet     competência × UF/Brasil × seção CNAE
 gold/trabalho/cnae.parquet         nomes das seções e divisões da CNAE 2.0 (IBGE)
+gold/trabalho/caged_cbo.parquet    competência × UF/Brasil × família CBO (dos microdados do CAGED, em --micro)
 gold/trabalho/dicionario.parquet   nomes dos códigos dos microdados (de dicionario_trabalho.csv, montado a partir
                                    dos layouts do PDET: CBO, CNAE, afastamento, desligamento, vínculo…)
 
@@ -407,11 +408,57 @@ def gerar_gold(con):
             ) TO '{g}/caged_uf.parquet' (FORMAT parquet, COMPRESSION zstd)""")
         print("gold/trabalho: caged, caged_anual e caged_uf")
     cnae(con)
-    # nomes dos códigos dos microdados (CBO, CNAE, afastamento, desligamento…), para a consulta personalizada
+    dicionario(con)
+    atualizar_manifesto(con)
+
+
+def dicionario(con):
+    """Nomes dos códigos dos microdados (CBO em todos os níveis, CNAE, natureza jurídica, afastamento…), para a consulta."""
+    GOLD_T.mkdir(parents=True, exist_ok=True)
     con.execute(f"""COPY (SELECT * FROM read_csv('{(Path(__file__).parent / "dicionario_trabalho.csv").as_posix()}',
                                                  header=true, delim=',', quote='"', all_varchar=true) ORDER BY variavel, codigo)
-                    TO '{g}/dicionario.parquet' (FORMAT parquet, COMPRESSION zstd)""")
-    atualizar_manifesto(con)
+                    TO '{GOLD_T.as_posix()}/dicionario.parquet' (FORMAT parquet, COMPRESSION zstd)""")
+
+
+def gerar_caged_ocupacao(con, micro: Path):
+    """
+    Novo CAGED por família da CBO (4 dígitos), a partir dos microdados (pipeline/microdados.py):
+    gold/trabalho/caged_cbo.parquet  competência × escopo (UF ou 'BR') × família CBO: admissões, desligamentos,
+    saldo e salário de admissão (soma e número das admissões com salário entre 0,3 e 150 salários mínimos,
+    e número das que ficaram fora). Série com ajustes, como caged.parquet: no prazo + fora do prazo − exclusões,
+    pela competência da movimentação. O salário é o campo salario (mensal, como o MTE divulga); valorsalariofixo
+    e a unidade do salário não entram. Ordenado por escopo e família, para a leitura por Range.
+    """
+    pasta = micro / "silver" / "trabalho" / "micro" / "caged"
+    if not any(pasta.glob("arquivo=*/*.parquet")):
+        print("caged_cbo: sem microdados do CAGED em", pasta)
+        return
+    salario_minimo(con)
+    con.execute(f"""CREATE OR REPLACE TEMP TABLE estados AS
+                    SELECT cod_ibge AS cod, uf FROM '{SILVER.as_posix()}/entes.parquet' WHERE esfera IN ('E', 'D')""")
+    destino = GOLD_T / "caged_cbo.parquet"
+    tmp = destino.with_suffix(".tmp")
+    con.execute(f"""
+        COPY (
+            WITH m AS (
+                SELECT x.competencia_mov AS competencia, u.uf, coalesce(x.cbo[1:4], '????') AS cbo_familia,
+                       CASE WHEN x.tipo = 'EXC' THEN -1 ELSE 1 END AS sinal, x.saldo_movimentacao AS s, x.salario::DOUBLE AS sal,
+                       x.salario::DOUBLE BETWEEN 0.3 * sm.valor AND 150 * sm.valor AS sal_valido
+                FROM read_parquet('{pasta.as_posix()}/arquivo=*/*.parquet') x
+                LEFT JOIN estados u ON u.cod = x.uf
+                LEFT JOIN salario_minimo sm ON sm.aaaamm = x.competencia_mov),
+            g AS (
+                SELECT competencia, CASE WHEN grouping(uf) = 1 THEN 'BR' ELSE uf END AS escopo, cbo_familia,
+                       sum(sinal) FILTER (s = 1) AS admissoes, sum(sinal) FILTER (s = -1) AS desligamentos, sum(sinal * s) AS saldo,
+                       sum(sal) FILTER (s = 1 AND sinal = 1 AND sal_valido) AS salario_adm_soma,
+                       count(*) FILTER (s = 1 AND sinal = 1 AND sal_valido) AS salario_adm_n,
+                       count(*) FILTER (s = 1 AND sinal = 1 AND NOT coalesce(sal_valido, false)) AS salario_adm_fora
+                FROM m GROUP BY GROUPING SETS ((competencia, uf, cbo_familia), (competencia, cbo_familia)))
+            SELECT * FROM g WHERE escopo IS NOT NULL ORDER BY escopo, cbo_familia, competencia
+        ) TO '{tmp.as_posix()}' (FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 50000)""")
+    tmp.replace(destino)
+    n, = con.execute(f"SELECT count(*) FROM '{destino.as_posix()}'").fetchone()
+    print(f"gold/trabalho/caged_cbo: {n:,} linhas, {destino.stat().st_size / 1e6:.1f} MB")
 
 
 def atualizar_manifesto(con):
@@ -433,18 +480,27 @@ def atualizar_manifesto(con):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--brutos", default=os.environ.get("TRABALHO_BRUTOS", "D:/LVBERNARDELLI/finbra_brutos"))
+    p.add_argument("--brutos", default=os.environ.get("TRABALHO_BRUTOS", "E:/finbra/brutos"))
     p.add_argument("--refazer", action="store_true")
     p.add_argument("--so-gold", action="store_true")
+    p.add_argument("--so-caged-cbo", action="store_true", help="só a tabela do CAGED por família da CBO (e o dicionário)")
+    p.add_argument("--micro", default=os.environ.get("TRABALHO_MICRO", "E:/finbra/micro"), help="pasta dos microdados (microdados.py)")
     p.add_argument("--sem-conferir", action="store_true", help="não confere os tamanhos no FTP (pastas de teste)")
     args = p.parse_args()
     con = duckdb.connect()
     con.execute("SET memory_limit = '6GB'")
+    if args.so_caged_cbo:
+        dicionario(con)
+        gerar_caged_ocupacao(con, Path(args.micro))
+        atualizar_manifesto(con)
+        return
     if not args.so_gold:
         brutos = Path(args.brutos)
         processar_rais(con, brutos, args.refazer, not args.sem_conferir)
         processar_caged(con, brutos, args.refazer, not args.sem_conferir)
     gerar_gold(con)
+    gerar_caged_ocupacao(con, Path(args.micro))
+    atualizar_manifesto(con)
 
 
 if __name__ == "__main__":

@@ -61,6 +61,7 @@ A página monta as tabelas com o resultado das consultas e faz ela mesma totais,
 - Rótulos dos grupos vêm da consulta (ex.: CASE ... END AS subsistema), com nomes legíveis; a tabela segue a ordem das linhas do resultado, então ordene os grupos na ordem em que a pergunta os cita (ex.: ORDER BY ano, CASE subsistema WHEN 'Matéria-prima' THEN 1 ... END) ou, sem ordem na pergunta, pelo valor. Em de e ate, os períodos pedidos na pergunta (não só os disponíveis). total = true só quando os grupos somam um todo; participacao = true quando a parte de cada grupo no total importa.
 - Totais ou variações citados na conclusão, nos destaques ou na análise também precisam estar numa consulta (ex.: GROUPING SETS ou uma consulta do total) ou na tabela montada pela página; não faça contas de cabeça.
 - papel: principal (responde ao pedido), alternativa (outro recorte, ex.: anos disponíveis quando um ano pedido falta) ou complemento (série intermediária, detalhamento). Não mude o escopo pedido em silêncio: o que não é o pedido vai como alternativa ou complemento.
+- Cada recorte que a pergunta pede ou que a análise comenta (ex.: por sexo, por natureza jurídica, por município) tem a sua tabela, até 10 por resposta; os números citados no texto vêm de uma delas ou de um destaque. Se a pergunta pedir mais de 10, diga na conclusão quais ficaram de fora e sugira-as em aprofundar.
 - Nunca escreva tabelas no texto (nem com | ou tabulações): elas vão em tabelas.
 
 ## A ferramenta responder (sempre no fim, sozinha, depois de ver os resultados)

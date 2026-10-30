@@ -535,3 +535,48 @@ figure.grafico { margin: 0; }
 .sugestoes { list-style: none; margin: 4px 0 0; padding: 4px; max-height: 220px; overflow: auto; border: 1px solid var(--borda); border-radius: 6px; background: var(--superficie); font-size: 12px; }
 .sugestoes li button { text-align: left; width: 100%; padding: 3px 4px; }
 .sugestoes code { color: var(--tinta-3); margin-right: 4px; }
+
+/* ---------- mercado de trabalho: recorte, consulta e perfil ---------- */
+.kpis.kpis-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 1100px) { .kpis.kpis-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .kpis.kpis-4 { grid-template-columns: 1fr; } }
+.andamento { display: flex; gap: 12px; align-items: center; justify-content: center; flex-wrap: wrap; }
+.andamento .tempo { font-variant-numeric: tabular-nums; color: var(--tinta-2); min-width: 3em; }
+.tabela-fixa thead th { position: sticky; top: 0; background: var(--superficie); z-index: 2; }
+.tabela-fixa td:first-child, .tabela-fixa th:first-child { position: sticky; left: 0; background: var(--superficie); z-index: 1; max-width: 340px; }
+.tabela-fixa thead th:first-child { z-index: 3; }
+@media (min-width: 900px) { .tabela-fixa td:first-child, .tabela-fixa th:first-child { min-width: 240px; } }
+.n-pequeno { color: var(--tinta-3); font-style: italic; }
+.etiquetas { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.etiqueta { display: inline-flex; align-items: center; gap: 4px; background: var(--superficie-2); border: 1px solid var(--borda); border-radius: 999px; padding: 2px 4px 2px 10px; font-size: 12px; max-width: 100%; }
+.etiqueta > span { overflow-wrap: anywhere; }
+.etiqueta button { padding: 0 6px; font-size: 15px; line-height: 1; }
+.avancados { margin-top: 4px; }
+.avancados summary, .colunas summary { cursor: pointer; font-size: 13px; color: var(--tinta-2); }
+.grade-filtros { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; margin-top: 10px; }
+.lista-codigos { display: flex; flex-direction: column; gap: 2px; font-size: 12px; border: 1px solid var(--borda); border-radius: 6px; padding: 6px 10px; max-height: 210px; overflow-y: auto; }
+.lista-codigos legend { font-weight: 600; font-size: 12px; }
+.colunas .lista-codigos { position: absolute; background: var(--superficie); z-index: 5; max-height: 320px; box-shadow: var(--sombra); }
+.colunas { position: relative; align-self: end; }
+.codigos-familia { margin: 4px 0 6px 16px; font-size: 12px; }
+.capacidade.limitada { border-left: 3px solid var(--acento); }
+.acoes-cartao { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.sql pre { white-space: pre-wrap; font-size: 11px; background: var(--superficie-2); padding: 8px; border-radius: 6px; overflow-x: auto; }
+.quebra-serie { font-size: 12px; color: var(--tinta-2); border-left: 3px dashed var(--tinta-3); padding: 4px 10px; margin: 6px 0 12px; }
+td.quebra-ano { border-top: 2px dashed var(--tinta-3); }
+.opcoes-resultado { margin-bottom: 8px; }
+.perfil-tabela h4 { margin: 12px 0 4px; font-size: 13px; }
+.indisponivel { color: var(--tinta-3); font-style: italic; }
+@media (max-width: 600px) {
+  .tabela-fixa td:first-child, .tabela-fixa th:first-child { max-width: 160px; }
+  .colunas .lista-codigos { position: static; }
+}
+@media print {
+  .tabela-fixa thead th, .tabela-fixa td:first-child, .tabela-fixa th:first-child { position: static; }
+  .rolagem { overflow: visible !important; max-height: none !important; }
+  .perfil-tabela table, .tabela-fixa { font-size: 9pt; width: 100%; table-layout: auto; }
+  .perfil-tabela, .cartao { break-inside: auto; }
+  tr { break-inside: avoid; }
+  .menu, .topo nav, .tema, .exportar, .png, .alternar { display: none !important; }
+  .formulario-recorte, .andamento button, .acoes-cartao { display: none; }
+}

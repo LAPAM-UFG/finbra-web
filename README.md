@@ -36,6 +36,14 @@ web/ (React) ──► build ──► Cloudflare Worker ◄─┘
 | `.github/workflows/` | as duas automações |
 | `data/` | arquivos de dados locais (fora do git) |
 
+**Onde ficam os dados no computador do laboratório.** Tudo fica no HD externo, em `E:\finbra`, fora do
+Dropbox: `data` (as camadas landing, bronze, silver e gold), `micro` (microdados da RAIS e do CAGED) e
+`brutos` (os .7z do PDET). O pipeline, o Vite e os testes acham as pastas pelas variáveis de ambiente
+do usuário `DATA_DIR=E:\finbra\data`, `TRABALHO_MICRO=E:\finbra\micro` e `TRABALHO_BRUTOS=E:\finbra\brutos`
+(sem `DATA_DIR`, vale a pasta `data/` do projeto, como no GitHub). Com o HD desconectado, o pipeline e o
+site local não acham os dados; o site publicado não muda, porque lê do R2. O HD é exFAT, sem diário:
+use "Ejetar" antes de desconectar.
+
 ---
 
 ## Montar o ambiente local
@@ -96,7 +104,7 @@ cd web
 npm run dev                     # http://localhost:5180
 ```
 
-O Vite serve a pasta `data/` em `/dados/`, do mesmo jeito que o Worker faz em produção. Para testar a
+O Vite serve a pasta de dados (`DATA_DIR`, ou `data/`) em `/dados/`, do mesmo jeito que o Worker faz em produção. Para testar a
 versão compilada: `npm run build && npm run preview`.
 
 Na primeira visita, o navegador baixa o motor do DuckDB (alguns MB, da CDN jsDelivr); depois
@@ -163,19 +171,20 @@ tabelas para a IA (`siope_*`, `siops_indicadores`), de 2013 em diante.
 ### Mercado de trabalho (RAIS e Novo CAGED)
 
 Microdados do PDET (Ministério do Trabalho), baixados à mão do FTP para a pasta de brutos
-(`D:/LVBERNARDELLI/finbra_brutos`, fora do Dropbox: `rais/AAAA/*.7z` e `caged/AAAAMM/*.7z`; precisa do 7-Zip).
+(`E:/finbra/brutos`, no HD externo: `rais/AAAA/*.7z` e `caged/AAAAMM/*.7z`; precisa do 7-Zip).
 
 | | |
 |---|---|
 | Totais do painel | `pipeline/trabalho.py`: `silver/trabalho` (somas por município, divisão CNAE e perfil) e `gold/trabalho` (páginas de mercado de trabalho) |
-| Microdados | `pipeline/microdados.py`: uma linha por vínculo da RAIS (ativos ou não em 31/12), por estabelecimento e por movimentação do CAGED, com todas as colunas e nomes padronizados entre os anos. Fica em `D:/LVBERNARDELLI/finbra_micro/silver/trabalho/micro/` (fora do Dropbox; ~25–30 GB), em arquivos por ano e UF ordenados por município, CNAE e CBO. Sobe para o R2 com `py pipeline/r2.py enviar --raiz D:/LVBERNARDELLI/finbra_micro --camadas silver` (o `indice.json` vai por último); o `baixar` os pula, a menos que se passe `--com-micro` |
+| Microdados | `pipeline/microdados.py`: uma linha por vínculo da RAIS (ativos ou não em 31/12), por estabelecimento e por movimentação do CAGED, com todas as colunas e nomes padronizados entre os anos. Fica em `E:/finbra/micro/silver/trabalho/micro/` (no HD externo; ~25–30 GB), em arquivos por ano e UF ordenados por município, CNAE e CBO. Sobe para o R2 com `py pipeline/r2.py enviar --raiz E:/finbra/micro --camadas silver` (o `indice.json` vai por último); o `baixar` os pula, a menos que se passe `--com-micro` |
 | Tabelas da consulta na web | o mesmo script soma os microdados em `gold/trabalho/cubo_uf/ano=AAAA.parquet` (UF × classe CNAE × CBO × sexo × situação × afastamento) e `gold/trabalho/cubo_mun/ano=AAAA.parquet` (município × divisão CNAE × grande grupo CBO × …), ~90 MB por ano; `py pipeline/microdados.py --so cubos` refaz só elas |
 | População | anos da RAIS sem a população do painel de finanças (2010–2012): IBGE, Censo de 2010 (SIDRA 1378) e estimativas (SIDRA 6579), em `silver/trabalho/populacao_ibge.parquet`; de 2013 em diante, a mesma do painel de finanças |
-| Dicionário | `pipeline/dicionario_trabalho.csv` (CBO, CNAE, afastamento, desligamento, vínculo…), montado a partir dos layouts do PDET; vira `gold/trabalho/dicionario.parquet` no `trabalho.py` |
+| CAGED por ocupação | `pipeline/trabalho.py` soma os microdados do CAGED em `gold/trabalho/caged_cbo.parquet` (competência × UF/Brasil × família CBO, série com ajustes, salário de admissão com N e admissões fora da faixa); `py pipeline/trabalho.py --so-caged-cbo` refaz só ela e o dicionário |
+| Dicionário | `pipeline/dicionario_trabalho.csv`: CBO em todos os níveis (ocupação dos layouts do PDET; família, subgrupo e subgrupo principal da estrutura oficial da CBO 2002, MTE), CNAE, natureza jurídica (Tabela de Natureza Jurídica 2021, CONCLA/IBGE), afastamento, desligamento, vínculo…; vira `gold/trabalho/dicionario.parquet` no `trabalho.py`. Setor institucional, esfera administrativa e faixas de jornada e de tempo no emprego são derivados no site (`web/src/dados.ts`) |
 | Tempo | algumas horas para a RAIS 2010–2025 e o CAGED desde 2020; retomável (pula o que já terminou) |
 
 A página **Consulta personalizada** (`/trabalho/consulta`) escolhe a fonte sozinha: se houver
-`silver/trabalho/micro/indice.json` (no R2 ou, no servidor local, na pasta `finbra_micro`), UFs e municípios
+`silver/trabalho/micro/indice.json` (no R2 ou, no servidor local, na pasta dos microdados), UFs e municípios
 vêm dos microdados, com todos os recortes e medianas; o Brasil, e tudo quando não há microdados, vem das
 tabelas pré-somadas (médias, sem medianas; municípios só com divisão CNAE e grande grupo CBO).
 `VITE_MICRODADOS=0 npm run dev` força as tabelas pré-somadas.

@@ -395,6 +395,10 @@ def fonte_trabalho(con):
         de, ate = con.execute(f"SELECT min(competencia), max(competencia) FROM '{(pasta / 'caged_uf.parquet').as_posix()}'").fetchone()
         saida["caged"] = {"de": de, "ate": ate, "processado_em": _quando(pasta / "caged_uf.parquet"),
                           "url": "ftp://ftp.mtps.gov.br/pdet/microdados/NOVO%20CAGED/"}
+    # CAGED por família da CBO (trabalho.py, a partir dos microdados do CAGED)
+    if (pasta / "caged_cbo.parquet").exists():
+        de, ate = con.execute(f"SELECT min(competencia), max(competencia) FROM '{(pasta / 'caged_cbo.parquet').as_posix()}'").fetchone()
+        saida["caged_cbo"] = {"de": de, "ate": ate, "processado_em": _quando(pasta / "caged_cbo.parquet")}
     # consulta personalizada (microdados.py): anos com as tabelas pré-somadas da RAIS
     anos_cubo = sorted(int(p.stem[4:]) for p in (pasta / "cubo_uf").glob("ano=*.parquet"))
     if anos_cubo:

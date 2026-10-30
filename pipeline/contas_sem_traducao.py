@@ -8,8 +8,10 @@ from pathlib import Path
 
 import duckdb
 
+from config import SILVER
+
 RAIZ = Path(__file__).resolve().parent.parent
-CONTAS = RAIZ / 'data' / 'silver' / 'contas'
+CONTAS = SILVER / 'contas'
 TRADUCOES = RAIZ / 'web' / 'src' / 'traducoes' / 'contas.en.json'
 
 

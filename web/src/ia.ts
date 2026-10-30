@@ -45,6 +45,8 @@ const TAMANHO_MODELO = 40_000; // caracteres do resultado enviado ao modelo
 /** Iguais aos do Worker (worker/src/ia.js). */
 export const MAX_RODADAS = 12;
 export const MAX_PERGUNTA = 2000;
+/** Tabelas por resposta (o esquema da ferramenta responder, no Worker, diz o mesmo). */
+export const MAX_TABELAS = 10;
 /** Vezes que uma resposta com problemas volta ao modelo; depois disso, a página a mostra com os avisos. */
 const MAX_REVISOES = 2;
 
@@ -460,6 +462,8 @@ export type RespostaFinal = {
   recorte: { territorio: string; periodo_solicitado: string; periodo: string; unidade: string; filtros: string; agrupamentos: string };
   metodologia: string;
   tabelas: EspecTabela[];
+  /** Tabelas pedidas além de MAX_TABELAS: não entram na página e voltam ao modelo como problema. */
+  tabelasAlem?: number;
   graficos: GraficoIa[];
   aprofundar: string[];
 };
@@ -529,7 +533,8 @@ export function lerResposta(v: unknown): RespostaFinal | null {
         de: linha(x.de, 20), ate: linha(x.ate, 20), total: x.total === true, participacao: x.participacao === true,
         formato: umFormato(x.formato), unidade: linha(x.unidade, 120), nota: texto(x.nota, 600).replace(/\s*\n\s*/g, ' '),
       } satisfies EspecTabela
-      : null), 4),
+      : null), MAX_TABELAS),
+    tabelasAlem: Array.isArray(o.tabelas) ? Math.max(0, o.tabelas.length - MAX_TABELAS) : 0,
     graficos: lista(o.graficos, (g) => {
       const y = Array.isArray(g.y) ? g.y.map((c) => linha(c, 120)).filter(Boolean).slice(0, 3) : [];
       return texto(g.consulta) && texto(g.x) && y.length
@@ -948,6 +953,9 @@ export function revisarResposta(p: RespostaPronta, o: { pergunta?: string; modo?
   if (p.r.tipo !== 'resposta') return [];
   const problemas: string[] = [];
   for (const x of p.tabelas) if (x.motivo) problemas.push(`Tabela "${x.espec.titulo || x.espec.consulta}": ${x.motivo}.`);
+  if (p.r.tabelasAlem) {
+    problemas.push(`A resposta trouxe ${MAX_TABELAS + p.r.tabelasAlem} tabelas e a página mostra até ${MAX_TABELAS}: junte recortes na mesma tabela (ex.: uma distribuição em formato longo com a coluna do recorte) ou diga na conclusão quais ficaram de fora.`);
+  }
   // texto com tabulação ou outro caractere de controle no lugar de letras acentuadas
   const textos: [string, string][] = [
     ['conclusao', p.r.conclusao], ['explicacao', p.r.explicacao], ['limitacoes', p.r.limitacoes], ['metodologia', p.r.metodologia],

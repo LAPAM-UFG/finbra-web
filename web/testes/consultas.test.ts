@@ -37,9 +37,9 @@ import { ordenarBusca } from '../src/contexto';
 const require = createRequire(import.meta.url);
 const FETCH = globalThis.fetch; // alguns testes simulam o Worker trocando o fetch
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
-const DATA = path.resolve(AQUI, '..', '..', '..', 'data').replaceAll('\\', '/');
+const DATA = path.resolve(AQUI, '..', '..', '..', process.env.DATA_DIR ?? 'data').replaceAll('\\', '/');
 // microdados da RAIS (pipeline/microdados.py), fora do projeto
-const MICRO = (process.env.TRABALHO_MICRO ?? 'D:/LVBERNARDELLI/finbra_micro').replaceAll('\\', '/');
+const MICRO = (process.env.TRABALHO_MICRO ?? 'E:/finbra/micro').replaceAll('\\', '/');
 const onde = (c: string) => (c.startsWith('silver/trabalho/micro/') ? `${MICRO}/${c}` : `${DATA}/${c}`);
 const rota = <T>(caminho: string, params: Record<string, string | number | undefined> = {}) => executar(caminho, params) as Promise<T>;
 type L = Record<string, number | string | null | boolean>;
@@ -508,6 +508,17 @@ describe('IA: histórico, resposta estruturada e conferência', () => {
     assert.equal(t2.resposta, null);
     assert.equal(t2.textoFinal, 'Resposta em texto.');
     assert.deepEqual(t2.itens.map((i) => i.tipo === 'consulta' ? i.rotulo : 'nota'), ['C2']);
+  });
+
+  test('resposta: as sete tabelas pedidas ficam todas (antes eram cortadas em 4); além de 10, o excesso é apontado', () => {
+    const tabela = (i: number) => ({ consulta: `C${i}`, papel: 'principal', tipo: 'tabela', titulo: `Tabela ${i}`, grupo: '', periodo: '', valor: '',
+      colunas: [], de: '', ate: '', total: false, participacao: false, formato: 'inteiro', unidade: 'vínculos', nota: '' });
+    const sete = lerResposta({ resposta: entrada({ tabelas: [1, 2, 3, 4, 5, 6, 7].map(tabela) }) })!;
+    assert.equal(sete.tabelas.length, 7);
+    assert.equal(sete.tabelasAlem, 0);
+    const doze = lerResposta({ resposta: entrada({ tabelas: Array.from({ length: 12 }, (_, i) => tabela(i + 1)) }) })!;
+    assert.equal(doze.tabelas.length, 10);
+    assert.equal(doze.tabelasAlem, 2);
   });
 
   test('resposta: campos no objeto "resposta"; marcação vazada ou sem conclusão não vale', () => {
@@ -1356,6 +1367,64 @@ describe('consulta personalizada (microdados da RAIS)', () => {
     assert.equal(soma(porCbo.linhas), tot.vinculos);
     assert.equal(soma(porIdade.linhas), tot.vinculos);
     assert.ok(porCbo.linhas.slice(0, 20).every((x) => x.nome), 'as ocupações mais comuns têm nome no dicionário');
+  });
+
+  test('denominadores da remuneração, sobreposição de códigos, cruzamentos e série (microdados)', { skip: semMicro }, async () => {
+    usarMicrodadosNoTeste(true);
+    try {
+      const base = { uf: 'GO', situacao: 'ativos' };
+      const t0 = await total({ ...base, cbo: '2512' });
+      // todo vínculo ativo está em exatamente uma situação da remuneração de dezembro
+      assert.equal((t0.n_rem_dez as number) + (t0.rem_dez_ausente as number) + (t0.rem_dez_zero as number) + (t0.rem_dez_negativa as number), t0.ativos);
+      quase(t0.rem_dez_media as number, (t0.rem_dez_soma as number) / (t0.n_rem_dez as number));
+      const p = ['rem_dez_p10', 'rem_dez_p25', 'rem_dez_mediana', 'rem_dez_p75', 'rem_dez_p90'].map((k) => t0[k] as number);
+      assert.deepEqual([...p].sort((a, b) => a - b), p, 'percentis em ordem');
+      // família + ocupação contida nela: nenhum vínculo conta duas vezes
+      const sobre = await total({ ...base, cbo: '2512, 251205' });
+      assert.equal(sobre.vinculos, t0.vinculos);
+      // setor institucional: estatais + privadas = grupo 2 da natureza jurídica (entidades empresariais)
+      const g2 = await total({ uf: 'GO', njg: '2' });
+      const estatais = await total({ uf: 'GO', si: '2' });
+      const privadas = await total({ uf: 'GO', si: '3' });
+      assert.equal((estatais.vinculos as number) + (privadas.vinculos as number), g2.vinculos);
+      // cruzamento de duas dimensões soma o total, e cada margem soma o agrupamento simples
+      const cruz = await consulta({ uf: 'GO', agrupar: 'sexo', agrupar2: 'escolaridade' });
+      const tot = await total({ uf: 'GO' });
+      assert.equal(cruz.linhas.reduce((s, x) => s + (x.vinculos as number), 0), tot.vinculos);
+      assert.ok(cruz.linhas.every((x) => x.grupo2 !== undefined), 'grupo2 no resultado');
+      // filtros de lista: união dentro do filtro, interseção entre filtros
+      const sup = await total({ uf: 'GO', esc: '9, 10, 11' });
+      assert.equal(sup.vinculos, tot.superior);
+      const supMulher = await total({ uf: 'GO', esc: '9,10,11', sexo: '2' });
+      assert.ok((supMulher.vinculos as number) < (sup.vinculos as number));
+      // série: cada ano igual à consulta anual
+      const serie = await rota<{ linhas: L[]; anos: number[] }>('trab_consulta_serie', { ...base, cbo: '2512', de: ANO, ate: ANO + 1, agrupar: 'total' });
+      assert.deepEqual(serie.anos, [ANO, ANO + 1]);
+      assert.equal(serie.linhas.find((x) => x.ano === ANO)?.ativos, t0.ativos);
+      // perfil: numa leitura só, cada dimensão soma o total do recorte (inclusive os não informados)
+      const dims = ['cbo', 'cnae_secao', 'setor_institucional', 'esfera_adm', 'sexo', 'faixa_idade', 'raca_cor', 'escolaridade', 'municipio', 'faixa_horas', 'faixa_tempo', 'vinculo_mte', 'tamanho_estab'];
+      const perfil = await rota<{ linhas: L[]; dimensoes: string[] }>('trab_perfil', { ...base, cbo: '2512', ano: ANO, dimensoes: dims.join(',') });
+      assert.deepEqual(perfil.dimensoes, dims);
+      const totPerfil = perfil.linhas.find((x) => x.dimensao === 'total')!;
+      assert.equal(totPerfil.vinculos, t0.vinculos);
+      for (const d of dims) {
+        const soma = perfil.linhas.filter((x) => x.dimensao === d).reduce((s, x) => s + (x.vinculos as number), 0);
+        assert.equal(soma, t0.vinculos, d);
+      }
+      assert.ok(perfil.linhas.filter((x) => x.dimensao === 'setor_institucional').every((x) => x.nome), 'setor institucional com nome');
+      // tabelas pré-somadas não aceitam os filtros que só os microdados têm
+      usarMicrodadosNoTeste(false);
+      await assert.rejects(consulta({ uf: 'GO', esc: '9' }), /microdados/);
+    } finally {
+      usarMicrodadosNoTeste(false);
+    }
+  });
+
+  test('busca de ocupação mostra o nível da CBO; família expande nos códigos', { skip: semCubo }, async () => {
+    const r = await rota<L[]>('trab_busca_ocupacao', { texto: 'economista' });
+    assert.ok(r.some((x) => x.codigo === '251205' && x.nivel === 'cbo'), JSON.stringify(r));
+    const codigos = await rota<L[]>('trab_codigos', { variavel: 'cbo', prefixo: '2512' });
+    assert.ok(codigos.length >= 5 && codigos.every((x) => String(x.codigo).startsWith('2512')));
   });
 
   test('dicionário: busca de ocupação pelo nome, sem acento', { skip: semCubo }, async () => {

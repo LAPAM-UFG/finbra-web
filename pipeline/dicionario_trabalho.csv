@@ -115,82 +115,109 @@ tipo_admissao,11,Readaptação (específico para servidor público)
 tipo_admissao,12,Redistribuição (específico para servidor público)
 tipo_admissao,13,Exercício descentralizado de servidor oriundo do mesmo órgão/entidade ou de outro órgão/entidade
 tipo_admissao,14,Remoção (específico para servidor público)
-natureza_juridica,1015,POD EXEC FE
-natureza_juridica,1023,POD EXEC ES
-natureza_juridica,1031,POD EXEC MU
-natureza_juridica,1040,POD LEG FED
-natureza_juridica,1058,POD LEG EST
-natureza_juridica,1066,POD LEG MUN
-natureza_juridica,1074,POD JUD FED
-natureza_juridica,1082,POD JUD EST
-natureza_juridica,1104,AUTARQ FED
-natureza_juridica,1112,AUTARQ EST
-natureza_juridica,1120,AUTARQ MUN
-natureza_juridica,1139,FUNDAC FED
-natureza_juridica,1147,FUNDAC EST
-natureza_juridica,1155,FUNDAC MUN
-natureza_juridica,1163,ORG AUT FED
-natureza_juridica,1171,ORG AUT EST
-natureza_juridica,1180,ORG AUT MUN
-natureza_juridica,1198,COM POLINAC
-natureza_juridica,1201,FUNDO PUBLIC
-natureza_juridica,1210,ASSOC PUBLIC
-natureza_juridica,2011,EMP PUB
-natureza_juridica,2038,SOC MISTA
-natureza_juridica,2046,SA ABERTA
-natureza_juridica,2054,SA FECH
-natureza_juridica,2062,SOC QT LTDA
-natureza_juridica,2070,SOC COLETV
+natureza_juridica,1015,Órgão Público do Poder Executivo Federal
+natureza_juridica,1023,Órgão Público do Poder Executivo Estadual ou do Distrito Federal
+natureza_juridica,1031,Órgão Público do Poder Executivo Municipal
+natureza_juridica,1040,Órgão Público do Poder Legislativo Federal
+natureza_juridica,1058,Órgão Público do Poder Legislativo Estadual ou do Distrito Federal
+natureza_juridica,1066,Órgão Público do Poder Legislativo Municipal
+natureza_juridica,1074,Órgão Público do Poder Judiciário Federal
+natureza_juridica,1082,Órgão Público do Poder Judiciário Estadual
+natureza_juridica,1104,Autarquia Federal
+natureza_juridica,1112,Autarquia Estadual ou do Distrito Federal
+natureza_juridica,1120,Autarquia Municipal
+natureza_juridica,1139,Fundação Pública de Direito Público Federal
+natureza_juridica,1147,Fundação Pública de Direito Público Estadual ou do Distrito Federal
+natureza_juridica,1155,Fundação Pública de Direito Público Municipal
+natureza_juridica,1163,Órgão Público Autônomo Federal
+natureza_juridica,1171,Órgão Público Autônomo Estadual ou do Distrito Federal
+natureza_juridica,1180,Órgão Público Autônomo Municipal
+natureza_juridica,1198,Comissão Polinacional
+natureza_juridica,1201,Fundo Público
+natureza_juridica,1210,Consórcio Público de Direito Público (Associação Pública)
+natureza_juridica,1228,Consórcio Público de Direito Privado
+natureza_juridica,1236,Estado ou Distrito Federal
+natureza_juridica,1244,Município
+natureza_juridica,1252,Fundação Pública de Direito Privado Federal
+natureza_juridica,1260,Fundação Pública de Direito Privado Estadual ou do Distrito Federal
+natureza_juridica,1279,Fundação Pública de Direito Privado Municipal
+natureza_juridica,1287,Fundo Público da Administração Indireta Federal
+natureza_juridica,1295,Fundo Público da Administração Indireta Estadual ou do Distrito Federal
+natureza_juridica,1309,Fundo Público da Administração Indireta Municipal
+natureza_juridica,1317,Fundo Público da Administração Direta Federal
+natureza_juridica,1325,Fundo Público da Administração Direta Estadual ou do Distrito Federal
+natureza_juridica,1333,Fundo Público da Administração Direta Municipal
+natureza_juridica,1341,União
+natureza_juridica,2011,Empresa Pública
+natureza_juridica,2038,Sociedade de Economia Mista
+natureza_juridica,2046,Sociedade Anônima Aberta
+natureza_juridica,2054,Sociedade Anônima Fechada
+natureza_juridica,2062,Sociedade Empresária Limitada
+natureza_juridica,2070,Sociedade Empresária em Nome Coletivo
 natureza_juridica,2076,SOC COLETV07
-natureza_juridica,2089,SOC COMD SM
-natureza_juridica,2097,SOC COMD AC
+natureza_juridica,2089,Sociedade Empresária em Comandita Simples
+natureza_juridica,2097,Sociedade Empresária em Comandita por Ações
 natureza_juridica,2100,SOC CAP IND
 natureza_juridica,2119,SOC CIVIL
-natureza_juridica,2127,SOC CTA PAR
-natureza_juridica,2135,FRM MER IND
-natureza_juridica,2143,COOPERATIVA
-natureza_juridica,2151,CONS EMPRES
-natureza_juridica,2160,GRUP SOC
-natureza_juridica,2178,FIL EMP EXT
-natureza_juridica,2194,FIL ARG-BRA
+natureza_juridica,2127,Sociedade em Conta de Participação
+natureza_juridica,2135,Empresário (Individual)
+natureza_juridica,2143,Cooperativa
+natureza_juridica,2151,Consórcio de Sociedades
+natureza_juridica,2160,Grupo de Sociedades
+natureza_juridica,2178,"Estabelecimento, no Brasil, de Sociedade Estrangeira"
+natureza_juridica,2194,"Estabelecimento, no Brasil, de Empresa Binacional Argentino-Brasileira"
 natureza_juridica,2208,ENT ITAIPU
-natureza_juridica,2216,EMP DOM EXT
-natureza_juridica,2224,FUN INVEST
-natureza_juridica,2232,SOC SIMP PUR
-natureza_juridica,2240,SOC SIMP LTD
-natureza_juridica,2259,SOC SIMP COL
-natureza_juridica,2267,SOC SIMP COM
-natureza_juridica,2275,EMPR BINAC
-natureza_juridica,2283,CONS EMPREG
-natureza_juridica,2291,CONS SIMPLES
-natureza_juridica,3034,CARTORIO
+natureza_juridica,2216,Empresa Domiciliada no Exterior
+natureza_juridica,2224,Clube/Fundo de Investimento
+natureza_juridica,2232,Sociedade Simples Pura
+natureza_juridica,2240,Sociedade Simples Limitada
+natureza_juridica,2259,Sociedade Simples em Nome Coletivo
+natureza_juridica,2267,Sociedade Simples em Comandita Simples
+natureza_juridica,2275,Empresa Binacional
+natureza_juridica,2283,Consórcio de Empregadores
+natureza_juridica,2291,Consórcio Simples
+natureza_juridica,2305,Empresa Individual de Responsabilidade Limitada (de Natureza Empresária)
+natureza_juridica,2313,Empresa Individual de Responsabilidade Limitada (de Natureza Simples)
+natureza_juridica,2321,Sociedade Unipessoal de Advocacia
+natureza_juridica,2330,Cooperativas de Consumo
+natureza_juridica,2348,Empresa Simples de Inovação - Inova Simples
+natureza_juridica,3034,Serviço Notarial e Registral (Cartório)
 natureza_juridica,3042,ORG SOCIAL
 natureza_juridica,3050,OSCIP
-natureza_juridica,3069,OUT FUND PR
-natureza_juridica,3077,SERV SOC AU
-natureza_juridica,3085,CONDOMIN
+natureza_juridica,3069,Fundação Privada
+natureza_juridica,3077,Serviço Social Autônomo
+natureza_juridica,3085,Condomínio Edilício
 natureza_juridica,3093,UNID EXEC
-natureza_juridica,3107,COM CONC
-natureza_juridica,3115,ENT MED ARB
+natureza_juridica,3107,Comissão de Conciliação Prévia
+natureza_juridica,3115,Entidade de Mediação e Arbitragem
 natureza_juridica,3123,PART POLIT
 natureza_juridica,3130,ENT SOCIAL
-natureza_juridica,3131,ENT SOCIAL07
-natureza_juridica,3204,FIL FUN EXT
-natureza_juridica,3212,FUN DOM EXT
-natureza_juridica,3220,ORG RELIG
-natureza_juridica,3239,COMUN INDIG
-natureza_juridica,3247,FUNDO PRIVAD
-natureza_juridica,3999,OUTR ORG
-natureza_juridica,4014,EMP IND IMO
-natureza_juridica,4022,SEG ESPEC
+natureza_juridica,3131,Entidade Sindical
+natureza_juridica,3204,"Estabelecimento, no Brasil, de Fundação ou Associação Estrangeiras"
+natureza_juridica,3212,Fundação ou Associação Domiciliada no Exterior
+natureza_juridica,3220,Organização Religiosa
+natureza_juridica,3239,Comunidade Indígena
+natureza_juridica,3247,Fundo Privado
+natureza_juridica,3255,Órgão de Direção Nacional de Partido Político
+natureza_juridica,3263,Órgão de Direção Regional de Partido Político
+natureza_juridica,3271,Órgão de Direção Local de Partido Político
+natureza_juridica,3280,Comitê Financeiro de Partido Político
+natureza_juridica,3298,Frente Plebiscitária ou Referendária
+natureza_juridica,3301,Organização Social (OS)
+natureza_juridica,3310,Demais Condomínios
+natureza_juridica,3999,Associação Privada
+natureza_juridica,4014,Empresa Individual Imobiliária
+natureza_juridica,4022,Segurado Especial
 natureza_juridica,4080,CONTR IND
-natureza_juridica,4081,CONTR IND07
-natureza_juridica,4090,CAN CARG POL
-natureza_juridica,4111,LEILOEIRO
+natureza_juridica,4081,Contribuinte Individual
+natureza_juridica,4090,Candidato a Cargo Político Eletivo
+natureza_juridica,4111,Leiloeiro
+natureza_juridica,4120,Produtor Rural (Pessoa Física)
 natureza_juridica,5002,ORG INTERN
-natureza_juridica,5010,ORG INTERNAC
-natureza_juridica,5029,REPR DIPL ES
-natureza_juridica,5037,OUT INST EXT
+natureza_juridica,5010,Organização Internacional
+natureza_juridica,5029,Representação Diplomática Estrangeira
+natureza_juridica,5037,Outras Instituições Extraterritoriais
+natureza_juridica,9999,Ignorado (natureza jurídica não informada)
 nacionalidade,10,Brasileira
 nacionalidade,20,Naturalidade Brasileira
 nacionalidade,21,Argentina
@@ -5097,3 +5124,873 @@ faixa_idade,4,30 a 39 anos
 faixa_idade,5,40 a 49 anos
 faixa_idade,6,50 a 64 anos
 faixa_idade,7,65 anos ou mais
+cbo_subgrupo_principal,01,Membros das forças armadas
+cbo_subgrupo_principal,02,Policiais militares
+cbo_subgrupo_principal,03,Bombeiros militares
+cbo_subgrupo_principal,11,Membros superiores e dirigentes do poder público
+cbo_subgrupo_principal,12,Dirigentes de empresas e organizações (exceto de interesse público)
+cbo_subgrupo_principal,13,"Diretores e gerentes em empresa de serviços de saúde, da educação, ou de serviços culturais, sociais ou pessoais"
+cbo_subgrupo_principal,14,Gerentes
+cbo_subgrupo_principal,20,Pesquisadores e profissionais policientíficos
+cbo_subgrupo_principal,21,"Profissionais das ciências exatas, físicas e da engenharia"
+cbo_subgrupo_principal,22,"Profissionais das ciências biológicas, da saúde e afins"
+cbo_subgrupo_principal,23,Profissionais do ensino
+cbo_subgrupo_principal,24,Profissionais das ciências jurídicas
+cbo_subgrupo_principal,25,Profissionais das ciências sociais e humanas
+cbo_subgrupo_principal,26,"Comunicadores, artistas e religiosos"
+cbo_subgrupo_principal,27,Profissionais em gastronomia
+cbo_subgrupo_principal,30,Técnicos polivalentes
+cbo_subgrupo_principal,31,"Técnicos de nível médio das ciências físicas, químicas, engenharia e afins"
+cbo_subgrupo_principal,32,"Técnicos de nível médio das ciências biológicas, bioquímicas, da saúde e afins"
+cbo_subgrupo_principal,33,Professores leigos e de nível médio
+cbo_subgrupo_principal,34,Técnicos de nível médio em serviços de transportes
+cbo_subgrupo_principal,35,Técnicos de nivel médio nas ciências administrativas
+cbo_subgrupo_principal,37,"Técnicos em nivel médio dos serviços culturais, das comunicações e dos desportos"
+cbo_subgrupo_principal,39,Outros técnicos de nível médio
+cbo_subgrupo_principal,41,Escriturários
+cbo_subgrupo_principal,42,Trabalhadores de atendimento ao público
+cbo_subgrupo_principal,51,Trabalhadores dos serviços
+cbo_subgrupo_principal,52,Vendedores e prestadores de serviços do comércio
+cbo_subgrupo_principal,61,Produtores na exploração agropecuária
+cbo_subgrupo_principal,62,Trabalhadores na exploração agropecuária
+cbo_subgrupo_principal,63,Pescadores e extrativistas florestais
+cbo_subgrupo_principal,64,Trabalhadores da mecanização agropecuária e florestal
+cbo_subgrupo_principal,71,Trabalhadores da indústria extrativa e da construção civil
+cbo_subgrupo_principal,72,Trabalhadores da transformação de metais e de compósitos
+cbo_subgrupo_principal,73,Trabalhadores da fabricação e instalação eletroeletrônica
+cbo_subgrupo_principal,74,Montadores de aparelhos e instrumentos de precisão e musicais
+cbo_subgrupo_principal,75,"Joalheiros, vidreiros, ceramistas e afins"
+cbo_subgrupo_principal,76,"Trabalhadores nas indústrias têxtil, do curtimento, do vestúario e das artes gráficas"
+cbo_subgrupo_principal,77,Trabalhadores das indústrias de madeira e do mobiliário
+cbo_subgrupo_principal,78,Trabalhadores de funções transversais
+cbo_subgrupo_principal,79,Trabalhadores do artesanato
+cbo_subgrupo_principal,81,Trabalhadores em indústrias de processos contínuos e outras indústrias
+cbo_subgrupo_principal,82,Trabalhadores de instalações siderúrgicas e de materiais de construção
+cbo_subgrupo_principal,83,Trabalhadores de instalações e máquinas de fabricação de celulose e papel
+cbo_subgrupo_principal,84,"Trabalhadores da fabricação de alimentos, bebidas e fumo"
+cbo_subgrupo_principal,86,"Operadores de produção, captação, tratamento e distribuição (energia, água e utilidades)"
+cbo_subgrupo_principal,87,Operadores de outras instalações industriais
+cbo_subgrupo_principal,91,Trabalhadores em serviços de reparação e manutenção mecânica
+cbo_subgrupo_principal,95,Polimantenedores
+cbo_subgrupo_principal,99,"Outros trabalhadores da conservação, manutenção e reparação"
+cbo_subgrupo,010,Membros das forças armadas
+cbo_subgrupo,020,Oficiais de polícia militar
+cbo_subgrupo,021,Praças de polícia militar
+cbo_subgrupo,030,Oficiais de bombeiro militar
+cbo_subgrupo,031,Praças de bombeiro militar
+cbo_subgrupo,111,"Membros superiores do poder legislativo, executivo e judiciário"
+cbo_subgrupo,113,Chefes de pequenas populações
+cbo_subgrupo,114,Dirigentes e administradores de organização de interesse público
+cbo_subgrupo,121,Diretores gerais
+cbo_subgrupo,122,Diretores de produção e operações
+cbo_subgrupo,123,Diretores de áreas de apoio
+cbo_subgrupo,131,"Diretores e gerentes em empresa de serviços de saúde, de educação, ou de serviços culturais, sociais ou pessoais"
+cbo_subgrupo,141,Gerentes de produção e operações
+cbo_subgrupo,142,Gerentes de áreas de apoio
+cbo_subgrupo,201,Profissionais da biotecnologia e metrologia
+cbo_subgrupo,202,Profissionais da eletromecânica
+cbo_subgrupo,203,Pesquisadores
+cbo_subgrupo,204,Profissionais de investigação criminal
+cbo_subgrupo,211,"Matemáticos, estatísticos e afins"
+cbo_subgrupo,212,Profissionais da informática
+cbo_subgrupo,213,"Físicos, químicos e afins"
+cbo_subgrupo,214,"Engenheiros, arquitetos e afins"
+cbo_subgrupo,215,"Profissionais em navegação aérea, marítima e fluvial"
+cbo_subgrupo,221,Biólogos e afins
+cbo_subgrupo,222,Agrônomos e afins
+cbo_subgrupo,223,"Profissionais da medicina, saúde e afins"
+cbo_subgrupo,224,Profissionais da educação física
+cbo_subgrupo,225,Profissionais da medicina
+cbo_subgrupo,226,Profissionais de saúde em praticas integrativas e complementares
+cbo_subgrupo,231,Professores de nível superior na educação infantil e no ensino fundamental
+cbo_subgrupo,232,Professores do ensino médio
+cbo_subgrupo,233,Professores e instrutores do ensino profissional
+cbo_subgrupo,234,Professores do ensino superior
+cbo_subgrupo,239,Outros profissionais do ensino não classificados anteriormente
+cbo_subgrupo,241,"Advogados, procuradores, tabeliães e afins"
+cbo_subgrupo,242,Advogados do poder judiciário e da segurança pública
+cbo_subgrupo,251,"Cientistas sociais, psicólogos e afins"
+cbo_subgrupo,252,Profissionais de organização e administração de empresas e afins
+cbo_subgrupo,253,"Profissionais de relações públicas, publicidade, marketing e comercialização"
+cbo_subgrupo,254,Auditores fiscais públicos
+cbo_subgrupo,261,Profissionais da comunicação e da informação
+cbo_subgrupo,262,Profissionais de espetáculos e das artes
+cbo_subgrupo,263,Membros de cultos religiosos e afins
+cbo_subgrupo,271,Profissionais em gastronomia e serviços de alimentação
+cbo_subgrupo,300,Técnicos mecatrônicos e eletromecânicos
+cbo_subgrupo,301,Técnicos em laboratório
+cbo_subgrupo,311,Técnico em ciências físicas e químicas
+cbo_subgrupo,312,"Técnicos em construção civil, de edificações e obras de infraestrutura"
+cbo_subgrupo,313,Técnicos em eletroeletrônica e fotônica
+cbo_subgrupo,314,Técnicos em metalmecânica
+cbo_subgrupo,316,Técnicos em mineralogia e geologia
+cbo_subgrupo,317,Técnicos em informática
+cbo_subgrupo,318,Desenhistas técnicos e modelistas
+cbo_subgrupo,319,"Outros técnicos de nível médio das ciências físicas, químicas, engenharia e afins"
+cbo_subgrupo,320,Técnicos em biologia
+cbo_subgrupo,321,Técnicos da produção agropecuária
+cbo_subgrupo,322,Técnicos da ciência da saúde humana
+cbo_subgrupo,323,Técnicos da ciência da saúde animal
+cbo_subgrupo,324,Técnicos em operação de equipamentos e instrumentos de diagnóstico
+cbo_subgrupo,325,Técnicos de bioquímica e da biotecnologia
+cbo_subgrupo,328,Técnicos em necrópsia e taxidermistas
+cbo_subgrupo,331,"Professores de nível médio na educação infantil, no ensino fundamental e no profissionalizante"
+cbo_subgrupo,332,Professores leigos no ensino fundamental e no profissionalizante
+cbo_subgrupo,333,Instrutores e professores de escolas livres
+cbo_subgrupo,334,Inspetores de alunos e afins
+cbo_subgrupo,341,"Técnicos em navegação aérea, marítima e fluvial"
+cbo_subgrupo,342,Técnicos em transportes (logística)
+cbo_subgrupo,351,Técnicos das ciências administrativas
+cbo_subgrupo,352,"Técnicos de inspeção, fiscalização e coordenação administrativa"
+cbo_subgrupo,353,Técnicos de nível médio em operações financeiras
+cbo_subgrupo,354,Técnicos de nivel médio em operações comerciais
+cbo_subgrupo,371,Técnicos de serviços culturais
+cbo_subgrupo,372,"Técnicos em operação de câmara fotográfica , cinema e de televisão"
+cbo_subgrupo,373,"Técnicos em operação de emissoras de rádio, sistemas de televisão e de produtoras de vídeo"
+cbo_subgrupo,374,"Técnicos em operação de aparelhos de sonorização, cenografia e projeção"
+cbo_subgrupo,375,Decoradores e vitrinistas
+cbo_subgrupo,376,Artistas de artes populares e modelos
+cbo_subgrupo,377,"Atletas, desportistas e afins"
+cbo_subgrupo,391,Técnicos de nivel médio em operações industriais
+cbo_subgrupo,395,Técnicos de apoio em pesquisa e desenvolvimento
+cbo_subgrupo,410,SUPERVISORES DE SERVIÇOS ADMINISTRATIVOS (Exceto de atendimento ao público)
+cbo_subgrupo,411,"Escriturários em geral, agentes, assistentes e auxiliares administrativos"
+cbo_subgrupo,412,Secretários de expediente e operadores de máquinas de escritórios
+cbo_subgrupo,413,Escriturários contábeis e de finanças
+cbo_subgrupo,414,Escriturários de controle de materiais e de apoio à produção
+cbo_subgrupo,415,"Auxiliares de serviços de biblioteca, documentação e correios"
+cbo_subgrupo,420,Supervisores de atendimento ao público
+cbo_subgrupo,421,"Caixas, bilheteiros e afins"
+cbo_subgrupo,422,Trabalhadores de informações ao público
+cbo_subgrupo,423,Despachantes
+cbo_subgrupo,424,"Entrevistadores, recenseadores e afins"
+cbo_subgrupo,510,Supervisores dos serviços
+cbo_subgrupo,511,Trabalhadores dos serviços de transporte e turismo
+cbo_subgrupo,512,Trabalhadores dos serviços domésticos em geral
+cbo_subgrupo,513,Trabalhadores dos serviços de hotelaria e alimentação
+cbo_subgrupo,514,"Trabalhadores nos serviços de administração, conservação e manutenção de edifícios e logradouros"
+cbo_subgrupo,515,Trabalhadores dos serviços de saúde
+cbo_subgrupo,516,Trabalhadores nos serviços de embelezamento e cuidados pessoais
+cbo_subgrupo,517,Trabalhadores nos serviços de proteção e segurança
+cbo_subgrupo,519,Outros trabalhadores de serviços diversos
+cbo_subgrupo,520,Supervisores de vendas e de prestação de serviços
+cbo_subgrupo,521,Vendedores e demonstradores
+cbo_subgrupo,522,Repositores e remarcadores do comércio
+cbo_subgrupo,523,Instaladores de produtos e acessórios
+cbo_subgrupo,524,"Vendedores a domicílio, ambulantes e em bancas"
+cbo_subgrupo,611,Produtores agropecuários em geral
+cbo_subgrupo,612,Produtores agrícolas
+cbo_subgrupo,613,Produtores em pecuária
+cbo_subgrupo,620,Supervisores na exploração agropecuária
+cbo_subgrupo,621,Trabalhadores na exploração agropecuária em geral
+cbo_subgrupo,622,Trabalhadores agrícolas
+cbo_subgrupo,623,Trabalhadores na pecuária
+cbo_subgrupo,630,Supervisores na exploração florestal e pesca
+cbo_subgrupo,631,Pescadores e caçadores
+cbo_subgrupo,632,Extrativistas florestais
+cbo_subgrupo,641,Trabalhadores da mecanização agropecuária
+cbo_subgrupo,642,Trabalhadores da mecanização florestal
+cbo_subgrupo,643,Trabalhadores da irrigação e drenagem
+cbo_subgrupo,710,Supervisores da extração mineral e da construção civil
+cbo_subgrupo,711,Trabalhadores da extração mineral
+cbo_subgrupo,712,Trabalhadores de beneficiamento de minérios e pedras ornamentais
+cbo_subgrupo,715,Trabalhadores da construção civil e obras públicas
+cbo_subgrupo,716,Trabalhadores de acabamento de obras
+cbo_subgrupo,717,Ajudantes de obras
+cbo_subgrupo,720,Supervisores da transformação de metais e de compósitos
+cbo_subgrupo,721,Trabalhadores de usinagem de metais e de compósitos
+cbo_subgrupo,722,Trabalhadores de conformação de metais e de compósitos
+cbo_subgrupo,723,Trabalhadores de tratamento térmico e de superfícies de metais e de compósitos
+cbo_subgrupo,724,"Trabalhadores de montagem de tubulações, estruturas metálicas e de compósitos"
+cbo_subgrupo,725,Montadores de máquinas e aparelhos mecânicos
+cbo_subgrupo,730,Supervisores de montagens e instalações eletroeletrônicas
+cbo_subgrupo,731,Montadores e instaladores de equipamentos eletroeletrônicos em geral
+cbo_subgrupo,732,Instaladores e reparadores de linhas e cabos elétricos e de comunicações
+cbo_subgrupo,740,Supervisores da mecânica de precisão e instrumentos musicais
+cbo_subgrupo,741,Montadores e ajustadores de instrumentos de precisão
+cbo_subgrupo,742,Montadores e ajustadores de instrumentos musicais
+cbo_subgrupo,750,"Supervisores de joalheria, vidraria, cerâmica e afins"
+cbo_subgrupo,751,Joalheiros e ourives
+cbo_subgrupo,752,"Vidreiros, ceramistas e afins"
+cbo_subgrupo,760,"Supervisores nas indústrias têxtil, do curtimento, do vestuário e das artes gráficas"
+cbo_subgrupo,761,Trabalhadores das industrias têxteis
+cbo_subgrupo,762,Trabalhadores do tratamento de couros e peles
+cbo_subgrupo,763,Trabalhadores da confecção de roupas
+cbo_subgrupo,764,Trabalhadores da confecção de calçados
+cbo_subgrupo,765,Trabalhadores da confecção de artefatos de tecidos e couros
+cbo_subgrupo,766,Trabalhadores da produção gráfica
+cbo_subgrupo,768,"Trabalhadores artesanais das atividades têxteis, do vestuário e das artes gráficas"
+cbo_subgrupo,770,"Supervisores em indústria de madeira, mobiliário e da carpintaria veicular"
+cbo_subgrupo,771,Marceneiros e afins
+cbo_subgrupo,772,Trabalhadores da preparação da madeira
+cbo_subgrupo,773,Trabalhadores da transformação da madeira e da fabricação do mobiliário
+cbo_subgrupo,774,Trabalhadores de montagem de móveis e artefatos de madeira
+cbo_subgrupo,775,Trabalhadores em acabamento de madeira e de mobiliário
+cbo_subgrupo,776,Trabalhadores artesanais da madeira e do mobiliário
+cbo_subgrupo,777,Trabalhadores da carpintaria veicular
+cbo_subgrupo,780,Supervisores de trabalhadores de embalagem e etiquetagem
+cbo_subgrupo,781,Operadores de robôs e equipamentos especiais
+cbo_subgrupo,782,Condutores de veículos e operadores de equipamentos de elevação e de movimentação de cargas
+cbo_subgrupo,783,Trabalhadores de manobras sobre trilhos e movimentação e cargas
+cbo_subgrupo,784,Embaladores e alimentadores de produção
+cbo_subgrupo,791,Trabalhadores do artesanato urbano e rural
+cbo_subgrupo,810,"Supervisores de produção, em indústrias químicas, petroquímicas e afins"
+cbo_subgrupo,811,"Operadores de instalações em indústrias químicas, petroquímicas e afins"
+cbo_subgrupo,812,Trabalhadores da fabricação de munição e explosivos químicos
+cbo_subgrupo,813,"Operadores de outras instalações químicas, petroquímicas e afins"
+cbo_subgrupo,818,Operadores de operação unitária de laboratório (transversal para toda indústria de processos)
+cbo_subgrupo,820,Supervisores de produção em indústrias siderúrgicas
+cbo_subgrupo,821,Operadores de instalações e equipamentos de produção de metais e ligas- primeira fusão
+cbo_subgrupo,822,Operadores de instalações e equipamentos de produção de metais e ligas- segunda fusão
+cbo_subgrupo,823,"Trabalhadores de instalações e equipamentos de material de construção, cerâmica e vidro"
+cbo_subgrupo,828,Trabalhadores artesanais da siderurgia e de materiais de construção
+cbo_subgrupo,830,Supervisores da fabricação de celulose e papel
+cbo_subgrupo,831,Trabalhadores da preparação de pasta de papel
+cbo_subgrupo,832,Trabalhadores da fabricação de papel
+cbo_subgrupo,833,Confeccionadores de produtos de papel e papelão
+cbo_subgrupo,840,"Supervisores da fabricação de alimentos, bebidas e fumo"
+cbo_subgrupo,841,Operadores de equipamentos na preparação de alimentos e bebidas
+cbo_subgrupo,842,Operadores na preparação de fumo e na fabricação de charutos e cigarros
+cbo_subgrupo,848,"Trabalhadores artesanais na agroindústria, na indústria de alimentos e do fumo"
+cbo_subgrupo,860,Supervisores da produção de utilidades
+cbo_subgrupo,861,"Operadores na geração e distribuição de energia (centrais hidrelétricas, termelétricas e nucleares)"
+cbo_subgrupo,862,Operadores de utilidades
+cbo_subgrupo,871,Operadores de outras instalações industriais
+cbo_subgrupo,910,Supervisores em serviços de reparação e manutenção mecânica
+cbo_subgrupo,911,"Mecânicos de manutenção de máquinas e equipamentos industriais, comerciais e residenciais"
+cbo_subgrupo,913,Mecânicos de manutenção de máquinas pesadas e equipamentos agrícolas
+cbo_subgrupo,914,Mecânicos de manutenção veicular
+cbo_subgrupo,915,Reparadores de instrumentos e equipamentos de precisão
+cbo_subgrupo,919,Outros trabalhadores na reparação e manutenção de equipamentos
+cbo_subgrupo,950,Supervisores de manutenção eletroeletrônica e eletromecânica
+cbo_subgrupo,951,"Eletricistas eletrônicos de manutenção industrial, comercial e residencial"
+cbo_subgrupo,953,Eletricistas eletrônicos de manutenção veicular
+cbo_subgrupo,954,Mantenedores eletromecânicos
+cbo_subgrupo,991,Outros trabalhadores da conservação e manutenção (exceto trabalhadores elementares)
+cbo_subgrupo,992,Trabalhadores elementares da manutenção
+cbo_familia,0101,Oficiais generais das forças armadas
+cbo_familia,0102,Oficiais das forças armadas
+cbo_familia,0103,Praças das forças armadas
+cbo_familia,0201,Oficiais superiores da polícia militar
+cbo_familia,0202,Capitães da polícia militar
+cbo_familia,0203,Tenentes da polícia militar
+cbo_familia,0211,Subtenentes e sargentos da policia militar
+cbo_familia,0212,Cabos e soldados da polícia militar
+cbo_familia,0301,Oficiais superiores do corpo de bombeiros militar
+cbo_familia,0302,Oficiais intermediários do corpo de bombeiros militar
+cbo_familia,0303,Tenentes do corpo de bombeiros militar
+cbo_familia,0311,Subtenentes e sargentos do corpo de bombeiros militar
+cbo_familia,0312,Cabos e soldados do corpo de bombeiros militar
+cbo_familia,1111,Legisladores
+cbo_familia,1112,Dirigentes gerais da administração pública
+cbo_familia,1113,Magistrados
+cbo_familia,1114,Dirigentes do serviço público
+cbo_familia,1115,Gestores públicos
+cbo_familia,1130,"Dirigentes de povos indígenas, de quilombolas e caiçaras"
+cbo_familia,1141,Dirigentes de partidos políticos
+cbo_familia,1142,Dirigentes e administradores de entidades patronais e dos trabalhadores e de outros interesses sócioeconômicos
+cbo_familia,1143,Dirigentes e administradores de entidades religiosas
+cbo_familia,1144,Dirigentes e administradores de organizações da sociedade civil sem fins lucrativos
+cbo_familia,1210,Diretores gerais
+cbo_familia,1221,"Diretores de produção e operações em empresa agropecuária, pesqueira , aqüícola e florestal"
+cbo_familia,1222,"Diretores de produção e operações em empresa da indústria extrativa, transformação e de serviços de utilidade pública"
+cbo_familia,1223,Diretores de operações de obras em empresa de construção
+cbo_familia,1224,Diretores de operações em empresa do comércio
+cbo_familia,1225,"Diretores de serviços de turismo, de alojamento e de alimentação"
+cbo_familia,1226,"Diretores de operações de serviços em empresa de armazenamento, de transporte e de telecomunicação"
+cbo_familia,1227,Diretores de operações de serviços em instituição de intermediação financeira
+cbo_familia,1231,Diretores administrativos e financeiros
+cbo_familia,1232,Diretores de recursos humanos e relações de trabalho
+cbo_familia,1233,Diretores de comercialização e marketing
+cbo_familia,1234,Diretores de suprimentos e afins
+cbo_familia,1236,Diretores de tecnologia da informação
+cbo_familia,1237,Diretores de pesquisa e desenvolvimento
+cbo_familia,1238,Diretores de manutenção
+cbo_familia,1311,"Diretores e gerentes de operações em empresa de serviços pessoais, sociais e culturais"
+cbo_familia,1312,"Gestores e especialistas de operações em empresas, secretarias e unidades de serviços de saúde"
+cbo_familia,1313,Diretores e gerentes de instituição de serviços educacionais
+cbo_familia,1411,"Gerentes de produção e operações em empresa agropecuária, pesqueira, aqüícola e florestal"
+cbo_familia,1412,"Gerentes de produção e operações em empresa da indústria extrativa, de transformação e de serviços de utilidade pública"
+cbo_familia,1413,Gerentes de obras em empresa de construção
+cbo_familia,1414,Gerentes de operações comerciais e de assistência técnica
+cbo_familia,1415,"Gerentes de operações de serviços em empresa de turismo, de alojamento e alimentação"
+cbo_familia,1416,"Gerentes de operações de serviços em empresa de transporte, de comunicação e de logística (armazenagem e distribuição)"
+cbo_familia,1417,Gerentes de operações de serviços em instituição de intermediação financeira
+cbo_familia,1418,Gerentes operacionais da aviação civil
+cbo_familia,1421,"Gerentes administrativos, financeiros, de riscos e afins"
+cbo_familia,1422,Gerentes de recursos humanos e de relações do trabalho
+cbo_familia,1423,"Gerentes de comercialização, marketing e comunicação"
+cbo_familia,1424,Gerentes de suprimentos e afins
+cbo_familia,1425,Gerentes de tecnologia da informação
+cbo_familia,1426,Gerentes de pesquisa e desenvolvimento e afins
+cbo_familia,1427,Gerentes de manutenção e afins
+cbo_familia,2011,Profissionais da biotecnologia
+cbo_familia,2012,Profissionais da metrologia
+cbo_familia,2021,"Engenheiros de controle e automação, engenheiros mecatrônicos e afins"
+cbo_familia,2030,Pesquisadores das ciências biológicas
+cbo_familia,2031,Pesquisadores das ciências naturais e exatas
+cbo_familia,2032,Pesquisadores de engenharia e tecnologia
+cbo_familia,2033,Pesquisadores das ciências da saúde
+cbo_familia,2034,Pesquisadores das ciências da agricultura
+cbo_familia,2035,Pesquisadores das ciências sociais e humanas
+cbo_familia,2041,Peritos criminais e judiciais
+cbo_familia,2111,Profissionais da matemática
+cbo_familia,2112,Profissionais de estatística e afins
+cbo_familia,2122,Engenheiros em computação
+cbo_familia,2123,Administradores de tecnologia da informação
+cbo_familia,2124,Analistas de tecnologia da informação
+cbo_familia,2131,Físicos
+cbo_familia,2132,Químicos
+cbo_familia,2133,Profissionais das ciências atmosféricas e espaciais e de astronomia
+cbo_familia,2134,"Geólogos, oceanógrafos, geofísicos e afins"
+cbo_familia,2140,Engenheiros ambientais e afins
+cbo_familia,2141,Arquitetos e urbanistas
+cbo_familia,2142,Engenheiros civis e afins
+cbo_familia,2143,"Engenheiros eletricistas, eletrônicos e afins"
+cbo_familia,2144,Engenheiros mecânicos e afins
+cbo_familia,2145,Engenheiros químicos e afins
+cbo_familia,2146,"Engenheiros metalurgistas, de materiais e afins"
+cbo_familia,2147,Engenheiros de minas e afins
+cbo_familia,2148,Engenheiros agrimensores e engenheiros cartógrafos
+cbo_familia,2149,"Engenheiros de produção, qualidade, segurança e afins"
+cbo_familia,2151,Oficiais de convés e afins
+cbo_familia,2152,Oficiais de máquinas da marinha mercante
+cbo_familia,2153,Profissionais da pilotagem aeronáutica
+cbo_familia,2211,Biólogos e afins
+cbo_familia,2212,Biomédicos
+cbo_familia,2221,Engenheiros agrossilvipecuários
+cbo_familia,2222,Engenheiros de alimentos e afins
+cbo_familia,2232,Cirurgiões-dentistas
+cbo_familia,2233,Veterinários e zootecnistas
+cbo_familia,2234,Farmacêuticos
+cbo_familia,2235,Enfermeiros e afins
+cbo_familia,2236,Fisioterapeutas
+cbo_familia,2237,Nutricionistas
+cbo_familia,2238,Fonoaudiólogos
+cbo_familia,2239,"Terapeutas ocupacionais, ortoptistas e psicomotricistas"
+cbo_familia,2241,Profissionais da educação física
+cbo_familia,2251,Médicos clínicos
+cbo_familia,2252,Médicos em especialidades cirúrgicas
+cbo_familia,2253,Médicos em medicina diagnóstica e terapêutica
+cbo_familia,2261,Osteopatas e quiropraxistas
+cbo_familia,2263,"Profissionais das terapias criativas,equoterápicas e naturológicas"
+cbo_familia,2311,Professores de nível superior na educação infantil
+cbo_familia,2312,Professores de nível superior do ensino fundamental (primeira a quarta séries)
+cbo_familia,2313,Professores de nível superior no ensino fundamental de quinta a oitava série
+cbo_familia,2321,Professores do ensino médio
+cbo_familia,2331,Professores do ensino profissional
+cbo_familia,2332,Instrutores de ensino profissional
+cbo_familia,2341,"Professores de matemática, estatística e informática do ensino superior"
+cbo_familia,2342,"Professores de ciências físicas, químicas e afins do ensino superior"
+cbo_familia,2343,"Professores de arquitetura e urbanismo, engenharia, geofísica e geologia do ensino superior"
+cbo_familia,2344,Professores de ciências biológicas e da saúde do ensino superior
+cbo_familia,2345,Professores na área de formação pedagógica do ensino superior
+cbo_familia,2346,Professores nas áreas de língua e literatura do ensino superior
+cbo_familia,2347,Professores de ciências humanas do ensino superior
+cbo_familia,2348,"Professores de ciências econômicas, administrativas e contábeis do ensino superior"
+cbo_familia,2349,Professores de artes do ensino superior
+cbo_familia,2392,Professores de educação especial
+cbo_familia,2394,"Programadores, avaliadores e orientadores de ensino"
+cbo_familia,2410,Advogados
+cbo_familia,2412,Procuradores e advogados públicos
+cbo_familia,2413,Tabeliães e registradores
+cbo_familia,2414,Conselheiros julgadores
+cbo_familia,2422,Membros do ministério público
+cbo_familia,2423,Delegados de polícia
+cbo_familia,2424,Defensores públicos e procuradores da assistência judiciária
+cbo_familia,2429,Profissionais da inteligência
+cbo_familia,2511,Profissionais em pesquisa e análise antropológica sociológica
+cbo_familia,2512,Economistas
+cbo_familia,2513,Profissionais em pesquisa e análise geográfica
+cbo_familia,2514,Filósofos
+cbo_familia,2515,Psicólogos e psicanalistas
+cbo_familia,2516,Assistentes sociais e economistas domésticos
+cbo_familia,2521,Administradores
+cbo_familia,2522,Contadores e afins
+cbo_familia,2523,Secretárias(os) executivas(os) e afins
+cbo_familia,2524,Profissionais de recursos humanos
+cbo_familia,2525,Profissionais de administração ecônomico-financeira
+cbo_familia,2526,Profissionais da administração dos serviços de segurança
+cbo_familia,2527,"Profissionais de planejamento, programação e controles logisticos"
+cbo_familia,2531,Profissionais de publicidade
+cbo_familia,2532,Profissionais de comercializacão e consultoria de serviços bancários
+cbo_familia,2533,"Corretores de valores, ativos financeiros, mercadorias e derivativos"
+cbo_familia,2534,Profissionais de mídias digitais e afins
+cbo_familia,2541,Auditores fiscais e técnicos da receita federal
+cbo_familia,2542,Auditores fiscais da previdência social
+cbo_familia,2543,Auditores fiscais do trabalho
+cbo_familia,2544,Fiscais de tributos estaduais e municipais
+cbo_familia,2545,Profissionais da fiscalização de atividades urbanas
+cbo_familia,2611,Profissionais do jornalismo
+cbo_familia,2612,Profissionais da informação
+cbo_familia,2613,Arquivistas e museólogos
+cbo_familia,2614,"Filólogos,tradutores ,intérpretes e afins"
+cbo_familia,2615,Profissionais da escrita
+cbo_familia,2616,Editores
+cbo_familia,2617,"Locutores, comentaristas e repórteres de mídias audiovisuais"
+cbo_familia,2618,Fotógrafos profissionais
+cbo_familia,2619,Assistentes de direção (tv) e continuístas
+cbo_familia,2621,Produtores artísticos e culturais
+cbo_familia,2622,Diretores de espetáculos e afins
+cbo_familia,2623,Cenógrafos
+cbo_familia,2624,"Artistas visuais,desenhistas industriais e conservadores-restauradores de bens culturais"
+cbo_familia,2625,Atores
+cbo_familia,2626,"Músicos compositores, arranjadores, regentes e musicólogos"
+cbo_familia,2627,Músicos intérpretes
+cbo_familia,2628,Artistas da dança (exceto dança tradicional e popular)
+cbo_familia,2629,Designer de interiores de nível superior
+cbo_familia,2631,"Ministros de culto, missionários, teólogos e profissionais assemelhados"
+cbo_familia,2711,Chefes de cozinha e afins
+cbo_familia,3001,Técnicos em mecatrônica
+cbo_familia,3003,Técnicos em eletromecânica
+cbo_familia,3011,Técnicos de laboratório industrial
+cbo_familia,3012,Técnicos de apoio à bioengenharia
+cbo_familia,3111,Técnicos químicos
+cbo_familia,3112,"Técnicos de produção de indústrias químicas, petroquímicas, refino de petróleo, gás e afins"
+cbo_familia,3113,"Técnicos em materiais, produtos cerâmicos e vidros"
+cbo_familia,3114,Técnicos em fabricação de produtos plásticos e de borracha
+cbo_familia,3115,"Técnicos em controle ambiental, utilidades e tratamento de efluentes"
+cbo_familia,3116,Técnicos têxteis
+cbo_familia,3117,Coloristas
+cbo_familia,3121,Técnicos em construção civil (edificações)
+cbo_familia,3122,Técnicos em construção civil (obras de infraestrutura)
+cbo_familia,3123,Técnicos em geomática
+cbo_familia,3131,Técnicos em eletricidade e eletrotécnica
+cbo_familia,3132,Técnicos em eletrônica
+cbo_familia,3133,Técnicos em telecomunicações
+cbo_familia,3134,Técnicos em calibração e instrumentação
+cbo_familia,3135,Técnicos em fotônica
+cbo_familia,3141,"Técnicos mecânicos na fabricação e montagem de máquinas, sistemas e instrumentos"
+cbo_familia,3142,Técnicos mecânicos (ferramentas)
+cbo_familia,3143,Técnicos em mecânica veicular
+cbo_familia,3144,"Técnicos mecânicos na manutenção de máquinas, sistemas e instrumentos"
+cbo_familia,3146,Técnicos em metalurgia (estruturas metálicas)
+cbo_familia,3147,Técnicos em siderurgia
+cbo_familia,3148,Especialistas em inspeções industriais
+cbo_familia,3161,Técnicos em geologia
+cbo_familia,3163,Técnicos em mineração
+cbo_familia,3171,Técnicos de desenvolvimento de sistemas e aplicações
+cbo_familia,3172,Técnicos de suporte e monitoração ao usuário de tecnologia da informação.
+cbo_familia,3180,"Desenhistas técnicos, em geral"
+cbo_familia,3181,Desenhistas técnicos da construção civil e arquitetura
+cbo_familia,3182,Desenhistas técnicos da mecânica
+cbo_familia,3183,"Desenhistas técnicos em eletricidade, eletrônica, eletromecânica, calefação, ventilação e refrigeração"
+cbo_familia,3184,Desenhistas técnicos de produtos e serviços diversos
+cbo_familia,3185,Desenhistas projetistas de construção civil e arquitetura
+cbo_familia,3186,Desenhistas projetistas da mecânica
+cbo_familia,3187,Desenhistas projetistas da eletrônica
+cbo_familia,3188,Desenhistas projetistas e modelistas de produtos e serviços diversos
+cbo_familia,3191,Técnicos do vestuário
+cbo_familia,3192,Técnicos do mobiliário e afins
+cbo_familia,3201,Técnicos em biologia
+cbo_familia,3211,Técnicos agrícolas
+cbo_familia,3212,Técnicos florestais
+cbo_familia,3213,Técnicos em aqüicultura
+cbo_familia,3221,Tecnólogos e técnicos em terapias complementares e estéticas
+cbo_familia,3222,Técnicos e auxiliares de enfermagem
+cbo_familia,3223,Técnicos em óptica e optometria
+cbo_familia,3224,Técnicos de odontologia
+cbo_familia,3225,Técnicos em próteses ortopédicas
+cbo_familia,3226,Técnicos de imobilizações ortopédicas
+cbo_familia,3231,Técnicos em pecuária
+cbo_familia,3241,Tecnólogos e técnicos em métodos de diagnósticos e terapêutica
+cbo_familia,3242,Técnicos de laboratórios de saúde e bancos de sangue
+cbo_familia,3250,"Enólogos, perfumistas e aromistas"
+cbo_familia,3251,Técnico em farmácia e em manipulação farmacêutica
+cbo_familia,3252,"Técnicos em produção, conservação e de qualidade de alimentos"
+cbo_familia,3253,Técnicos de apoio à biotecnologia
+cbo_familia,3281,Técnicos em necrópsia e taxidermistas
+cbo_familia,3311,Professores de nível médio na educação infantil
+cbo_familia,3312,Professores de nível médio no ensino fundamental
+cbo_familia,3313,Professores de nível médio no ensino profissionalizante
+cbo_familia,3321,Professores leigos no ensino fundamental
+cbo_familia,3322,Professores práticos no ensino profissionalizante
+cbo_familia,3331,Instrutores e professores de cursos livres
+cbo_familia,3341,Inspetores de alunos e afins
+cbo_familia,3411,"Pilotos de aviação comercial, mecânicos de vôo e afins"
+cbo_familia,3412,"Técnicos marítimos, fluviários e pescadores de convés"
+cbo_familia,3413,Técnicos marítimos e fluviários de máquinas
+cbo_familia,3421,Especialistas em logística de transportes
+cbo_familia,3422,Despachantes aduaneiros
+cbo_familia,3423,Técnicos em transportes rodoviários
+cbo_familia,3424,Técnicos em transportes metroferroviários
+cbo_familia,3425,Técnicos em transportes aéreos
+cbo_familia,3426,Técnicos em transportes por vias navegáveis e operações portuárias
+cbo_familia,3511,Técnicos em contabilidade
+cbo_familia,3513,Técnicos em administração
+cbo_familia,3514,Serventuários da justiça e afins
+cbo_familia,3515,"Técnicos em secretariado, taquígrafos e estenotipistas"
+cbo_familia,3516,Técnicos em segurança do trabalho
+cbo_familia,3517,Técnicos de seguros e afins
+cbo_familia,3518,Agentes de investigação e identificação
+cbo_familia,3519,Técnicos da inteligência
+cbo_familia,3522,Agentes da saúde e do meio ambiente
+cbo_familia,3523,Agentes fiscais metrológicos e de qualidade
+cbo_familia,3524,Profissionais de direitos autorais e de avaliacão de produtos dos meios de comunicação
+cbo_familia,3532,Técnicos em operações e serviços bancários
+cbo_familia,3541,Especialistas em promoção de produtos e vendas
+cbo_familia,3542,Compradores
+cbo_familia,3543,Analistas de comércio exterior
+cbo_familia,3544,Leiloeiros e avaliadores
+cbo_familia,3545,Corretores de seguros
+cbo_familia,3546,Corretores de imóveis e de grãos
+cbo_familia,3547,Representantes comerciais autônomos
+cbo_familia,3548,Técnicos em serviços de turismo e organização de eventos
+cbo_familia,3711,Técnicos em biblioteconomia
+cbo_familia,3712,Técnicos em museologia e afins
+cbo_familia,3713,Técnicos em artes gráficas
+cbo_familia,3714,Recreadores
+cbo_familia,3721,Captadores de imagens em movimento
+cbo_familia,3722,Operadores de rede de teleprocessamento e afins
+cbo_familia,3731,Técnicos de operação de registros sonoro/audiovisuais
+cbo_familia,3732,Supervisores operacionais e técnicos em mídias audiovisuais
+cbo_familia,3741,Técnicos em áudio
+cbo_familia,3742,Técnicos em cenografia
+cbo_familia,3743,Técnicos em operação de aparelhos de projeção
+cbo_familia,3744,"Técnicos em montagem, edição e finalização de mídia audiovisual"
+cbo_familia,3751,"Designers de interiores, de vitrines e visual merchandiser e afins (nível médio)"
+cbo_familia,3761,Dançarinos tradicionais e populares
+cbo_familia,3762,Artistas de circo (circenses)
+cbo_familia,3763,"Apresentadores de eventos, programas e espetáculos"
+cbo_familia,3764,Modelos
+cbo_familia,3771,Atletas profissionais
+cbo_familia,3772,Árbitros desportivos
+cbo_familia,3911,"Planejadores, programadores e controladores de produção e manutenção"
+cbo_familia,3912,Técnicos de controle da produção
+cbo_familia,3951,Técnicos de apoio em pesquisa e desenvolvimento
+cbo_familia,4101,Supervisores administrativos
+cbo_familia,4102,"Supervisores de serviços financeiros, de câmbio e de controle"
+cbo_familia,4110,"Agentes, assistentes e auxiliares administrativos"
+cbo_familia,4121,Operadores de equipamentos de entrada e transmissão de dados
+cbo_familia,4122,Contínuos
+cbo_familia,4131,Auxiliares de contabilidade
+cbo_familia,4132,Escriturários de serviços bancários
+cbo_familia,4141,Almoxarifes e armazenistas
+cbo_familia,4142,Apontadores e conferentes
+cbo_familia,4151,"Auxiliares de serviços de documentação, informação e pesquisa"
+cbo_familia,4152,"Trabalhadores nos serviços de classificação e entregas de correspondências, encomendas e publicações"
+cbo_familia,4153,Trabalhadores em registros e informações em saúde
+cbo_familia,4201,Supervisores de atendimento ao público e de pesquisa
+cbo_familia,4211,Caixas e bilheteiros (exceto caixa de banco)
+cbo_familia,4212,Coletadores de apostas e de jogos
+cbo_familia,4213,Cobradores e afins
+cbo_familia,4221,Recepcionistas
+cbo_familia,4222,Operadores de telefonia
+cbo_familia,4223,Operadores de telemarketing e afins
+cbo_familia,4231,Despachantes documentalistas e afins
+cbo_familia,4241,Entrevistadores e recenseadores
+cbo_familia,4242,Aplicadores de provas e afins
+cbo_familia,5101,"Supervisores dos serviços de transporte, turismo, hotelaria e administração de edifícios"
+cbo_familia,5102,Supervisores de lavanderia
+cbo_familia,5103,"Supervisores dos serviços de proteção, segurança e outros"
+cbo_familia,5111,Trabalhadores de segurança e atendimento aos usuários nos transportes
+cbo_familia,5112,Fiscais e cobradores dos transportes coletivos
+cbo_familia,5114,Guias de turismo
+cbo_familia,5115,Condutores de turismo
+cbo_familia,5121,Trabalhadores dos serviços domésticos em geral
+cbo_familia,5131,Mordomos e governantas
+cbo_familia,5132,Cozinheiros
+cbo_familia,5133,"Camareiros, roupeiros e afins"
+cbo_familia,5134,"Trabalhadores no atendimento em estabelecimentos de serviços de alimentação, bebidas e hotelaria"
+cbo_familia,5135,Trabalhadores auxiliares nos serviços de alimentação
+cbo_familia,5136,"Churrasqueiros, pizzaiolos e sushimen"
+cbo_familia,5141,Trabalhadores nos serviços de administração de edifícios
+cbo_familia,5142,"Trabalhadores nos serviços de coleta de resíduos, de limpeza e conservação de áreas públicas"
+cbo_familia,5143,Trabalhadores nos serviços de manutenção de edificações
+cbo_familia,5151,Trabalhadores em serviços de promoção e apoio à saúde
+cbo_familia,5152,Auxiliares de laboratório da saúde
+cbo_familia,5153,"Trabalhadores de atenção, defesa e proteção a pessoas em situação de risco e adolescentes em conflito com a lei"
+cbo_familia,5161,Trabalhadores nos serviços de embelezamento e higiene
+cbo_familia,5162,"Cuidadores de crianças, jovens, adultos e idosos"
+cbo_familia,5163,"Tintureiros, lavadeiros e afins, a máquina"
+cbo_familia,5164,"Lavadores e passadores de roupa, a mão"
+cbo_familia,5165,Trabalhadores dos serviços funerários
+cbo_familia,5166,Trabalhadores auxiliares dos serviços funerários
+cbo_familia,5167,Astrólogos e numerólogos
+cbo_familia,5168,Esotéricos e paranormais
+cbo_familia,5169,Trabalhadores nos serviços de arte corporal
+cbo_familia,5171,"Bombeiros, salva-vidas e afins"
+cbo_familia,5172,"Policiais, guardas-civis municipais e agentes de trânsito"
+cbo_familia,5173,Vigilantes e guardas de segurança
+cbo_familia,5174,"Porteiros, vigias e afins"
+cbo_familia,5191,Motociclistas e ciclistas de entregas rápidas
+cbo_familia,5192,Trabalhadores da coleta e seleção de material reciclável
+cbo_familia,5193,"Trabalhadores de serviços veterinários, de higiene e estética de animais domésticos"
+cbo_familia,5198,Profissionais do sexo
+cbo_familia,5199,Outros trabalhadores dos serviços
+cbo_familia,5201,Supervisores de vendas e de prestação de serviços
+cbo_familia,5211,Operadores do comércio em lojas e mercados
+cbo_familia,5231,Instaladores de produtos e acessórios
+cbo_familia,5241,Vendedores em domicílio
+cbo_familia,5242,"Vendedores em bancas, quiosques e barracas"
+cbo_familia,5243,Vendedores ambulantes
+cbo_familia,6110,Produtores agropecuários em geral
+cbo_familia,6120,Produtores agrícolas polivalentes
+cbo_familia,6121,Produtores agrícolas na cultura de gramíneas
+cbo_familia,6122,Produtores agrícolas na cultura de plantas fibrosas
+cbo_familia,6123,Produtores agrícolas na olericultura
+cbo_familia,6124,Produtores agrícolas no cultivo de flores e plantas ornamentais
+cbo_familia,6125,Produtores agrícolas na fruticultura
+cbo_familia,6126,Produtores agrícolas na cultura de plantas estimulantes
+cbo_familia,6127,Produtores agrícolas na cultura de plantas oleaginosas
+cbo_familia,6128,Produtores de especiarias e de plantas aromáticas e medicinais
+cbo_familia,6130,Produtores em pecuária polivalente
+cbo_familia,6131,Produtores em pecuária de animais de grande porte
+cbo_familia,6132,Produtores em pecuária de animais de médio porte
+cbo_familia,6133,Produtores da avicultura e cunicultura
+cbo_familia,6134,Produtores de animais e insetos úteis
+cbo_familia,6201,Supervisores na exploração agropecuária
+cbo_familia,6210,Trabalhadores agropecuários em geral
+cbo_familia,6220,Trabalhadores de apoio à agricultura
+cbo_familia,6221,Trabalhadores agrícolas na cultura de gramíneas
+cbo_familia,6222,Trabalhadores agrícolas na cultura de plantas fibrosas
+cbo_familia,6223,Trabalhadores agrícolas na olericultura
+cbo_familia,6224,Trabalhadores agrícolas no cultivo de flores e plantas ornamentais
+cbo_familia,6225,Trabalhadores agrícolas na fruticultura
+cbo_familia,6226,Trabalhadores agrícolas nas culturas de plantas estimulantes
+cbo_familia,6227,Trabalhadores agrícolas na cultura de plantas oleaginosas
+cbo_familia,6228,Trabalhadores agrícolas da cultura de especiarias e de plantas aromáticas e medicinais
+cbo_familia,6230,Tratadores polivalentes de animais
+cbo_familia,6231,Trabalhadores na pecuária de animais de grande porte
+cbo_familia,6232,Trabalhadores na pecuária de animais de médio porte
+cbo_familia,6233,Trabalhadores na avicultura e cunicultura
+cbo_familia,6234,Trabalhadores na criação de insetos e animais úteis
+cbo_familia,6301,Supervisores na área florestal e aqüicultura
+cbo_familia,6310,Pescadores polivalentes
+cbo_familia,6311,Pescadores profissionais artesanais de água doce
+cbo_familia,6312,Pescadores de água costeira e alto mar
+cbo_familia,6313,Criadores de animais aquáticos
+cbo_familia,6314,Trabalhadores de apoio à pesca
+cbo_familia,6320,Trabalhadores florestais polivalentes
+cbo_familia,6321,Extrativistas e reflorestadores de espécies produtoras de madeira
+cbo_familia,6322,Extrativistas florestais de espécies produtoras de gomas e resinas
+cbo_familia,6323,"Extrativistas florestais de espécies produtoras de fibras, ceras e óleos"
+cbo_familia,6324,Extrativistas florestais de espécies produtoras de alimentos silvestres
+cbo_familia,6325,"Extrativistas florestais de espécies produtoras de substâncias aromáticas, medicinais e tóxicas"
+cbo_familia,6326,Carvoejadores
+cbo_familia,6410,Trabalhadores da mecanização agrícola
+cbo_familia,6420,Trabalhadores da mecanização florestal
+cbo_familia,6430,Trabalhadores da irrigação e drenagem
+cbo_familia,7101,Supervisores da extração mineral
+cbo_familia,7102,Supervisores da construção civil
+cbo_familia,7111,Trabalhadores da extração de minerais sólidos
+cbo_familia,7112,Trabalhadores de extração de minerais sólidos (operadores de máquinas)
+cbo_familia,7113,Trabalhadores da extração de minerais líquidos e gasosos
+cbo_familia,7114,Garimpeiros e operadores de salinas
+cbo_familia,7121,Trabalhadores de beneficiamento de minérios
+cbo_familia,7122,Trabalhadores de beneficiamento de pedras ornamentais
+cbo_familia,7151,Trabalhadores na operação de máquinas de terraplenagem e fundações
+cbo_familia,7152,Trabalhadores de estruturas de alvenaria
+cbo_familia,7153,Montadores de estruturas de concreto armado
+cbo_familia,7154,Trabalhadores na operação de máquinas de concreto usinado e afins
+cbo_familia,7155,"Trabalhadores de montagem de estruturas de madeira, metal e compósitos em obras civis"
+cbo_familia,7156,Trabalhadores de instalações elétricas
+cbo_familia,7157,Aplicadores de materiais isolantes
+cbo_familia,7161,Revestidores de concreto
+cbo_familia,7162,Telhadores (revestimentos rígidos)
+cbo_familia,7163,Vidraceiros (revestimentos rígidos)
+cbo_familia,7164,Gesseiros
+cbo_familia,7165,"Aplicadores de revestimentos cerâmicos, pastilhas, pedras e madeiras"
+cbo_familia,7166,Pintores de obras e revestidores de interiores (revestimentos flexíveis)
+cbo_familia,7170,Ajudantes de obras civis
+cbo_familia,7201,"Supervisores de usinagem, conformação e tratamento de metais"
+cbo_familia,7202,Supervisores da fabricação e montagem metalmecânica
+cbo_familia,7211,Ferramenteiros e afins
+cbo_familia,7212,Preparadores e operadores de máquinas-ferramenta convencionais
+cbo_familia,7213,Afiadores e polidores de metais
+cbo_familia,7214,Operadores de máquinas de usinagem cnc
+cbo_familia,7221,Trabalhadores de forjamento de metais
+cbo_familia,7222,Trabalhadores de fundição de metais puros e de ligas metálicas
+cbo_familia,7223,Trabalhadores de moldagem de metais e de ligas metálicas
+cbo_familia,7224,Trabalhadores de trefilação e estiramento de metais puros e ligas metálicas
+cbo_familia,7231,Trabalhadores de tratamento térmico de metais
+cbo_familia,7232,Trabalhadores de tratamento de superfícies de metais e de compósitos (termoquímicos)
+cbo_familia,7233,"Trabalhadores da pintura de equipamentos, veículos, estruturas metálicas e de compósitos"
+cbo_familia,7241,Encanadores e instaladores de tubulações
+cbo_familia,7242,Trabalhadores de traçagem e montagem de estruturas metálicas e de compósitos
+cbo_familia,7243,Trabalhadores de soldagem e corte de ligas metálicas
+cbo_familia,7244,Trabalhadores de caldeiraria e serralheria
+cbo_familia,7245,Operadores de máquinas de conformação de metais
+cbo_familia,7246,Trançadores e laceiros de cabos de aço
+cbo_familia,7250,Ajustadores mecânicos polivalentes e afins
+cbo_familia,7251,"Montadores de máquinas, aparelhos e acessórios em linhas de montagem"
+cbo_familia,7252,Montadores de máquinas industriais
+cbo_familia,7253,Montadores de máquinas pesadas e equipamentos agrícolas
+cbo_familia,7254,Mecânicos montadores de motores e turboalimentadores
+cbo_familia,7255,Montadores de veículos automotores (linha de montagem)
+cbo_familia,7256,Montadores de sistemas e estruturas de aeronaves
+cbo_familia,7257,Instaladores de equipamentos de refrigeração e ventilação
+cbo_familia,7301,Supervisores de montagens e instalações eletroeletrônicas
+cbo_familia,7311,Montadores de equipamentos eletroeletrônicos
+cbo_familia,7312,Montadores de aparelhos de telecomunicações
+cbo_familia,7313,Instaladores-reparadores de linhas e equipamentos de telecomunicações
+cbo_familia,7321,"Instaladores e reparadores de linhas e cabos elétricos, telefônicos e de comunicação de dados"
+cbo_familia,7401,Supervisores da mecânica de precisão e instrumentos musicais
+cbo_familia,7411,Mecânicos de instrumentos de precisão
+cbo_familia,7421,Confeccionadores de instrumentos musicais
+cbo_familia,7501,Supervisores de joalheria e afins
+cbo_familia,7502,"Supervisores de vidraria, cerâmica e afins"
+cbo_familia,7510,Joalheiros e lapidadores de gemas
+cbo_familia,7511,Artesãos de metais preciosos e semi-preciosos
+cbo_familia,7521,"Sopradores, moldadores e modeladores de vidros e afins"
+cbo_familia,7522,Trabalhadores da transformação de vidros planos
+cbo_familia,7523,Ceramistas (preparação e fabricação)
+cbo_familia,7524,Vidreiros e ceramistas (arte e decoração)
+cbo_familia,7601,Supervisores da indústria têxtil
+cbo_familia,7602,Supervisores na indústria do curtimento
+cbo_familia,7603,Supervisores na confecção do vestuário
+cbo_familia,7604,Supervisores na confecção de calçados
+cbo_familia,7605,"Supervisores da confecção de artefatos de tecidos, couros e afins"
+cbo_familia,7606,Supervisores das artes gráficas
+cbo_familia,7610,Trabalhadores polivalentes das indústrias têxteis
+cbo_familia,7611,Trabalhadores da classificação de fibras têxteis e lavagem de lã
+cbo_familia,7612,Operadores da fiação
+cbo_familia,7613,Operadores de tear e máquinas similares
+cbo_familia,7614,"Trabalhadores de acabamento, tingimento e estamparia das indústrias têxteis"
+cbo_familia,7618,Inspetores e revisores de produção têxtil
+cbo_familia,7620,Trabalhadores polivalentes do curtimento de couros e peles
+cbo_familia,7621,Trabalhadores da preparação do curtimento de couros e peles
+cbo_familia,7622,Trabalhadores do curtimento de couros e peles
+cbo_familia,7623,Trabalhadores do acabamento de couros e peles
+cbo_familia,7630,Profissionais polivalentes da confecção de roupas
+cbo_familia,7631,Trabalhadores da preparação da confecção de roupas
+cbo_familia,7632,Operadores de máquinas para costura de peças do vestuário
+cbo_familia,7633,Operadores de máquinas para bordado e acabamento de roupas
+cbo_familia,7640,Trabalhadores polivalentes da confecção de calçados
+cbo_familia,7641,Trabalhadores da preparação da confecção de calçados
+cbo_familia,7642,Operadores de máquinas de costurar e montar calçados
+cbo_familia,7643,Trabalhadores de acabamento de calçados
+cbo_familia,7650,Trabalhadores polivalentes da confecção de artefatos de tecidos e couros
+cbo_familia,7651,"Trabalhadores da preparação de artefatos de tecidos, couros e tapeçaria"
+cbo_familia,7652,"Trabalhadores da confecção de artefatos de tecidos, couros e sintéticos"
+cbo_familia,7653,Operadores de máquinas na confecção de artefatos de couro
+cbo_familia,7654,Trabalhadores do acabamento de artefatos de tecidos e couros
+cbo_familia,7661,Trabalhadores da pré-impressão gráfica
+cbo_familia,7662,Trabalhadores da impressão gráfica
+cbo_familia,7663,Trabalhadores do acabamento gráfico
+cbo_familia,7664,Trabalhadores de laboratório fotográfico e radiológico
+cbo_familia,7681,"Trabalhadores de tecelagem manual, tricô, crochê, rendas e afins"
+cbo_familia,7682,Trabalhadores artesanais da confecção de peças e tecidos
+cbo_familia,7683,Trabalhadores artesanais da confecção de calçados e artefatos de couros e peles
+cbo_familia,7686,Trabalhadores tipográficos linotipistas e afins
+cbo_familia,7687,Encadernadores e recuperadores de livros (pequenos lotes ou a unidade)
+cbo_familia,7701,"Supervisores em indústria de madeira, mobiliário e da carpintaria veicular"
+cbo_familia,7711,Marceneiros e afins
+cbo_familia,7721,Trabalhadores de tratamento e preparação da madeira
+cbo_familia,7731,Operadores de máquinas de desdobramento da madeira
+cbo_familia,7732,Operadores de máquinas de aglomeração e prensagem de chapas
+cbo_familia,7733,Operadores de usinagem convencional de madeira
+cbo_familia,7734,Operadores de máquina de usinar madeira (produção em série)
+cbo_familia,7735,Operadores de máquinas de usinagem de madeira cnc
+cbo_familia,7741,Montadores de móveis e artefatos de madeira
+cbo_familia,7751,Trabalhadores de arte e do acabamento em madeira do mobiliário
+cbo_familia,7764,"Confeccionadores de artefatos de madeira, móveis de vime e afins"
+cbo_familia,7771,Carpinteiros navais
+cbo_familia,7772,Carpinteiros de carrocerias e carretas
+cbo_familia,7801,Supervisores de trabalhadores de embalagem e etiquetagem
+cbo_familia,7811,Condutores de processos robotizados
+cbo_familia,7813,Operadores de equipamentos pilotados remotamente
+cbo_familia,7817,Trabalhadores subaquáticos
+cbo_familia,7821,Operadores de máquinas e equipamentos de elevação
+cbo_familia,7822,Operadores de equipamentos de movimentação de cargas
+cbo_familia,7823,Motoristas de veículos de pequeno e médio porte
+cbo_familia,7824,"Motoristas de ônibus urbanos, metropolitanos e rodoviários"
+cbo_familia,7825,Motoristas de veículos de cargas em geral
+cbo_familia,7826,Operadores de veículos sobre trilhos e cabos aéreos
+cbo_familia,7827,Trabalhadores aquaviários
+cbo_familia,7828,Condutores de animais e de veículos de tração animal e pedais
+cbo_familia,7831,Trabalhadores de manobras de transportes sobre trilhos
+cbo_familia,7832,Trabalhadores de cargas e descargas de mercadorias
+cbo_familia,7841,Trabalhadores de embalagem e de etiquetagem
+cbo_familia,7842,Alimentadores de linhas de produção
+cbo_familia,7911,Artesãos
+cbo_familia,8101,"Supervisores de produção em indústrias químicas, petroquímicas e afins"
+cbo_familia,8102,Supervisores de produção em indústrias de transformação de plásticos e borrachas
+cbo_familia,8103,"Supervisores de produção em indústrias de produtos farmacêuticos, cosméticos e afins"
+cbo_familia,8110,"Operadores polivalentes de equipamentos em indústrias químicas, petroquímicas e afins"
+cbo_familia,8111,Operadores de equipamentos de moagem e mistura de materiais (tratamentos químicos e afins)
+cbo_familia,8112,Operadores de calcinação e de tratamentos químicos de materiais radioativos
+cbo_familia,8113,Operadores de equipamentos de filtragem e separação
+cbo_familia,8114,"Operadores de equipamentos de destilação, evaporação e reação"
+cbo_familia,8115,Operadores de equipamentos de produção e refino de petróleo e gás
+cbo_familia,8116,Operadores de equipamentos de coqueificação
+cbo_familia,8117,"Operadores de instalações e máquinas de produtos plásticos, de borracha e moldadores de parafinas"
+cbo_familia,8118,"Operadores de máquinas e instalações de produtos farmacêuticos, cosméticos e afins"
+cbo_familia,8121,Trabalhadores da fabricação de munição e explosivos químicos
+cbo_familia,8131,"Operadores de processos das indústrias de transformação de produtos químicos, petroquímicos e afins"
+cbo_familia,8181,Laboratoristas industriais auxiliares
+cbo_familia,8201,Supervisores de produção em indústrias siderúrgicas
+cbo_familia,8202,Supervisores na fabricação de materiais para construção (vidros e cerâmicas)
+cbo_familia,8211,Operadores de instalações de sinterização
+cbo_familia,8212,Operadores de fornos de primeira fusão e aciaria
+cbo_familia,8213,Operadores de equipamentos de laminação
+cbo_familia,8214,Operadores de equipamentos de acabamento de chapas e metais
+cbo_familia,8221,Forneiros metalúrgicos (segunda fusão e reaquecimento)
+cbo_familia,8231,"Operadores na preparação de massas para abrasivo, vidro, cerâmica, porcelana e materiais de construção"
+cbo_familia,8232,"Operadores de equipamentos de fabricação e beneficiamento de cristais, vidros, cerâmicas, porcelanas, fibras de vidro, abrasivos e afins"
+cbo_familia,8233,Operadores de instalações e equipamentos de fabricação de materiais de construção
+cbo_familia,8281,Trabalhadores da fabricação de cerâmica estrutural para construção
+cbo_familia,8301,Supervisores da fabricação de celulose e papel
+cbo_familia,8311,Preparadores de pasta para fabricação de papel
+cbo_familia,8321,Operadores de máquinas de fabricar papel e papelão
+cbo_familia,8331,Operadores de máquinas na fabricação de produtos de papel e papelão
+cbo_familia,8332,Trabalhadores artesanais de produtos de papel e papelão
+cbo_familia,8401,"Supervisores da fabricação de alimentos, bebidas e fumo"
+cbo_familia,8411,"Trabalhadores da indústria de beneficiamento de grãos, cereais e afins"
+cbo_familia,8412,Trabalhadores no beneficiamento do sal
+cbo_familia,8413,Trabalhadores na fabricação e refino de açúcar
+cbo_familia,8414,Trabalhadores na fabricação e conservação de alimentos
+cbo_familia,8415,Trabalhadores na pasteurização do leite e na fabricação de laticínios e afins
+cbo_familia,8416,"Trabalhadores na industrialização de café, cacau, mate e de produtos afins"
+cbo_familia,8417,"Trabalhadores na fabricação de cachaça, cerveja, vinhos e outras bebidas"
+cbo_familia,8418,"Operadores de equipamentos na fabricação de pães, massas alimentícias, doces, chocolates e achocolatados"
+cbo_familia,8421,Cigarreiros e beneficiadores de fumo
+cbo_familia,8422,Charuteiros
+cbo_familia,8423,Cigarreiros
+cbo_familia,8481,Trabalhadores artesanais na conservação de alimentos
+cbo_familia,8482,Trabalhadores artesanais na pasteurização do leite e na fabricação de laticínios e afins
+cbo_familia,8483,"Padeiros, confeiteiros e afins"
+cbo_familia,8484,Trabalhadores na degustação e classificação de grãos e afins
+cbo_familia,8485,Magarefes e afins
+cbo_familia,8486,Trabalhadores artesanais na indústria do fumo
+cbo_familia,8601,Supervisores da produção de utilidades
+cbo_familia,8611,"Operadores de instalações de geração e distribuição de energia elétrica, hidráulica, térmica ou nuclear"
+cbo_familia,8612,Operadores de instalações de distribuição de energia elétrica
+cbo_familia,8621,Operadores de máquinas a vapor e utilidades
+cbo_familia,8622,"Operadores de instalações de captação, tratamento e distribuição de água"
+cbo_familia,8623,Operadores de instalações de captação e esgotos
+cbo_familia,8624,"Operadores de instalações de extração, processamento, envasamento e distribuição de gases"
+cbo_familia,8625,Operadores de instalações de refrigeração e ar-condicionado
+cbo_familia,9101,"Supervisores em serviços de reparação e manutenção de máquinas e equipamentos industriais, comerciais e residenciais"
+cbo_familia,9102,Supervisores em serviços de reparação e manutenção veicular
+cbo_familia,9109,"Supervisores de outros trabalhadores de serviços de reparação, conservação e manutenção"
+cbo_familia,9111,"Mecânicos de manutenção de bombas, motores, compressores e equipamentos de transmissão"
+cbo_familia,9112,Mecânicos de manutenção e instalação de aparelhos de climatização e refrigeração
+cbo_familia,9113,Mecânicos de manutenção de máquinas industriais
+cbo_familia,9131,Mecânicos de manutenção de máquinas pesadas e equipamentos agrícolas
+cbo_familia,9141,Mecânicos de manutenção aeronáutica
+cbo_familia,9142,Mecânicos de manutenção de motores e equipamentos navais
+cbo_familia,9143,Mecânicos de manutenção metroferroviária
+cbo_familia,9144,Mecânicos de manutenção de veículos automotores
+cbo_familia,9151,Técnicos em manutenção e reparação de instrumentos de medição e precisão
+cbo_familia,9152,Restauradores de instrumentos musicais
+cbo_familia,9153,Técnicos em manutenção e reparação de equipamentos biomédicos
+cbo_familia,9154,Reparadores de equipamentos fotográficos
+cbo_familia,9191,Lubrificadores
+cbo_familia,9192,"Trabalhadores de manutenção de roçadeiras, motoserras e similares"
+cbo_familia,9193,Mecânicos de manutenção de bicicletas e equipamentos esportivos e de ginástica
+cbo_familia,9501,"Supervisores de manutenção eletroeletrônica industrial, comercial e predial"
+cbo_familia,9502,Supervisores de manutenção eletroeletrônica veicular
+cbo_familia,9503,Supervisores de manutenção eletromecânica
+cbo_familia,9511,Eletricistas de manutenção eletroeletrônica
+cbo_familia,9513,Instaladores e mantenedores de sistemas eletroeletrônicos de segurança
+cbo_familia,9531,"Eletricistas eletrônicos de manutenção veicular (aérea, terrestre e naval)"
+cbo_familia,9541,"Instaladores e mantenedores eletromecânicos de elevadores, escadas e portas automáticas"
+cbo_familia,9542,Reparadores de aparelhos eletrodomésticos
+cbo_familia,9543,Reparadores de equipamentos de escritório
+cbo_familia,9911,Conservadores de vias permanentes (trilhos)
+cbo_familia,9912,Mantenedores de equipamentos de parques de diversões e similares
+cbo_familia,9913,Reparadores de carrocerias de veículos
+cbo_familia,9914,Mantenedores de edificações
+cbo_familia,9921,Trabalhadores elementares de serviços de manutenção veicular
+cbo_familia,9922,Trabalhadores operacionais de conservação de vias permanentes (exceto trilhos)

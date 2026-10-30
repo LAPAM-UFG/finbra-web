@@ -5,7 +5,7 @@ Os arquivos públicos do PDET não identificam pessoas nem empresas (sem CPF, PI
 padronizados entre os anos (os de 2023 mudaram) e códigos como números; CNAE e CBO ficam como texto com os
 zeros à esquerda. Códigos de "ignorado" (99, 999, 999997…) ficam como vieram, conforme o dicionário do PDET.
 
-A saída fica fora do Dropbox, em --saida (padrão: TRABALHO_MICRO ou D:/LVBERNARDELLI/finbra_micro), com os
+A saída fica no HD externo, em --saida (padrão: TRABALHO_MICRO ou E:/finbra/micro), com os
 mesmos caminhos que terá no R2:
 
 silver/trabalho/micro/rais_vinculos/ano=AAAA/uf=NN.parquet   todos os vínculos do ano (ativos ou não em 31/12),
@@ -334,8 +334,8 @@ def anos_de(texto: str | None):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--brutos", default=os.environ.get("TRABALHO_BRUTOS", "D:/LVBERNARDELLI/finbra_brutos"))
-    p.add_argument("--saida", default=os.environ.get("TRABALHO_MICRO", "D:/LVBERNARDELLI/finbra_micro"))
+    p.add_argument("--brutos", default=os.environ.get("TRABALHO_BRUTOS", "E:/finbra/brutos"))
+    p.add_argument("--saida", default=os.environ.get("TRABALHO_MICRO", "E:/finbra/micro"))
     p.add_argument("--so", choices=["rais", "caged", "cubos"])
     p.add_argument("--anos", help="ex.: 2023 ou 2013-2016,2020")
     p.add_argument("--refazer", action="store_true")

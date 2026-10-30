@@ -27,6 +27,8 @@ export function reais(v: number | null | undefined): string {
 export const reaisCurto = (v: number) => (Math.abs(v) >= 1e3 ? `R$ ${compacto().format(v)}` : `R$ ${inteiro().format(v)}`);
 export const reaisExato = (v: number | null | undefined) => (vazio(v) ? '–' : `R$ ${decimal().format(v)}`);
 export const numero = (v: number | null | undefined) => (vazio(v) ? '–' : inteiro().format(v));
+/** Número com uma casa decimal (razões como P90/P10, horas, idade). */
+export const numero1 = (v: number | null | undefined) => (vazio(v) ? '–' : nf({ minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(v));
 export const pct = (v: number | null | undefined, casas = 1) => (vazio(v) || !Number.isFinite(v) ? '–' : formatarPct(v, casas, local()));
 export const div = (a: number | null | undefined, b: number | null | undefined) =>
   vazio(a) || vazio(b) || b === 0 ? null : a / b;

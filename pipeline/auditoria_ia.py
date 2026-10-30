@@ -23,13 +23,14 @@ Uso:
 import argparse
 import json
 import math
+import os
 from pathlib import Path
 
 import duckdb
 
 from config import GOLD, SILVER
 
-MICRO = Path("D:/LVBERNARDELLI/finbra_micro/silver/trabalho/micro")
+MICRO = Path(os.environ.get("TRABALHO_MICRO", "E:/finbra/micro")) / "silver/trabalho/micro"
 BRUTA = "Receitas Brutas Realizadas"
 # FPM por ementário: contas irmãs que somam o fundo, ou a conta-mãe (2022 em diante); nunca mãe + filhas
 FPM = {

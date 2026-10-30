@@ -5,7 +5,7 @@ import path from 'node:path';
 
 const PASTA_DADOS = path.resolve(__dirname, process.env.DATA_DIR ?? '../data');
 // microdados da RAIS e do CAGED (pipeline/microdados.py): fora do projeto e do Dropbox
-const PASTA_MICRO = path.resolve(process.env.TRABALHO_MICRO ?? 'D:/LVBERNARDELLI/finbra_micro');
+const PASTA_MICRO = path.resolve(process.env.TRABALHO_MICRO ?? 'E:/finbra/micro');
 
 /**
  * Serve a pasta data/ em /dados/ com suporte a Range, como o Worker faz em produção a partir do R2.

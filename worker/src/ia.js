@@ -169,7 +169,8 @@ export const FERRAMENTAS = [
             metodologia: { type: 'string', description: 'Tabelas usadas, fórmulas e critérios, em texto simples.' },
             tabelas: {
               type: 'array',
-              description: 'Até 4 tabelas que a página monta com o resultado das consultas (a página faz totais, variações e '
+              description: 'Até 10 tabelas (MAX_TABELAS de web/src/ia.ts), uma para cada recorte que a pergunta pede ou que a análise cita '
+                + '(ex.: sexo, natureza jurídica e municípios são três tabelas), montadas pela página com o resultado das consultas (a página faz totais, variações e '
                 + 'participações). serie: uma linha por período e uma coluna por grupo; comparacao: uma linha por grupo, '
                 + 'valores nos dois períodos, variação absoluta e percentual; tabela: o resultado como veio.',
               items: {

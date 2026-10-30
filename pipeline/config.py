@@ -1,7 +1,9 @@
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DATA = ROOT / "data"
+# no computador do laboratório os dados ficam no HD externo (DATA_DIR=E:/finbra/data); no GitHub, em data/
+DATA = Path(os.environ.get("DATA_DIR") or ROOT / "data")
 LANDING = DATA / "landing"   # respostas cruas da API (ndjson.gz), fora do git
 BRONZE = DATA / "bronze"     # Parquet fiel à fonte, um arquivo por exercício
 SILVER = DATA / "silver"     # normalizado + hierarquia de contas

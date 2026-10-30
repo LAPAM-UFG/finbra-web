@@ -49,8 +49,14 @@ const TRATAMENTO = 'filtrado';
 export function useFiltros() {
   const { meta, porCodigo, entes } = useDados();
   const [busca, setBusca] = useSearchParams();
+  // a área de trabalho usa os anos da RAIS (2010 em diante); as finanças, os do SICONFI
+  const trabalho = useLocation().pathname.startsWith('/trabalho');
+  const anosRais = (meta.fontes.rais as { anos?: number[] } | undefined)?.anos;
+  const anos = trabalho && anosRais?.length ? anosRais : meta.anos;
   const anoUrl = Number(busca.get('ano'));
-  const ano = meta.anos.includes(anoUrl) ? anoUrl : meta.anos.at(-1)!;
+  const ano = anos.includes(anoUrl) ? anoUrl : anos.at(-1)!;
+  /** Ano pedido na URL que não está na base (ex.: 2026 vindo das finanças): a página avisa a troca. */
+  const anoForaDaBase = busca.get('ano') && !anos.includes(anoUrl) ? anoUrl : null;
   const ente = porCodigo.get(Number(busca.get('ente'))) ?? null;
   const ufUrl = UFS.includes(busca.get('uf') ?? '') ? busca.get('uf')! : null;
   const uf = ente?.uf ?? ufUrl;
@@ -93,7 +99,7 @@ export function useFiltros() {
       : null;
 
   return {
-    ano, uf, ente, alvo, definir, limpar, escopo, rotulo, rotuloComparador, escopoComparador, tratamento, anos: meta.anos,
+    ano, uf, ente, alvo, definir, limpar, escopo, rotulo, rotuloComparador, escopoComparador, tratamento, anos, anoForaDaBase,
     temFiltros: !!(busca.get('ano') || busca.get('uf') || busca.get('ente')),
   };
 }
@@ -150,11 +156,12 @@ export function BarraFiltros(opcoes: Opcoes = {}) {
 function Filtros({ semAno, semEnte }: Opcoes) {
   const { entes } = useDados();
   const f = useFiltros();
+  const trabalho = useLocation().pathname.startsWith('/trabalho');
   return (
     <div className="filtros">
       {!semAno && (
         <div className="campo">
-          <label htmlFor="f-ano">{t('Exercício', 'Fiscal year')}</label>
+          <label htmlFor="f-ano">{trabalho ? t('Ano da RAIS', 'RAIS year') : t('Exercício', 'Fiscal year')}</label>
           <select id="f-ano" value={f.ano} onChange={(e) => f.definir({ ano: Number(e.target.value) })}>
             {[...f.anos].reverse().map((a) => (
               <option key={a}>{a}</option>

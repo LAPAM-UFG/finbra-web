@@ -872,6 +872,9 @@ function dicionarioTrabalho() {
     const { con } = await iniciar();
     await db.registerFileBuffer('trab_dic.parquet', await baixar('gold/trabalho/dicionario.parquet'));
     await con.query(`CREATE TABLE trab_dic AS SELECT * FROM read_parquet('trab_dic.parquet')`);
+    // nomes das classificações derivadas da consulta (setor institucional, esfera, faixas de jornada e tempo)
+    await con.query(`INSERT INTO trab_dic (variavel, codigo, descricao) SELECT * FROM (VALUES ${DERIVADAS.map((d) => `(${d.map(lit).join(', ')})`).join(', ')}) d
+      WHERE NOT EXISTS (SELECT 1 FROM trab_dic x WHERE x.variavel = d.col0 AND x.codigo = d.col1)`);
   })();
   dicionarioCarregado.catch(() => (dicionarioCarregado = null));
   return dicionarioCarregado;
@@ -910,7 +913,7 @@ const rotasTrabalho: Record<string, (q: Params) => Promise<unknown>> = {
               sum(m.empregos) FILTER (m.populacao > 0) AS empregos_com_populacao,
               sum(m.mulheres) AS mulheres, sum(m.superior) AS superior, sum(m.ate24) AS ate24, sum(m.de50mais) AS de50mais,
               ${setores},
-              sum(m.massa_dez) AS massa_dez,
+              sum(m.massa_dez) AS massa_dez, sum(m.n_rem_dez) AS n_rem_dez,
               sum(m.massa_dez) / nullif(sum(m.n_rem_dez), 0) AS remuneracao_media,
               sum(m.massa_dez) / nullif(sum(m.n_rem_dez), 0) * b.indice / i.indice AS remuneracao_media_real,
               sum(m.massa_dez_mulheres) / nullif(sum(m.n_rem_dez_mulheres), 0) AS remuneracao_mulheres,
@@ -975,19 +978,51 @@ const rotasTrabalho: Record<string, (q: Params) => Promise<unknown>> = {
     );
   },
 
+  /**
+   * CAGED mensal de famílias da CBO (prefixos de até 4 dígitos), para uma UF ou o Brasil (tabela caged_cbo, lida
+   * por Range: ordenada por escopo e família). Soma as famílias pedidas; o salário de admissão vem com N e fora.
+   */
+  async trab_caged_cbo(q) {
+    await tabelasTrabalho();
+    const p: Record<string, Valor> = {};
+    const e = escopoTrabalho(q, p, 'c');
+    if (e.tipo === 'ente') throw new Error(t('O CAGED por ocupação está disponível para UFs e para o Brasil.', 'CAGED by occupation is available for states and Brazil.'));
+    const lista = prefixos(q.cbo, 6);
+    if (!lista.length) return [];
+    if (lista.some((c) => c.length > 4)) {
+      throw new Error(t('No CAGED o painel tem a ocupação até a família (4 dígitos): use 2512, não 251205.', 'In CAGED the dashboard has occupations down to the family (4 digits): use 2512, not 251205.'));
+    }
+    const cbo = prefixosSemSobreposicao(lista);
+    return consultar(
+      `SELECT c.competencia, sum(c.admissoes) AS admissoes, sum(c.desligamentos) AS desligamentos, sum(c.saldo) AS saldo,
+              sum(c.salario_adm_soma) / nullif(sum(c.salario_adm_n), 0) AS salario_medio_admissao,
+              sum(c.salario_adm_n) AS salario_adm_n, sum(c.salario_adm_fora) AS salario_adm_fora
+       FROM read_parquet(${arq('gold/trabalho/caged_cbo.parquet')}) c
+       WHERE c.escopo = '${e.escopo}' AND (${cbo.map((x) => `starts_with(c.cbo_familia, ${lit(x)})`).join(' OR ')})
+       GROUP BY c.competencia ORDER BY c.competencia`,
+      p,
+    );
+  },
+
   /** Municípios de uma UF (ou do Brasil) num ano da RAIS, com o saldo do CAGED do mesmo ano. */
   async trab_municipios(q) {
     await tabelasTrabalho();
     const p: Record<string, Valor> = { ano: inteiro(q.ano) };
     const e = escopoTrabalho({ uf: q.uf }, p);
+    // crescimento: vínculos ativos sobre o ano anterior da RAIS (mesmo município); o saldo do CAGED é do ano civil
     return consultar(
-      `SELECT m.cod_ibge, m.nome, m.uf, m.populacao, m.empregos,
+      `SELECT m.cod_ibge, m.nome, m.uf, m.populacao, m.empregos, a.empregos AS empregos_ano_anterior,
+              (m.empregos - a.empregos) / nullif(a.empregos, 0) AS var_empregos,
               1000 * m.empregos / nullif(m.populacao, 0) AS empregos_por_mil,
-              m.massa_dez / nullif(m.n_rem_dez, 0) AS remuneracao_media,
+              m.massa_dez / nullif(m.n_rem_dez, 0) AS remuneracao_media, m.n_rem_dez,
               m.mulheres / nullif(m.empregos, 0) AS pct_mulheres, m.superior / nullif(m.empregos, 0) AS pct_superior,
               m.empregos_adm_publica / nullif(m.empregos, 0) AS pct_adm_publica, m.estabelecimentos,
-              c.saldo AS saldo_caged, c.meses AS meses_caged
-       FROM trab_municipios m LEFT JOIN trab_caged_anual c ON c.cod_ibge = m.cod_ibge AND c.ano = m.ano
+              c.saldo AS saldo_caged, c.meses AS meses_caged, c.saldo - c0.saldo AS saldo_caged_dif,
+              c0.saldo AS saldo_caged_ano_anterior, c0.meses AS meses_caged_ano_anterior
+       FROM trab_municipios m
+       LEFT JOIN trab_municipios a ON a.cod_ibge = m.cod_ibge AND a.ano = m.ano - 1
+       LEFT JOIN trab_caged_anual c ON c.cod_ibge = m.cod_ibge AND c.ano = m.ano
+       LEFT JOIN trab_caged_anual c0 ON c0.cod_ibge = m.cod_ibge AND c0.ano = m.ano - 1
        WHERE ${e.onde} AND m.ano = $ano::INTEGER ORDER BY m.empregos DESC`,
       p,
     );
@@ -1006,8 +1041,64 @@ const FAIXA_IDADE = `CASE WHEN idade < 18 THEN '1' WHEN idade < 25 THEN '2' WHEN
   WHEN idade < 50 THEN '5' WHEN idade < 65 THEN '6' WHEN idade IS NOT NULL THEN '7' END`;
 
 /**
+ * Classificações derivadas da natureza jurídica do estabelecimento (Tabela de Natureza Jurídica 2021,
+ * CONCLA/IBGE). Setor institucional: o grupo 2 (entidades empresariais) se divide em empresas estatais
+ * (201-1 empresa pública e 203-8 sociedade de economia mista) e privadas; o grupo 1 é a administração
+ * pública. Esfera: pelo nome do código (federal, estadual/DF, municipal); consórcios, comissão
+ * polinacional e o fundo público sem esfera ficam como interfederativos. 9999 e códigos fora da tabela: ignorado.
+ */
+const NJ_FEDERAL = [1015, 1040, 1074, 1104, 1139, 1163, 1252, 1287, 1317, 1341];
+const NJ_ESTADUAL = [1023, 1058, 1082, 1112, 1147, 1171, 1236, 1260, 1295, 1325];
+const NJ_MUNICIPAL = [1031, 1066, 1120, 1155, 1180, 1244, 1279, 1309, 1333];
+const SETOR_INSTITUCIONAL = `CASE WHEN natureza_juridica BETWEEN 1000 AND 1999 THEN '1' WHEN natureza_juridica IN (2011, 2038) THEN '2'
+  WHEN natureza_juridica BETWEEN 2000 AND 2999 THEN '3' WHEN natureza_juridica BETWEEN 3000 AND 3999 THEN '4'
+  WHEN natureza_juridica BETWEEN 4000 AND 4999 THEN '5' WHEN natureza_juridica BETWEEN 5000 AND 5999 THEN '6' ELSE '9' END`;
+const ESFERA_ADM = `CASE WHEN natureza_juridica IN (${NJ_FEDERAL}) THEN '1' WHEN natureza_juridica IN (${NJ_ESTADUAL}) THEN '2'
+  WHEN natureza_juridica IN (${NJ_MUNICIPAL}) THEN '3' WHEN natureza_juridica BETWEEN 1000 AND 1999 THEN '4'
+  WHEN natureza_juridica BETWEEN 2000 AND 5999 THEN '8' ELSE '9' END`;
+const NJ_GRUPO = `CASE WHEN natureza_juridica BETWEEN 1000 AND 5999 THEN (natureza_juridica // 1000)::VARCHAR ELSE '9' END`;
+/** Agregação do tipo de vínculo da nota técnica da RAIS 2023 (MTE): contratos por lei estadual ou municipal entram em estatutários. */
+const VINCULO_MTE = `CASE WHEN tipo_vinculo IN (10, 15, 20, 25, 60, 65, 70, 75) THEN '1'
+  WHEN tipo_vinculo IN (30, 31, 35, 96, 97) THEN '2' WHEN tipo_vinculo IS NOT NULL THEN '3' END`;
+/** Jornada contratual semanal: válida de 1 a 44 horas (limite constitucional); fora disso, não entra no valor por hora. */
+const HORAS_VALIDAS = 'horas_contratadas BETWEEN 1 AND 44';
+const FAIXA_HORAS = `CASE WHEN horas_contratadas BETWEEN 1 AND 20 THEN '1' WHEN horas_contratadas BETWEEN 21 AND 30 THEN '2'
+  WHEN horas_contratadas BETWEEN 31 AND 39 THEN '3' WHEN horas_contratadas = 40 THEN '4' WHEN horas_contratadas BETWEEN 41 AND 44 THEN '5' ELSE '9' END`;
+/** Tempo no emprego em meses, como na RAIS. */
+const FAIXA_TEMPO = `CASE WHEN tempo_emprego IS NULL OR tempo_emprego < 0 THEN '9' WHEN tempo_emprego < 3 THEN '1' WHEN tempo_emprego < 12 THEN '2'
+  WHEN tempo_emprego < 24 THEN '3' WHEN tempo_emprego < 60 THEN '4' WHEN tempo_emprego < 120 THEN '5' ELSE '6' END`;
+/**
+ * Remuneração de dezembro válida: vínculo ativo em 31/12 com valor maior que zero. Até a RAIS 2022 a falta
+ * de valor vem como 0 no arquivo; desde 2023, em branco (ausente). As duas ficam fora da média e são contadas à parte.
+ */
+const REM_VALIDA = 'ativo_31_12 = 1 AND rem_dezembro_nom > 0';
+/** Mês ÷ semana: 52 semanas ÷ 12 meses. Valor por hora contratada (não por hora trabalhada). */
+const SEMANAS_MES = '(52.0 / 12)';
+
+/** Nomes das classificações derivadas (não estão no dicionário do PDET). */
+const DERIVADAS: [string, string, string][] = [
+  ['natureza_juridica_grupo', '9', 'Ignorado (9999 ou código fora da tabela)'],
+  ['setor_institucional', '1', 'Administração pública (natureza jurídica do grupo 1)'],
+  ['setor_institucional', '2', 'Empresas estatais (empresa pública e sociedade de economia mista)'],
+  ['setor_institucional', '3', 'Empresas privadas (demais entidades empresariais)'],
+  ['setor_institucional', '4', 'Entidades sem fins lucrativos'],
+  ['setor_institucional', '5', 'Pessoas físicas empregadoras'],
+  ['setor_institucional', '6', 'Organizações internacionais'],
+  ['setor_institucional', '9', 'Ignorado ou código sem classificação'],
+  ['esfera_adm', '1', 'Federal'], ['esfera_adm', '2', 'Estadual ou distrital'], ['esfera_adm', '3', 'Municipal'],
+  ['esfera_adm', '4', 'Interfederativa ou sem esfera (consórcios públicos, comissão polinacional, fundo público)'],
+  ['esfera_adm', '8', 'Fora da administração pública'], ['esfera_adm', '9', 'Ignorado'],
+  ['vinculo_mte', '1', 'Celetista'], ['vinculo_mte', '2', 'Estatutário (inclui contratos por lei estadual ou municipal)'], ['vinculo_mte', '3', 'Outros'],
+  ['faixa_horas', '1', 'Até 20 horas'], ['faixa_horas', '2', '21 a 30 horas'], ['faixa_horas', '3', '31 a 39 horas'],
+  ['faixa_horas', '4', '40 horas'], ['faixa_horas', '5', '41 a 44 horas'], ['faixa_horas', '9', 'Não informada ou fora de 1 a 44 horas'],
+  ['faixa_tempo', '1', 'Menos de 3 meses'], ['faixa_tempo', '2', '3 a 11 meses'], ['faixa_tempo', '3', '1 ano a menos de 2'],
+  ['faixa_tempo', '4', '2 a menos de 5 anos'], ['faixa_tempo', '5', '5 a menos de 10 anos'], ['faixa_tempo', '6', '10 anos ou mais'],
+  ['faixa_tempo', '9', 'Não informado'],
+];
+
+/**
  * Fontes da consulta: os microdados (um arquivo por ano e UF, ~1–3 GB por ano), quando publicados (há
- * silver/trabalho/micro/indice.json no R2 ou, no servidor local do Vite, na pasta finbra_micro), para UFs e
+ * silver/trabalho/micro/indice.json no R2 ou, no servidor local do Vite, na pasta dos microdados), para UFs e
  * municípios; senão, e para o Brasil, as tabelas pré-somadas do gold: cubo_uf (UF × classe CNAE × CBO) e
  * cubo_mun (município × divisão CNAE × grande grupo CBO). VITE_MICRODADOS=0 força as tabelas.
  */
@@ -1057,7 +1148,7 @@ const GRUPOS: Record<string, Grupo> = {
   cnae_classe: { micro: 'cnae_classe', cubo_uf: 'cnae_classe', nome: 'cnae_classe' },
   cnae_subclasse: { micro: 'cnae_subclasse', nome: 'cnae_subclasse' },
   cbo_grande_grupo: { micro: 'cbo[1:1]', cubo_uf: 'cbo[1:1]', cubo_mun: 'cbo_grande_grupo', nome: 'cbo_grande_grupo' },
-  cbo_familia: { micro: 'cbo[1:4]', cubo_uf: 'cbo[1:4]' },
+  cbo_familia: { micro: 'cbo[1:4]', cubo_uf: 'cbo[1:4]', nome: 'cbo_familia' },
   cbo: { micro: 'cbo', cubo_uf: 'cbo', nome: 'cbo' },
   sexo: { micro: 'sexo::VARCHAR', cubo_uf: 'sexo::VARCHAR', cubo_mun: 'sexo::VARCHAR', nome: 'sexo' },
   situacao: { micro: `(${SITUACAO})::VARCHAR`, cubo_uf: 'situacao::VARCHAR', cubo_mun: 'situacao::VARCHAR', nome: 'situacao' },
@@ -1065,12 +1156,38 @@ const GRUPOS: Record<string, Grupo> = {
   escolaridade: { micro: 'escolaridade::VARCHAR', nome: 'escolaridade' },
   raca_cor: { micro: 'raca_cor::VARCHAR', nome: 'raca_cor' },
   tipo_vinculo: { micro: 'tipo_vinculo::VARCHAR', nome: 'tipo_vinculo' },
-  natureza_juridica_grupo: { micro: '(natureza_juridica // 1000)::VARCHAR', nome: 'natureza_juridica_grupo' },
+  vinculo_mte: { micro: VINCULO_MTE, nome: 'vinculo_mte' },
+  natureza_juridica_grupo: { micro: NJ_GRUPO, nome: 'natureza_juridica_grupo' },
+  natureza_juridica: { micro: 'natureza_juridica::VARCHAR', nome: 'natureza_juridica' },
+  setor_institucional: { micro: SETOR_INSTITUCIONAL, nome: 'setor_institucional' },
+  esfera_adm: { micro: ESFERA_ADM, nome: 'esfera_adm' },
   tamanho_estab: { micro: 'tamanho_estab::VARCHAR', nome: 'tamanho_estab' },
+  faixa_horas: { micro: FAIXA_HORAS, nome: 'faixa_horas' },
+  faixa_tempo: { micro: FAIXA_TEMPO, nome: 'faixa_tempo' },
   causa_afastamento: { micro: 'causa_afastamento_1::VARCHAR', nome: 'causa_afastamento' },
   motivo_desligamento: { micro: 'motivo_desligamento::VARCHAR', nome: 'motivo_desligamento' },
 };
 export const gruposDaFonte = (fonte: FonteConsulta) => Object.keys(GRUPOS).filter((k) => GRUPOS[k][fonte]);
+
+/**
+ * Filtros por lista de códigos (só nos microdados): o vínculo entra se o valor estiver na lista (união
+ * dentro do filtro); filtros diferentes se somam por interseção. Os códigos são os da variável (ex.:
+ * escolaridade 9, 10, 11) ou das classificações derivadas acima.
+ */
+export const FILTROS_LISTA: Record<string, { expr: string; variavel: string }> = {
+  idade: { expr: FAIXA_IDADE, variavel: 'faixa_idade' },
+  esc: { expr: 'escolaridade::VARCHAR', variavel: 'escolaridade' },
+  raca: { expr: 'raca_cor::VARCHAR', variavel: 'raca_cor' },
+  si: { expr: SETOR_INSTITUCIONAL, variavel: 'setor_institucional' },
+  esf: { expr: ESFERA_ADM, variavel: 'esfera_adm' },
+  njg: { expr: NJ_GRUPO, variavel: 'natureza_juridica_grupo' },
+  nj: { expr: 'natureza_juridica::VARCHAR', variavel: 'natureza_juridica' },
+  tv: { expr: 'tipo_vinculo::VARCHAR', variavel: 'tipo_vinculo' },
+  vmte: { expr: VINCULO_MTE, variavel: 'vinculo_mte' },
+  tam: { expr: 'tamanho_estab::VARCHAR', variavel: 'tamanho_estab' },
+  horas: { expr: FAIXA_HORAS, variavel: 'faixa_horas' },
+  tempo: { expr: FAIXA_TEMPO, variavel: 'faixa_tempo' },
+};
 
 const MEDIDAS_MICRO = `
   count(*) AS vinculos,
@@ -1080,15 +1197,28 @@ const MEDIDAS_MICRO = `
   avg(dias_afastamento) FILTER (${AFASTADO}) AS dias_afastamento_medio,
   count(*) FILTER (sexo = 2) AS mulheres,
   count(*) FILTER (escolaridade >= 9) AS superior,
-  avg(rem_dezembro_nom) FILTER (ativo_31_12 = 1 AND rem_dezembro_nom > 0) AS rem_dez_media,
-  median(rem_dezembro_nom) FILTER (ativo_31_12 = 1 AND rem_dezembro_nom > 0) AS rem_dez_mediana,
-  count(*) FILTER (ativo_31_12 = 1 AND rem_dezembro_nom > 0) AS n_rem_dez,
-  avg(rem_media_nom) FILTER (rem_media_nom > 0) AS rem_media_media,
-  median(rem_media_nom) FILTER (rem_media_nom > 0) AS rem_media_mediana,
+  sum(rem_dezembro_nom) FILTER (${REM_VALIDA})::DOUBLE AS rem_dez_soma,
+  count(*) FILTER (${REM_VALIDA}) AS n_rem_dez,
+  count(*) FILTER (ativo_31_12 = 1 AND rem_dezembro_nom IS NULL) AS rem_dez_ausente,
+  count(*) FILTER (ativo_31_12 = 1 AND rem_dezembro_nom = 0) AS rem_dez_zero,
+  count(*) FILTER (ativo_31_12 = 1 AND rem_dezembro_nom < 0) AS rem_dez_negativa,
+  sum(rem_dezembro_nom) FILTER (${REM_VALIDA})::DOUBLE / nullif(count(*) FILTER (${REM_VALIDA}), 0) AS rem_dez_media,
+  quantile_cont(rem_dezembro_nom::DOUBLE, 0.1) FILTER (${REM_VALIDA}) AS rem_dez_p10,
+  quantile_cont(rem_dezembro_nom::DOUBLE, 0.25) FILTER (${REM_VALIDA}) AS rem_dez_p25,
+  quantile_cont(rem_dezembro_nom::DOUBLE, 0.5) FILTER (${REM_VALIDA}) AS rem_dez_mediana,
+  quantile_cont(rem_dezembro_nom::DOUBLE, 0.75) FILTER (${REM_VALIDA}) AS rem_dez_p75,
+  quantile_cont(rem_dezembro_nom::DOUBLE, 0.9) FILTER (${REM_VALIDA}) AS rem_dez_p90,
+  sum(rem_dezembro_nom) FILTER (${REM_VALIDA} AND ${HORAS_VALIDAS})::DOUBLE
+    / nullif(sum(horas_contratadas * ${SEMANAS_MES}) FILTER (${REM_VALIDA} AND ${HORAS_VALIDAS}), 0) AS rem_hora_media,
+  median(rem_dezembro_nom::DOUBLE / (horas_contratadas * ${SEMANAS_MES})) FILTER (${REM_VALIDA} AND ${HORAS_VALIDAS}) AS rem_hora_mediana,
+  count(*) FILTER (${REM_VALIDA} AND ${HORAS_VALIDAS}) AS n_rem_hora,
+  sum(rem_media_nom) FILTER (rem_media_nom > 0)::DOUBLE / nullif(count(*) FILTER (rem_media_nom > 0), 0) AS rem_media_media,
+  median(rem_media_nom::DOUBLE) FILTER (rem_media_nom > 0) AS rem_media_mediana,
+  count(*) FILTER (rem_media_nom > 0) AS n_rem_media,
   avg(horas_contratadas) FILTER (horas_contratadas > 0) AS horas_media,
   avg(idade) AS idade_media`;
 
-// o cubo guarda somas e contagens: médias saem como soma ÷ contagem; medianas não são somáveis
+// o cubo guarda somas e contagens: médias saem como soma ÷ contagem; medianas e percentis não são somáveis
 const MEDIDAS_CUBO = `
   coalesce(sum(vinculos), 0)::DOUBLE AS vinculos,
   coalesce(sum(vinculos) FILTER (situacao = 1), 0)::DOUBLE AS ativos,
@@ -1097,11 +1227,15 @@ const MEDIDAS_CUBO = `
   sum(dias_afastamento) FILTER (afastado) / nullif(sum(vinculos) FILTER (afastado), 0) AS dias_afastamento_medio,
   coalesce(sum(vinculos) FILTER (sexo = 2), 0)::DOUBLE AS mulheres,
   coalesce(sum(superior), 0)::DOUBLE AS superior,
-  sum(rem_dez_soma) / nullif(sum(rem_dez_n), 0) AS rem_dez_media,
-  NULL::DOUBLE AS rem_dez_mediana,
+  sum(rem_dez_soma) AS rem_dez_soma,
   coalesce(sum(rem_dez_n), 0)::DOUBLE AS n_rem_dez,
+  NULL::DOUBLE AS rem_dez_ausente, NULL::DOUBLE AS rem_dez_zero, NULL::DOUBLE AS rem_dez_negativa,
+  sum(rem_dez_soma) / nullif(sum(rem_dez_n), 0) AS rem_dez_media,
+  NULL::DOUBLE AS rem_dez_p10, NULL::DOUBLE AS rem_dez_p25, NULL::DOUBLE AS rem_dez_mediana, NULL::DOUBLE AS rem_dez_p75, NULL::DOUBLE AS rem_dez_p90,
+  NULL::DOUBLE AS rem_hora_media, NULL::DOUBLE AS rem_hora_mediana, NULL::DOUBLE AS n_rem_hora,
   sum(rem_media_soma) / nullif(sum(rem_media_n), 0) AS rem_media_media,
   NULL::DOUBLE AS rem_media_mediana,
+  coalesce(sum(rem_media_n), 0)::DOUBLE AS n_rem_media,
   sum(horas_soma) / nullif(sum(horas_n), 0) AS horas_media,
   sum(idade_soma) / nullif(sum(idade_n), 0) AS idade_media`;
 
@@ -1109,82 +1243,268 @@ const MEDIDAS_CUBO = `
 const prefixos = (v: unknown, max: number) =>
   String(v ?? '').split(/[\s,;]+/).map((s) => s.replace(/\D/g, '')).filter((s) => s.length > 0 && s.length <= max).slice(0, 60);
 
+/**
+ * Prefixos sem os que já estão dentro de outro da lista ("2512, 251205" → "2512"). O filtro já conta cada
+ * vínculo uma vez (é um OU sobre as linhas), mas a lista limpa deixa o recorte claro nos metadados.
+ */
+export function prefixosSemSobreposicao(lista: string[]): string[] {
+  const unicos = [...new Set(lista)].sort((a, b) => a.length - b.length || a.localeCompare(b));
+  return unicos.filter((c, i) => !unicos.slice(0, i).some((p) => c.startsWith(p)));
+}
+
+// ---------- etapas e cancelamento das consultas de microdados ----------
+
+/** Etapa em andamento de cada consulta de microdados (para a página mostrar o que está acontecendo). */
+const etapas = new Map<number, string>();
+const ouvintesEtapa = new Set<() => void>();
+let proximaEtapa = 0;
+let ultimaEtapa: string | null = null;
+function avisarEtapa(id: number, texto: string | null) {
+  if (texto === null) etapas.delete(id);
+  else etapas.set(id, texto);
+  ultimaEtapa = [...etapas.values()].at(-1) ?? null;
+  for (const f of ouvintesEtapa) f();
+}
+export const etapaAtual = () => ultimaEtapa;
+export function aoMudarEtapa(f: () => void) {
+  ouvintesEtapa.add(f);
+  return () => void ouvintesEtapa.delete(f);
+}
+
+/**
+ * Conexão só das consultas de microdados do mercado de trabalho: cancelar uma (botão Cancelar) pede ao
+ * DuckDB que pare, sem interromper as outras páginas. Nos testes há uma conexão só.
+ */
+let conexaoDoTrabalho: Promise<duckdb.AsyncDuckDBConnection> | null = null;
+async function conexaoTrabalho(): Promise<duckdb.AsyncDuckDBConnection> {
+  const { con } = await iniciar();
+  if (lerLocal || typeof db.connect !== 'function') return con;
+  conexaoDoTrabalho ??= db.connect();
+  conexaoDoTrabalho.catch(() => (conexaoDoTrabalho = null));
+  return conexaoDoTrabalho;
+}
+let abortoTrabalho = new AbortController();
+/** Cancela as consultas de microdados em andamento (as próximas usam um sinal novo). */
+export function cancelarConsultasTrabalho() {
+  abortoTrabalho.abort();
+  abortoTrabalho = new AbortController();
+}
+
+/** SQL para mostrar e exportar: uma linha por cláusula, sem a indentação do código. */
+const semEspacos = (sql: string) => sql.replace(/\n\s+/g, '\n').trim();
+
+/** Literal SQL de um texto já conferido (só dígitos e letras): as consultas de microdados rodam sem parâmetros, para poderem ser canceladas. */
+const lit = (v: Valor) => (typeof v === 'number' ? String(v) : `'${String(v).replace(/'/g, "''")}'`);
+
+/**
+ * Uma consulta de cada vez na conexão do trabalho: lidas por partes (para poderem ser canceladas), duas
+ * consultas simultâneas na mesma conexão misturariam os resultados. As da fila esperam a anterior terminar.
+ */
+let filaTrabalho: Promise<unknown> = Promise.resolve();
+function consultarTrabalho(sql: string, etapa: string): Promise<Linha[]> {
+  const sinal = abortoTrabalho.signal;
+  const vez = filaTrabalho.catch(() => undefined).then(async () => {
+    const id = proximaEtapa++;
+    avisarEtapa(id, etapa);
+    try {
+      const con = await conexaoTrabalho();
+      const r = await lerCancelavel(con, sql, sinal);
+      return r.linhas.map((o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, normalizar(v)])));
+    } finally {
+      avisarEtapa(id, null);
+    }
+  });
+  filaTrabalho = vez;
+  return vez;
+}
+
+/** Fator do IPCA de dezembro para R$ de dezembro do ano-base: índice do ano-base ÷ índice do ano. */
+async function fatoresIpca(): Promise<{ base: number; fatores: Record<number, number> }> {
+  const { manifesto } = await iniciar();
+  const linhas = await consultar(`SELECT i.exercicio, b.indice / i.indice AS fator FROM ipca i CROSS JOIN (SELECT indice FROM ipca WHERE exercicio = $base) b`,
+    { base: manifesto.base_ipca });
+  return { base: manifesto.base_ipca, fatores: Object.fromEntries(linhas.map((l) => [Number(l.exercicio), Number(l.fator)])) };
+}
+
+const SIGLAS: Record<number, string> = {
+  11: 'RO', 12: 'AC', 13: 'AM', 14: 'RR', 15: 'PA', 16: 'AP', 17: 'TO', 21: 'MA', 22: 'PI', 23: 'CE', 24: 'RN', 25: 'PB', 26: 'PE',
+  27: 'AL', 28: 'SE', 29: 'BA', 31: 'MG', 32: 'ES', 33: 'RJ', 35: 'SP', 41: 'PR', 42: 'SC', 43: 'RS', 50: 'MS', 51: 'MT', 52: 'GO', 53: 'DF',
+};
+
+/**
+ * Monta a origem e os filtros de uma consulta da RAIS para os anos pedidos, na fonte de fonteConsulta.
+ * Filtros: cnae e cbo (listas de prefixos), situacao (ativos, nao_ativos, desligados, afastados), sexo,
+ * muns (municípios IBGE de 7 dígitos dentro da UF) e as listas de FILTROS_LISTA (só nos microdados).
+ */
+async function planoConsulta(q: Params, anos: number[]) {
+  await dicionarioTrabalho();
+  const ente = inteiro(q.ente);
+  const uf = UFS.has(String(q.uf)) ? String(q.uf) : null;
+  const fonte = fonteConsulta({ ente, uf });
+  const filtros: string[] = [];
+  let ufCod: number | null = null;
+  if (ente) {
+    const cod = ente === 53 ? 5300108 : ente;
+    ufCod = Math.floor(cod / 100000);
+    filtros.push(`municipio = ${Math.floor(cod / 10)}`); // a RAIS usa o código IBGE de 6 dígitos
+  } else if (uf) {
+    const [u] = await consultar(`SELECT cod_ibge FROM entes WHERE esfera IN ('E', 'D') AND uf = $uf`, { uf });
+    ufCod = Number(u?.cod_ibge);
+    if (fonte !== 'micro') filtros.push(fonte === 'cubo_uf' ? `uf = ${ufCod}` : `municipio // 10000 = ${ufCod}`);
+  }
+  const lista = (caminhos: string[]) => `read_parquet([${caminhos.map(arq).join(', ')}])`;
+  const origem = lista(anos.map((a) => (fonte === 'micro'
+    ? `silver/trabalho/micro/rais_vinculos/ano=${a}/uf=${ufCod}.parquet`
+    : `gold/trabalho/${fonte}/ano=${a}.parquet`)));
+
+  const col = COLUNAS_CONSULTA[fonte];
+  const codigos = (v: unknown, max: number, nome: string) => {
+    const l = prefixos(v, 7);
+    if (l.some((c) => c.length > max)) {
+      throw new Error(t(`Neste recorte a ${nome} aceita códigos de até ${max} dígito(s).`, `For this scope ${nome} accepts codes of up to ${max} digit(s).`));
+    }
+    return prefixosSemSobreposicao(l);
+  };
+  const cnae = codigos(q.cnae, col.maxCnae, 'CNAE');
+  if (cnae.length) filtros.push(`(${cnae.map((c) => `starts_with(${col.cnae}, ${lit(c)})`).join(' OR ')})`);
+  const cbo = codigos(q.cbo, col.maxCbo, 'CBO');
+  if (cbo.length) filtros.push(`(${cbo.map((c) => `starts_with(${col.cbo}, ${lit(c)})`).join(' OR ')})`);
+  const sit = fonte === 'micro' ? SITUACAO : 'situacao';
+  const situacoes: Record<string, string> = {
+    ativos: `${sit} = 1`, nao_ativos: `${sit} <> 1`, desligados: `${sit} = 2`,
+    afastados: fonte === 'micro' ? AFASTADO : 'afastado',
+  };
+  if (situacoes[String(q.situacao)]) filtros.push(situacoes[String(q.situacao)]);
+  if (q.sexo === '1' || q.sexo === '2') filtros.push(`sexo = ${q.sexo}`);
+  const muns = prefixos(q.muns, 7).filter((c) => c.length === 7 && (!ufCod || Math.floor(Number(c) / 100000) === ufCod));
+  const usados: string[] = [];
+  if (muns.length) {
+    if (fonte === 'cubo_uf') usados.push(t('municípios', 'municipalities'));
+    else filtros.push(`municipio IN (${muns.map((c) => Math.floor(Number(c) / 10)).join(', ')})`);
+  }
+  for (const [k, f] of Object.entries(FILTROS_LISTA)) {
+    const valores = String(q[k] ?? '').split(/[\s,;]+/).filter((s) => /^[0-9]{1,4}$/.test(s)).slice(0, 60);
+    if (!valores.length) continue;
+    if (fonte !== 'micro') usados.push(k);
+    else filtros.push(`${f.expr} IN (${valores.map(lit).join(', ')})`);
+  }
+  if (usados.length) {
+    throw new Error(t(
+      `Os filtros ${usados.join(', ')} precisam dos microdados, que esta consulta não usa para o Brasil: escolha uma UF ou um município.`,
+      `Filters ${usados.join(', ')} need the microdata, which this query does not use for Brazil: choose a state or a municipality.`,
+    ));
+  }
+  const rotuloUf = ufCod ? SIGLAS[ufCod] ?? String(ufCod) : t('Brasil', 'Brazil');
+  return { fonte, origem, onde: filtros.length ? filtros.join(' AND ') : 'true', rotuloUf };
+}
+
+/** Expressão do nome de um grupo (coluna `c` do resultado agrupado). */
+function nomeDoGrupo(grupo: Grupo, c: string) {
+  return ({
+    uf: `(SELECT e.uf FROM entes e WHERE e.esfera IN ('E', 'D') AND e.cod_ibge::VARCHAR = g.${c})`,
+    municipio: `(SELECT e.nome FROM entes e WHERE e.esfera = 'M' AND (e.cod_ibge // 10)::VARCHAR = g.${c})`,
+    secao: `(SELECT any_value(cn.secao_nome) FROM trab_cnae cn WHERE cn.secao = g.${c})`,
+    divisao: `(SELECT any_value(cn.divisao_nome) FROM trab_cnae cn WHERE cn.divisao = g.${c})`,
+  } as Record<string, string>)[grupo.nome ?? ''] ??
+    (grupo.nome ? `(SELECT any_value(d.descricao) FROM trab_dic d WHERE d.variavel = '${grupo.nome}' AND d.codigo = g.${c})` : 'NULL');
+}
+
+function grupoDe(chave: unknown, fonte: FonteConsulta) {
+  const grupo = GRUPOS[String(chave ?? 'total')] ?? GRUPOS.total;
+  const expr = grupo[fonte];
+  if (!expr) throw new Error(t('Este agrupamento não está disponível para este recorte.', 'This grouping is not available for this scope.'));
+  return { grupo, expr, chave: String(chave ?? 'total') };
+}
+
+/** A seção da CNAE vem da divisão: só junta a tabela de nomes quando um agrupamento pede. */
+const comSecao = (origem: string, fonte: FonteConsulta, precisa: boolean) => (precisa
+  ? `(SELECT v.*, cn.secao FROM ${origem} v LEFT JOIN trab_cnae cn ON cn.divisao = ${fonte === 'cubo_mun' ? 'v.cnae_divisao' : 'v.cnae_classe[1:2]'})`
+  : origem);
+
 const rotasConsulta: Record<string, (q: Params) => Promise<unknown>> = {
   /**
    * Consulta personalizada da RAIS num ano, na fonte de fonteConsulta: microdados (quando publicados; um
    * arquivo por ano e UF, lido por Range: as colunas usadas e, para um município, só o trecho dele) ou as
-   * tabelas pré-somadas (somas e contagens, sem medianas).
-   * Filtros: cnae e cbo (listas de prefixos), situacao (ativos, nao_ativos, desligados, afastados), sexo.
+   * tabelas pré-somadas (somas e contagens, sem medianas). agrupar e agrupar2 (cruzamento de duas dimensões);
+   * limite: grupos devolvidos (padrão 3.000; a exportação pede todos, até 200.000). grupos_total: grupos existentes.
    */
   async trab_consulta(q) {
-    await dicionarioTrabalho();
-    const ano = inteiro(q.ano);
-    const ente = inteiro(q.ente);
-    const uf = UFS.has(String(q.uf)) ? String(q.uf) : null;
-    const fonte = fonteConsulta({ ente, uf });
-    const p: Record<string, Valor> = {};
-    const filtros: string[] = [];
-    let ufCod: number | null = null;
-    if (ente) {
-      const cod = ente === 53 ? 5300108 : ente;
-      ufCod = Math.floor(cod / 100000);
-      p.municipio = Math.floor(cod / 10); // a RAIS usa o código IBGE de 6 dígitos
-      filtros.push('municipio = $municipio::INTEGER');
-    } else if (uf) {
-      const [u] = await consultar(`SELECT cod_ibge FROM entes WHERE esfera IN ('E', 'D') AND uf = $uf`, { uf });
-      ufCod = Number(u?.cod_ibge);
-      if (fonte !== 'micro') {
-        p.uf_cod = ufCod;
-        filtros.push(fonte === 'cubo_uf' ? 'uf = $uf_cod::INTEGER' : 'municipio // 10000 = $uf_cod::INTEGER');
-      }
-    }
-    const origem = `read_parquet(${arq(fonte === 'micro'
-      ? `silver/trabalho/micro/rais_vinculos/ano=${ano}/uf=${ufCod}.parquet`
-      : `gold/trabalho/${fonte}/ano=${ano}.parquet`)})`;
-    const grupo = GRUPOS[String(q.agrupar)] ?? GRUPOS.total;
-    const expr = grupo[fonte];
-    if (!expr) throw new Error(t('Este agrupamento não está disponível para este recorte.', 'This grouping is not available for this scope.'));
-
-    const col = COLUNAS_CONSULTA[fonte];
-    const codigos = (v: unknown, max: number, nome: string) => {
-      const lista = prefixos(v, 7);
-      if (lista.some((c) => c.length > max)) {
-        throw new Error(t(`Neste recorte a ${nome} aceita códigos de até ${max} dígito(s).`, `For this scope ${nome} accepts codes of up to ${max} digit(s).`));
-      }
-      return lista;
-    };
-    const cnae = codigos(q.cnae, col.maxCnae, 'CNAE');
-    if (cnae.length) filtros.push(`(${cnae.map((c, i) => ((p[`c${i}`] = c), `starts_with(${col.cnae}, $c${i})`)).join(' OR ')})`);
-    const cbo = codigos(q.cbo, col.maxCbo, 'CBO');
-    if (cbo.length) filtros.push(`(${cbo.map((c, i) => ((p[`o${i}`] = c), `starts_with(${col.cbo}, $o${i})`)).join(' OR ')})`);
-    const sit = fonte === 'micro' ? SITUACAO : 'situacao';
-    const situacoes: Record<string, string> = {
-      ativos: `${sit} = 1`, nao_ativos: `${sit} <> 1`, desligados: `${sit} = 2`,
-      afastados: fonte === 'micro' ? AFASTADO : 'afastado',
-    };
-    if (situacoes[String(q.situacao)]) filtros.push(situacoes[String(q.situacao)]);
-    if (q.sexo === '1' || q.sexo === '2') filtros.push(`sexo = ${q.sexo}`);
-
-    // a seção vem da divisão da CNAE; só junta a tabela quando o agrupamento pede
-    const divisao = fonte === 'cubo_mun' ? 'v.cnae_divisao' : 'v.cnae_classe[1:2]';
-    const base = String(q.agrupar) === 'cnae_secao'
-      ? `(SELECT v.*, c.secao FROM ${origem} v LEFT JOIN trab_cnae c ON c.divisao = ${divisao})`
-      : origem;
-    const nome = ({
-      uf: `(SELECT e.uf FROM entes e WHERE e.esfera IN ('E', 'D') AND e.cod_ibge::VARCHAR = g.grupo)`,
-      municipio: `(SELECT e.nome FROM entes e WHERE e.esfera = 'M' AND (e.cod_ibge // 10)::VARCHAR = g.grupo)`,
-      secao: `(SELECT any_value(c.secao_nome) FROM trab_cnae c WHERE c.secao = g.grupo)`,
-      divisao: `(SELECT any_value(c.divisao_nome) FROM trab_cnae c WHERE c.divisao = g.grupo)`,
-    } as Record<string, string>)[grupo.nome ?? ''] ??
-      (grupo.nome ? `(SELECT d.descricao FROM trab_dic d WHERE d.variavel = '${grupo.nome}' AND d.codigo = g.grupo)` : 'NULL');
-    const linhas = await consultar(
-      `SELECT g.*, ${nome} AS nome
-       FROM (SELECT ${expr} AS grupo, ${fonte === 'micro' ? MEDIDAS_MICRO : MEDIDAS_CUBO}
-             FROM ${base} WHERE ${filtros.length ? filtros.join(' AND ') : 'true'} GROUP BY 1) g
-       ORDER BY g.vinculos DESC LIMIT 3000`,
-      p,
+    const ano = inteiro(q.ano)!;
+    const plano = await planoConsulta(q, [ano]);
+    const g1 = grupoDe(q.agrupar, plano.fonte);
+    const g2 = q.agrupar2 && q.agrupar2 !== 'total' && q.agrupar2 !== q.agrupar ? grupoDe(q.agrupar2, plano.fonte) : null;
+    const limite = Math.min(Math.max(inteiro(q.limite) ?? 3000, 1), 200_000);
+    const base = comSecao(plano.origem, plano.fonte, g1.chave === 'cnae_secao' || g2?.chave === 'cnae_secao');
+    const sql = `SELECT g.*, ${nomeDoGrupo(g1.grupo, 'grupo')} AS nome${g2 ? `, ${nomeDoGrupo(g2.grupo, 'grupo2')} AS nome2` : ''},
+              count(*) OVER () AS grupos_total
+       FROM (SELECT ${g1.expr} AS grupo${g2 ? `, ${g2.expr} AS grupo2` : ''}, ${plano.fonte === 'micro' ? MEDIDAS_MICRO : MEDIDAS_CUBO}
+             FROM ${base} WHERE ${plano.onde} GROUP BY ALL) g
+       ORDER BY g.vinculos DESC LIMIT ${limite}`;
+    const linhas = await consultarTrabalho(
+      sql,
+      plano.fonte === 'micro'
+        ? t(`Lendo os microdados da RAIS ${ano} (${plano.rotuloUf}): só as colunas e os trechos do recorte`, `Reading RAIS ${ano} microdata (${plano.rotuloUf}): only the columns and row groups needed`)
+        : t(`Somando a tabela pré-somada da RAIS ${ano}`, `Summing the RAIS ${ano} pre-aggregated table`),
     );
-    return { fonte, linhas };
+    const { base: baseIpca, fatores } = await fatoresIpca();
+    return { fonte: plano.fonte, linhas, ano, base_ipca: baseIpca, fator_real: fatores[ano] ?? null, sql: semEspacos(sql) };
+  },
+
+  /**
+   * A mesma consulta ano a ano (de ... ate, só os anos com dados), opcionalmente agrupada: uma linha por ano
+   * (e grupo), com o fator do IPCA de cada ano para os valores reais.
+   */
+  async trab_consulta_serie(q) {
+    const { manifesto } = await iniciar();
+    const disponiveis = ((manifesto.fontes?.rais_micro?.anos as number[] | undefined) ?? []).filter(Number.isInteger);
+    const de = inteiro(q.de) ?? disponiveis[0];
+    const ate = inteiro(q.ate) ?? disponiveis.at(-1);
+    const anos = disponiveis.filter((a) => a >= de && a <= ate!);
+    if (!anos.length) return { fonte: fonteConsulta({ ente: q.ente, uf: q.uf }), linhas: [], anos: [], base_ipca: manifesto.base_ipca, fatores: {} };
+    const plano = await planoConsulta(q, anos);
+    const g1 = grupoDe(q.agrupar, plano.fonte);
+    const base = comSecao(plano.origem, plano.fonte, g1.chave === 'cnae_secao');
+    const sql = `SELECT g.*, ${nomeDoGrupo(g1.grupo, 'grupo')} AS nome
+       FROM (SELECT ano::INTEGER AS ano, ${g1.expr} AS grupo, ${plano.fonte === 'micro' ? MEDIDAS_MICRO : MEDIDAS_CUBO}
+             FROM ${base} WHERE ${plano.onde} GROUP BY ALL) g
+       ORDER BY g.ano, g.vinculos DESC LIMIT 20000`;
+    const linhas = await consultarTrabalho(
+      sql,
+      plano.fonte === 'micro'
+        ? t(`Lendo os microdados da RAIS de ${anos[0]} a ${anos.at(-1)} (${plano.rotuloUf}), um arquivo por ano`, `Reading RAIS microdata ${anos[0]}–${anos.at(-1)} (${plano.rotuloUf}), one file per year`)
+        : t(`Somando as tabelas pré-somadas da RAIS de ${anos[0]} a ${anos.at(-1)}`, `Summing the RAIS pre-aggregated tables ${anos[0]}–${anos.at(-1)}`),
+    );
+    const { base: baseIpca, fatores } = await fatoresIpca();
+    return { fonte: plano.fonte, linhas, anos, base_ipca: baseIpca, fatores, sql: semEspacos(sql) };
+  },
+
+  /**
+   * Perfil de um recorte num ano: as distribuições por várias dimensões numa leitura só do arquivo (GROUPING
+   * SETS), uma linha por dimensão e grupo, com as mesmas medidas da consulta. Dimensões que a fonte não tem
+   * (tabelas pré-somadas) ficam de fora de `dimensoes` e a página mostra a tabela como indisponível.
+   */
+  async trab_perfil(q) {
+    const ano = inteiro(q.ano)!;
+    const plano = await planoConsulta(q, [ano]);
+    const pedidas = String(q.dimensoes ?? '').split(',').filter((d) => GRUPOS[d] && d !== 'total');
+    const dimensoes = pedidas.filter((d) => GRUPOS[d][plano.fonte]);
+    const base = comSecao(plano.origem, plano.fonte, dimensoes.includes('cnae_secao'));
+    const colunas = dimensoes.map((d, i) => `${GRUPOS[d][plano.fonte]} AS d${i}`).join(', ');
+    const rotulo = dimensoes.length
+      ? `CASE ${dimensoes.map((d, i) => `WHEN grouping(d${i}) = 0 THEN '${d}'`).join(' ')} ELSE 'total' END`
+      : `'total'`;
+    const grupo = dimensoes.length ? `coalesce(${dimensoes.map((_, i) => `CASE WHEN grouping(d${i}) = 0 THEN d${i}::VARCHAR END`).join(', ')})` : 'NULL';
+    const nomes = dimensoes.map((d) => `WHEN '${d}' THEN ${nomeDoGrupo(GRUPOS[d], 'grupo')}`).join(' ');
+    const sql = `SELECT g.*, ${dimensoes.length ? `CASE g.dimensao ${nomes} END` : 'NULL'} AS nome
+       FROM (SELECT ${rotulo} AS dimensao, ${grupo} AS grupo, ${plano.fonte === 'micro' ? MEDIDAS_MICRO : MEDIDAS_CUBO}
+             FROM (SELECT *${colunas ? `, ${colunas}` : ''} FROM ${base} WHERE ${plano.onde})
+             GROUP BY GROUPING SETS ((), ${dimensoes.map((_, i) => `(d${i})`).join(', ')})) g
+       ORDER BY g.dimensao, g.vinculos DESC`;
+    const linhas = await consultarTrabalho(sql, plano.fonte === 'micro'
+      ? t(`Lendo os microdados da RAIS ${ano} (${plano.rotuloUf}) uma vez para todas as tabelas do perfil`, `Reading RAIS ${ano} microdata (${plano.rotuloUf}) once for every profile table`)
+      : t(`Somando a tabela pré-somada da RAIS ${ano}`, `Summing the RAIS ${ano} pre-aggregated table`));
+    const { base: baseIpca, fatores } = await fatoresIpca();
+    return { fonte: plano.fonte, ano, dimensoes, linhas, base_ipca: baseIpca, fator_real: fatores[ano] ?? null, sql: semEspacos(sql) };
   },
 
   /** Nomes de um código do dicionário (CBO, CNAE…) que contêm o texto, para a busca dos filtros. */
@@ -1197,6 +1517,33 @@ const rotasConsulta: Record<string, (q: Params) => Promise<unknown>> = {
        WHERE variavel = $variavel AND (strip_accents(lower(descricao)) LIKE '%' || strip_accents(lower($texto)) || '%' OR codigo LIKE $texto || '%')
        ORDER BY length(codigo), codigo LIMIT 30`,
       { variavel: String(q.variavel), texto },
+    );
+  },
+
+  /**
+   * Busca de ocupações em todos os níveis da CBO 2002 (grande grupo, subgrupo principal, subgrupo, família
+   * e ocupação), pelo nome ou pelo começo do código, com o nível de cada achado e o nome da família.
+   */
+  async trab_busca_ocupacao(q) {
+    await dicionarioTrabalho();
+    const texto = String(q.texto ?? '').trim();
+    if (texto.length < 2) return [];
+    return consultar(
+      `SELECT d.codigo, d.descricao, d.variavel AS nivel, f.descricao AS familia
+       FROM trab_dic d LEFT JOIN trab_dic f ON f.variavel = 'cbo_familia' AND f.codigo = d.codigo[1:4] AND d.variavel = 'cbo'
+       WHERE d.variavel IN ('cbo_grande_grupo', 'cbo_subgrupo_principal', 'cbo_subgrupo', 'cbo_familia', 'cbo')
+         AND (strip_accents(lower(d.descricao)) LIKE '%' || strip_accents(lower($texto)) || '%' OR d.codigo LIKE $texto || '%')
+       ORDER BY CASE WHEN d.codigo LIKE $texto || '%' THEN 0 ELSE 1 END, length(d.codigo), d.codigo LIMIT 40`,
+      { texto },
+    );
+  },
+
+  /** Todos os códigos de uma variável do dicionário (para listas de filtros), ou os de um prefixo. */
+  async trab_codigos(q) {
+    await dicionarioTrabalho();
+    return consultar(
+      `SELECT codigo, descricao FROM trab_dic WHERE variavel = $variavel AND codigo LIKE $prefixo || '%' ORDER BY codigo LIMIT 3000`,
+      { variavel: String(q.variavel), prefixo: String(q.prefixo ?? '').replace(/\D/g, '') },
     );
   },
 };

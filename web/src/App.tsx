@@ -16,6 +16,8 @@ import { Socioeconomico } from './pages/Socioeconomico';
 import { TrabalhoCaged, TrabalhoEvolucao, TrabalhoRankings, TrabalhoVisaoGeral } from './pages/Trabalho';
 import { TrabalhoConsulta } from './pages/TrabalhoConsulta';
 import { TrabalhoMetodologia } from './pages/TrabalhoMetodologia';
+import { TrabalhoPerfil } from './pages/TrabalhoPerfil';
+import { PARAMS_TRABALHO } from './trabalho_comum';
 
 const menu = (): [string, [string, string][]][] => [
   [t('Receitas', 'Revenue'), [['/receitas', t('Visão geral', 'Overview')], ['/receitas/evolucao', t('Evolução', 'Trends')]]],
@@ -38,7 +40,8 @@ const menu = (): [string, [string, string][]][] => [
 
 /** Área de mercado de trabalho (RAIS e Novo CAGED), em /trabalho. */
 const menuTrabalho = (): [string, [string, string][]][] => [
-  ['RAIS', [['/trabalho', t('Visão geral', 'Overview')], ['/trabalho/evolucao', t('Evolução', 'Trends')], ['/trabalho/rankings', 'Rankings'], ['/trabalho/consulta', t('Consulta personalizada', 'Custom query')]]],
+  ['RAIS', [['/trabalho', t('Visão geral', 'Overview')], ['/trabalho/evolucao', t('Evolução', 'Trends')], ['/trabalho/rankings', 'Rankings'],
+    ['/trabalho/consulta', t('Consulta personalizada', 'Custom query')], ['/trabalho/perfil', t('Perfil da ocupação', 'Occupation profile')]]],
   ['CAGED', [['/trabalho/caged', t('Empregos mês a mês', 'Jobs month by month')]]],
   [t('Metodologia', 'Methodology'), [['/trabalho/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
 ];
@@ -106,7 +109,11 @@ export function App() {
   const atuais = new URLSearchParams(search);
   const filtros = new URLSearchParams();
   for (const k of ['ano', 'uf', 'ente']) if (atuais.get(k)) filtros.set(k, atuais.get(k)!);
+  // dentro da área de trabalho o recorte (ocupação, atividade, perfil, agrupamentos) segue entre as páginas
+  const dentro = new URLSearchParams(filtros);
+  if (area === 'trabalho') for (const k of PARAMS_TRABALHO) if (atuais.get(k)) dentro.set(k, atuais.get(k)!);
   const busca = filtros.toString() ? `?${filtros}` : '';
+  const buscaArea = dentro.toString() ? `?${dentro}` : '';
   // a aba da IA abre com o painel da área de onde se veio (dá para marcar o outro nos ajustes, antes da 1ª pergunta)
   const filtrosIa = new URLSearchParams(area === 'ia' ? atuais : filtros);
   if (area !== 'ia') filtrosIa.set('paineis', area);
@@ -137,7 +144,7 @@ export function App() {
             <div key={grupo} style={{ display: 'contents' }}>
               <h4>{grupo}</h4>
               {itens.map(([para, rotulo]) => (
-                <NavLink key={para} to={{ pathname: para, search: area === 'ia' ? buscaIa : busca }} end className={({ isActive }) => (isActive ? 'ativo' : '')}>
+                <NavLink key={para} to={{ pathname: para, search: area === 'ia' ? buscaIa : buscaArea }} end className={({ isActive }) => (isActive ? 'ativo' : '')}>
                   {rotulo}
                 </NavLink>
               ))}
@@ -172,6 +179,7 @@ export function App() {
               <Route path="/trabalho/caged" element={<TrabalhoCaged />} />
               <Route path="/trabalho/rankings" element={<TrabalhoRankings />} />
               <Route path="/trabalho/consulta" element={<TrabalhoConsulta />} />
+              <Route path="/trabalho/perfil" element={<TrabalhoPerfil />} />
               <Route path="/trabalho/metodologia" element={<TrabalhoMetodologia />} />
               <Route path="/trabalho/ia" element={<Navigate to="/ia?paineis=trabalho" replace />} />
               <Route path="/deflatores" element={<Deflatores />} />

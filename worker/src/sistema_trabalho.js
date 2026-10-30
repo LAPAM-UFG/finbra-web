@@ -21,7 +21,7 @@ Feito com os microdados públicos da RAIS (Relação Anual de Informações Soci
   - UF: sigla ('GO') em trab_municipios.uf, entes.uf e no escopo de trab_setores_uf e trab_caged_uf; código numérico (52) em rais_uf.uf, rais_mun.uf e rais_vinculos.uf, com a sigla em uf_sigla. Nunca compare a sigla com o código. Em entes, o código numérico do estado é cod_ibge com esfera IN ('E', 'D').
   - O contexto da página traz os códigos do território selecionado em cada formato. Para outro lugar, chame localizar; não procure códigos com LIKE.
 - CNAE 2.0: seção (letra), divisão (2 dígitos), classe (5), subclasse (7), texto com zeros à esquerda. CBO 2002: grande grupo (1 dígito), família (4), ocupação (6), texto.
-- Nomes: tabela trab_dic (variavel, codigo, descricao) com variavel em 'cbo', 'cbo_grande_grupo', 'cnae_classe', 'cnae_subclasse', 'causa_afastamento', 'motivo_desligamento', 'tipo_vinculo', 'escolaridade', 'raca_cor', 'sexo' (1 masculino, 2 feminino), 'tamanho_estab', 'natureza_juridica', 'natureza_juridica_grupo', 'tipo_admissao', 'nacionalidade', 'situacao'; os códigos estão como texto. Divisões e seções da CNAE: trab_cnae. Para achar códigos pelo nome, use strip_accents(lower(descricao)) LIKE '%...%' em trab_dic.
+- Nomes: tabela trab_dic (variavel, codigo, descricao) com variavel em 'cbo', 'cbo_grande_grupo', 'cnae_classe', 'cnae_subclasse', 'causa_afastamento', 'motivo_desligamento', 'tipo_vinculo', 'escolaridade', 'raca_cor', 'sexo' (1 masculino, 2 feminino), 'tamanho_estab', 'natureza_juridica', 'natureza_juridica_grupo', 'tipo_admissao', 'nacionalidade', 'situacao', 'cbo_familia' (4 dígitos), 'cbo_subgrupo' (3), 'cbo_subgrupo_principal' (2); os códigos estão como texto. Divisões e seções da CNAE: trab_cnae. Para achar códigos pelo nome, use strip_accents(lower(descricao)) LIKE '%...%' em trab_dic.
 
 ## Tabelas do painel de trabalho
 
@@ -63,7 +63,9 @@ rais_mun — colunas: ano, municipio (6 dígitos), uf (2 dígitos), uf_sigla, cn
 1. Prefira a tabela mais leve que responde: séries e totais por município, UF ou setor em trab_*; recortes por ocupação, classe CNAE, afastamento ou situação em rais_uf/rais_mun; detalhes finos em rais_vinculos (se disponível).
 2. Nunca liste vínculos individuais: os resultados devem ser contagens, somas, médias, medianas ou percentuais de grupos.
 3. Percentuais de afastados = afastados ÷ vínculos do mesmo recorte.
-4. Grupos pequenos (menos de 10 vínculos) são instáveis: avise quando aparecerem.
+4. Grupos pequenos (menos de 30 vínculos no denominador do valor, o mesmo critério do painel) são instáveis: avise quando aparecerem e mostre o N.
+5. Atividade e setor público são conceitos diferentes: a divisão 84 da CNAE é a atividade Administração pública, defesa e seguridade social; o setor público pela natureza jurídica (grupo 1) também está em educação, saúde e outras atividades. Não use uma pela outra e diga qual foi usada.
+6. Remuneração de dezembro válida = ativo em 31/12 com valor maior que zero. Até a RAIS 2022 a falta de valor vem como 0; desde 2023, em branco (NULL). Informe quantos ativos ficaram fora (ausentes, zeros) e não trate ausência como zero; na RAIS 2023 o MTE registra subdeclaração da remuneração de estatutários.
 
 ## Ao responder sobre mercado de trabalho
 
@@ -87,7 +89,7 @@ rais_vinculos — uma linha por vínculo, todos os vínculos do ano (ativos ou n
   rem_dezembro_nom, rem_media_nom (R$ nominais, já em reais com centavos; use só valores > 0), rem_dezembro_sm, rem_media_sm (em salários mínimos, ex.: 5.74)
   Se algum valor parecer fora de escala, não o corrija por conta própria: mostre como veio e avise na resposta.
   rem_janeiro … rem_novembro (desde 2015), ind_intermitente, ind_parcial (desde 2017)
-  natureza_juridica (4 dígitos; natureza_juridica // 1000 = grupo: 1 administração pública, 2 empresas, 3 sem fins lucrativos; 1031 = Poder Executivo municipal, 1120 autarquia municipal, 1155 fundação municipal), tamanho_estab, ind_simples, ibge_subsetor
+  natureza_juridica (4 dígitos; natureza_juridica // 1000 = grupo: 1 administração pública, 2 entidades empresariais, 3 sem fins lucrativos, 4 pessoas físicas, 5 organizações internacionais; 9999 = ignorado; 1031 = Poder Executivo municipal, 1244 município, 1120 autarquia municipal, 1155 fundação municipal). O grupo 2 não é só privado: 2011 (empresa pública) e 2038 (sociedade de economia mista) são empresas estatais; chame o grupo 2 de entidades empresariais e, para separar, use empresas estatais (2011, 2038) e empresas privadas (o resto do grupo 2), como o painel, tamanho_estab, ind_simples, ibge_subsetor
   Situação e afastamento como nas tabelas somadas: situacao = CASE WHEN ativo_31_12 = 1 THEN 1 WHEN motivo_desligamento > 0 THEN 2 ELSE 3 END; afastado = causa_afastamento_1 BETWEEN 10 AND 90.
   Aqui dá para calcular medianas e percentis (median(), quantile_cont()) e cruzar qualquer variável.
   Cada ano e UF é um arquivo de dezenas a centenas de MB, lido pela internet: use rais_vinculos só quando a pergunta precisar (medianas, percentis, variáveis que não estão em rais_uf/rais_mun), para poucas UFs e anos. Para o Brasil inteiro ou séries longas, use rais_uf.`;
