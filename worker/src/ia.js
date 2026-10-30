@@ -38,6 +38,9 @@ const modeloDe = (env) => (MODELOS.includes(env.IA_MODELO?.trim()) ? env.IA_MODE
 const LIMITE_PERGUNTAS = 50;
 const LIMITE_CHAMADAS = 400;
 const MAX_RODADAS = 12; // chamadas ao modelo por pergunta
+// tokens de saída por chamada (pensamento + resposta): o máximo do Haiku 5.5, para análises longas não serem
+// cortadas; paga-se só o que o modelo escreve. Acima de ~16 mil a chamada precisa ser por streaming
+const MAX_SAIDA = 128_000;
 const MAX_PERGUNTAS_CONVERSA = 15;
 const MAX_CORPO = 600_000; // bytes
 const MAX_PERGUNTA = 2000; // caracteres
@@ -343,7 +346,7 @@ export async function rotaIa(request, env, url) {
   const local = url.hostname === 'localhost';
   const pedido = {
     model: modeloDe(env),
-    max_tokens: 16000,
+    max_tokens: MAX_SAIDA,
     thinking: { type: 'adaptive' },
     // 'high': indicado no Haiku para seguir instruções à risca (as regras do painel); ainda custa pouco
     output_config: { effort: 'high' },
@@ -363,13 +366,14 @@ export async function rotaIa(request, env, url) {
   };
   // mesmo só com responder estrita, a gramática às vezes passa do limite da API (400 "compiled grammar is too
   // large", não cobrado): repete sem modo estrito; a página confere e normaliza a resposta do mesmo jeito
+  // por streaming (o SDK recusa, ou a conexão cai, numa chamada longa sem ele); a página recebe a mensagem inteira no fim
   const criar = async (cliente) => {
     try {
-      return await cliente.messages.create(pedido);
+      return await cliente.messages.stream(pedido).finalMessage();
     } catch (e) {
       if (!gramaticaGrande(e)) throw e;
       console.log(JSON.stringify({ ia: { estrito: false } }));
-      return cliente.messages.create({ ...pedido, tools: SEM_ESTRITO });
+      return cliente.messages.stream({ ...pedido, tools: SEM_ESTRITO }).finalMessage();
     }
   };
   let msg;
