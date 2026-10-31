@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { EChartsCoreOption } from 'echarts/core';
 import { useApi, type Params } from '../api';
@@ -11,8 +11,8 @@ import type { Classificacao, DominioRanking, PontoPosicao } from '../dados';
 import { numero, numero1 } from '../format';
 import { t } from '../idioma';
 import {
-  gravarEstadoEvolucao, lerEstadoEvolucao, MAX_COMPARADOS, pontosDaTrajetoria, posicaoRelativa, tabelaMudancas, tabelaTrajetorias,
-  textoMotivo, variacaoPosicao,
+  gravarEstadoEvolucao, lerEstadoEvolucao, MAX_COMPARADOS, pontosDaTrajetoria, posicaoRelativa, resumoTrajetoria, tabelaMudancas,
+  tabelaTrajetorias, textoMotivo, variacaoPosicao,
 } from '../posicoes';
 
 type Props = {
@@ -29,8 +29,8 @@ type Props = {
   /** parâmetros próprios do painel que mudam o universo (medida, tratamento, mínimo) */
   params: Params;
   ordem: 'asc' | 'desc';
-  /** anos da fonte com o indicador */
-  anos: number[];
+  /** anos da fonte (os seletores usam a cobertura do indicador, de ranking_anos) */
+  anos?: number[];
   /** UF da página (filtros), se houver */
   uf: string | null;
   /** município dos filtros, mostrado por padrão */
@@ -71,10 +71,27 @@ const semAcento = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-�
 export function EvolucaoPosicao(p: Props) {
   const { meta, entes, porCodigo } = useDados();
   const [busca, setBusca] = useSearchParams();
-  const e = lerEstadoEvolucao(busca, p.anos, { ente: p.ente, temUf: !!p.uf });
-  const definir = (m: Parameters<typeof gravarEstadoEvolucao>[1]) => setBusca(gravarEstadoEvolucao(busca, m), { replace: true });
+  const cobertura = useApi<number[]>('ranking_anos', { dominio: p.dominio, ind: p.ind, ...p.params });
+  const anosCobertos = cobertura.dados ?? [];
+  const e = lerEstadoEvolucao(busca, anosCobertos, { ente: p.ente, temUf: !!p.uf });
+  const definir = (m: Parameters<typeof gravarEstadoEvolucao>[1], extra: Record<string, string> = {}) => {
+    const b = gravarEstadoEvolucao(busca, m);
+    for (const [k, v] of Object.entries(extra)) b.set(k, v);
+    setBusca(b, { replace: true });
+  };
+  // período pedido fora da cobertura: a URL passa ao período efetivo e a tela explica o ajuste
+  const [ajusteFeito, setAjusteFeito] = useState<{ de: number; ate: number } | null>(null);
+  useEffect(() => {
+    if (!cobertura.dados || !e.ajuste) return;
+    setAjusteFeito(e.ajuste);
+    definir({ de: e.de, ate: e.ate });
+  }, [cobertura.dados, e.ajuste?.de, e.ajuste?.ate]); // eslint-disable-line react-hooks/exhaustive-deps
+  const mudarPeriodo = (m: { de?: number; ate?: number }) => {
+    setAjusteFeito(null);
+    definir(m);
+  };
   const ufEscopo = e.abrangencia === 'uf' && p.uf ? p.uf : null;
-  const c = useApi<Classificacao>(p.anos.length ? 'ranking_posicoes' : null, {
+  const c = useApi<Classificacao>(anosCobertos.length && !e.ajuste ? 'ranking_posicoes' : null, {
     dominio: p.dominio, ind: p.ind, ...p.params, ordem: p.ordem, de: e.de, ate: e.ate, uf: ufEscopo ?? undefined,
     universo: e.universo, entes: e.entes.join(','),
   });
@@ -95,7 +112,8 @@ export function EvolucaoPosicao(p: Props) {
     setTextoPrincipal(texto);
     const alvo = achar(texto);
     if (!alvo) return;
-    definir({ entes: [alvo.cod_ibge, ...e.entes.slice(1).filter((x) => x !== alvo.cod_ibge)] });
+    definir({ entes: [alvo.cod_ibge, ...e.entes.slice(1).filter((x) => x !== alvo.cod_ibge)] },
+      { ente: String(alvo.cod_ibge), ...(busca.get('uf') ? { uf: alvo.uf } : {}) });
     setTextoPrincipal(null);
   };
   const [comparando, setComparando] = useState(e.entes.length > 1);
@@ -130,17 +148,22 @@ export function EvolucaoPosicao(p: Props) {
   const pontos = useMemo(() => (d ? pontosDaTrajetoria(d, e.entes) : []), [d, e.entes.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // resumo de cada município: primeira e última posição do período (os anos sem posição ficam de fora)
-  const resumos = e.entes.map((cod) => {
-    const comPos = pontos.filter((x) => x.cod === cod && x.p && pos(x.p) != null).map((x) => x.p!);
-    const ini: PontoPosicao | undefined = comPos[0];
-    const fim: PontoPosicao | undefined = comPos.at(-1);
-    return { cod, ini, fim, variacao: ini && fim && ini !== fim ? variacaoPosicao(pos(ini), pos(fim)) : null };
-  });
+  const resumos = e.entes.map((cod) => ({ cod, ...(d ? resumoTrajetoria(d, cod, e.de, e.ate, !!ufEscopo) : { ini: undefined, fim: undefined, semInicio: null, semFim: null, variacao: null }) }));
+  const em = (x: PontoPosicao) => t(`${numero(pos(x))}ª posição entre ${numero(tot(x))} municípios, em ${x.ano}`, `${numero(pos(x))} of ${numero(tot(x))} municipalities in ${x.ano}`);
   const fraseResumo = (r: (typeof resumos)[number]) => {
-    if (!r.ini || !r.fim) return t('sem posição no período', 'unranked in the period');
-    if (r.ini === r.fim) return t(`${numero(pos(r.ini))}ª posição entre ${numero(tot(r.ini))} municípios em ${r.ini.ano}, único ano do período com posição`, `ranked ${numero(pos(r.ini))} of ${numero(tot(r.ini))} in ${r.ini.ano}, the only ranked year in the period`);
-    return t(`passou da ${numero(pos(r.ini))}ª posição entre ${numero(tot(r.ini))} municípios, em ${r.ini.ano}, para a ${numero(pos(r.fim))}ª entre ${numero(tot(r.fim))}, em ${r.fim.ano} (${textoVariacao(r.variacao)})`,
-      `went from ${numero(pos(r.ini))} of ${numero(tot(r.ini))} municipalities in ${r.ini.ano} to ${numero(pos(r.fim))} of ${numero(tot(r.fim))} in ${r.fim.ano} (${textoVariacao(r.variacao)})`);
+    if (!r.ini || !r.fim) return t(`sem posição no período (em ${e.ate}: ${r.semFim ?? ''})`, `unranked in the period (in ${e.ate}: ${r.semFim ?? ''})`);
+    if (!r.semInicio && !r.semFim) {
+      return t(`passou da ${numero(pos(r.ini))}ª posição entre ${numero(tot(r.ini))} municípios, em ${r.ini.ano}, para a ${numero(pos(r.fim))}ª entre ${numero(tot(r.fim))}, em ${r.fim.ano} (${textoVariacao(r.variacao)})`,
+        `went from ${numero(pos(r.ini))} of ${numero(tot(r.ini))} municipalities in ${r.ini.ano} to ${numero(pos(r.fim))} of ${numero(tot(r.fim))} in ${r.fim.ano} (${textoVariacao(r.variacao)})`);
+    }
+    // ano inicial ou final sem posição: a ausência vem primeiro, e a posição disponível mais próxima à parte
+    const partes = [
+      r.semInicio ? t(`sem posição em ${e.de} (${r.semInicio}); a primeira disponível é a ${em(r.ini)}`, `unranked in ${e.de} (${r.semInicio}); the first available is ${em(r.ini)}`)
+        : t(`${em(r.ini)}`, em(r.ini)),
+      r.semFim ? t(`sem posição em ${e.ate} (${r.semFim}); a última disponível é a ${em(r.fim)}`, `unranked in ${e.ate} (${r.semFim}); the last available is ${em(r.fim)}`)
+        : em(r.fim),
+    ];
+    return `${partes.join('; ')}${r.variacao != null && r.ini !== r.fim ? ` (${t(`de ${r.ini.ano} a ${r.fim.ano}`, `from ${r.ini.ano} to ${r.fim.ano}`)}: ${textoVariacao(r.variacao)})` : ''}`;
   };
   const universoMudou = (() => {
     const u = d?.universos ?? [];
@@ -274,7 +297,8 @@ export function EvolucaoPosicao(p: Props) {
     return /relativa|Relative/.test(coluna) ? numero1(v) : numero(v);
   };
 
-  if (!p.anos.length) return <p className="vazio">{t('Sem anos com dados para este indicador.', 'No years with data for this indicator.')}</p>;
+  if (cobertura.carregando || cobertura.erro) return <Estado carregando={cobertura.carregando} erro={cobertura.erro} tentarNovamente={cobertura.recarregar} />;
+  if (!anosCobertos.length) return <p className="vazio">{t('Nenhum ano com municípios classificados para este indicador e estas opções.', 'No year with ranked municipalities for this indicator and these options.')}</p>;
   return (
     <>
       <section className="cartao evol-entrada">
@@ -290,13 +314,13 @@ export function EvolucaoPosicao(p: Props) {
         <datalist id="ev-municipios">{opcoesMunicipios.map((x) => <option key={x.cod_ibge} value={`${x.nome} (${x.uf})`} />)}</datalist>
         <div className="evol-compactos">
           <label className="evol-compacto">{t('De', 'From')}{' '}
-            <select value={e.de} onChange={(x) => definir({ de: Number(x.target.value) })}>
-              {p.anos.filter((a) => a <= e.ate).map((a) => <option key={a} value={a}>{a}</option>)}
+            <select value={e.de} onChange={(x) => mudarPeriodo({ de: Number(x.target.value) })}>
+              {anosCobertos.filter((a) => a <= e.ate).map((a) => <option key={a} value={a}>{a}</option>)}
             </select>
           </label>
           <label className="evol-compacto">{t('até', 'to')}{' '}
-            <select value={e.ate} onChange={(x) => definir({ ate: Number(x.target.value) })}>
-              {p.anos.filter((a) => a >= e.de).map((a) => <option key={a} value={a}>{a}</option>)}
+            <select value={e.ate} onChange={(x) => mudarPeriodo({ ate: Number(x.target.value) })}>
+              {anosCobertos.filter((a) => a >= e.de).map((a) => <option key={a} value={a}>{a}</option>)}
             </select>
           </label>
           {p.uf && (
@@ -385,6 +409,10 @@ export function EvolucaoPosicao(p: Props) {
                 {universoMudou && ` ${t(`O número de municípios elegíveis mudou de ${numero(universoMudou.a)} (${universoMudou.de}) para ${numero(universoMudou.b)} (${universoMudou.ate}).`, `The number of eligible municipalities changed from ${numero(universoMudou.a)} (${universoMudou.de}) to ${numero(universoMudou.b)} (${universoMudou.ate}).`)}`}
                 {ativas.length > 0 && <> <strong>{t('Opções ativas', 'Active options')}:</strong> {ativas.join(' · ')}.</>}
               </p>
+              {ajusteFeito && (
+                <p className="aviso evol-nota" role="note">{t(`Período ajustado à cobertura do indicador: o pedido era ${ajusteFeito.de}–${ajusteFeito.ate}, mas ${p.nomeIndicador} só tem municípios classificados de ${anosCobertos[0]} a ${anosCobertos.at(-1)} com estas opções. Período mostrado: ${e.de}–${e.ate}.`,
+                  `Period adjusted to the indicator's coverage: ${ajusteFeito.de}–${ajusteFeito.ate} was requested, but ${p.nomeIndicador} only has ranked municipalities from ${anosCobertos[0]} to ${anosCobertos.at(-1)} with these options. Period shown: ${e.de}–${e.ate}.`)}</p>
+              )}
               {nota && (nota.completa
                 ? <details className="aviso evol-nota"><summary>{nota.curta}</summary>{nota.completa}</details>
                 : <p className="aviso evol-nota" role="note">{nota.curta}</p>)}
@@ -465,8 +493,11 @@ export function EvolucaoPosicao(p: Props) {
                   <thead>
                     <tr>
                       <th>{t('Município', 'Municipality')}</th><th>{t('Código IBGE', 'IBGE code')}</th>
-                      <th>{t(`Valor ${e.de}`, `Value ${e.de}`)}</th><th>{t(`Valor ${e.ate}`, `Value ${e.ate}`)}</th>
-                      <th>{p.percentual ? t('Diferença do indicador (p.p.)', 'Difference in indicator (p.p.)') : t('Variação do indicador', 'Change in indicator')}</th>
+                      <th>{t(`Valor ${e.de}`, `Value ${e.de}`)}{p.monetario ? ` (${real ? t(`real, R$ de dez/${d.base_ipca}`, `real, Dec/${d.base_ipca} R$`) : t('nominal', 'nominal')})` : ''}</th>
+                      <th>{t(`Valor ${e.ate}`, `Value ${e.ate}`)}{p.monetario ? ` (${real ? t(`real, R$ de dez/${d.base_ipca}`, `real, Dec/${d.base_ipca} R$`) : t('nominal', 'nominal')})` : ''}</th>
+                      <th>{p.percentual ? t('Diferença do indicador (p.p.)', 'Difference in indicator (p.p.)')
+                        : p.monetario ? t(`Variação real do indicador (R$ de dez/${d.base_ipca})`, `Real change in indicator (Dec/${d.base_ipca} R$)`)
+                          : t('Variação do indicador', 'Change in indicator')}</th>
                       <th>{t(`Posição ${e.de}`, `Position ${e.de}`)}</th><th>{t(`Posição ${e.ate}`, `Position ${e.ate}`)}</th>
                       <th>{t('Variação da posição', 'Change in position')}</th>
                     </tr>

@@ -41,7 +41,7 @@ import { calcular, indicador } from '../src/saude_comum';
 import { cadastro, codigosDoMunicipio, conferirCodigos, executarLocalizacao, localizar } from '../src/ia_territorio';
 import { crc32, paraCsv, paraXlsx, paraXlsxAbas } from '../src/exportar';
 import { ordenarBusca } from '../src/contexto';
-import { gravarEstadoEvolucao, lerEstadoEvolucao, MAX_COMPARADOS, posicaoRelativa, tabelaMudancas, tabelaTrajetorias, variacaoPct, variacaoPosicao } from '../src/posicoes';
+import { gravarEstadoEvolucao, lerEstadoEvolucao, MAX_COMPARADOS, posicaoRelativa, resumoTrajetoria, tabelaMudancas, tabelaTrajetorias, variacaoPct, variacaoPosicao } from '../src/posicoes';
 
 const require = createRequire(import.meta.url);
 const FETCH = globalThis.fetch; // alguns testes simulam o Worker trocando o fetch
@@ -3085,6 +3085,37 @@ describe('evolução das posições (classificação comum dos rankings)', () =>
   });
 
   const semSaude = !existsSync(`${DATA}/gold/saude/municipios.parquet`);
+  test('cobertura real: crescimento dos vínculos sem o 1º ano da RAIS; homicídios só com população (2000+); trajetória no período efetivo', { skip: semRais || semSaude }, async () => {
+    const raisAnos = (await rota<L[]>('trab_serie', { uf: 'GO' })).map((r) => Number(r.ano));
+    const cresc = await rota<number[]>('ranking_anos', { dominio: 'trabalho', ind: 'var_empregos', min: 0 });
+    assert.equal(cresc[0], raisAnos[0] + 1);
+    assert.equal((await rota<number[]>('ranking_anos', { dominio: 'trabalho', ind: 'empregos', min: 0 }))[0], raisAnos[0]);
+    const hom = await rota<number[]>('ranking_anos', { dominio: 'saude', ind: 'homicidios' });
+    assert.equal(hom[0], 2000);
+    // período efetivo (o da URL ajustado): os anos da trajetória e do universo são os mesmos do filtro
+    const e = lerEstadoEvolucao(new URLSearchParams('de=1996&ate=2001'), hom, { temUf: false });
+    const r = await posicoes({ dominio: 'saude', ind: 'homicidios', ordem: 'desc', de: e.de, ate: e.ate, entes: '5208707', universo: 'constante' });
+    assert.deepEqual(r.anos, [2000, 2001]);
+    assert.deepEqual(r.universos.map((u) => u.ano), [2000, 2001]);
+    assert.deepEqual(r.serie.map((x) => x.ano), [2000, 2001]);
+    // universo constante: o mesmo tamanho em todos os anos do período efetivo
+    assert.equal(new Set(r.universos.map((u) => u.total_br)).size, 1);
+    const v = await posicoes({ dominio: 'trabalho', ind: 'var_empregos', ordem: 'desc', de: cresc[0], ate: cresc[1], entes: '5208707', min: 0, universo: 'constante' });
+    assert.deepEqual(v.anos, [cresc[0], cresc[1]]);
+    assert.equal(new Set(v.universos.map((u) => u.total_br)).size, 1);
+  });
+
+  test('Goianésia, mortalidade infantil 2020–2024 em GO (mínimo de 1.000 nascidos): sem posição em 2024, última posição em 2023', { skip: semSaude }, async () => {
+    const r = await posicoes({ dominio: 'saude', ind: 'mortalidade_infantil', ordem: 'desc', de: 2020, ate: 2024, uf: 'GO', entes: '5208608' });
+    const s2 = resumoTrajetoria(r, 5208608, 2020, 2024, true);
+    assert.match(s2.semFim ?? '', /abaixo do mínimo/);
+    assert.equal(s2.fim?.ano, 2023);
+    assert.equal(s2.semInicio, null);
+    assert.equal(s2.ini?.ano, 2020);
+    // a variação compara os dois anos com posição (2020 e 2023), nunca um ano sem posição
+    assert.equal(s2.variacao, s2.ini!.posicao_uf! - s2.fim!.posicao_uf!);
+  });
+
   test('saúde: mortalidade infantil de Goiânia em Goiás, 2023, com o mínimo de 1.000 nascidos, confere com a contagem direta', { skip: semSaude }, async () => {
     const r = await posicoes({ dominio: 'saude', ind: 'mortalidade_infantil', ordem: 'desc', de: 2023, ate: 2023, uf: 'GO', entes: '5208707' });
     const muns = (await rota<L[]>('saude_municipios', { uf: 'GO', ano: 2023 }))
@@ -3123,18 +3154,20 @@ describe('evolução das posições: convenções, URL e exportações', () => {
   test('estado na URL: lê, grava e recupera a mesma visualização; período dentro dos anos da fonte', () => {
     const anos = [2019, 2020, 2021, 2022, 2023, 2024, 2025];
     const padrao = lerEstadoEvolucao(new URLSearchParams('ind=fpm'), anos, { ente: 5208707, temUf: true });
-    assert.deepEqual(padrao, { de: 2021, ate: 2025, entes: [5208707], universo: 'anual', abrangencia: 'uf', escala: 'posicao', precos: 'nominal', grafico: 'posicao' });
+    assert.deepEqual(padrao, { de: 2021, ate: 2025, entes: [5208707], universo: 'anual', abrangencia: 'uf', escala: 'posicao', precos: 'nominal', grafico: 'posicao', ajuste: null });
     const b = gravarEstadoEvolucao(new URLSearchParams('ind=fpm&medida=total&vista=evolucao'), {
       de: 2020, ate: 2024, universo: 'constante', abrangencia: 'br', entes: [5208707, 3550308, 5300108], escala: 'percentil', precos: 'real', grafico: 'valor',
     });
     // recarregar a página com esse endereço traz o mesmo estado (e os parâmetros do painel ficam)
     const de = lerEstadoEvolucao(new URLSearchParams(b.toString()), anos, { ente: null, temUf: true });
-    assert.deepEqual(de, { de: 2020, ate: 2024, entes: [5208707, 3550308, 5300108], universo: 'constante', abrangencia: 'br', escala: 'percentil', precos: 'real', grafico: 'valor' });
+    assert.deepEqual(de, { de: 2020, ate: 2024, entes: [5208707, 3550308, 5300108], universo: 'constante', abrangencia: 'br', escala: 'percentil', precos: 'real', grafico: 'valor', ajuste: null });
     assert.equal(b.get('graf'), 'valor');
     assert.equal(b.get('ind'), 'fpm');
     assert.equal(b.get('vista'), 'evolucao');
-    // ano fora da fonte cai no padrão; de > até é corrigido; mais de 5 municípios fica nos 5 primeiros; cmp vazio = nenhum
-    assert.deepEqual([lerEstadoEvolucao(new URLSearchParams('de=1990&ate=2019'), anos, { temUf: false }).de], [2019]);
+    // ano fora da cobertura vai para o ano coberto mais próximo (com o ajuste registrado); de > até é corrigido;
+    // mais de 5 municípios fica nos 5 primeiros; cmp vazio = nenhum
+    const fora = lerEstadoEvolucao(new URLSearchParams('de=1990&ate=2019'), anos, { temUf: false });
+    assert.deepEqual([fora.de, fora.ate, fora.ajuste], [2019, 2019, { de: 1990, ate: 2019 }]);
     assert.deepEqual(lerEstadoEvolucao(new URLSearchParams('de=2024&ate=2020'), anos, { temUf: false }), { ...padrao, de: 2020, ate: 2024, entes: [], abrangencia: 'br' });
     assert.equal(lerEstadoEvolucao(new URLSearchParams('cmp=1,2,3,4,5,6,7'), anos, { temUf: false }).entes.length, MAX_COMPARADOS);
     assert.deepEqual(lerEstadoEvolucao(new URLSearchParams('cmp='), anos, { ente: 5208707, temUf: false }).entes, []);
@@ -3178,10 +3211,27 @@ describe('evolução das posições: convenções, URL e exportações', () => {
     const col = (inicio: string) => tab.colunas.findIndex((c) => c.startsWith(inicio));
     const m1 = tab.linhas.find((l) => l[0] === 1)!;
     assert.equal(m1[col('Variação da posição')], -1); // 1º → 2º: perdeu uma posição
-    quase(m1[col('Variação do indicador (final')] as number, 8 * 1.1 - 10 * 1.2);
+    quase(m1[col('Variação real do indicador')] as number, 8 * 1.1 - 10 * 1.2);
     const m3 = tab.linhas.find((l) => l[0] === 3)!;
     assert.equal(m3[col('Variação da posição')], null); // sem posição no ano inicial: não se calcula, não vira zero
     assert.match(tab.colunas.at(-1)!, /inicial − final; \+ = ganhou posições/);
+  });
+
+  test('cobertura: período pedido fora dos anos do indicador é ajustado ao período efetivo, com o ajuste registrado', () => {
+    const rais = Array.from({ length: 15 }, (_, i) => 2011 + i); // crescimento dos vínculos: sem 2010 (1º ano da RAIS)
+    const a = lerEstadoEvolucao(new URLSearchParams('de=2010&ate=2012'), rais, { temUf: false });
+    assert.deepEqual([a.de, a.ate, a.ajuste], [2011, 2012, { de: 2010, ate: 2012 }]);
+    const saude = Array.from({ length: 25 }, (_, i) => 2000 + i); // homicídios: população só a partir de 2000
+    const h = lerEstadoEvolucao(new URLSearchParams('de=1996&ate=2001'), saude, { temUf: false });
+    assert.deepEqual([h.de, h.ate, h.ajuste], [2000, 2001, { de: 1996, ate: 2001 }]);
+    // dentro da cobertura, nada muda
+    assert.equal(lerEstadoEvolucao(new URLSearchParams('de=2001&ate=2003'), saude, { temUf: false }).ajuste, null);
+  });
+
+  test('cabeçalhos: diferença monetária em valores reais diz isso, com o ano-base', () => {
+    const tab = tabelaMudancas(C, opcoes, 2020, 2021);
+    assert.ok(tab.colunas.some((c) => /^Variação real do indicador \(R\$ de dez\/2025, final − inicial\)$/.test(c)), tab.colunas.join(' | '));
+    assert.ok(tab.colunas.includes('Variação real relativa do indicador (%)'));
   });
 
   test('indicador percentual: diferença entre anos em pontos percentuais, variação relativa à parte', () => {

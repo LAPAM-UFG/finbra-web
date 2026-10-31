@@ -50,6 +50,8 @@ export type EstadoEvolucao = {
   entes: number[]; escala: 'posicao' | 'percentil'; precos: 'nominal' | 'real';
   /** gráfico mostrado: a posição no ranking (padrão) ou o valor do indicador */
   grafico: 'posicao' | 'valor';
+  /** período pedido na URL quando ficou fora da cobertura do indicador e foi ajustado (null = sem ajuste) */
+  ajuste: { de: number; ate: number } | null;
 };
 
 /**
@@ -59,13 +61,22 @@ export type EstadoEvolucao = {
  */
 export function lerEstadoEvolucao(b: URLSearchParams, anos: number[], padrao: { ente?: number | null; temUf: boolean }): EstadoEvolucao {
   const ultimo = anos.at(-1) ?? 0;
-  const ler = (k: string, def: number) => {
-    const v = Number(b.get(k));
-    return anos.includes(v) ? v : def;
+  const pedido = (k: string) => {
+    const v = Number.parseInt(b.get(k) ?? '', 10);
+    return Number.isFinite(v) ? v : null;
   };
-  let de = ler('de', anos[Math.max(0, anos.length - 5)] ?? ultimo);
-  let ate = ler('ate', ultimo);
+  let pDe = pedido('de');
+  let pAte = pedido('ate');
+  if (pDe !== null && pAte !== null && pDe > pAte) [pDe, pAte] = [pAte, pDe];
+  // ano pedido fora da cobertura: o início vai para o 1º ano coberto a partir dele e o fim para o último até ele
+  // (sem nenhum, a ponta mais próxima); o período efetivo só tem anos em que alguma posição é possível
+  const inicio = (v: number) => anos.find((a) => a >= v) ?? ultimo;
+  const fim = (v: number) => [...anos].reverse().find((a) => a <= v) ?? anos[0] ?? 0;
+  let de = pDe === null ? anos[Math.max(0, anos.length - 5)] ?? ultimo : inicio(pDe);
+  let ate = pAte === null ? ultimo : fim(pAte);
   if (de > ate) [de, ate] = [ate, de];
+  const ajuste = anos.length && ((pDe !== null && pDe !== de) || (pAte !== null && pAte !== ate))
+    ? { de: pDe ?? de, ate: pAte ?? ate } : null;
   const cmp = b.get('cmp');
   const entes = cmp !== null
     ? [...new Set(cmp.split(',').map((x) => Number.parseInt(x, 10)).filter((x) => x > 0))].slice(0, MAX_COMPARADOS)
@@ -77,6 +88,29 @@ export function lerEstadoEvolucao(b: URLSearchParams, anos: number[], padrao: { 
     escala: b.get('esc') === 'percentil' ? 'percentil' : 'posicao',
     precos: b.get('precos') === 'real' ? 'real' : 'nominal',
     grafico: b.get('graf') === 'valor' ? 'valor' : 'posicao',
+    ajuste,
+  };
+}
+
+/**
+ * Resumo de um município no período: a posição no ano inicial e no final ou, sem posição neles, o motivo e a
+ * primeira/última posição disponível (com o ano). A variação só compara dois anos com posição.
+ */
+export function resumoTrajetoria(c: Classificacao, cod: number, de: number, ate: number, uf: boolean) {
+  const pontos = c.serie.filter((p) => p.cod_ibge === cod);
+  const pos = (p: PontoPosicao) => (uf ? p.posicao_uf : p.posicao_br);
+  const comPos = pontos.filter((p) => pos(p) != null && p.ano >= de && p.ano <= ate).sort((a, b) => a.ano - b.ano);
+  const ini = comPos[0];
+  const fim = comPos.at(-1);
+  const motivoNo = (ano: number) => {
+    const p = pontos.find((x) => x.ano === ano);
+    return p && pos(p) != null ? null : textoMotivo(p?.motivo);
+  };
+  return {
+    ini, fim,
+    /** por que não há posição no ano inicial/final do período (null = há posição) */
+    semInicio: motivoNo(de), semFim: motivoNo(ate),
+    variacao: ini && fim && ini !== fim ? variacaoPosicao(pos(ini), pos(fim)) : null,
   };
 }
 
@@ -152,8 +186,10 @@ export function tabelaMudancas(c: Classificacao, o: OpcoesTabela, de: number, at
     ...(o.monetario ? [t(`Valor real ${de} (R$ de dez/${o.baseIpca})`, `Real value ${de} (Dec/${o.baseIpca} R$)`), t(`Valor real ${ate} (R$ de dez/${o.baseIpca})`, `Real value ${ate} (Dec/${o.baseIpca} R$)`)] : []),
     o.percentual
       ? t('Diferença do indicador em pontos percentuais (final − inicial)', 'Difference in the indicator in percentage points (final − initial)')
-      : t('Variação do indicador (final − inicial)', 'Change in the indicator (final − initial)'),
-    t('Variação relativa do indicador (%)', 'Relative change in the indicator (%)'),
+      : o.monetario
+        ? t(`Variação real do indicador (R$ de dez/${o.baseIpca}, final − inicial)`, `Real change in the indicator (Dec/${o.baseIpca} R$, final − initial)`)
+        : t('Variação do indicador (final − inicial)', 'Change in the indicator (final − initial)'),
+    o.monetario ? t('Variação real relativa do indicador (%)', 'Real relative change in the indicator (%)') : t('Variação relativa do indicador (%)', 'Relative change in the indicator (%)'),
     t(`Posição ${de}`, `Position ${de}`), t(`Universo ${de}`, `Universe ${de}`), t(`Posição ${ate}`, `Position ${ate}`), t(`Universo ${ate}`, `Universe ${ate}`),
     t('Variação da posição (inicial − final; + = ganhou posições)', 'Change in position (initial − final; + = gained positions)'),
   ];

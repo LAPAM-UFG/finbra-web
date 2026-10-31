@@ -1228,6 +1228,18 @@ export type Classificacao = {
 
 const rotasPosicoes: Record<string, (q: Params) => Promise<unknown>> = {
   /**
+   * Cobertura do indicador: os anos com pelo menos um município elegível, com os mesmos parâmetros que mudam a
+   * elegibilidade (medida, tratamento, mínimo). É o que os seletores de período oferecem: um ano fora daqui não
+   * teria nenhuma posição (ex.: crescimento dos vínculos no 1º ano da RAIS; taxas por habitante antes de 2000).
+   */
+  async ranking_anos(q): Promise<number[]> {
+    const c = pedidoClassificacao(q);
+    await tabelasDoDominio(c.dominio);
+    const linhas = await consultar(`WITH base AS (${c.base}) SELECT DISTINCT ano FROM base WHERE motivo IS NULL AND indicador IS NOT NULL ORDER BY ano`, c.p);
+    return linhas.map((l) => Number(l.ano));
+  },
+
+  /**
    * Posições dos municípios ano a ano. Parâmetros: dominio, ind, medida (finanças), tratamento, min (RAIS e
    * saúde), ordem, de, ate, uf (posições e mudanças na UF; o ranking nacional é calculado antes), universo
    * (anual ou constante), entes (até 5 códigos) e lista=1 (todas as posições, para o ranking anual).
@@ -1248,7 +1260,8 @@ const rotasPosicoes: Record<string, (q: Params) => Promise<unknown>> = {
     const tot = uf ? 'total_uf' : 'total_br';
     const noEscopo = uf ? 'AND uf = $uf' : '';
     const [anos, universos, serie, mudancas, lista] = await Promise.all([
-      consultar(`${cte} SELECT DISTINCT ano FROM base WHERE ano BETWEEN $de AND $ate AND indicador IS NOT NULL ORDER BY ano`, p),
+      // anos do período com algum município elegível (a mesma regra de ranking_anos)
+      consultar(`${cte} SELECT DISTINCT ano FROM el ORDER BY ano`, p),
       consultar(`${cte} SELECT ano, count(*)::INTEGER AS total_br, ${uf ? 'count(*) FILTER (WHERE uf = $uf)::INTEGER' : 'NULL::INTEGER'} AS total_uf
                  ${c.dominio === 'trabalho' ? ', max(meses_caged) AS meses_caged' : ''}
                  FROM u GROUP BY ano ORDER BY ano`, p),

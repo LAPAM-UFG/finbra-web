@@ -108,7 +108,7 @@ export function Rankings() {
       <p className="subtitulo">
         {uf ? t(`Municípios de ${uf}`, `Municipalities in ${uf}`) : t('Municípios com dados no Brasil', 'Municipalities with data in Brazil')}{vista === 'evolucao' ? '' : ` · ${f.ano}`}
       </p>
-      <BarraFiltros semAno={vista === 'evolucao'} semEnte={t(
+      <BarraFiltros semAno={vista === 'evolucao'} semBuscaEnte={vista === 'evolucao'} semEnte={t(
         'Nos rankings, o município selecionado não restringe a lista: a posição dele (nacional e na UF) é destacada. A UF restringe a lista.',
         'In rankings, the selected municipality does not restrict the list: its position (national and within the state) is highlighted. The state restricts the list.',
       )} />

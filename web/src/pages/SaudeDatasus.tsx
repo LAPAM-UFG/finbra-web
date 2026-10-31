@@ -287,7 +287,7 @@ export function SaudeRankings() {
     <>
       <h2 className="titulo-pagina">{t('Rankings de saúde', 'Health rankings')}</h2>
       <p className="subtitulo">{escopoNome}{vista === 'evolucao' ? '' : ` · ${ano}`} <Dica rotulo={t('Fonte', 'Source')}>{fonteSaude()}</Dica></p>
-      <BarraFiltros semAno={vista === 'evolucao'} semEnte={t('O município escolhido define a UF do ranking e aparece destacado, com a sua posição.', 'The chosen municipality sets the state of the ranking and is highlighted, with its position.')} />
+      <BarraFiltros semAno={vista === 'evolucao'} semBuscaEnte={vista === 'evolucao'} semEnte={t('O município escolhido define a UF do ranking e aparece destacado, com a sua posição.', 'The chosen municipality sets the state of the ranking and is highlighted, with its position.')} />
       <AvisoAno ano={ano} />
       <AlternarVista vista={vista} mudar={(v) => definir({ vista: v === 'evolucao' ? v : null })} />
       {vista === 'evolucao' && (

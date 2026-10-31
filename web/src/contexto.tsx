@@ -126,7 +126,8 @@ export const rotuloCategoria = (c: Alerta['categoria']) =>
     confirmado: t('erro confirmado', 'confirmed error'),
   })[c];
 
-type Opcoes = { semAno?: boolean; semEnte?: string };
+/** semAno e semBuscaEnte: a página tem o próprio seletor (ex.: evolução das posições, com o período e o município). */
+type Opcoes = { semAno?: boolean; semEnte?: string; semBuscaEnte?: boolean };
 
 export function BarraFiltros(opcoes: Opcoes = {}) {
   const f = useFiltros();
@@ -157,7 +158,7 @@ export function BarraFiltros(opcoes: Opcoes = {}) {
   );
 }
 
-function Filtros({ semAno, semEnte }: Opcoes) {
+function Filtros({ semAno, semEnte, semBuscaEnte }: Opcoes) {
   const { entes } = useDados();
   const f = useFiltros();
   const caminho = useLocation().pathname;
@@ -184,8 +185,10 @@ function Filtros({ semAno, semEnte }: Opcoes) {
           ))}
         </select>
       </div>
-      <BuscaEnte entes={entes} uf={f.uf} atual={f.ente} explicacao={semEnte}
-        aoEscolher={(e) => f.definir({ ente: e?.cod_ibge ?? null, uf: e?.uf ?? f.uf })} />
+      {!semBuscaEnte && (
+        <BuscaEnte entes={entes} uf={f.uf} atual={f.ente} explicacao={semEnte}
+          aoEscolher={(e) => f.definir({ ente: e?.cod_ibge ?? null, uf: e?.uf ?? f.uf })} />
+      )}
       {f.temFiltros && (
         <button className="limpar limpar-tudo" onClick={f.limpar}>{t('Limpar todos os filtros', 'Clear all filters')}</button>
       )}

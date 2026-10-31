@@ -699,7 +699,7 @@ export function TrabalhoRankings() {
     <>
       <h2 className="titulo-pagina">{t('Rankings do mercado de trabalho', 'Labour market rankings')}</h2>
       <p className="subtitulo">{escopo} · {vista === 'evolucao' ? t('RAIS, vários anos', 'RAIS, several years') : `RAIS ${anoRais}`} <Dica rotulo={t('Fonte', 'Source')}>{fonteRais()} {fonteCaged()}</Dica></p>
-      <BarraFiltros semAno={vista === 'evolucao'} semEnte={t('O município escolhido define a UF do ranking e aparece destacado, com a sua posição.', 'The chosen municipality sets the state of the ranking and is highlighted, with its position.')} />
+      <BarraFiltros semAno={vista === 'evolucao'} semBuscaEnte={vista === 'evolucao'} semEnte={t('O município escolhido define a UF do ranking e aparece destacado, com a sua posição.', 'The chosen municipality sets the state of the ranking and is highlighted, with its position.')} />
       <AvisoAno anoRais={anoRais} />
       <AvisoRecorte pagina={t('o ranking', 'the ranking')} />
       {quebra && vista === 'anual' && <NotaQuebra anos={[anoRais! - 1, anoRais!]} />}
