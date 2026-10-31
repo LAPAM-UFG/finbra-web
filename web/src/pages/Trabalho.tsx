@@ -36,8 +36,8 @@ const notaSetores = () => t(
   'Broad sectors by CNAE 2.0 division (establishment activity): agriculture (01–03), industry (05–39, including mining, energy and sanitation), construction (41–43), trade (45–47), public administration, defence and social security (84) and services (all others). Division 84 is an activity: it does not cover the whole public sector, which also appears in education, health and other activities. For the public sector by legal nature, use the Custom query (institutional sector).',
 );
 const notaRemuneracao = () => t(
-  'Remuneração média de dezembro: soma das remunerações nominais de dezembro ÷ vínculos ativos com remuneração maior que zero no mês (N válido). Em grupos, média ponderada (massa ÷ N válido), nunca média das médias. Os ativos sem remuneração válida ficam fora do cálculo e aparecem contados à parte. Remuneração real: × (IPCA de dezembro do ano-base ÷ IPCA de dezembro do ano).',
-  'Average December pay: sum of nominal December pay ÷ active jobs with pay above zero that month (valid N). For groups, weighted average (payroll ÷ valid N), never an average of averages. Active jobs without valid pay are left out and counted separately. Real pay: × (base-year December IPCA ÷ December IPCA of the year).',
+  'Remuneração média de dezembro, como no PDET/MTE: soma das remunerações nominais de dezembro ÷ todos os vínculos ativos em 31/12. Quem está ativo sem valor de dezembro conta como zero (entra no denominador), e o painel mostra quantos são: onde há muitos, a média fica abaixo do salário de quem tem o valor. Em grupos, massa ÷ ativos do grupo, nunca média das médias. Remuneração real: × (IPCA de dezembro do ano-base ÷ IPCA de dezembro do ano).',
+  'Average December pay, as in PDET/MTE: sum of nominal December pay ÷ all jobs active on Dec 31. Active jobs without a December value count as zero (they stay in the denominator), and the dashboard shows how many there are: where there are many, the average falls below the pay of those with a value. For groups, payroll ÷ the group’s active jobs, never an average of averages. Real pay: × (base-year December IPCA ÷ December IPCA of the year).',
 );
 const notaPorMil = (ano: number | undefined) => t(
   `Vínculos ativos em 31/12 no município do estabelecimento ÷ população residente do mesmo ano (${ano ?? ''}) × 1.000. A população é a do painel de finanças desde 2013 e a do IBGE antes (Censo 2010 e estimativas). Não é taxa de ocupação, de formalização ou de desemprego: uma pessoa pode ter mais de um vínculo e trabalhar fora do município onde mora, e o valor pode passar de 1.000.`,
@@ -160,11 +160,11 @@ export function TrabalhoVisaoGeral() {
               nota={t(`população de ${anoRais}; não é taxa de ocupação`, `${anoRais} population; not an employment rate`)}
               dica={<Dica rotulo={t('Fórmula', 'Formula')}>{notaPorMil(anoRais)}</Dica>} />
             <Kpi rotulo={t('Remuneração média de dezembro', 'Average December pay')} valor={reaisExato(num(a.remuneracao_media))}
-              nota={`${t('Real', 'Real')} (R$ dez/${meta.baseIpca}): ${reaisExato(num(a.remuneracao_media_real))} · N ${numero(nRem)}`}
+              nota={`${t('Real', 'Real')} (R$ dez/${meta.baseIpca}): ${reaisExato(num(a.remuneracao_media_real))} · ${t('regra do PDET', 'PDET rule')}`}
               dica={<Dica rotulo={t('Fórmula', 'Formula')}>{notaRemuneracao()}</Dica>} />
-            <Kpi rotulo={t('Fora do cálculo da remuneração', 'Left out of the pay average')} valor={`${numero(fora)} (${pct(div(fora, empregos))})`}
-              nota={t('ativos sem remuneração de dezembro maior que zero', 'active jobs without December pay above zero')} />
-            <Kpi rotulo={t('Massa salarial de dezembro', 'December payroll')} valor={reais(num(a.massa_dez))} nota={t('nominal, soma dos N válidos', 'nominal, sum over valid N')} />
+            <Kpi rotulo={t('Ativos sem remuneração de dezembro', 'Active jobs without December pay')} valor={`${numero(fora)} (${pct(div(fora, empregos))})`}
+              nota={t(`contam como zero na média; ${numero(nRem)} têm o valor`, `counted as zero in the average; ${numero(nRem)} have the value`)} />
+            <Kpi rotulo={t('Massa salarial de dezembro', 'December payroll')} valor={reais(num(a.massa_dez))} nota={t('nominal, soma dos valores informados', 'nominal, sum of reported values')} />
             <Kpi rotulo={t('Mulheres', 'Women')} valor={pct(div(num(a.mulheres), empregos))}
               nota={t(`remuneração média das mulheres = ${pct(div(num(a.remuneracao_mulheres), num(a.remuneracao_homens)), 0)} da dos homens (diferença observada)`,
                 `women’s average pay = ${pct(div(num(a.remuneracao_mulheres), num(a.remuneracao_homens)), 0)} of men’s (observed difference)`)} />
@@ -335,7 +335,7 @@ function EvolucaoRecorte({ escopo, rotulo }: { escopo: Params; rotulo: string })
           <TabelaSerie nome="trabalho_evolucao_recorte" anos={anosS.map((a) => (quebrasEntre(a - 1, a).length ? `${a} †` : String(a)))}
             colunas={[
               ...series.map((s) => ({ titulo: s.nome, valores: s.valores, formato: (v: number | null) => (v === null ? '–' : formato(v)) })),
-              { titulo: t('N válido da remuneração', 'Valid pay N'), valores: (principal.dados.linhas ?? []).map((r) => num(r.n_rem_dez)), formato: numero },
+              { titulo: t('Ativos com remuneração informada', 'Active jobs with pay reported'), valores: (principal.dados.linhas ?? []).map((r) => num(r.n_rem_dez)), formato: numero },
             ]}
             metadados={[[t('Indicador', 'Indicator'), `${nomeInd} — ${nomeModo}`], [t('Território', 'Territory'), rotulo],
               [t('Referências', 'References'), [refUf, brSerie.dados ? t('Brasil (tabelas pré-somadas)', 'Brazil (pre-aggregated tables)') : null].filter(Boolean).join(', ') || t('nenhuma', 'none')],
@@ -403,8 +403,8 @@ export function TrabalhoEvolucao() {
               tabela={<TabelaSerie nome="trabalho_remuneracao" anos={anosTabela} colunas={[
                 { titulo: 'Nominal', valores: s.map((r) => num(r.remuneracao_media)), formato: reaisExato },
                 { titulo: t(`Real (R$ dez/${meta.baseIpca})`, `Real (Dec/${meta.baseIpca} R$)`), valores: s.map((r) => num(r.remuneracao_media_real)), formato: reaisExato },
-                { titulo: t('N válido', 'Valid N'), valores: s.map((r) => num(r.n_rem_dez)), formato: numero },
-                { titulo: t('% dos ativos fora do cálculo', '% of active jobs left out'), valores: s.map((r) => div((num(r.empregos) ?? 0) - (num(r.n_rem_dez) ?? 0), num(r.empregos))), formato: (v) => pct(v) },
+                { titulo: t('Com remuneração informada', 'With pay reported'), valores: s.map((r) => num(r.n_rem_dez)), formato: numero },
+                { titulo: t('% dos ativos sem valor (zero na média)', '% of active jobs without pay (zero in the average)'), valores: s.map((r) => div((num(r.empregos) ?? 0) - (num(r.n_rem_dez) ?? 0), num(r.empregos))), formato: (v) => pct(v) },
                 { titulo: t('Mulheres (nominal)', 'Women (nominal)'), valores: s.map((r) => num(r.remuneracao_mulheres)), formato: reaisExato },
                 { titulo: t('Homens (nominal)', 'Men (nominal)'), valores: s.map((r) => num(r.remuneracao_homens)), formato: reaisExato },
               ]} metadados={meta2} />}>
@@ -648,7 +648,7 @@ export function TrabalhoRankings() {
     { campo: 'empregos', tipo: t('volume', 'volume'), titulo: t('Vínculos ativos', 'Active jobs'), formato: (v) => numero(num(v)) },
     { campo: 'empregos_por_mil', tipo: t('intensidade', 'intensity'), titulo: t('Vínculos por mil hab.', 'Jobs per 1,000 inh.'), formato: (v) => numero(num(v)) },
     { campo: 'remuneracao_media', tipo: t('remuneração', 'pay'), titulo: t('Remuneração média (dez)', 'Average pay (Dec)'), formato: (v) => reaisExato(num(v)) },
-    { campo: 'n_rem_dez', tipo: t('remuneração', 'pay'), titulo: t('N válido (rem.)', 'Valid N (pay)'), formato: (v) => numero(num(v)) },
+    { campo: 'n_rem_dez', tipo: t('remuneração', 'pay'), titulo: t('Com valor (rem.)', 'With pay value'), formato: (v) => numero(num(v)) },
     { campo: 'var_empregos', tipo: t('crescimento', 'growth'), titulo: t(`Variação dos vínculos sobre ${(anoRais ?? 0) - 1}${quebra ? ' †' : ''}`, `Change in jobs on ${(anoRais ?? 0) - 1}${quebra ? ' †' : ''}`), formato: (v) => pct(num(v)) },
     { campo: 'saldo_caged', tipo: t('crescimento', 'growth'), titulo: t(`Saldo CAGED ${periodoCaged}`, `CAGED balance ${periodoCaged}`), formato: (v) => numero(num(v)) },
     { campo: 'pct_mulheres', tipo: t('perfil', 'profile'), titulo: t('% mulheres', '% women'), formato: (v) => pct(num(v)) },
@@ -708,8 +708,8 @@ export function TrabalhoRankings() {
           </div>
         </div>
         <div className="cabeca-cartao">
-          <p className="desc">{t(`Universo: ${numero(universo.length)} municípios${recorte.min ? ` com pelo menos ${numero(recorte.min)} vínculos ativos` : ''}. Clique no título de uma coluna para ordenar (a ordem vai no endereço da página). Volume, intensidade, remuneração e crescimento são rankings diferentes; a remuneração traz o N válido ao lado.`,
-            `Universe: ${numero(universo.length)} municipalities${recorte.min ? ` with at least ${numero(recorte.min)} active jobs` : ''}. Click a column header to sort (the order goes in the page address). Volume, intensity, pay and growth are different rankings; pay comes with its valid N.`)}{' '}
+          <p className="desc">{t(`Universo: ${numero(universo.length)} municípios${recorte.min ? ` com pelo menos ${numero(recorte.min)} vínculos ativos` : ''}. Clique no título de uma coluna para ordenar (a ordem vai no endereço da página). Volume, intensidade, remuneração e crescimento são rankings diferentes; a remuneração traz ao lado quantos ativos têm o valor (os demais contam como zero).`,
+            `Universe: ${numero(universo.length)} municipalities${recorte.min ? ` with at least ${numero(recorte.min)} active jobs` : ''}. Click a column header to sort (the order goes in the page address). Volume, intensity, pay and growth are different rankings; pay comes with how many active jobs have the value (the rest count as zero).`)}{' '}
             <Dica rotulo={t('Vínculos por mil habitantes', 'Jobs per thousand inhabitants')}>{notaPorMil(anoRais)}</Dica></p>
           <BotoesExportar nome={`trabalho_ranking_${anoRais}`} obter={() => ({
             colunas: [t('Posição', 'Rank'), 'cod_ibge', t('Município', 'Municipality'), 'UF', t('População', 'Population'), ...colunas.map((c) => c.titulo),

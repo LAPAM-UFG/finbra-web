@@ -13,8 +13,8 @@ Feito com os microdados públicos da RAIS (Relação Anual de Informações Soci
 - Empregos formais = vínculos ativos em 31 de dezembro, no município do estabelecimento.
 - situacao: 1 = ativo em 31/12; 2 = desligado no ano (não ativo, com motivo de desligamento); 3 = não ativo sem desligamento.
 - afastado: vínculo com afastamento no ano (primeira causa entre 10 e 90: acidente, doença, licença-maternidade, serviço militar, licenças, suspensão).
-- Remuneração de dezembro: só vínculos ativos com remuneração em dezembro (média = soma ÷ número desses vínculos, não ÷ todos os ativos). Remuneração média do ano: média mensal de cada vínculo no período ativo. Valores nominais; para comparar anos, corrija pelo IPCA (tabela ipca) e diga isso. Diga quantos ativos ficaram sem remuneração em dezembro (ficam fora da média).
-- Diferença salarial entre mulheres e homens: em reais (média das mulheres − média dos homens) e em percentual ((média das mulheres ÷ média dos homens − 1) × 100), cada média com a soma e o número do próprio sexo; nominal e real quando a pergunta pedir valores reais.
+- Médias de remuneração: a regra do PDET/MTE (a consulta da RAIS do Ministério do Trabalho), para que os números batam com os dele. Remuneração média de dezembro = soma da remuneração de dezembro ÷ todos os vínculos ativos em 31/12 do grupo; quem está ativo sem valor de dezembro conta como zero (entra no denominador). Remuneração média do ano (média mensal de cada vínculo no período ativo) = soma ÷ todos os vínculos do recorte. Valores nominais; para comparar anos, corrija pelo IPCA (tabela ipca) e diga isso. Diga sempre quantos ativos não têm valor informado (n_rem_dez ou rem_dez_n é quantos têm) e que eles entram como zero: onde são muitos, a média fica abaixo do salário de quem tem o valor.
+- Diferença salarial entre mulheres e homens: em reais (média das mulheres − média dos homens) e em percentual ((média das mulheres ÷ média dos homens − 1) × 100), cada média com a soma do próprio sexo ÷ os vínculos ativos do próprio sexo; nominal e real quando a pergunta pedir valores reais.
 - Códigos de território: o formato muda com a tabela (com o formato errado a consulta volta vazia; a página a recusa antes de rodar).
   - cod_ibge, 7 dígitos (5208707 = Goiânia): trab_municipios, trab_grandes_setores, trab_setores, trab_caged, trab_caged_anual e entes.
   - municipio, 6 dígitos (520870 = Goiânia, o código IBGE sem o dígito verificador): só em rais_mun e rais_vinculos. Para juntar com as tabelas trab_*, use cod_ibge // 10 = municipio.
@@ -27,7 +27,7 @@ Feito com os microdados públicos da RAIS (Relação Anual de Informações Soci
 
 - Vínculos × trabalhadores únicos: a RAIS pública não identifica pessoas; não há como contar trabalhadores únicos.
 - Ativos em 31/12 (estoque, situacao = 1) × todos os vínculos existentes no ano (inclui os desligados e os não ativos): as tabelas trab_* são só os ativos; rais_uf, rais_mun e rais_vinculos têm todos, separados por situacao.
-- Remuneração de dezembro (só ativos com valor em dezembro) × remuneração média do ano (média mensal do período ativo de cada vínculo).
+- Remuneração de dezembro (ativos em 31/12) × remuneração média do ano (média mensal do período ativo de cada vínculo); nas duas, a média é a do PDET (sem valor = zero).
 - Município: o do estabelecimento (onde o vínculo é declarado), não o de residência; o município de trabalho (municipio_trab) só existe nos microdados.
 - Setor público: pela natureza jurídica (grupo 1 da tabela do IBGE: órgãos e entidades públicas de qualquer atividade) × administração pública pela atividade (divisão 84 da CNAE). Vínculos da prefeitura = natureza jurídica municipal (1031, 1244, 1120, 1155), só nos microdados; vínculos de todas as esferas situados no município (CNAE 84 ou grupo 1) são outra medida.
 - Códigos que mudam entre anos: a RAIS usa a CNAE 2.0 em toda a série do painel (2010 em diante) e a CBO 2002; a captação mudou em 2022 e 2023 (ver Quebra de série).
@@ -40,7 +40,8 @@ trab_municipios — RAIS, uma linha por ano e município (vínculos ativos em 31
   empregos, mulheres, superior (ensino superior completo), ate24, de50mais (faixas de idade)
   empregos_agropecuaria, empregos_industria, empregos_construcao, empregos_comercio, empregos_servicos, empregos_adm_publica: grandes setores pela divisão da CNAE 2.0 do estabelecimento (agropecuária 01–03; indústria 05–39, com extrativa, energia e saneamento; construção 41–43; comércio 45–47; administração pública = divisão 84; serviços = 49–99 exceto 84). Zero = o município tem RAIS no ano e nenhum vínculo ativo no setor (não é ausência).
   empregos_adm_publica é ATIVIDADE (divisão 84: administração pública, defesa e seguridade social), de todas as esferas (municipal, estadual e federal) com estabelecimento no município; não é a natureza jurídica nem só a prefeitura. Escolas e hospitais públicos ficam em serviços (educação, saúde). Totais iguais aos da divisão 84 em trab_setores decorrem da definição e não comprovam equivalência com o setor público por natureza jurídica.
-  massa_dez, n_rem_dez (massa de dezembro e vínculos com remuneração; média = massa_dez ÷ n_rem_dez), massa_dez_mulheres, n_rem_dez_mulheres, massa_dez_homens, n_rem_dez_homens
+  homens (vínculos ativos de homens)
+  massa_dez (soma da remuneração de dezembro), n_rem_dez (ativos com o valor informado); média = massa_dez ÷ empregos; das mulheres = massa_dez_mulheres ÷ mulheres; dos homens = massa_dez_homens ÷ homens (n_rem_dez_mulheres e n_rem_dez_homens: quantos de cada sexo têm o valor)
   estabelecimentos (com vínculo ativo)
 trab_grandes_setores — os seis grandes setores de trab_municipios em linhas: ano, cod_ibge, nome, uf, ordem, setor ('Agropecuária', 'Indústria', 'Construção', 'Comércio', 'Serviços', 'Administração pública'), vinculos (ativos em 31/12)
   Para distribuição por setor: uma linha por setor, com participacao_pct = 100.0 * vinculos / sum(vinculos) OVER ().
@@ -61,8 +62,8 @@ rais_uf — colunas: ano, uf, uf_sigla, cnae_classe, cbo, sexo, situacao, afasta
 rais_mun — colunas: ano, municipio (6 dígitos), uf (2 dígitos), uf_sigla, cnae_divisao, cbo_grande_grupo, sexo, situacao, afastado + medidas
   (rais_mun não tem cnae_classe nem cbo de 6 dígitos: para ocupação ou classe CNAE numa UF use rais_uf; num município, rais_vinculos se disponível)
   Medidas nas duas: vinculos, superior (com superior completo), dias_afastamento (soma, só afastados),
-  rem_dez_soma, rem_dez_n (ativos com remuneração em dezembro), rem_media_soma, rem_media_n, horas_soma, horas_n, idade_soma, idade_n
-  Médias = soma ÷ contagem, depois de somar o grupo (ex.: sum(rem_dez_soma) / nullif(sum(rem_dez_n), 0)). Medianas não são possíveis nestas tabelas.
+  rem_dez_soma, rem_dez_n (ativos com o valor de dezembro informado), rem_media_soma, rem_media_n (com o valor informado), horas_soma, horas_n, idade_soma, idade_n
+  Médias de remuneração (regra do PDET), depois de somar o grupo: dezembro = sum(rem_dez_soma) / nullif(sum(vinculos) FILTER (WHERE situacao = 1), 0); média do ano = sum(rem_media_soma) / nullif(sum(vinculos), 0) no recorte. Horas e idade = soma ÷ contagem (horas_n, idade_n). Medianas não são possíveis nestas tabelas.
   Combinação de CNAEs ou CBOs: filtre por prefixo (starts_with(cnae_classe, '4711') OR starts_with(cnae_classe, '4712')) e some.
   Sempre filtre por ano (cada ano é um arquivo grande); para uma UF, filtre uf (código de 2 dígitos); para um município, use rais_mun com municipio de 6 dígitos.
   Os ativos (situacao = 1) somam os empregos formais de trab_municipios.
@@ -76,7 +77,7 @@ rais_mun — colunas: ano, municipio (6 dígitos), uf (2 dígitos), uf_sigla, cn
 3. Percentuais de afastados = afastados ÷ vínculos do mesmo recorte.
 4. Grupos pequenos (menos de 30 vínculos no denominador do valor, o mesmo critério do painel) são instáveis: avise quando aparecerem e mostre o N.
 5. Atividade e setor público são conceitos diferentes: a divisão 84 da CNAE é a atividade Administração pública, defesa e seguridade social; o setor público pela natureza jurídica (grupo 1) também está em educação, saúde e outras atividades. Não use uma pela outra e diga qual foi usada.
-6. Remuneração de dezembro válida = ativo em 31/12 com valor maior que zero. Até a RAIS 2022 a falta de valor vem como 0; desde 2023, em branco (NULL). Informe quantos ativos ficaram fora (ausentes, zeros) e não trate ausência como zero; na RAIS 2023 o MTE registra subdeclaração da remuneração de estatutários.
+6. Remuneração de dezembro informada = ativo em 31/12 com valor maior que zero. Até a RAIS 2022 a falta de valor vem como 0; desde 2023, em branco (NULL). Nas médias (regra do PDET), quem não tem valor entra como zero no denominador; informe sempre quantos ativos estão nessa situação, porque eles puxam a média para baixo (na RAIS 2023 o MTE registra subdeclaração da remuneração de estatutários). Medianas e percentis usam só os valores informados: diga isso.
 
 ## Ao responder sobre mercado de trabalho
 
@@ -97,7 +98,7 @@ rais_vinculos — uma linha por vínculo, todos os vínculos do ano (ativos ou n
   causa_afastamento_1, causa_afastamento_2, causa_afastamento_3 (99 ou 999 = sem afastamento), dias_afastamento
   sexo (1 masculino, 2 feminino), idade, escolaridade (1 a 11; 9 = superior completo, 10 mestrado, 11 doutorado), raca_cor, deficiente, tipo_deficiencia, nacionalidade
   horas_contratadas, tempo_emprego (meses)
-  rem_dezembro_nom, rem_media_nom (R$ nominais, já em reais com centavos; use só valores > 0), rem_dezembro_sm, rem_media_sm (em salários mínimos, ex.: 5.74)
+  rem_dezembro_nom, rem_media_nom (R$ nominais, já em reais com centavos), rem_dezembro_sm, rem_media_sm (em salários mínimos, ex.: 5.74). Média como no PDET: sum(rem_dezembro_nom) FILTER (WHERE rem_dezembro_nom > 0) / count(*) dos ativos do grupo (sem valor = zero); medianas e percentis só com valores > 0.
   Se algum valor parecer fora de escala, não o corrija por conta própria: mostre como veio e avise na resposta.
   rem_janeiro … rem_novembro (desde 2015), ind_intermitente, ind_parcial (desde 2017)
   natureza_juridica (4 dígitos; natureza_juridica // 1000 = grupo: 1 administração pública, 2 entidades empresariais, 3 sem fins lucrativos, 4 pessoas físicas, 5 organizações internacionais; 9999 = ignorado; 1031 = Poder Executivo municipal, 1244 município, 1120 autarquia municipal, 1155 fundação municipal). O grupo 2 não é só privado: 2011 (empresa pública) e 2038 (sociedade de economia mista) são empresas estatais; chame o grupo 2 de entidades empresariais e, para separar, use empresas estatais (2011, 2038) e empresas privadas (o resto do grupo 2), como o painel, tamanho_estab, ind_simples, ibge_subsetor

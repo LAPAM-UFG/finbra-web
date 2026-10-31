@@ -321,11 +321,13 @@ def gerar_gold(con):
             COPY (
                 WITH v AS (
                     SELECT ano, municipio, sum(vinculos) AS empregos,
-                           sum(vinculos) FILTER (sexo = 2) AS mulheres, sum(vinculos) FILTER (superior) AS superior,
+                           sum(vinculos) FILTER (sexo = 2) AS mulheres, sum(vinculos) FILTER (sexo = 1) AS homens,
+                           sum(vinculos) FILTER (superior) AS superior,
                            sum(vinculos) FILTER (faixa_idade = 'ate24') AS ate24, sum(vinculos) FILTER (faixa_idade = '50mais') AS de50mais,
                            {setores},
-                           -- massa e número de vínculos com remuneração em dezembro: o site faz a média
-                           -- ponderada de qualquer grupo como soma das massas ÷ soma dos vínculos
+                           -- massa de dezembro e vínculos com o valor informado: a média do site é a do PDET/MTE,
+                           -- massa ÷ todos os vínculos ativos do grupo (empregos, mulheres, homens), com quem não tem
+                           -- valor contado como zero; n_rem_dez diz quantos têm o valor
                            sum(rem_dez_soma) AS massa_dez, sum(rem_dez_n) AS n_rem_dez,
                            sum(rem_dez_soma) FILTER (sexo = 2) AS massa_dez_mulheres, sum(rem_dez_n) FILTER (sexo = 2) AS n_rem_dez_mulheres,
                            sum(rem_dez_soma) FILTER (sexo = 1) AS massa_dez_homens, sum(rem_dez_n) FILTER (sexo = 1) AS n_rem_dez_homens
@@ -342,7 +344,7 @@ def gerar_gold(con):
         con.execute(f"""
             COPY (
                 SELECT v.ano, m.cod_ibge, v.divisao, sum(vinculos) AS empregos,
-                       sum(rem_dez_soma) / nullif(sum(rem_dez_n), 0) AS remuneracao_media_dez
+                       sum(rem_dez_soma) / nullif(sum(vinculos), 0) AS remuneracao_media_dez
                 FROM '{s}/rais_vinculos/*.parquet' v JOIN muni m USING (municipio)
                 GROUP BY ALL ORDER BY m.cod_ibge, v.ano, v.divisao
             ) TO '{g}/setores.parquet' (FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 50000)""")
@@ -350,7 +352,7 @@ def gerar_gold(con):
             COPY (
                 SELECT * FROM (
                     SELECT v.ano, CASE WHEN grouping(v.uf_) = 1 THEN 'BR' ELSE v.uf_ END AS escopo, v.divisao, sum(vinculos) AS empregos,
-                           sum(rem_dez_soma) / nullif(sum(rem_dez_n), 0) AS remuneracao_media_dez
+                           sum(rem_dez_soma) / nullif(sum(vinculos), 0) AS remuneracao_media_dez
                     FROM {com_uf(f"'{s}/rais_vinculos/*.parquet'", 'municipio')} v
                     GROUP BY GROUPING SETS ((v.ano, v.uf_, v.divisao), (v.ano, v.divisao)))
                 WHERE escopo IS NOT NULL ORDER BY ALL

@@ -1337,6 +1337,14 @@ describe('consulta personalizada (microdados da RAIS)', () => {
     assert.equal(ufs.linhas.reduce((t0, x) => t0 + (x.vinculos as number), 0), r.linhas[0].vinculos);
   });
 
+  test('remuneração média como a do PDET: Médico Neurocirurgião, Brasil, dezembro de 2024 = R$ 15.117,03', { skip: !existsSync(`${DATA}/gold/trabalho/cubo_uf/ano=2024.parquet`) }, async () => {
+    // PDET/MTE (RAIS Vínculo Id), média do Vl Remun Dezembro Nom, vínculo ativo em 31/12, CBO 225260: 15.117,03
+    const r = (await rota<R>('trab_consulta', { ano: 2024, agrupar: 'total', cbo: '225260' })).linhas[0];
+    assert.equal(Math.round((r.rem_dez_media as number) * 100) / 100, 15117.03);
+    assert.equal(r.ativos, 667);
+    assert.equal(r.n_rem_dez, 590); // 77 ativos sem valor de dezembro entram como zero
+  });
+
   test('combinar CNAEs: 4711 + 4712 = soma das duas consultas separadas', { skip: semCubo }, async () => {
     const a = await total({ uf: 'GO', cnae: '4711' });
     const b = await total({ uf: 'GO', cnae: '4712' });
@@ -1385,7 +1393,8 @@ describe('consulta personalizada (microdados da RAIS)', () => {
       const t0 = await total({ ...base, cbo: '2512' });
       // todo vínculo ativo está em exatamente uma situação da remuneração de dezembro
       assert.equal((t0.n_rem_dez as number) + (t0.rem_dez_ausente as number) + (t0.rem_dez_zero as number) + (t0.rem_dez_negativa as number), t0.ativos);
-      quase(t0.rem_dez_media as number, (t0.rem_dez_soma as number) / (t0.n_rem_dez as number));
+      // média como a do PDET/MTE: massa ÷ todos os ativos (sem valor = zero)
+      quase(t0.rem_dez_media as number, (t0.rem_dez_soma as number) / (t0.ativos as number));
       const p = ['rem_dez_p10', 'rem_dez_p25', 'rem_dez_mediana', 'rem_dez_p75', 'rem_dez_p90'].map((k) => t0[k] as number);
       assert.deepEqual([...p].sort((a, b) => a - b), p, 'percentis em ordem');
       // família + ocupação contida nela: nenhum vínculo conta duas vezes

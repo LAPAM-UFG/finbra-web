@@ -44,8 +44,8 @@ function linhasDistribuicao(lista: Linha[], total: Linha | undefined, fator: num
     m(r.rem_dez_media), m(r.rem_dez_mediana), num(r.n_rem_dez), div((num(r.ativos) ?? 0) - (num(r.n_rem_dez) ?? 0), num(r.ativos)), div(num(r.mulheres), num(r.vinculos))]);
 }
 const COLUNAS_DIST = () => [t('Código', 'Code'), t('Nome', 'Name'), t('Vínculos ativos', 'Active jobs'), t('Participação', 'Share'),
-  t('Rem. dezembro (média)', 'December pay (avg)'), t('Rem. dezembro (mediana)', 'December pay (median)'), t('N válido (rem.)', 'Valid N (pay)'),
-  t('% fora do cálculo salarial', '% left out of pay'), t('% mulheres', '% women')];
+  t('Rem. dezembro (média)', 'December pay (avg)'), t('Rem. dezembro (mediana)', 'December pay (median)'), t('Com valor (rem.)', 'With pay value'),
+  t('% sem valor (zero na média)', '% without pay (zero in the average)'), t('% mulheres', '% women')];
 
 function TabelaDistribuicao({ linhas, total, fator, micro, nmin }: { linhas: Linha[]; total: Linha | undefined; fator: number; micro: boolean; nmin: number }) {
   const m = (v: unknown) => (num(v) === null ? null : num(v)! * fator);
@@ -131,7 +131,7 @@ export function TrabalhoPerfil() {
   });
   const tabela2 = (): Tabela => ({
     colunas: [t('Ano', 'Year'), t('Rem. dezembro, média nominal', 'December pay, nominal average'), t(`Rem. dezembro, média real (R$ dez/${meta.baseIpca})`, `December pay, real average (Dec/${meta.baseIpca} R$)`),
-      t('Mediana nominal', 'Nominal median'), t('Mediana real', 'Real median'), t('N válido', 'Valid N'), t('Ativos fora do cálculo', 'Active jobs left out'), t('% fora do cálculo', '% left out'),
+      t('Mediana nominal', 'Nominal median'), t('Mediana real', 'Real median'), t('Com valor informado', 'With pay reported'), t('Ativos sem valor (zero na média)', 'Active jobs without pay (zero in the average)'), t('% sem valor', '% without pay'),
       t('Fator IPCA (dez/ano-base ÷ dez/ano)', 'IPCA factor (Dec base ÷ Dec year)')],
     linhas: porAno.map((x) => {
       const fora = (num(x.r.ativos) ?? 0) - (num(x.r.n_rem_dez) ?? 0);
@@ -162,7 +162,7 @@ export function TrabalhoPerfil() {
   function tabelaComparacao(): Tabela {
     const linhas = [[rotulo, total], [f.alvo?.uf ?? 'UF', ufCmp.dados?.linhas[0]], [t('Brasil', 'Brazil'), brCmp.dados?.linhas[0]]] as [string, Linha | undefined][];
     return {
-      colunas: [t('Território', 'Territory'), t('Vínculos ativos', 'Active jobs'), t('Rem. dezembro (média)', 'December pay (avg)'), t('Rem. dezembro (mediana)', 'December pay (median)'), t('N válido', 'Valid N'), t('% mulheres', '% women'), t('% superior', '% college')],
+      colunas: [t('Território', 'Territory'), t('Vínculos ativos', 'Active jobs'), t('Rem. dezembro (média)', 'December pay (avg)'), t('Rem. dezembro (mediana)', 'December pay (median)'), t('Com valor informado', 'With pay reported'), t('% mulheres', '% women'), t('% superior', '% college')],
       linhas: linhas.map(([n, r]) => [n, num(r?.vinculos), num(r?.rem_dez_media) === null ? null : num(r?.rem_dez_media)! * fatorRef,
         num(r?.rem_dez_mediana) === null ? null : num(r?.rem_dez_mediana)! * fatorRef, num(r?.n_rem_dez), div(num(r?.mulheres), num(r?.vinculos)), div(num(r?.superior), num(r?.vinculos))]),
       metadados: metaPerfil(t('6. Distribuição territorial: comparação', '6. Territorial distribution: comparison'), undefined,
@@ -233,7 +233,7 @@ export function TrabalhoPerfil() {
                   { painel: 'mercado de trabalho (RAIS)', pagina: 'perfil da ocupação', territorio: { rotulo, ...escopo }, periodo: { de, ate }, recorte: rec, endereco: location.href, versao_base: meta.geradoEm },
                   idioma() === 'en' ? '.' : ',')}>{t('Pacote de pesquisa (zip)', 'Research package (zip)')}</button>
                 <button className="botao-leve" onClick={() => print()} title={t('Abre a impressão do navegador: escolha Salvar como PDF. Saem título, recorte, unidade, fonte e as tabelas inteiras.', 'Opens the browser print dialog: choose Save as PDF. Title, recorte, unit, source and the full tables are included.')}>{t('PDF (imprimir)', 'PDF (print)')}</button>
-                <span className="nota-base">{moedaTexto} · {t(`grupos com N válido abaixo de ${recorte.nmin} marcados com ‡`, `groups with valid N below ${recorte.nmin} flagged with ‡`)}</span>
+                <span className="nota-base">{moedaTexto} · {t(`grupos com menos de ${recorte.nmin} vínculos com valor marcados com ‡`, `groups with fewer than ${recorte.nmin} jobs with a value flagged with ‡`)}</span>
               </div>
               {notaQuebra && (
                 <p className="quebra-serie" role="note">{quebrasEntre(de, ate).map((q) => <span key={q.ano}>{q.texto} <a href={q.url} target="_blank" rel="noreferrer">{t('Nota técnica do MTE', 'MTE technical note')}</a>. </span>)}
@@ -258,7 +258,7 @@ export function TrabalhoPerfil() {
                   )}>
                   <Grafico opcao={opcaoSerie} nome={`perfil_${recorte.cbo}_serie`} descricao={t('Vínculos ativos por ano; anos de quebra marcados com linha tracejada. Valores na opção Tabela.', 'Active jobs by year; break years marked with a dashed line. Values in the Table option.')} />
                 </CartaoGrafico>
-                <CartaoGrafico titulo={t('2. Remuneração ao longo do tempo', '2. Pay over time')} desc={t('Dezembro: média nominal e real e mediana; N válido e ativos fora do cálculo', 'December: nominal and real average and median; valid N and active jobs left out')}
+                <CartaoGrafico titulo={t('2. Remuneração ao longo do tempo', '2. Pay over time')} desc={t('Dezembro: média nominal e real (regra do PDET) e mediana; ativos com valor e sem valor', 'December: nominal and real average (PDET rule) and median; active jobs with and without a value')}
                   acoes={<Dica rotulo={t('Definições', 'Definitions')}>{notaDefinicoes()}</Dica>}
                   tabela={(
                     <>
