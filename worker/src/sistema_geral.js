@@ -8,11 +8,13 @@
  * acrescente-a a PAINEIS.
  */
 import { FINANCAS, contextoDosDados } from './sistema.js';
+import { SAUDE, contextoSaude } from './sistema_saude.js';
 import { TRABALHO, contextoTrabalho } from './sistema_trabalho.js';
 
 export const PAINEIS = {
   financas: { nome: 'finanças públicas', secao: FINANCAS },
   trabalho: { nome: 'mercado de trabalho', secao: TRABALHO },
+  saude: { nome: 'saúde', secao: SAUDE },
 };
 
 const introducao = (nomes) => `Você analisa dados dos painéis do LAPAM/UFG incluídos nesta conversa: ${nomes}. Cada painel tem a sua seção abaixo, com tabelas, conceitos e regras próprios; use as regras do painel de onde vem cada número.
@@ -21,16 +23,27 @@ Você não tem acesso direto aos dados. Para obter números, chame a ferramenta 
 
 Cada pergunta chega com um bloco "Contexto da página" (território selecionado, com os códigos dele em cada formato das tabelas, ano de referência, modo de resposta). O que a pergunta disser prevalece; o contexto só preenche o que ela não especificar. Não presuma território, período, perfil ou preferências que não estejam na pergunta ou no contexto. Se o contexto mudar entre perguntas, valem os dados do contexto que acompanha a pergunta atual.`;
 
-const CRUZAMENTO = `# Cruzando painéis
+// cada regra entra quando todos os painéis da lista estão na conversa
+const REGRAS_CRUZAMENTO = [
+  [['financas', 'trabalho'], 'Município: o cod_ibge tem 7 dígitos nas finanças e nas tabelas trab_* (trab_municipios, trab_grandes_setores, trab_setores, trab_caged, trab_caged_anual); nas tabelas da RAIS rais_mun e rais_vinculos o município tem 6 dígitos (= cod_ibge // 10). Estados: cod_ibge de 2 dígitos nas finanças = uf de rais_uf e rais_vinculos.'],
+  [['saude'], 'Saúde: saude_municipios tem cod_ibge de 7 dígitos (o mesmo das finanças e das tabelas trab_*) e municipio de 6 (o mesmo de rais_mun e rais_vinculos); a UF é a sigla (uf). Junte pelo cod_ibge e deixe de fora as linhas de município ignorado (cod_ibge NULL), dizendo quantos registros elas têm no recorte.'],
+  [['financas', 'trabalho'], 'Anos: o exercício das finanças é o ano civil, o mesmo ano da RAIS (vínculos em 31/12). Cruze só anos presentes nos dois painéis e diga quais entraram.'],
+  [['saude'], 'Anos: o SIM e o SINASC contam pelo ano civil do óbito ou do nascimento, como o exercício das finanças e a RAIS; cruze só anos presentes nas duas fontes e diga quais entraram.'],
+  [['financas', 'trabalho'], "Distrito Federal: as contas do DF estão no ente 53 (esfera 'D'); a RAIS e o CAGED registram o DF como Brasília (5300108; 530010 com 6 dígitos)."],
+  [['financas', 'saude'], "Distrito Federal: as contas do DF estão no ente 53 (esfera 'D'); o SIM e o SINASC registram o DF inteiro como Brasília (cod_ibge 5300108)."],
+  [['financas', 'trabalho'], 'População: use indicadores.populacao_ibge, a mesma de trab_municipios.populacao (IBGE). indicadores.populacao é a declarada na DCA, outra medida: não a misture com a do IBGE.'],
+  [['saude'], 'População: saude_municipios.populacao é a estimativa da SVS/MS, diferente da do IBGE (indicadores.populacao_ibge, trab_municipios.populacao). Use a da SVS/MS nas taxas de saúde e a do IBGE nos valores por habitante dos outros painéis; nunca misture as duas numa mesma razão e diga qual entrou em cada número.'],
+  [['saude'], 'Município: a saúde conta pelo município de residência (de quem morreu ou da mãe); a RAIS, pelo do estabelecimento; as finanças, pelo ente que declarou. Diga isso ao relacionar indicadores de painéis diferentes.'],
+  [['financas', 'saude'], 'Gasto com saúde: está no painel de finanças (função 10 – Saúde em despesa_funcao e nos indicadores; SIOPS em siops_*). Relacionar gasto e indicadores de saúde é associação: lugares com mais doentes podem gastar mais, e não o contrário; não fale em efeito do gasto.'],
+  [['financas', 'trabalho'], 'Despesa com pessoal da DCA é do ente (todos os poderes, com encargos); o emprego público na RAIS é contado no município do estabelecimento e inclui as três esferas (CNAE 84 ou natureza jurídica 1xxx). Para o emprego da própria prefeitura, use a natureza jurídica municipal (1031, 1120, 1155), que só existe nos microdados.'],
+  [[], 'Ao combinar números de painéis diferentes, diga de qual painel e fonte vem cada um.'],
+  [[], 'Antes de cruzar, confira a chave (cod_ibge de 7 dígitos ou municipio de 6), a unicidade (uma linha por município e ano em cada lado) e as perdas do cruzamento (quantos de cada lado ficaram sem par), com o campo verificacao de consultar (juncoes e chaves): a página faz as contagens. Diga os três na resposta.'],
+  [['financas'], 'Ano de cada fonte: o PIB municipal sai com cerca de dois anos de atraso. Se a pergunta pede um ano que uma das fontes não tem, diga isso na conclusão e use o último ano comum às duas como alternativa declarada, com o ano no título; não troque o ano em silêncio nem misture anos sem dizer.'],
+];
 
-- Município: o cod_ibge tem 7 dígitos nas finanças e nas tabelas trab_* (trab_municipios, trab_grandes_setores, trab_setores, trab_caged, trab_caged_anual); nas tabelas da RAIS rais_mun e rais_vinculos o município tem 6 dígitos (= cod_ibge // 10). Estados: cod_ibge de 2 dígitos nas finanças = uf de rais_uf e rais_vinculos.
-- Anos: o exercício das finanças é o ano civil, o mesmo ano da RAIS (vínculos em 31/12). Cruze só anos presentes nos dois painéis e diga quais entraram.
-- Distrito Federal: as contas do DF estão no ente 53 (esfera 'D'); a RAIS e o CAGED registram o DF como Brasília (5300108; 530010 com 6 dígitos).
-- População: use indicadores.populacao_ibge, a mesma de trab_municipios.populacao (IBGE). indicadores.populacao é a declarada na DCA, outra medida: não a misture com a do IBGE.
-- Despesa com pessoal da DCA é do ente (todos os poderes, com encargos); o emprego público na RAIS é contado no município do estabelecimento e inclui as três esferas (CNAE 84 ou natureza jurídica 1xxx). Para o emprego da própria prefeitura, use a natureza jurídica municipal (1031, 1120, 1155), que só existe nos microdados.
-- Ao combinar números de painéis diferentes, diga de qual painel e fonte vem cada um.
-- Antes de cruzar, confira a chave (cod_ibge de 7 dígitos ou municipio de 6), a unicidade (uma linha por município e ano em cada lado) e as perdas do cruzamento (quantos de cada lado ficaram sem par), com o campo verificacao de consultar (juncoes e chaves): a página faz as contagens. Diga os três na resposta.
-- Ano de cada fonte: o PIB municipal sai com cerca de dois anos de atraso. Se a pergunta pede um ano que uma das fontes não tem, diga isso na conclusão e use o último ano comum às duas como alternativa declarada, com o ano no título; não troque o ano em silêncio nem misture anos sem dizer.`;
+/** Regras de cruzamento dos painéis da conversa (só entram com mais de um). */
+const cruzamento = (paineis) => ['# Cruzando painéis', '',
+  ...REGRAS_CRUZAMENTO.filter(([req]) => req.every((p) => paineis.includes(p))).map(([, regra]) => `- ${regra}`)].join('\n');
 
 const COMO_RESPONDER = `# Como responder
 
@@ -122,8 +135,8 @@ export function paineisDoPedido(v) {
 
 /** Blocos de sistema: o fixo (com marcador de cache) e um bloco de dados por painel. */
 export function instrucoes(paineis, { manifesto, contextoTrabalho: ctxTrabalho }) {
-  const nomes = paineis.map((p) => PAINEIS[p].nome).join(' e ');
-  const fixo = [introducao(nomes), ...paineis.map((p) => PAINEIS[p].secao), ...(paineis.length > 1 ? [CRUZAMENTO] : []), COMO_RESPONDER].join('\n\n');
-  const dados = paineis.map((p) => (p === 'financas' ? contextoDosDados(manifesto) : contextoTrabalho(ctxTrabalho)));
+  const nomes = paineis.map((p) => PAINEIS[p].nome).join(', ').replace(/, ([^,]*)$/, ' e $1');
+  const fixo = [introducao(nomes), ...paineis.map((p) => PAINEIS[p].secao), ...(paineis.length > 1 ? [cruzamento(paineis)] : []), COMO_RESPONDER].join('\n\n');
+  const dados = paineis.map((p) => (p === 'financas' ? contextoDosDados(manifesto) : p === 'saude' ? contextoSaude(manifesto) : contextoTrabalho(ctxTrabalho)));
   return [{ type: 'text', text: fixo, cache_control: { type: 'ephemeral' } }, ...dados.map((text) => ({ type: 'text', text }))];
 }

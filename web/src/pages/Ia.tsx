@@ -33,6 +33,7 @@ const LINHAS_INICIAIS = 25;
 const NOMES_PAINEIS = (): Record<Painel, string> => ({
   financas: t('Finanças públicas', 'Public finances'),
   trabalho: t('Mercado de trabalho', 'Labour market'),
+  saude: t('Saúde', 'Health'),
 });
 
 type ItemConsulta = Extract<ItemTurno, { tipo: 'consulta' }>;
@@ -107,12 +108,14 @@ function coberturaDe(meta: Meta, microdados: boolean): Cobertura {
     siope: anos(f.siope?.anos), siopeRemuneracao: anos(f.siope?.remuneracao), siops: anos(f.siops?.anos),
     lrf: par(f.siconfi_lrf?.anos), bolsa: bolsa && { ...bolsa, mes: Number(f.bolsa_familia?.ultimo_mes) || bolsa.ate * 100 + 12 },
     inss: anos(f.inss?.exercicios),
+    sim: anos(f.sim?.anos), sinasc: anos(f.sinasc?.anos), popSvs: anos(f.populacao_svs?.anos),
   };
 }
 
 /** Ano do seletor: os que só têm o Novo CAGED (ex.: o ano corrente) dizem isso, com o último mês. */
 function rotuloDoAno(a: number, c: Cobertura, paineis: Painel[]) {
-  const outras = (paineis.includes('trabalho') && c.rais.includes(a)) || (paineis.includes('financas') && c.dca.includes(a));
+  const outras = (paineis.includes('trabalho') && c.rais.includes(a)) || (paineis.includes('financas') && c.dca.includes(a))
+    || (paineis.includes('saude') && !!c.sim?.includes(a));
   if (outras || !c.caged || Math.floor(c.caged.ate / 100) !== a || c.caged.ate % 100 === 12) return String(a);
   return t(`${a} (só Novo CAGED, até ${rotuloCompetencia(c.caged.ate)})`, `${a} (New CAGED only, up to ${rotuloCompetencia(c.caged.ate)})`);
 }
@@ -127,11 +130,18 @@ function territorioDe(alvo: Ente | null, uf: string | null, entes: Ente[]): Terr
   return { tipo: 'uf', uf: sigla, nome: estado?.nome ?? nomeDaUf(sigla), cod: estado?.cod_ibge ?? 0 };
 }
 
+/** Temas dos painéis no título ("finanças públicas, mercado de trabalho e saúde"). */
+const TEMAS = (): Record<Painel, string> => ({
+  financas: t('finanças públicas', 'public finances'), trabalho: t('mercado de trabalho', 'the labour market'), saude: t('saúde', 'health'),
+});
 const titulo = (p: Painel[]) => (p.length > 1
-  ? t('O que você quer saber sobre finanças públicas e mercado de trabalho?', 'What would you like to know about public finances and the labour market?')
+  ? t(`O que você quer saber sobre ${p.map((x) => TEMAS()[x]).join(', ').replace(/, ([^,]*)$/, ' e $1')}?`,
+    `What would you like to know about ${p.map((x) => TEMAS()[x]).join(', ').replace(/, ([^,]*)$/, ' and $1')}?`)
   : p[0] === 'trabalho'
     ? t('O que você quer saber sobre o mercado de trabalho?', 'What would you like to know about the labour market?')
-    : t('O que você quer saber sobre as finanças públicas?', 'What would you like to know about public finances?'));
+    : p[0] === 'saude'
+      ? t('O que você quer saber sobre a saúde?', 'What would you like to know about health?')
+      : t('O que você quer saber sobre as finanças públicas?', 'What would you like to know about public finances?'));
 
 const descricao = (p: Painel[]) => (p.length > 1
   ? t('Pergunte em linguagem natural, inclusive cruzando os painéis. A IA consulta as bases aqui no seu navegador, faz os cálculos com SQL e explica o resultado, com as consultas à vista para conferência.',
@@ -139,12 +149,16 @@ const descricao = (p: Painel[]) => (p.length > 1
   : p[0] === 'trabalho'
     ? t('Pergunte em linguagem natural sobre emprego formal, remuneração, setores, ocupações, afastamentos e movimentações. A IA consulta a RAIS e o Novo CAGED aqui no seu navegador, faz os cálculos com SQL e explica o resultado, com as consultas à vista para conferência.',
       'Ask in plain language about formal employment, pay, sectors, occupations, leave and job flows. The AI queries RAIS and New CAGED here in your browser, does the calculations in SQL and explains the result, with the queries in view for checking.')
-    : t('Pergunte em linguagem natural sobre receitas, despesas, transferências e indicadores fiscais de municípios, estados e DF. A IA consulta as declarações do SICONFI aqui no seu navegador, faz os cálculos com SQL e explica o resultado, com as consultas à vista para conferência.',
-      'Ask in plain language about revenue, expenditure, transfers and fiscal indicators of municipalities, states and DF. The AI queries the SICONFI filings here in your browser, does the calculations in SQL and explains the result, with the queries in view for checking.'));
+    : p[0] === 'saude'
+      ? t('Pergunte em linguagem natural sobre mortalidade, causas de morte e nascimentos por município de residência. A IA consulta o SIM, o SINASC e a população da SVS/MS aqui no seu navegador, faz os cálculos com SQL e explica o resultado, com as consultas à vista para conferência.',
+        'Ask in plain language about mortality, causes of death and births by municipality of residence. The AI queries SIM, SINASC and the SVS/MS population here in your browser, does the calculations in SQL and explains the result, with the queries in view for checking.')
+      : t('Pergunte em linguagem natural sobre receitas, despesas, transferências e indicadores fiscais de municípios, estados e DF. A IA consulta as declarações do SICONFI aqui no seu navegador, faz os cálculos com SQL e explica o resultado, com as consultas à vista para conferência.',
+        'Ask in plain language about revenue, expenditure, transfers and fiscal indicators of municipalities, states and DF. The AI queries the SICONFI filings here in your browser, does the calculations in SQL and explains the result, with the queries in view for checking.'));
 
 const FONTES = (): Record<Painel, string> => ({
   financas: t('finanças públicas (SICONFI/Tesouro Nacional, IBGE, Banco Central, Portal da Transparência, Previdência)', 'public finances (SICONFI/National Treasury, IBGE, Central Bank, Transparency Portal, Social Security)'),
   trabalho: t('mercado de trabalho (RAIS e Novo CAGED, Ministério do Trabalho e Emprego)', 'labour market (RAIS and New CAGED, Ministry of Labour and Employment)'),
+  saude: t('saúde (SIM e SINASC, Ministério da Saúde/DATASUS; população da SVS/MS)', 'health (SIM and SINASC, Ministry of Health/DATASUS; SVS/MS population)'),
 });
 const fonteIa = (paineis: Painel[]) => t(
   `Painéis LAPAM/UFG: ${paineis.map((p) => FONTES()[p]).join('; ')}. Respostas e consultas geradas por IA (Claude, da Anthropic): confira antes de usar.`,
@@ -778,6 +792,7 @@ function Rodape({ estado, paineis, conta }: { estado: EstadoIa | null | undefine
         {t('Respostas geradas por IA (Claude, da Anthropic) podem conter erros: confira as consultas antes de usar os números. Para a Anthropic vão só a pergunta, o contexto da página e os resultados resumidos das consultas, nunca os arquivos.',
           'AI-generated answers (Claude, by Anthropic) may contain errors: check the queries before using the numbers. Only the question, the page context and the summarized query results go to Anthropic, never the files.')}
         {paineis.includes('trabalho') && ` ${t('Na RAIS, a unidade é o vínculo, não a pessoa.', 'In RAIS, the unit is the job, not the person.')}`}
+        {paineis.includes('saude') && ` ${t('Na saúde, as taxas são calculadas diretamente, pelo município de residência e sem correção de subnotificação.', 'In health, rates are computed directly, by municipality of residence and without under-reporting correction.')}`}
       </p>
       {conta && estado && <Conta estado={estado} />}
     </footer>
@@ -1548,6 +1563,7 @@ export function Ia() {
       ...(chavePaineis.includes('trabalho') ? cobertura.rais : []),
       ...caged,
       ...(chavePaineis.includes('financas') ? cobertura.dca : []),
+      ...(chavePaineis.includes('saude') ? cobertura.sim ?? [] : []),
     ])].sort((a, b) => a - b);
   }, [cobertura, chavePaineis]);
   const anoUrl = Number(busca.get('ano'));

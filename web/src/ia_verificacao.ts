@@ -156,6 +156,7 @@ const FONTES_DE_FATO: [RegExp, string][] = [
   [/^(trab_(municipios|setores|setores_uf|grandes_setores)|rais_\w+)$/, 'RAIS'],
   [/^bolsa_familia_\w+$/, 'Bolsa Família'],
   [/^inss_\w+$/, 'INSS'],
+  [/^saude_municipios$/, 'SIM/SINASC'],
 ];
 
 /** Tabelas de fato lidas pela consulta (depois de FROM e JOIN; textos entre aspas e CTEs não contam). */

@@ -12,7 +12,7 @@
  * confere os códigos de território (conferirCodigos); lugares citados pelo nome passam pela ferramenta
  * "localizar", que usa o cadastro de entes.
  */
-import { consultaLivre, manifestoDados, tabelaDespesaFuncao, tabelaLrf, tabelasEducacaoSaude, tabelasIaTrabalho } from './dados';
+import { consultaLivre, manifestoDados, tabelaDespesaFuncao, tabelaLrf, tabelasEducacaoSaude, tabelasIaTrabalho, tabelasSaude } from './dados';
 import { t } from './idioma';
 import {
   competenciasNoTexto, formatarValor, periodoDasConsultas, periodoDe, registrarColunas, rotuloCompetencia, rotuloPeriodo, sqlSemTextos, tiposDoResultado,
@@ -96,13 +96,13 @@ export async function estadoIa(): Promise<EstadoIa | null> {
 }
 
 /** Painéis que a IA pode consultar (aba "Pergunte aos dados"); cada um tem tabelas e instruções próprias. */
-export type Painel = 'financas' | 'trabalho';
-export const PAINEIS: Painel[] = ['financas', 'trabalho'];
+export type Painel = 'financas' | 'trabalho' | 'saude';
+export const PAINEIS: Painel[] = ['financas', 'trabalho', 'saude'];
 
 export async function chamarIa(mensagens: Mensagem[], idioma: string, paineis: Painel[] = PAINEIS, sinal?: AbortSignal): Promise<RespostaIa> {
   const contexto = paineis.includes('trabalho') ? await tabelasIaTrabalho() : undefined;
   // o manifesto só é usado pelo Worker local (wrangler dev), que não tem o do R2
-  const manifesto = emLocalhost() && paineis.includes('financas') ? await manifestoDados() : undefined;
+  const manifesto = emLocalhost() && (paineis.includes('financas') || paineis.includes('saude')) ? await manifestoDados() : undefined;
   const enviar = () => fetch(`${servidor}/api/ia`, {
     method: 'POST',
     redirect: 'manual',
@@ -188,6 +188,12 @@ export function disponibilidadeNoAno(ano: number, paineis: Painel[], c: Cobertur
     if (c.siope?.length) marcar('SIOPE', c.siope.includes(ano));
     if (c.siops?.length) marcar('SIOPS', c.siops.includes(ano));
   }
+  if (paineis.includes('saude')) {
+    const faixa = (a?: number[]) => (a?.length ? ` (${a[0]}–${a.at(-1)})` : '');
+    if (c.sim?.length) marcar('SIM', c.sim.includes(ano), faixa(c.sim));
+    if (c.sinasc?.length) marcar('SINASC', c.sinasc.includes(ano), faixa(c.sinasc));
+    if (c.popSvs?.length) marcar('população da SVS/MS', c.popSvs.includes(ano), faixa(c.popSvs));
+  }
   return [tem.length ? `com dados nesse ano: ${tem.join('; ')}` : 'nenhuma fonte tem dados nesse ano', nao.length ? `sem dados nesse ano: ${nao.join('; ')}` : '']
     .filter(Boolean).join('. ');
 }
@@ -221,6 +227,7 @@ export type Cobertura = {
   rais: number[]; caged: { de: number; ate: number } | null; microdados: boolean; dca: number[];
   pib?: { de: number; ate: number; setorial_ate?: number } | null; siope?: number[]; siopeRemuneracao?: number[]; siops?: number[];
   lrf?: { de: number; ate: number } | null; bolsa?: { de: number; ate: number; mes: number } | null; inss?: number[];
+  sim?: number[]; sinasc?: number[]; popSvs?: number[];
 };
 export type Sugestao = { categoria: string; texto: string };
 
@@ -251,6 +258,10 @@ function escopoFinancas(tr: Territorio) {
 export function sugestoes(paineis: Painel[], tr: Territorio, c: Cobertura, ano: number | null): Sugestao[] {
   const trabalho = paineis.includes('trabalho') && c.rais.length > 0;
   const financas = paineis.includes('financas') && c.dca.length > 0;
+  const saude = paineis.includes('saude') && (c.sim?.length ?? 0) > 0;
+  // quatro sugestões no total: com mais de um painel, cada um entra com parte delas, mais uma entre painéis
+  const n = [trabalho, financas, saude].filter(Boolean).length;
+  const cota = { trabalho: n === 1 ? 4 : n === 2 ? 2 : 1, financas: n === 1 ? 4 : 1, saude: n === 1 ? 4 : n === 2 ? 2 : 1 };
   const ult = (anos: number[]) => (ano && anos.includes(ano) ? ano : anos.at(-1)!);
   const recuo = (anos: number[], n: number) => Math.max(anos[0], ult(anos) - n);
   const f = formas(tr);
@@ -258,6 +269,7 @@ export function sugestoes(paineis: Painel[], tr: Territorio, c: Cobertura, ano: 
   const cat = {
     evolucao: t('Evolução', 'Trends'), remuneracao: t('Remuneração', 'Pay'), comparacao: t('Comparação', 'Comparison'),
     composicao: t('Composição', 'Composition'), dependencia: t('Dependência', 'Dependency'), cruzamento: t('Entre painéis', 'Across dashboards'),
+    causas: t('Causas de morte', 'Causes of death'), nascimentos: t('Nascimentos', 'Births'),
   };
   const lista: Sugestao[] = [];
   if (trabalho) {
@@ -277,7 +289,7 @@ export function sugestoes(paineis: Painel[], tr: Territorio, c: Cobertura, ano: 
       { categoria: cat.comparacao, texto: comparacao },
       { categoria: cat.composicao, texto: t(`Como se distribuem os vínculos ativos ${f.em} em ${a} entre os grandes setores da economia e por sexo?`, `How are active jobs ${f.em} in ${a} distributed across broad economic sectors and by sex?`) },
     ];
-    lista.push(...(financas ? itens.slice(0, 2) : itens));
+    lista.push(...itens.slice(0, cota.trabalho));
   }
   if (financas) {
     const a = ult(c.dca);
@@ -296,7 +308,38 @@ export function sugestoes(paineis: Painel[], tr: Territorio, c: Cobertura, ano: 
       { categoria: cat.comparacao, texto: comparacao },
       { categoria: cat.dependencia, texto: t(`Quanto a receita corrente ${esc} depende de transferências, e como isso mudou desde ${a10}?`, `How much does the current revenue ${esc} depend on transfers, and how has that changed since ${a10}?`) },
     ];
-    lista.push(...(trabalho ? itens.slice(0, 1) : itens));
+    lista.push(...itens.slice(0, cota.financas));
+  }
+  if (saude) {
+    const a = ult(c.sim!);
+    const a10 = recuo(c.sim!, 10);
+    const comparacao = tr.tipo === 'brasil'
+      ? t(`Quais UFs tiveram as maiores taxas de homicídio por 100 mil habitantes em ${a}?`, `Which states had the highest homicide rates per 100,000 inhabitants in ${a}?`)
+      : tr.tipo === 'uf'
+        ? t(`Entre os municípios ${f.de} com pelo menos mil nascidos vivos, quais tiveram a maior mortalidade infantil em ${a}?`,
+          `Among municipalities ${f.de} with at least 1,000 live births, which had the highest infant mortality in ${a}?`)
+        : tr.tipo === 'municipio'
+          ? t(`Como ${f.sujeito} se compara com ${uf!.sujeito} em mortalidade infantil e baixo peso ao nascer em ${a}?`,
+            `How does ${f.sujeito} compare with ${uf!.sujeito} in infant mortality and low birth weight in ${a}?`)
+          : t(`Como o Distrito Federal se compara com o Brasil em mortalidade infantil e baixo peso ao nascer em ${a}?`,
+            `How does the Federal District compare with Brazil in infant mortality and low birth weight in ${a}?`);
+    const itens = [
+      { categoria: cat.evolucao, texto: t(`Como evoluiu a mortalidade infantil ${f.em} de ${a10} a ${a}?`, `How did infant mortality ${f.em} change from ${a10} to ${a}?`) },
+      { categoria: cat.causas, texto: t(`Quais foram as principais causas de morte ${f.em} em ${a}, pelos capítulos da CID-10?`, `What were the main causes of death ${f.em} in ${a}, by ICD-10 chapter?`) },
+      { categoria: cat.comparacao, texto: comparacao },
+      { categoria: cat.nascimentos, texto: t(`Como mudaram as proporções de partos cesáreos e de mães adolescentes ${f.em} de ${a10} a ${a}?`,
+        `How did the shares of caesarean births and adolescent mothers ${f.em} change from ${a10} to ${a}?`) },
+    ];
+    lista.push(...itens.slice(0, cota.saude));
+  }
+  if (financas && saude && !trabalho) {
+    const a = Math.min(ult(c.dca), ult(c.sim!));
+    const texto = tr.tipo === 'brasil'
+      ? t(`Nas capitais, qual a relação entre a despesa com saúde por habitante e a mortalidade infantil em ${a}?`, `In state capitals, how does health spending per inhabitant relate to infant mortality in ${a}?`)
+      : tr.tipo === 'uf'
+        ? t(`Nos municípios ${f.de}, qual a relação entre a despesa com saúde por habitante e a mortalidade infantil em ${a}?`, `In municipalities ${f.de}, how does health spending per inhabitant relate to infant mortality in ${a}?`)
+        : t(`Como evoluíram juntas a despesa com saúde por habitante e a mortalidade infantil ${f.em} até ${a}?`, `How did health spending per inhabitant and infant mortality ${f.em} evolve together up to ${a}?`);
+    lista.push({ categoria: cat.cruzamento, texto });
   }
   if (trabalho && financas) {
     const a = Math.min(ult(c.rais), ult(c.dca));
@@ -318,6 +361,9 @@ export function exemploPergunta(paineis: Painel[], tr: Territorio, c: Cobertura)
   }
   if (paineis.includes('trabalho') && c.rais.length) {
     return t(`Ex.: quantos empregos formais havia ${f.em} em ${c.rais.at(-1)}?`, `E.g. how many formal jobs were there ${f.em} in ${c.rais.at(-1)}?`);
+  }
+  if (paineis.includes('saude') && c.sim?.length) {
+    return t(`Ex.: qual foi a mortalidade infantil ${f.em} em ${c.sim.at(-1)}?`, `E.g. what was infant mortality ${f.em} in ${c.sim.at(-1)}?`);
   }
   if (c.dca.length) {
     return t(`Ex.: qual foi a receita corrente per capita ${escopoFinancas(tr)} em ${c.dca.at(-1)}?`, `E.g. what was the current revenue per capita ${escopoFinancas(tr)} in ${c.dca.at(-1)}?`);
@@ -376,6 +422,18 @@ export function descreverCobertura(paineis: Painel[], c: Cobertura): string[] {
     linhas.push(c.lrf
       ? t(`RREO e RGF (LRF) ${faixa(c.lrf.de, c.lrf.ate)}: RCL, pessoal, dívida e mínimos de saúde e educação`, `RREO and RGF (LRF) ${faixa(c.lrf.de, c.lrf.ate)}: net current revenue, personnel, debt and health and education minimums`)
       : t('RREO e RGF (LRF): em preparação, ainda não consultáveis pela IA', 'RREO and RGF (LRF): in preparation, not yet available to the AI'));
+  }
+  if (paineis.includes('saude') && c.sim?.length) {
+    linhas.push(t(`SIM ${faixa(c.sim[0], c.sim.at(-1)!)}: óbitos (inclusive fetais) por município de residência, idade e causa básica (CID-10)`,
+      `SIM ${faixa(c.sim[0], c.sim.at(-1)!)}: deaths (including fetal) by municipality of residence, age and underlying cause (ICD-10)`));
+  }
+  if (paineis.includes('saude') && c.sinasc?.length) {
+    linhas.push(t(`SINASC ${faixa(c.sinasc[0], c.sinasc.at(-1)!)}: nascidos vivos por município de residência da mãe, com peso, gestação, tipo de parto, pré-natal e idade da mãe`,
+      `SINASC ${faixa(c.sinasc[0], c.sinasc.at(-1)!)}: live births by mother’s municipality of residence, with weight, gestation, delivery type, prenatal care and mother’s age`));
+  }
+  if (paineis.includes('saude') && c.popSvs?.length) {
+    linhas.push(t(`População da SVS/MS ${faixa(c.popSvs[0], c.popSvs.at(-1)!)}: estimativas por município, sexo e idade, denominador das taxas de saúde`,
+      `SVS/MS population ${faixa(c.popSvs[0], c.popSvs.at(-1)!)}: estimates by municipality, sex and age, the denominator of health rates`));
   }
   return linhas;
 }
@@ -609,6 +667,13 @@ const FONTES_TABELAS: [RegExp | ((sql: string) => boolean), () => string][] = [
     () => t('IBGE: população de referência (Censos 2010 e 2022 e estimativas de 1º de julho; SIDRA 202, 4709 e 6579)', 'IBGE: reference population (2010 and 2022 Censuses and July 1 estimates; SIDRA 202, 4709 and 6579)')],
   [(s) => /\b(indicadores|lrf)\b/.test(s) && /\bpopulacao\b/.test(s),
     () => t('SICONFI: população declarada pelo ente na DCA (não é a estimativa do IBGE do ano)', 'SICONFI: population reported by the government in the DCA (not the IBGE estimate for the year)')],
+  // saúde: uma tabela com as três fontes; cada uma conta quando a consulta usa colunas dela
+  [(s) => /\bsaude_municipios\b/.test(s) && /\b(obitos\w*|infantis|neonatais\w*|pos_neonatais|menores_5|idosos_60_mais|idade_ignorada|maternos|externas|transito|homicidios|suicidios|mal_definidas|covid|circulatorio|neoplasias|respiratorio|dcnt_30_69|cap\d{2})\b/.test(s),
+    () => t('Ministério da Saúde/DATASUS: SIM (óbitos por município de residência)', 'Ministry of Health/DATASUS: SIM (deaths by municipality of residence)')],
+  [(s) => /\bsaude_municipios\b/.test(s) && /\b(nascidos|baixo_peso|peso_informado|prematuros|gestacao_informada|cesareos|parto_informado|consultas_\w+|sem_consulta|maes_\w+|idade_mae_informada)\b/.test(s),
+    () => t('Ministério da Saúde/DATASUS: SINASC (nascidos vivos por município de residência da mãe)', 'Ministry of Health/DATASUS: SINASC (live births by mother’s municipality of residence)')],
+  [(s) => /\bsaude_municipios\b/.test(s) && /\b(populacao|pop_\w+)\b/.test(s),
+    () => t('SVS/MS: estimativas de população por município, sexo e idade', 'SVS/MS: population estimates by municipality, sex and age')],
   [/\bbolsa_familia_[a-z]+/, () => t('Portal da Transparência: Bolsa Família', 'Transparency Portal: Bolsa Família')],
   [/\binss_[a-z]+/, () => t('Previdência Social: benefícios do INSS', 'Social Security: INSS benefits')],
   [/\bipca\b/, () => t('IPCA (Banco Central, SGS 433)', 'IPCA (Central Bank of Brazil, SGS 433)')],
@@ -816,6 +881,7 @@ export function coberturaDaFonte(sql: string, c?: Cobertura | null): CoberturaFo
   const s = sql.toLowerCase();
   if (/\btrab_caged/.test(s)) return c.caged ? { nome: 'Novo CAGED', meses: c.caged } : null;
   if (/\brais_(uf|mun|vinculos)\b|\btrab_(municipios|setores|setores_uf|grandes_setores)\b/.test(s)) return { nome: 'RAIS', anos: c.rais };
+  if (/\bsaude_municipios\b/.test(s)) return c.sim?.length ? { nome: 'SIM/SINASC', anos: c.sim } : null;
   if (/\bsiops_/.test(s)) return c.siops ? { nome: 'SIOPS', anos: c.siops } : null;
   if (/\bsiope_/.test(s)) return c.siope ? { nome: 'SIOPE', anos: c.siope } : null;
   // PIB e valor adicionado: só os anos publicados pelo IBGE que também têm DCA
@@ -1504,6 +1570,7 @@ export async function executarConsulta(entrada: unknown, paineis: Painel[] = PAI
     if (paineis.includes('financas') && /\blrf\b/i.test(todas)) await tabelaLrf();
     if (paineis.includes('financas') && /\bsiop[es]_/i.test(todas)) await tabelasEducacaoSaude();
     if (paineis.includes('financas') && /\bdespesa_funcao\b/i.test(todas)) await tabelaDespesaFuncao();
+    if (paineis.includes('saude') && /\bsaude_municipios\b/i.test(todas)) await tabelasSaude();
     const reg = lerRegressao((entrada as { regressao?: unknown }).regressao);
     if (typeof reg === 'string') return { erro: reg, bloqueada: true };
     const r = reg ? await estimar(e.sql, reg, sinal) : await consultaLivre(e.sql, limite, sinal);

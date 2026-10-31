@@ -14,7 +14,7 @@
  *   /api/ia/conversas*    histórico das conversas na conta (conversas.js)
  *
  * Uma IA para todos os painéis (aba "Pergunte aos dados"): paineis diz quais entram na conversa
- * (['financas', 'trabalho']; vazio = todos) e as instruções juntam a seção de cada um (sistema_geral.js).
+ * (['financas', 'trabalho', 'saude']; vazio = todos) e as instruções juntam a seção de cada um (sistema_geral.js).
  * contexto: anos e microdados do mercado de trabalho, informados pelo navegador.
  * Cada pergunta é uma mensagem do usuário com blocos de texto: o contexto da página (território, ano de
  * referência, estilo de resposta) e, por último, a pergunta; antes deles, os resultados de ferramenta que a

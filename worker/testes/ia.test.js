@@ -163,8 +163,28 @@ describe('instruções', () => {
 
   test('painéis desconhecidos são ignorados; nenhum válido = todos', () => {
     assert.deepEqual(paineisDoPedido(['trabalho', 'x']), ['trabalho']);
-    assert.deepEqual(paineisDoPedido([]), ['financas', 'trabalho']);
-    assert.deepEqual(paineisDoPedido('trabalho'), ['financas', 'trabalho']);
+    assert.deepEqual(paineisDoPedido([]), ['financas', 'trabalho', 'saude']);
+    assert.deepEqual(paineisDoPedido('trabalho'), ['financas', 'trabalho', 'saude']);
+    assert.deepEqual(paineisDoPedido(['saude', 'financas']), ['financas', 'saude']);
+  });
+
+  test('saúde: seção própria, anos do manifesto e regras de cruzamento só dos painéis marcados', () => {
+    const manifesto = { gerado_em: 'x', anos: [2013, 2025], base_ipca: 2025, fontes: { sim: { anos: [1996, 2024] }, sinasc: { anos: [1996, 2024] }, populacao_svs: { anos: [2000, 2025] } } };
+    const texto = (p) => instrucoes(p, { manifesto, contextoTrabalho: {} }).map((b) => b.text).join('\n');
+    const saude = texto(['saude']);
+    assert.match(saude, /# Painel de saúde/);
+    assert.match(saude, /saude_municipios/);
+    assert.match(saude, /razão das somas/);
+    assert.match(saude, /SIM \(óbitos, inclusive fetais\): 1996 a 2024/);
+    assert.doesNotMatch(saude, /# Painel de mercado de trabalho|# Cruzando painéis/);
+    const comFinancas = texto(['financas', 'saude']);
+    assert.match(comFinancas, /dados dos painéis do LAPAM\/UFG incluídos nesta conversa: finanças públicas e saúde\./);
+    assert.match(comFinancas, /estimativa da SVS\/MS, diferente da do IBGE/);
+    assert.match(comFinancas, /Gasto com saúde/);
+    // regra só de finanças × trabalho fica de fora sem o painel de trabalho
+    assert.doesNotMatch(comFinancas, /a RAIS e o CAGED registram o DF/);
+    assert.match(texto(['financas', 'trabalho', 'saude']), /conversa: finanças públicas, mercado de trabalho e saúde\./);
+    assert.doesNotMatch(texto(['financas', 'trabalho']), /saude_municipios/);
   });
 });
 

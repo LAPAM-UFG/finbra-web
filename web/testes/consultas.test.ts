@@ -32,12 +32,13 @@ import {
   type ApiConversas, type Conversa,
 } from '../src/ia_historico';
 import { pedidoConferencia } from '../src/ia_conferencia';
-import { CONCEITOS, fichaDaColuna } from '../src/ia_catalogo';
+import { atendeConceito, CONCEITOS, fichaDaColuna } from '../src/ia_catalogo';
 import { mqo, pBilateral } from '../src/ia_estatistica';
 import { contextoDosDados, FINANCAS } from '../../worker/src/sistema.js';
 import { TRABALHO } from '../../worker/src/sistema_trabalho.js';
+import { SAUDE } from '../../worker/src/sistema_saude.js';
 import { calcular, indicador } from '../src/saude_comum';
-import { cadastro, conferirCodigos, executarLocalizacao, localizar } from '../src/ia_territorio';
+import { cadastro, codigosDoMunicipio, conferirCodigos, executarLocalizacao, localizar } from '../src/ia_territorio';
 import { crc32, paraCsv, paraXlsx, paraXlsxAbas } from '../src/exportar';
 import { ordenarBusca } from '../src/contexto';
 
@@ -1991,7 +1992,10 @@ describe('IA: auditoria das cinco perguntas (regressão)', () => {
  * arquivo guarda pergunta, contexto, modo, consultas (SQL e resultado) e resposta, para a conferência
  * independente (pipeline/auditoria_ia.py). IA_AUDITORIA_SO=A,C roda só algumas.
  */
-const AUDITORIA: [string, 'rapida' | 'pesquisa', string][] = [
+const AUDITORIA: [string, 'rapida' | 'pesquisa', string, Painel[]?][] = [
+  ['S1', 'rapida', 'Como evoluiu a mortalidade infantil em Goiás de 2014 a 2024?', ['saude']],
+  ['S2', 'pesquisa', 'Quais municípios de Goiás com pelo menos mil nascidos vivos tiveram a maior mortalidade infantil em 2024? Mostre óbitos infantis, nascidos vivos e a taxa.', ['saude']],
+  ['S3', 'pesquisa', 'Nos municípios de Goiás, qual é a relação entre a despesa com saúde por habitante e a mortalidade infantil em 2024?', ['financas', 'saude']],
   ['A', 'pesquisa', 'Como evoluiu a dependência do FPM nos municípios de Goiás entre 2013 e 2025? Apresente uma tabela anual com FPM, receita corrente, participação do FPM, valores por habitante e cobertura dos municípios.'],
   ['B', 'pesquisa', 'Para enfermeiros no Brasil, de 2015 a 2025, apresente vínculos ativos em 31/12, remuneração média de dezembro nominal e real, participação feminina e diferença salarial entre mulheres e homens.'],
   ['C', 'pesquisa', 'Qual foi o saldo mensal de empregos formais em Goiás de janeiro a agosto de 2026? Mostre admissões, desligamentos, saldo mensal e acumulado, comparando o mesmo intervalo de 2025.'],
@@ -2003,13 +2007,14 @@ describe('IA: auditoria das cinco perguntas (Worker local e modelo)', { skip: !p
   const so = process.env.IA_AUDITORIA_SO?.split(',');
   const registros: unknown[] = [];
   after(async () => { await writeFile(process.env.IA_AUDITORIA!, JSON.stringify(registros, null, 1)); });
-  for (const [id, modo, pergunta] of AUDITORIA.filter(([id]) => !so || so.includes(id))) {
+  for (const [id, modo, pergunta, escolhidos] of AUDITORIA.filter(([id]) => !so || so.includes(id))) {
     test(`${id} (${modo})`, { timeout: 1_200_000 }, async () => {
       globalThis.fetch = FETCH;
       usarServidorIaNoTeste(process.env.IA_URL ?? 'http://localhost:8787');
       const m = JSON.parse(await readFile(`${DATA}/gold/manifesto.json`, 'utf8'));
-      const cobertura = { rais: m.fontes.rais.anos, caged: { de: m.fontes.caged.de, ate: m.fontes.caged.ate }, microdados: false, dca: m.anos };
-      const paineis: ('financas' | 'trabalho')[] = ['financas', 'trabalho'];
+      const cobertura = { rais: m.fontes.rais.anos, caged: { de: m.fontes.caged.de, ate: m.fontes.caged.ate }, microdados: false, dca: m.anos,
+        sim: m.fontes.sim?.anos, sinasc: m.fontes.sinasc?.anos, popSvs: m.fontes.populacao_svs?.anos };
+      const paineis: Painel[] = escolhidos ?? ['financas', 'trabalho'];
       const resultados: Record<string, Resultado> = {};
       const contexto = contextoParaModelo({ paineis, territorio: { tipo: 'brasil' }, ano: null, modo });
       const inicio = Date.now();
@@ -2442,6 +2447,46 @@ describe('saúde (SIM, SINASC e população da SVS/MS)', () => {
     const df = (await rota<L[]>('saude_serie', { ente: 53 })).find((r) => r.ano === 2023)!;
     assert.ok((df.nascidos as number) > 30000);
   });
+
+  test('IA: saude_municipios pela consulta da IA dá os mesmos totais da série do painel; códigos conferidos', { skip: semSaude }, async () => {
+    const go = (await rota<L[]>('saude_serie', { uf: 'GO' })).find((r) => r.ano === 2023)!;
+    const r = await executarConsulta({ sql: "SELECT sum(infantis) AS infantis, sum(nascidos) AS nascidos, sum(obitos) AS obitos FROM saude_municipios WHERE uf = 'GO' AND ano = 2023" }, ['saude']);
+    assert.ok(!('erro' in r), JSON.stringify(r));
+    if ('erro' in r) return;
+    assert.deepEqual(r.linhas[0].map(Number), [go.infantis, go.nascidos, go.obitos].map(Number));
+    const cad = await cadastro();
+    // código de 6 dígitos em cod_ibge e UF em cod_ibge: recusados antes de rodar, com o código certo
+    assert.match(conferirCodigos('SELECT nascidos FROM saude_municipios WHERE cod_ibge = 520870', cad) ?? '', /cod_ibge = 5208707/);
+    assert.match(conferirCodigos('SELECT sum(nascidos) FROM saude_municipios WHERE cod_ibge = 52', cad) ?? '', /uf = 'GO'/);
+    assert.equal(conferirCodigos('SELECT nascidos FROM saude_municipios WHERE municipio = 520870', cad), null);
+  });
+
+  test('IA: cobertura, sugestões, fontes e conceitos do painel de saúde', () => {
+    const anos = (de: number, ate: number) => Array.from({ length: ate - de + 1 }, (_, i) => de + i);
+    const cob: Cobertura = { rais: anos(2010, 2025), caged: null, microdados: false, dca: anos(2013, 2025), sim: anos(1996, 2024), sinasc: anos(1996, 2024), popSvs: anos(2000, 2025) };
+    const so = sugestoes(['saude'], { tipo: 'brasil' }, cob, null);
+    assert.equal(so.length, 4);
+    assert.match(so[0].texto, /mortalidade infantil no Brasil de 2014 a 2024/);
+    const go = sugestoes(['financas', 'saude'], { tipo: 'uf', uf: 'GO', nome: 'Goiás', cod: 52 }, cob, null);
+    assert.equal(go.length, 4);
+    assert.match(go.at(-1)!.texto, /despesa com saúde por habitante e a mortalidade infantil/);
+    assert.equal(sugestoes(['financas', 'trabalho', 'saude'], { tipo: 'brasil' }, cob, null).length, 4);
+    assert.match(descreverCobertura(['saude'], cob).join('\n'), /SIM 1996–2024: óbitos[\s\S]*SINASC 1996–2024[\s\S]*População da SVS\/MS 2000–2025/);
+    const d = disponibilidadeNoAno(2025, ['saude'], cob);
+    assert.match(d, /com dados nesse ano: população da SVS\/MS/);
+    assert.match(d, /sem dados nesse ano: SIM \(1996–2024\); SINASC \(1996–2024\)/);
+    const consulta = 'SELECT ano, 1000.0 * sum(infantis) / sum(nascidos) AS mi, sum(populacao) AS pop FROM saude_municipios GROUP BY ano';
+    assert.equal(coberturaDaFonte(consulta, cob)?.nome, 'SIM/SINASC');
+    assert.equal(fontesConsultadas([consulta]).filter((f) => /SIM|SINASC|SVS/.test(f)).length, 3);
+    assert.match(codigosDoMunicipio(5208707, ['saude']), /cod_ibge = 5208707 \(7 dígitos\) em saude_municipios e entes/);
+    assert.ok(juntaFontes('SELECT i.despesa_saude, s.infantis FROM indicadores i JOIN saude_municipios s ON s.cod_ibge = i.cod_ibge AND s.ano = i.exercicio'));
+    // mortalidade infantil é óbitos de menores de 1 ano por nascidos vivos, não a neonatal
+    const mi = CONCEITOS.find((c) => c.id === 'mortalidade_infantil')!;
+    assert.ok(atendeConceito(mi, consulta));
+    assert.ok(!atendeConceito(mi, 'SELECT 1000.0 * sum(neonatais) / sum(nascidos) AS mi FROM saude_municipios'));
+    assert.match(fichaDaColuna('populacao', cob) ?? '', /saude_municipios: estimativa da SVS\/MS/);
+    assert.match(fichaDaColuna('infantis', cob) ?? '', /Cobertura: 1996 a 2024/);
+  });
 });
 
 describe('IA: confiabilidade (população, variável pedida, unidades e estatística)', () => {
@@ -2628,9 +2673,9 @@ describe('IA: confiabilidade (população, variável pedida, unidades e estatís
   });
 
   test('catálogo e instruções: cada conceito conferido tem a sua coluna descrita nas instruções do modelo', () => {
-    const texto = [FINANCAS, TRABALHO, contextoDosDados({ fontes: {} })].join('\n');
+    const texto = [FINANCAS, TRABALHO, SAUDE, contextoDosDados({ fontes: {} })].join('\n');
     for (const c of CONCEITOS) {
-      const colunas = (c.atende.source.replace(/\\[a-zA-Z]/g, ' ').match(/[a-z]+(?:_[a-z0-9]+)+|\bfpm\b/g) ?? []).filter((x) => !x.startsWith('_'));
+      const colunas = (c.atende.source.replace(/\\[a-zA-Z]/g, ' ').match(/[a-z]+(?:_[a-z0-9]+)+|\b(?:fpm|infantis|nascidos|maternos)\b/g) ?? []).filter((x) => !x.startsWith('_'));
       assert.ok(colunas.some((x) => texto.includes(x)), `${c.id}: nenhuma de ${colunas.join(', ')} nas instruções`);
     }
     assert.match(FINANCAS, /populacao: a DECLARADA/);

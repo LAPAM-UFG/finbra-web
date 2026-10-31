@@ -13,7 +13,7 @@ import type { Cobertura } from './ia';
 import type { TipoColuna } from './ia_formato';
 
 /** Fonte cujos anos (do manifesto) dão a cobertura temporal da coluna. */
-export type ChaveCobertura = 'dca' | 'pib' | 'rais';
+export type ChaveCobertura = 'dca' | 'pib' | 'rais' | 'sim' | 'sinasc';
 
 export type Coluna = {
   tipo: TipoColuna;
@@ -38,6 +38,9 @@ const RAIS = 'RAIS (MTE)';
 const IBGE_POP = 'IBGE: Censos 2010 e 2022 e estimativas de 1º de julho (SIDRA 202, 4709 e 6579)';
 const PIB = 'IBGE: PIB dos municípios (SIDRA 5938)';
 const REG = 'LAPAM/UFG: regressão calculada pela página';
+const SIM = 'Ministério da Saúde/DATASUS: SIM (óbitos por município de residência, causa básica pela CID-10)';
+const SINASC = 'Ministério da Saúde/DATASUS: SINASC (nascidos vivos por município de residência da mãe)';
+const sim = (x: Omit<Coluna, 'fonte' | 'tipo'>): Coluna => ({ tipo: 'contagem', fonte: SIM, tabelas: ['saude_municipios'], cobertura: 'sim', territorio: 'municípios de residência', ...x });
 const FUNCOES = 'função de governo 04 (Portaria MOG 42/1999)';
 
 const TERR_DCA = 'municípios e estados (com o DF) que entregaram a DCA do exercício';
@@ -48,15 +51,24 @@ const estat = (tipo: TipoColuna, rotulo: string, definicao: string): Coluna => (
 /** Colunas pelo nome exato (o mesmo em qualquer tabela do painel). */
 export const COLUNAS: Record<string, Coluna> = {
   cod_ibge: { tipo: 'codigo', rotulo: 'código IBGE', definicao: 'código IBGE do ente (município, 7 dígitos; UF, 2 dígitos)', fonte: 'IBGE' },
-  municipio: { tipo: 'codigo', rotulo: 'município (código de 6 dígitos)', definicao: 'código IBGE do município sem o dígito verificador (RAIS)', fonte: RAIS },
+  municipio: { tipo: 'codigo', rotulo: 'município (código de 6 dígitos)', definicao: 'código IBGE do município sem o dígito verificador (RAIS, SIM e SINASC)', fonte: `${RAIS}; DATASUS` },
   exercicio: { tipo: 'ano', rotulo: 'exercício', definicao: 'ano civil do exercício fiscal', fonte: DCA },
   ano: { tipo: 'ano', rotulo: 'ano', definicao: 'ano de referência', fonte: '' },
   populacao: {
     tipo: 'contagem', rotulo: 'população (habitantes)',
-    definicao: 'em indicadores e lrf: população informada pelo próprio ente na DCA do exercício; em trab_municipios: população de referência do IBGE',
-    fonte: `${DCA} (indicadores); ${IBGE_POP} (trab_municipios)`, tabelas: ['indicadores', 'lrf', 'trab_municipios'], cobertura: 'dca', territorio: TERR_DCA,
-    ressalva: 'a declarada costuma repetir uma estimativa do IBGE de um ou dois anos antes; não é a estimativa do IBGE do ano',
+    definicao: 'em indicadores e lrf: população informada pelo próprio ente na DCA do exercício; em trab_municipios: população de referência do IBGE; em saude_municipios: estimativa da SVS/MS',
+    fonte: `${DCA} (indicadores); ${IBGE_POP} (trab_municipios); SVS/MS (saude_municipios)`, tabelas: ['indicadores', 'lrf', 'trab_municipios', 'saude_municipios'], cobertura: 'dca', territorio: TERR_DCA,
+    ressalva: 'a declarada costuma repetir uma estimativa do IBGE de um ou dois anos antes; não é a estimativa do IBGE do ano. A da SVS/MS (saúde) também difere da do IBGE',
   },
+  // saúde (saude_municipios): as contagens que entram nos indicadores do painel
+  obitos: sim({ rotulo: 'óbitos', definicao: 'óbitos não fetais de residentes no município', filtros: 'sem os óbitos fetais' }),
+  infantis: sim({ rotulo: 'óbitos infantis', definicao: 'óbitos de menores de 1 ano de residentes no município', ressalva: 'contagem direta, sem a correção de subnotificação que o Ministério da Saúde aplica em algumas UFs' }),
+  maternos: sim({
+    rotulo: 'óbitos maternos', definicao: 'óbitos pela causa básica na gravidez, parto e puerpério (CID-10 O00–O95, O98–O99) e A34', filtros: 'sem as mortes maternas tardias e sequelas (O96–O97)',
+    classificacao: 'CID-10, causa básica', ressalva: 'contagem direta, sem o fator de correção do Ministério da Saúde',
+  }),
+  homicidios: sim({ rotulo: 'homicídios', definicao: 'óbitos por agressão (X85–Y09) e intervenção legal (Y35–Y36) pela causa básica', classificacao: 'CID-10, causa básica', ressalva: 'não inclui as mortes por intenção indeterminada (Y10–Y34)' }),
+  nascidos: { tipo: 'contagem', rotulo: 'nascidos vivos', definicao: 'nascidos vivos de mães residentes no município', fonte: SINASC, tabelas: ['saude_municipios'], cobertura: 'sinasc', territorio: 'municípios de residência da mãe' },
   populacao_ibge: {
     tipo: 'contagem', rotulo: 'população do IBGE (habitantes)',
     definicao: 'publicação do IBGE do próprio ano (estimativa de 1º de julho ou censo); em 2023, sem publicação, o Censo 2022',
@@ -127,6 +139,8 @@ export function coberturaDaColuna(c: Coluna, cob?: Cobertura | null): string {
   if (c.cobertura === 'dca') return intervalo(cob?.dca);
   if (c.cobertura === 'rais') return intervalo(cob?.rais);
   if (c.cobertura === 'pib') return cob?.pib ? `${cob.pib.de} a ${cob.pib.ate}` : '';
+  if (c.cobertura === 'sim') return intervalo(cob?.sim);
+  if (c.cobertura === 'sinasc') return intervalo(cob?.sinasc);
   return c.cobertura ?? '';
 }
 
@@ -218,6 +232,19 @@ export const CONCEITOS: Conceito[] = [
     pedido: /v[ií]nculos?\s+(da|na|das)\s+prefeitura|servidores?\s+(municipais|da\s+prefeitura)|emprego\s+p[úu]blico\s+municipal|funcionalismo\s+municipal/i,
     atende: /\bnatureza_juridica\b/i,
     orientacao: 'a prefeitura é identificada pela natureza jurídica municipal (1031, 1244, 1120, 1155), só nos microdados (rais_vinculos); a divisão 84 da CNAE (empregos_adm_publica) é a atividade e inclui órgãos estaduais e federais no município. Sem os microdados, diga isso e não use a CNAE 84 como resposta',
+  },
+  {
+    id: 'mortalidade_infantil', nome: 'mortalidade infantil',
+    pedido: /mortalidade\s+infantil|taxa\s+de\s+[óo]bitos?\s+infantis/i,
+    // óbitos de menores de 1 ano por nascidos vivos (não a neonatal, nem por população de menores de 1 ano)
+    atende: /\binfantis\b[\s\S]*\bnascidos\b|\bnascidos\b[\s\S]*\binfantis\b/i,
+    orientacao: 'use saude_municipios: 1000.0 * sum(infantis) / sum(nascidos), óbitos de menores de 1 ano por mil nascidos vivos; a neonatal (neonatais) e a pós-neonatal são componentes, e a população de menores de 1 ano não é o denominador',
+  },
+  {
+    id: 'mortalidade_materna', nome: 'mortalidade materna',
+    pedido: /mortalidade\s+materna|mortes?\s+maternas?|[óo]bitos?\s+maternos?/i,
+    atende: /\bmaternos\b/i,
+    orientacao: 'use saude_municipios.maternos; a razão de mortalidade materna é 100000.0 * sum(maternos) / sum(nascidos), por 100 mil nascidos vivos',
   },
 ];
 

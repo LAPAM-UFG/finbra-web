@@ -123,10 +123,9 @@ export function App() {
   if (area === 'trabalho') for (const k of PARAMS_TRABALHO) if (atuais.get(k)) dentro.set(k, atuais.get(k)!);
   const busca = filtros.toString() ? `?${filtros}` : '';
   const buscaArea = dentro.toString() ? `?${dentro}` : '';
-  // a aba da IA abre com o painel da área de onde se veio (dá para marcar o outro nos ajustes, antes da 1ª pergunta);
-  // a saúde ainda não está na IA
+  // a aba da IA abre com o painel da área de onde se veio (dá para marcar os outros nos ajustes, antes da 1ª pergunta)
   const filtrosIa = new URLSearchParams(area === 'ia' ? atuais : filtros);
-  if (area === 'financas' || area === 'trabalho') filtrosIa.set('paineis', area);
+  if (area !== 'ia') filtrosIa.set('paineis', area);
   const buscaIa = `?${filtrosIa}`;
 
   return (

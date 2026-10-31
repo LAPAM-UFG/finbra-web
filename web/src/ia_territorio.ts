@@ -3,9 +3,9 @@
  * lugar em cada formato das tabelas:
  *
  *   cod_ibge, 7 dígitos (4101101)   trab_municipios, trab_grandes_setores, trab_setores, trab_caged,
- *                                   trab_caged_anual, entes e as tabelas das finanças
- *   municipio, 6 dígitos (410110)   rais_mun e rais_vinculos (o código IBGE sem o dígito verificador)
- *   UF                              sigla ('PR') em trab_municipios, entes e no escopo das tabelas por UF;
+ *                                   trab_caged_anual, saude_municipios, entes e as tabelas das finanças
+ *   municipio, 6 dígitos (410110)   rais_mun, rais_vinculos e saude_municipios (o código IBGE sem o dígito verificador)
+ *   UF                              sigla ('PR') em trab_municipios, saude_municipios, entes e no escopo das tabelas por UF;
  *                                   código (41) em rais_uf, rais_mun e rais_vinculos; nas finanças, cod_ibge 41
  *
  * A ferramenta "localizar" acha o lugar pelo nome e a UF; conferirCodigos barra, antes de rodar, a consulta
@@ -55,13 +55,14 @@ const chave = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerC
 type Paineis = readonly string[];
 const comTrabalho = (p: Paineis) => p.includes('trabalho');
 const comFinancas = (p: Paineis) => p.includes('financas');
+const comSaude = (p: Paineis) => p.includes('saude');
 /** "a, b e c". */
 const emLista = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} e ${xs.at(-1)}` : xs.join(''));
 
 /** Os códigos de um município em cada tabela dos painéis marcados, para o modelo. */
 export function codigosDoMunicipio(cod: number, paineis: Paineis): string {
-  const tabelas7 = [...(comTrabalho(paineis) ? ['trab_municipios', 'trab_grandes_setores', 'trab_setores', 'trab_caged', 'trab_caged_anual'] : []), 'entes',
-    ...(comFinancas(paineis) ? ['indicadores', 'alertas', 'lrf'] : [])];
+  const tabelas7 = [...(comTrabalho(paineis) ? ['trab_municipios', 'trab_grandes_setores', 'trab_setores', 'trab_caged', 'trab_caged_anual'] : []),
+    ...(comSaude(paineis) ? ['saude_municipios'] : []), 'entes', ...(comFinancas(paineis) ? ['indicadores', 'alertas', 'lrf'] : [])];
   const partes = [`cod_ibge = ${cod} (7 dígitos) em ${emLista(tabelas7)}`];
   if (comTrabalho(paineis)) partes.push(`municipio = ${Math.floor(cod / 10)} (6 dígitos) só em rais_mun e rais_vinculos`);
   return `Códigos: ${partes.join('; ')}.`;
@@ -75,6 +76,7 @@ export function codigosDaUf(uf: string, cod: number, paineis: Paineis): string {
       `uf = ${cod} (código) ou uf_sigla = '${uf}' em rais_uf, rais_mun e rais_vinculos`);
   }
   if (comFinancas(paineis)) partes.push(`governo estadual: cod_ibge = ${cod} (esfera 'E'); municípios da UF: uf = '${uf}' com esfera 'M'`);
+  if (comSaude(paineis)) partes.push(`uf = '${uf}' (sigla) em saude_municipios (inclui as linhas de município ignorado da UF)`);
   return `Códigos: ${partes.join('; ')}.`;
 }
 
@@ -83,6 +85,7 @@ export function codigosDoDf(paineis: Paineis): string {
   const partes: string[] = [];
   if (comFinancas(paineis)) partes.push("nas finanças, cod_ibge = 53 (esfera 'D')");
   if (comTrabalho(paineis)) partes.push("no trabalho, Brasília: cod_ibge = 5300108 nas tabelas trab_*, municipio = 530010 em rais_mun e rais_vinculos, uf = 53 ou uf_sigla = 'DF' nas tabelas rais_*, escopo = 'DF' nas tabelas por UF");
+  if (comSaude(paineis)) partes.push("na saúde, o DF inteiro é Brasília: cod_ibge = 5300108 (ou uf = 'DF') em saude_municipios");
   return `Códigos: ${partes.join('; ')}.`;
 }
 
@@ -187,7 +190,7 @@ export function executarLocalizacao(entrada: unknown, cad: Cadastro, paineis: Pa
 // ---------------- conferência dos códigos nas consultas ----------------
 
 const descrever = (e: EnteCadastro) => `${e.nome} (${e.uf})`;
-const TABELAS_SO_MUNICIPIO = /\b(trab_municipios|trab_grandes_setores|trab_setores|trab_caged|trab_caged_anual)\b/;
+const TABELAS_SO_MUNICIPIO = /\b(trab_municipios|trab_grandes_setores|trab_setores|trab_caged|trab_caged_anual|saude_municipios)\b/;
 const TABELAS_COM_UF_EM_COD = /\b(entes|indicadores|alertas|escopos|lrf)\b/;
 
 /**
@@ -224,7 +227,7 @@ export function conferirCodigos(sql: string, cad: Cadastro): string | null {
         const e = cad.porCodigo.get(n);
         if (!e) problemas.push(`cod_ibge = ${n} não é código de UF nem de município.`);
         else if (soMunicipios) {
-          problemas.push(`nas tabelas trab_* o cod_ibge é sempre de município (7 dígitos); para ${e.esfera === 'D' ? 'o DF use Brasília, cod_ibge = 5300108' : `a UF ${e.uf} use uf = '${e.uf}' (sigla)`}.`);
+          problemas.push(`nas tabelas trab_* e em saude_municipios o cod_ibge é sempre de município (7 dígitos); para ${e.esfera === 'D' ? 'o DF use Brasília, cod_ibge = 5300108' : `a UF ${e.uf} use uf = '${e.uf}' (sigla)`}.`);
         }
       } else problemas.push(`cod_ibge = ${n}: código de município tem 7 dígitos (ex.: 4101101) e de UF, 2 (ex.: 41).`);
     } else if (digitos === 7) {

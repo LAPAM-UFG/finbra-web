@@ -410,10 +410,13 @@ Desenvolvimento local: crie `worker/.dev.vars` (fora do git) com `ANTHROPIC_API_
 o Vite repassa `/api` ao Worker.
 
 **Uma IA para todos os painéis.** A aba "Pergunte aos dados" (`/ia`) escolhe os painéis que entram na
-conversa (`?paineis=financas,trabalho`; nenhum = todos; vinda de uma área, abre com o painel dela). O Worker junta as instruções em
+conversa (`?paineis=financas,trabalho,saude`; nenhum = todos; vinda de uma área, abre com o painel dela). O Worker junta as instruções em
 `worker/src/sistema_geral.js`: introdução comum, a seção de cada painel marcado (`sistema.js` para finanças,
-`sistema_trabalho.js` para RAIS e CAGED), regras de cruzamento (códigos de município de 7 e 6 dígitos, anos,
-DF) quando há mais de um, e o jeito de responder. Painel novo: crie a sua seção e acrescente-a a `PAINEIS`.
+`sistema_trabalho.js` para RAIS e CAGED, `sistema_saude.js` para SIM, SINASC e população da SVS/MS), as regras
+de cruzamento dos painéis marcados (códigos de município de 7 e 6 dígitos, anos, DF, população de cada fonte)
+quando há mais de um, e o jeito de responder. Painel novo: crie a sua seção, acrescente-a a `PAINEIS` e às
+regras de cruzamento que valem para ele. A saúde entra na IA como uma tabela só, `saude_municipios`
+(`gold/saude/municipios.parquet`, a mesma do painel), com as fórmulas dos indicadores de `saude_comum.ts`.
 As tabelas do mercado de trabalho são preparadas em `tabelasIaTrabalho` (`web/src/dados.ts`): as séries do
 painel (`trab_*`, com a visão `trab_grandes_setores`, os seis grandes setores em linhas), as tabelas somadas `rais_uf` e `rais_mun` (de `gold/trabalho/cubo_*`) e, quando publicados, os
 microdados `rais_vinculos` (um arquivo por ano e UF, listados em `silver/trabalho/micro/indice.json`). Para a
