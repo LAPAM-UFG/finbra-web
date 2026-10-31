@@ -13,6 +13,7 @@
  */
 import * as duckdb from '@duckdb/duckdb-wasm';
 import { t } from './idioma';
+import { indicador as indicadorSaude, type Indicador } from './saude_comum';
 
 type Valor = string | number | boolean | null;
 export type Linha = Record<string, Valor>;
@@ -459,9 +460,9 @@ const rotas: Record<string, (q: Params) => Promise<unknown>> = {
   },
 
   /**
-   * Ranking completo dos municípios: posição nacional e na UF (empates com a mesma posição,
-   * RANK), página pedida, total elegível e a posição do ente escolhido. Zeros e negativos
-   * declarados entram; per capita exige população positiva.
+   * Ranking completo dos municípios num exercício: posição nacional e na UF, página pedida, total elegível e a
+   * posição do ente escolhido. As regras (elegibilidade e empates) são as da classificação comum
+   * (baseFinancas e sqlClassificacao), as mesmas da evolução das posições.
    */
   async ranking(q) {
     const campo = CAMPOS.has(String(q.campo)) ? String(q.campo) : 'receita_bruta';
@@ -473,34 +474,28 @@ const rotas: Record<string, (q: Params) => Promise<unknown>> = {
     const pagina = Math.max(inteiro(q.pagina) ?? 1, 1);
     const uf = UFS.has(String(q.uf)) ? String(q.uf) : null;
     const ente = inteiro(q.ente);
-    const p: Record<string, Valor> = { ano: inteiro(q.ano), limite, offset: (pagina - 1) * limite };
+    const ano = inteiro(q.ano);
+    const p: Record<string, Valor> = { ano, de: ano, ate: ano, limite, offset: (pagina - 1) * limite };
     if (uf) p.uf = uf;
     if (ente) p.ente = ente;
-    const expr = perCapita ? `i.${campo} / i.populacao` : `i.${campo}`;
-    const ok = `${elegivel(campo, 'i', trat)}${perCapita ? ' AND i.populacao > 0' : ''}`;
-    const base = `
-      WITH todos AS (SELECT i.* FROM indicadores i WHERE i.exercicio = $ano AND i.esfera = 'M'),
-      el AS (SELECT cod_ibge, nome, uf, populacao::DOUBLE AS populacao, ${campo} AS valor, ${expr} AS indicador
-             FROM todos i WHERE ${ok}),
-      r AS (SELECT *, rank() OVER (ORDER BY indicador ${ordem}) AS posicao_br,
-                      rank() OVER (PARTITION BY uf ORDER BY indicador ${ordem}) AS posicao_uf,
-                      count(*) OVER () AS total_br, count(*) OVER (PARTITION BY uf) AS total_uf
-            FROM el)`;
+    const base = `WITH ${sqlClassificacao(baseFinancas(campo, perCapita, trat), { ordem, constante: false })}`;
+    const colunas = 'cod_ibge, nome, uf, populacao, valor, indicador, posicao_br, posicao_uf, total_br, total_uf';
     const noEscopo = uf ? 'WHERE uf = $uf' : '';
+    const eUf = uf ? 'AND uf = $uf' : '';
     const [itens, [contagem], [doEnte]] = await Promise.all([
-      consultar(`${base} SELECT * FROM r ${noEscopo} ORDER BY ${uf ? 'posicao_uf' : 'posicao_br'}, nome LIMIT $limite OFFSET $offset`, p),
+      consultar(`${base} SELECT ${colunas} FROM r ${noEscopo} ORDER BY ${uf ? 'posicao_uf' : 'posicao_br'}, nome LIMIT $limite OFFSET $offset`, p),
       consultar(
-        `${base}, esc AS (SELECT * FROM todos i ${uf ? 'WHERE i.uf = $uf' : ''})
+        `${base}, esc AS (SELECT * FROM base WHERE ano = $ano ${eUf})
          SELECT (SELECT count(*) FROM r ${noEscopo}) AS elegiveis,
                 (SELECT count(*) FROM esc) AS com_dca,
-                (SELECT count(*) FROM esc i WHERE i.${campo} IS NULL) AS sem_valor,
-                (SELECT count(*) FROM esc i WHERE i.${campo} IS NOT NULL AND NOT (${ok})) AS fora,
-                (SELECT count(*) FROM esc i WHERE i.${campo} = 0 AND (${ok})) AS zeros,
-                (SELECT count(*) FROM esc i WHERE i.${campo} < 0 AND (${ok})) AS negativos`,
+                (SELECT count(*) FROM esc WHERE motivo = 'sem_valor') AS sem_valor,
+                (SELECT count(*) FROM esc WHERE motivo IS NOT NULL AND motivo <> 'sem_valor') AS fora,
+                (SELECT count(*) FROM r WHERE valor = 0 ${eUf}) AS zeros,
+                (SELECT count(*) FROM r WHERE valor < 0 ${eUf}) AS negativos`,
         p,
       ),
       ente
-        ? consultar(`${base} SELECT * FROM r WHERE cod_ibge = $ente::INTEGER`, p)
+        ? consultar(`${base} SELECT ${colunas} FROM r WHERE cod_ibge = $ente::INTEGER`, p)
         : Promise.resolve([] as Linha[]),
     ]);
     return { itens, ...contagem, ente: doEnte ?? null, pagina, limite };
@@ -1020,9 +1015,16 @@ const rotasTrabalho: Record<string, (q: Params) => Promise<unknown>> = {
     await tabelasTrabalho();
     const p: Record<string, Valor> = { ano: inteiro(q.ano) };
     const e = escopoTrabalho({ uf: q.uf }, p);
-    // crescimento: vínculos ativos sobre o ano anterior da RAIS (mesmo município); o saldo do CAGED é do ano civil
-    return consultar(
-      `SELECT m.cod_ibge, m.nome, m.uf, m.populacao, m.empregos, a.empregos AS empregos_ano_anterior,
+    return consultar(`${sqlTrabMunicipios(`${e.onde} AND m.ano = $ano::INTEGER`)} ORDER BY m.empregos DESC`, p);
+  },
+};
+
+/**
+ * Indicadores municipais da RAIS por ano (os da página de rankings e da evolução das posições): crescimento =
+ * vínculos ativos sobre o ano anterior da RAIS (mesmo município); o saldo do CAGED é do ano civil.
+ */
+function sqlTrabMunicipios(onde: string) {
+  return `SELECT m.ano, m.cod_ibge, m.nome, m.uf, m.populacao, m.empregos, a.empregos AS empregos_ano_anterior,
               (m.empregos - a.empregos) / nullif(a.empregos, 0) AS var_empregos,
               1000 * m.empregos / nullif(m.populacao, 0) AS empregos_por_mil,
               m.massa_dez / nullif(m.empregos, 0) AS remuneracao_media, m.n_rem_dez,
@@ -1034,11 +1036,8 @@ const rotasTrabalho: Record<string, (q: Params) => Promise<unknown>> = {
        LEFT JOIN trab_municipios a ON a.cod_ibge = m.cod_ibge AND a.ano = m.ano - 1
        LEFT JOIN trab_caged_anual c ON c.cod_ibge = m.cod_ibge AND c.ano = m.ano
        LEFT JOIN trab_caged_anual c0 ON c0.cod_ibge = m.cod_ibge AND c0.ano = m.ano - 1
-       WHERE ${e.onde} AND m.ano = $ano::INTEGER ORDER BY m.empregos DESC`,
-      p,
-    );
-  },
-};
+       WHERE ${onde}`;
+}
 
 // ---------------- saúde (SIM, SINASC e população da SVS/MS) ----------------
 
@@ -1083,6 +1082,204 @@ const rotasSaude: Record<string, (q: Params) => Promise<unknown>> = {
        FROM saude_municipios m WHERE ${e.onde} AND m.ano = $ano::INTEGER AND m.cod_ibge IS NOT NULL ORDER BY m.nome`,
       p,
     );
+  },
+};
+
+// ---------------- classificação dos municípios (rankings anuais e evolução das posições) ----------------
+
+/**
+ * Uma regra só para as posições de todos os painéis: o ranking de cada ano e a evolução das posições saem
+ * das mesmas consultas. Etapas:
+ *   1. base: uma linha por município e ano da fonte, com o indicador e o motivo de ficar fora (NULL = elegível)
+ *   2. el: os elegíveis do intervalo pedido
+ *   3. u: o universo (anual: os elegíveis de cada ano; constante: só os elegíveis em todos os anos do intervalo)
+ *   4. r: posições no universo, com empates competitivos (1, 2, 2, 4): nacional sobre todos os municípios e,
+ *      depois, a da UF só entre os do estado; o tamanho de cada universo vem junto
+ * A seleção de municípios, a página e a exportação vêm depois, sobre r.
+ */
+export type DominioRanking = 'financas' | 'trabalho' | 'saude';
+
+/** Indicadores da RAIS (colunas de sqlTrabMunicipios) que entram nos rankings; o motivo explica o valor ausente. */
+export const INDICADORES_RANKING_TRABALHO: Record<string, { monetario: boolean; semValor: string }> = {
+  empregos: { monetario: false, semValor: 'sem_valor' },
+  empregos_por_mil: { monetario: false, semValor: 'sem_populacao' },
+  remuneracao_media: { monetario: true, semValor: 'sem_valor' },
+  n_rem_dez: { monetario: false, semValor: 'sem_valor' },
+  var_empregos: { monetario: false, semValor: 'sem_ano_anterior' },
+  saldo_caged: { monetario: false, semValor: 'sem_caged' },
+  pct_mulheres: { monetario: false, semValor: 'sem_valor' },
+  pct_superior: { monetario: false, semValor: 'sem_valor' },
+  pct_adm_publica: { monetario: false, semValor: 'sem_valor' },
+};
+
+/**
+ * Finanças: valor declarado no exercício (zeros e negativos entram), DCA com o total do domínio, fora as
+ * inconsistências objetivas e os erros confirmados (visão filtrada) e, no per capita, população declarada na
+ * DCA positiva.
+ */
+function baseFinancas(campo: string, perCapita: boolean, trat: Tratamento) {
+  const d = dominioCampo(campo);
+  return `SELECT i.exercicio AS ano, i.cod_ibge, i.nome, i.uf, i.populacao::DOUBLE AS populacao, i.${campo}::DOUBLE AS valor,
+      ${perCapita ? `CASE WHEN i.populacao > 0 THEN i.${campo} / i.populacao END` : `i.${campo}`}::DOUBLE AS indicador,
+      CASE WHEN i.${campo} IS NULL THEN 'sem_valor'
+           WHEN NOT (${validoNoDominio(d, 'i')}) THEN 'sem_total_dominio'
+           WHEN NOT (${naoExcluido(d, 'i', trat)}) THEN 'inconsistencia'
+           ${perCapita ? "WHEN NOT (i.populacao > 0) THEN 'sem_populacao'" : ''} END AS motivo
+    FROM indicadores i WHERE i.esfera = 'M'`;
+}
+
+/** RAIS: municípios com pelo menos `min` vínculos ativos e o indicador calculável. */
+function baseTrabalho(ind: string) {
+  const def = INDICADORES_RANKING_TRABALHO[ind];
+  return `SELECT x.ano, x.cod_ibge, x.nome, x.uf, x.populacao::DOUBLE AS populacao, x.empregos::DOUBLE AS valor,
+      x.${ind}::DOUBLE AS indicador, x.meses_caged,
+      CASE WHEN coalesce(x.empregos, 0) < $min THEN 'abaixo_minimo' WHEN x.${ind} IS NULL THEN '${def.semValor}' END AS motivo
+    FROM (${sqlTrabMunicipios('true')}) x`;
+}
+
+/**
+ * Saúde: taxa = fator × numerador ÷ denominador do próprio município (residência), com o denominador mínimo
+ * escolhido; sem denominador positivo ou sem numerador não há taxa (as mesmas regras de calcular()).
+ */
+function baseSaude(ind: Indicador) {
+  const n = `s.${ind.numerador}`;
+  const d = `s.${ind.denominador}`;
+  return `SELECT s.ano, s.cod_ibge, s.nome, s.uf, s.populacao::DOUBLE AS populacao, ${n}::DOUBLE AS valor, ${d}::DOUBLE AS denominador,
+      CASE WHEN ${d} > 0 AND ${n} IS NOT NULL THEN ${ind.fator} * ${n} / ${d} END::DOUBLE AS indicador,
+      CASE WHEN ${n} IS NULL AND ${d} IS NULL THEN 'sem_registro'
+           WHEN ${d} IS NULL OR ${d} <= 0 THEN 'denominador_invalido'
+           WHEN ${n} IS NULL THEN 'sem_numerador'
+           WHEN ${d} < $min THEN 'abaixo_minimo' END AS motivo
+    FROM saude_municipios s WHERE s.cod_ibge IS NOT NULL`;
+}
+
+/**
+ * Cadeia de CTEs base → el → u → r sobre uma base (SQL com ano, cod_ibge, uf, indicador e motivo), para os anos
+ * $de a $ate. Exportada para os testes com dados controlados.
+ */
+export function sqlClassificacao(base: string, o: { ordem: 'ASC' | 'DESC'; constante: boolean }) {
+  return `base AS (${base}),
+    el AS (SELECT * FROM base WHERE motivo IS NULL AND indicador IS NOT NULL AND ano BETWEEN $de AND $ate),
+    u AS (SELECT * FROM el ${o.constante
+      ? 'WHERE cod_ibge IN (SELECT cod_ibge FROM el GROUP BY cod_ibge HAVING count(DISTINCT ano) = (SELECT count(DISTINCT ano) FROM el))'
+      : ''}),
+    r AS (SELECT *, rank() OVER (PARTITION BY ano ORDER BY indicador ${o.ordem}) AS posicao_br,
+                    count(*) OVER (PARTITION BY ano) AS total_br,
+                    rank() OVER (PARTITION BY ano, uf ORDER BY indicador ${o.ordem}) AS posicao_uf,
+                    count(*) OVER (PARTITION BY ano, uf) AS total_uf
+          FROM u)`;
+}
+
+/** Base e parâmetros de um pedido de classificação (domínio, indicador, medida, filtros). */
+function pedidoClassificacao(q: Params) {
+  const dominio: DominioRanking = q.dominio === 'trabalho' || q.dominio === 'saude' ? q.dominio : 'financas';
+  const p: Record<string, Valor> = {};
+  let base: string;
+  let monetario = false;
+  let ind: string;
+  if (dominio === 'financas') {
+    ind = CAMPOS.has(String(q.ind)) ? String(q.ind) : 'receita_bruta';
+    const perCapita = q.medida !== 'total';
+    base = baseFinancas(ind, perCapita, tratamentoDe(q));
+    monetario = !NAO_MONETARIOS.has(ind);
+  } else if (dominio === 'trabalho') {
+    ind = INDICADORES_RANKING_TRABALHO[String(q.ind)] ? String(q.ind) : 'empregos_por_mil';
+    p.min = Math.max(inteiro(q.min) ?? 0, 0);
+    base = baseTrabalho(ind);
+    monetario = INDICADORES_RANKING_TRABALHO[ind].monetario;
+  } else {
+    const def = indicadorSaude(String(q.ind ?? ''));
+    ind = def.id;
+    p.min = Math.max(q.min === undefined || q.min === null || q.min === '' ? def.minimo : Number(q.min), 0);
+    base = baseSaude(def);
+  }
+  const ordem: 'ASC' | 'DESC' = q.ordem === 'asc' ? 'ASC' : 'DESC';
+  const constante = q.universo === 'constante';
+  return { dominio, ind, base, p, monetario, ordem, constante };
+}
+
+async function tabelasDoDominio(dominio: DominioRanking) {
+  if (dominio === 'financas') await iniciar();
+  else if (dominio === 'trabalho') await tabelasTrabalho();
+  else await tabelasSaude();
+}
+
+export type PontoPosicao = {
+  ano: number; cod_ibge: number; nome: string; uf: string; valor: number | null; indicador: number | null;
+  populacao: number | null; denominador?: number | null; meses_caged?: number | null; motivo: string | null;
+  posicao_br: number | null; total_br: number | null; posicao_uf: number | null; total_uf: number | null; fator_real: number | null;
+};
+export type MudancaPosicao = {
+  cod_ibge: number; nome: string; uf: string; valor_ini: number | null; valor_fim: number | null;
+  pos_ini: number | null; pos_fim: number | null; total_ini: number | null; total_fim: number | null;
+  fator_ini: number | null; fator_fim: number | null;
+};
+export type Classificacao = {
+  dominio: DominioRanking; ind: string; anos: number[]; monetario: boolean; base_ipca: number;
+  /** municípios elegíveis em cada ano, no Brasil e na UF pedida (no universo escolhido) */
+  universos: { ano: number; total_br: number; total_uf: number | null; meses_caged?: number | null }[];
+  /** municípios escolhidos, um ponto por ano do intervalo com registro na fonte */
+  serie: PontoPosicao[];
+  /** todos os municípios do escopo com posição no ano inicial ou no final */
+  mudancas: MudancaPosicao[];
+  /** lista=1: todas as posições do escopo em cada ano (o ranking anual) */
+  lista?: PontoPosicao[];
+};
+
+const rotasPosicoes: Record<string, (q: Params) => Promise<unknown>> = {
+  /**
+   * Posições dos municípios ano a ano. Parâmetros: dominio, ind, medida (finanças), tratamento, min (RAIS e
+   * saúde), ordem, de, ate, uf (posições e mudanças na UF; o ranking nacional é calculado antes), universo
+   * (anual ou constante), entes (até 5 códigos) e lista=1 (todas as posições, para o ranking anual).
+   */
+  async ranking_posicoes(q): Promise<Classificacao> {
+    const { manifesto } = await iniciar();
+    const c = pedidoClassificacao(q);
+    await tabelasDoDominio(c.dominio);
+    const de = inteiro(q.de) ?? 0;
+    const ate = Math.max(inteiro(q.ate) ?? de, de);
+    const uf = UFS.has(String(q.uf)) ? String(q.uf) : null;
+    const entes = String(q.entes ?? '').split(',').map((x) => inteiro(x)).filter((x): x is number => !!x).slice(0, 5);
+    const p: Record<string, Valor> = { ...c.p, de, ate, base: manifesto.base_ipca };
+    if (uf) p.uf = uf;
+    const cte = `WITH ${sqlClassificacao(c.base, c)},
+      fat AS (SELECT ip.exercicio AS ano, b.indice / ip.indice AS fator_real FROM ipca ip CROSS JOIN (SELECT indice FROM ipca WHERE exercicio = $base) b)`;
+    const pos = uf ? 'posicao_uf' : 'posicao_br';
+    const tot = uf ? 'total_uf' : 'total_br';
+    const noEscopo = uf ? 'AND uf = $uf' : '';
+    const [anos, universos, serie, mudancas, lista] = await Promise.all([
+      consultar(`${cte} SELECT DISTINCT ano FROM base WHERE ano BETWEEN $de AND $ate AND indicador IS NOT NULL ORDER BY ano`, p),
+      consultar(`${cte} SELECT ano, count(*)::INTEGER AS total_br, ${uf ? 'count(*) FILTER (WHERE uf = $uf)::INTEGER' : 'NULL::INTEGER'} AS total_uf
+                 ${c.dominio === 'trabalho' ? ', max(meses_caged) AS meses_caged' : ''}
+                 FROM u GROUP BY ano ORDER BY ano`, p),
+      entes.length
+        ? consultar(`${cte}
+            SELECT b.ano, b.cod_ibge, b.nome, b.uf, b.valor, b.indicador, b.populacao,
+                   ${c.dominio === 'saude' ? 'b.denominador,' : ''}${c.dominio === 'trabalho' ? 'b.meses_caged,' : ''}
+                   CASE WHEN b.motivo IS NULL AND b.indicador IS NOT NULL AND r.cod_ibge IS NULL THEN 'fora_universo_constante' ELSE b.motivo END AS motivo,
+                   r.posicao_br, r.total_br, r.posicao_uf, r.total_uf, f.fator_real
+            FROM base b LEFT JOIN r USING (ano, cod_ibge) LEFT JOIN fat f ON f.ano = b.ano
+            WHERE b.cod_ibge IN (${entes.join(', ')}) AND b.ano BETWEEN $de AND $ate ORDER BY b.cod_ibge, b.ano`, p)
+        : Promise.resolve([] as Linha[]),
+      consultar(`${cte},
+          a AS (SELECT cod_ibge, nome, uf, indicador, ${pos} AS pos, ${tot} AS total FROM r WHERE ano = $de ${noEscopo}),
+          z AS (SELECT cod_ibge, nome, uf, indicador, ${pos} AS pos, ${tot} AS total FROM r WHERE ano = $ate ${noEscopo})
+        SELECT coalesce(z.cod_ibge, a.cod_ibge) AS cod_ibge, coalesce(z.nome, a.nome) AS nome, coalesce(z.uf, a.uf) AS uf,
+               a.indicador AS valor_ini, z.indicador AS valor_fim, a.pos AS pos_ini, z.pos AS pos_fim, a.total AS total_ini, z.total AS total_fim,
+               (SELECT fator_real FROM fat WHERE ano = $de) AS fator_ini, (SELECT fator_real FROM fat WHERE ano = $ate) AS fator_fim
+        FROM a FULL JOIN z USING (cod_ibge)
+        ORDER BY (a.pos - z.pos) DESC NULLS LAST, z.pos NULLS LAST, a.pos NULLS LAST`, p),
+      String(q.lista) === '1'
+        ? consultar(`${cte} SELECT r.ano, r.cod_ibge, r.nome, r.uf, r.valor, r.indicador, r.populacao,
+              ${c.dominio === 'saude' ? 'r.denominador,' : ''} NULL AS motivo, r.posicao_br, r.total_br, r.posicao_uf, r.total_uf, f.fator_real
+            FROM r LEFT JOIN fat f ON f.ano = r.ano WHERE true ${noEscopo} ORDER BY r.ano, ${pos}, r.nome`, p)
+        : Promise.resolve(undefined),
+    ]);
+    return {
+      dominio: c.dominio, ind: c.ind, anos: anos.map((a) => Number(a.ano)), monetario: c.monetario, base_ipca: manifesto.base_ipca,
+      universos: universos as Classificacao['universos'], serie: serie as PontoPosicao[], mudancas: mudancas as MudancaPosicao[],
+      ...(lista ? { lista: lista as PontoPosicao[] } : {}),
+    };
   },
 };
 
@@ -1761,7 +1958,8 @@ export async function consultaLivre(sql: string, limite: number, sinal?: AbortSi
 }
 
 export async function executar(caminho: string, params: Params): Promise<unknown> {
-  const rota = rotas[caminho] ?? rotasLrf[caminho] ?? rotasSaudeEducacao[caminho] ?? rotasTrabalho[caminho] ?? rotasConsulta[caminho] ?? rotasSaude[caminho];
+  const rota = rotas[caminho] ?? rotasLrf[caminho] ?? rotasSaudeEducacao[caminho] ?? rotasTrabalho[caminho] ?? rotasConsulta[caminho] ?? rotasSaude[caminho]
+    ?? rotasPosicoes[caminho];
   if (!rota) throw new Error(`rota desconhecida: ${caminho}`);
   return rota(params);
 }

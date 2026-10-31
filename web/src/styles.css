@@ -17,6 +17,8 @@
   --serie-1: #1f5f96;
   --serie-2: #7d9c12;
   --serie-3: #2492b8;
+  /* comparação de até 5 municípios (paleta validada: CVD e contraste; claro e escuro) */
+  --cmp-1: #2a78d6; --cmp-2: #eb6834; --cmp-3: #1baf7a; --cmp-4: #eda100; --cmp-5: #e87ba4;
   --bom: #006300;
   --ruim: #d03b3b;
   --sombra: 0 1px 2px rgba(0, 0, 0, 0.04);
@@ -40,6 +42,7 @@
     --serie-1: #4673d0;
     --serie-2: #84a016;
     --serie-3: #1fa9a8;
+    --cmp-1: #3987e5; --cmp-2: #d95926; --cmp-3: #199e70; --cmp-4: #c98500; --cmp-5: #d55181;
     --bom: #0ca30c;
     --ruim: #e66767;
   }
@@ -61,6 +64,7 @@
   --serie-1: #4673d0;
   --serie-2: #84a016;
   --serie-3: #1fa9a8;
+  --cmp-1: #3987e5; --cmp-2: #d95926; --cmp-3: #199e70; --cmp-4: #c98500; --cmp-5: #d55181;
   --bom: #0ca30c;
   --ruim: #e66767;
 }
@@ -611,3 +615,13 @@ td.quebra-ano { border-top: 2px dashed var(--tinta-3); }
   .menu, .topo nav, .tema, .exportar, .png, .alternar { display: none !important; }
   .formulario-recorte, .andamento button, .acoes-cartao { display: none; }
 }
+
+/* evolução da posição nos rankings */
+.vista-ranking { margin: 0 0 14px; }
+.evol-comparados { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 10px 0 6px; }
+.evol-rotulo { font-size: 12px; font-weight: 600; color: var(--tinta-3); }
+.evol-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; background: var(--superficie-2); border: 1px solid var(--borda); border-radius: 999px; padding: 2px 4px 2px 10px; }
+.evol-chip .limpar { padding: 0 6px; font-size: 15px; line-height: 1; }
+.evol-cor { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.evol-comparados input { min-width: 220px; max-width: 100%; }
+.evol-resumo { border-top: 3px solid var(--borda); }

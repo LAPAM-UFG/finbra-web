@@ -5,8 +5,10 @@
  */
 import type { Linha } from './api';
 import { numero1, pct } from './format';
-import { num } from './hooks';
 import { t } from './idioma';
+
+// o mesmo num() de hooks.ts, aqui para a camada de dados (dados.ts) poder usar os indicadores sem importar React
+const num = (v: unknown) => (typeof v === 'number' ? v : null);
 
 export type Indicador = {
   id: string;

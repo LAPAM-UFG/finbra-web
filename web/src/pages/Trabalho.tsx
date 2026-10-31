@@ -8,7 +8,8 @@ import { Estado, Kpi } from '../components/Kpi';
 import { EtiquetasRecorte, paramsConsulta, useAnosConsulta } from '../components/RecorteTrabalho';
 import { TabelaSerie } from '../components/TabelaSerie';
 import { BarraFiltros, useDados, useFiltros } from '../contexto';
-import { cancelarConsultasTrabalho } from '../dados';
+import { AlternarVista, EvolucaoPosicao } from '../components/EvolucaoPosicao';
+import { cancelarConsultasTrabalho, type Classificacao } from '../dados';
 import { div, numero, numero1, pct, reais, reaisCurto, reaisExato } from '../format';
 import { num } from '../hooks';
 import { local, t } from '../idioma';
@@ -629,8 +630,18 @@ export function TrabalhoCaged() {
 
 type Col = { campo: string; titulo: string; tipo: string; formato: (v: unknown) => string };
 
+/** Unidade de cada coluna do ranking (texto da evolução das posições e das exportações). */
+const UNIDADES_RANKING = (): Record<string, string> => ({
+  empregos: t('vínculos ativos em 31/12', 'active jobs on Dec 31'), empregos_por_mil: t('vínculos por mil habitantes', 'jobs per 1,000 inhabitants'),
+  remuneracao_media: t('R$ por vínculo ativo (dezembro, regra do PDET)', 'R$ per active job (December, PDET rule)'),
+  n_rem_dez: t('vínculos ativos com remuneração informada', 'active jobs with pay reported'),
+  var_empregos: t('variação dos vínculos sobre o ano anterior', 'change in jobs on the previous year'),
+  saldo_caged: t('admissões − desligamentos (CAGED)', 'hirings − separations (CAGED)'),
+  pct_mulheres: t('dos vínculos ativos', 'of active jobs'), pct_superior: t('dos vínculos ativos', 'of active jobs'), pct_adm_publica: t('dos vínculos ativos', 'of active jobs'),
+});
+
 export function TrabalhoRankings() {
-  const { anoRais, temDados, f, meta } = useTrabalho();
+  const { anoRais, anos, temDados, f, meta } = useTrabalho();
   const { recorte, definir, busca: params } = useRecorte();
   const { search } = useLocation();
   const uf = f.alvo?.uf ?? f.uf ?? undefined;
@@ -663,7 +674,12 @@ export function TrabalhoRankings() {
     if (b === null) return -1;
     return (a - b) * (ordem.desc ? -1 : 1);
   }), [universo, ordem.campo, ordem.desc]);
-  const posicao = new Map(ordenados.map((r, i) => [r.cod_ibge, i + 1]));
+  const vista = params.get('vista') === 'evolucao' ? 'evolucao' : 'anual';
+  const classificacao = useApi<Classificacao>(temDados && anoRais && vista === 'anual' ? 'ranking_posicoes' : null, {
+    dominio: 'trabalho', ind: ordem.campo, ordem: ordem.desc ? 'desc' : 'asc', de: anoRais, ate: anoRais, uf, min: recorte.min, lista: 1,
+  });
+  const posicao = useMemo(() => new Map<unknown, number | null>((classificacao.dados?.lista ?? []).map((r) => [r.cod_ibge, uf ? r.posicao_uf : r.posicao_br])), [classificacao.dados, uf]);
+  const classificados = posicao.size;
   const termo = buscaNome.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   const filtrados = termo ? ordenados.filter((r) => String(r.nome).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').includes(termo)) : ordenados;
   const visiveis = todos || termo ? filtrados : filtrados.slice(0, 50);
@@ -683,18 +699,54 @@ export function TrabalhoRankings() {
       <BarraFiltros semEnte={t('O município escolhido define a UF do ranking e aparece destacado, com a sua posição.', 'The chosen municipality sets the state of the ranking and is highlighted, with its position.')} />
       <AvisoAno anoRais={anoRais} />
       <AvisoRecorte pagina={t('o ranking', 'the ranking')} />
-      {quebra && <NotaQuebra anos={[anoRais! - 1, anoRais!]} />}
-      {escolhido && colOrd && (
+      {quebra && vista === 'anual' && <NotaQuebra anos={[anoRais! - 1, anoRais!]} />}
+      <AlternarVista vista={vista} mudar={(v) => definir({ vista: v === 'evolucao' ? v : null })} />
+      {vista === 'evolucao' && (
+        <>
+          <section className="cartao">
+            <div className="filtros">
+              <div className="campo">
+                <label htmlFor="r-ind">{t('Indicador', 'Indicator')}</label>
+                <select id="r-ind" value={ordem.campo} onChange={(e) => definir({ rord: `${e.target.value}:${ordem.desc ? 'desc' : 'asc'}` })}>
+                  {colunas.map((c) => <option key={c.campo} value={c.campo}>{c.titulo}</option>)}
+                </select>
+              </div>
+              <div className="campo">
+                <label htmlFor="r-ord">{t('Ordem', 'Order')}</label>
+                <select id="r-ord" value={ordem.desc ? 'desc' : 'asc'} onChange={(e) => definir({ rord: `${ordem.campo}:${e.target.value}` })}>
+                  <option value="desc">{t('maiores primeiro', 'highest first')}</option>
+                  <option value="asc">{t('menores primeiro', 'lowest first')}</option>
+                </select>
+              </div>
+              <div className="campo">
+                <label htmlFor="r-min-ev">{t('Tamanho mínimo (vínculos ativos)', 'Minimum size (active jobs)')}</label>
+                <select id="r-min-ev" value={recorte.min} onChange={(e) => definir({ min: Number(e.target.value) || null })}>
+                  {[0, 100, 1000, 10000, 100000].map((v) => <option key={v} value={v}>{v ? `≥ ${numero(v)}` : t('todos', 'all')}</option>)}
+                </select>
+              </div>
+            </div>
+          </section>
+          <EvolucaoPosicao dominio="trabalho" ind={ordem.campo} nomeIndicador={colOrd?.titulo ?? ordem.campo} unidade={UNIDADES_RANKING()[ordem.campo] ?? ''}
+            formato={(v) => colOrd ? colOrd.formato(v) : numero(v)} monetario={ordem.campo === 'remuneracao_media'} params={{ min: recorte.min }}
+            ordem={ordem.desc ? 'desc' : 'asc'} anos={anos} uf={uf ?? null} ente={f.alvo?.esfera === 'M' || f.alvo?.esfera === 'D' ? (f.alvo.esfera === 'D' ? 5300108 : f.alvo.cod_ibge) : null}
+            nota={(de, ate) => notaComparabilidade([de, ate])}
+            definicoes={[[t('Critérios', 'Criteria'), t(`municípios com pelo menos ${recorte.min} vínculos ativos em 31/12 no ano e o indicador calculável (crescimento: com o ano anterior na RAIS; por mil habitantes: com população); município do estabelecimento`, `municipalities with at least ${recorte.min} active jobs on Dec 31 in the year and a computable indicator (growth: with the previous RAIS year; per thousand inhabitants: with population); establishment's municipality`)],
+              [t('Vínculos por mil habitantes', 'Jobs per thousand inhabitants'), notaPorMil(anoRais)], [t('Remuneração', 'Pay'), notaRemuneracao()],
+              [t('Fonte', 'Source'), `${fonteRais()} ${fonteCaged()}`]]}
+            arquivo={`trabalho_${ordem.campo}`} />
+        </>
+      )}
+      {vista === 'anual' && escolhido && colOrd && (
         <div className="destaque-ente" role="status">
-          <strong>{String(escolhido.nome)}</strong>: {t(`posição ${posicao.get(escolhido.cod_ibge)} de ${ordenados.length}`, `rank ${posicao.get(escolhido.cod_ibge)} of ${ordenados.length}`)} {t('em', 'in')} {colOrd.titulo.toLowerCase()} ({colOrd.formato(escolhido[ordem.campo])}; {t('mediana dos municípios', 'municipal median')}: {colOrd.formato(mediana(ordem.campo))}){' · '}
+          <strong>{String(escolhido.nome)}</strong>: {posicao.get(escolhido.cod_ibge) ? t(`posição ${posicao.get(escolhido.cod_ibge)} de ${classificados}`, `rank ${posicao.get(escolhido.cod_ibge)} of ${classificados}`) : t('sem posição (sem o valor)', 'unranked (no value)')} {t('em', 'in')} {colOrd.titulo.toLowerCase()} ({colOrd.formato(escolhido[ordem.campo])}; {t('mediana dos municípios', 'municipal median')}: {colOrd.formato(mediana(ordem.campo))}){' · '}
           {t(`vínculos ativos ${numero(num(escolhido.empregos))}`, `active jobs ${numero(num(escolhido.empregos))}`)}{' · '}
           <Link to={`/trabalho${search}`}>{t('ver o município na visão geral', 'see the municipality in the overview')}</Link>
         </div>
       )}
-      {f.alvo && f.alvo.esfera === 'M' && !escolhido && dados.dados && (
+      {vista === 'anual' && f.alvo && f.alvo.esfera === 'M' && !escolhido && dados.dados && (
         <p className="aviso" role="status">{t(`${f.rotulo} não entra no ranking com o tamanho mínimo escolhido (ou não tem vínculos na RAIS ${anoRais}).`, `${f.rotulo} is not in the ranking with the chosen minimum size (or has no RAIS ${anoRais} jobs).`)}</p>
       )}
-      <section className="cartao">
+      {vista === 'anual' && <section className="cartao">
         <div className="filtros">
           <div className="campo">
             <label htmlFor="r-busca">{t('Buscar município', 'Search municipality')}</label>
@@ -708,17 +760,18 @@ export function TrabalhoRankings() {
           </div>
         </div>
         <div className="cabeca-cartao">
-          <p className="desc">{t(`Universo: ${numero(universo.length)} municípios${recorte.min ? ` com pelo menos ${numero(recorte.min)} vínculos ativos` : ''}. Clique no título de uma coluna para ordenar (a ordem vai no endereço da página). Volume, intensidade, remuneração e crescimento são rankings diferentes; a remuneração traz ao lado quantos ativos têm o valor (os demais contam como zero).`,
-            `Universe: ${numero(universo.length)} municipalities${recorte.min ? ` with at least ${numero(recorte.min)} active jobs` : ''}. Click a column header to sort (the order goes in the page address). Volume, intensity, pay and growth are different rankings; pay comes with how many active jobs have the value (the rest count as zero).`)}{' '}
+          <p className="desc">{t(`Universo: ${numero(universo.length)} municípios${recorte.min ? ` com pelo menos ${numero(recorte.min)} vínculos ativos` : ''}; ${numero(classificados)} com posição em ${colOrd?.titulo.toLowerCase() ?? ordem.campo} (sem o valor, sem posição; empates com a mesma posição: 1, 2, 2, 4). Clique no título de uma coluna para ordenar (a ordem vai no endereço da página). Volume, intensidade, remuneração e crescimento são rankings diferentes; a remuneração traz ao lado quantos ativos têm o valor (os demais contam como zero).`,
+            `Universe: ${numero(universo.length)} municipalities${recorte.min ? ` with at least ${numero(recorte.min)} active jobs` : ''}; ${numero(classificados)} ranked on ${colOrd?.titulo.toLowerCase() ?? ordem.campo} (no value, no rank; ties share a position: 1, 2, 2, 4). Click a column header to sort (the order goes in the page address). Volume, intensity, pay and growth are different rankings; pay comes with how many active jobs have the value (the rest count as zero).`)}{' '}
             <Dica rotulo={t('Vínculos por mil habitantes', 'Jobs per thousand inhabitants')}>{notaPorMil(anoRais)}</Dica></p>
           <BotoesExportar nome={`trabalho_ranking_${anoRais}`} obter={() => ({
             colunas: [t('Posição', 'Rank'), 'cod_ibge', t('Município', 'Municipality'), 'UF', t('População', 'Population'), ...colunas.map((c) => c.titulo),
               t('Vínculos ativos no ano anterior', 'Active jobs in the previous year'), t('Estabelecimentos', 'Establishments'), t('Meses de CAGED no ano', 'CAGED months in year'),
               t('Saldo CAGED no mesmo período do ano anterior', 'CAGED balance, same period of previous year')],
-            linhas: ordenados.map((r, i) => [i + 1, String(r.cod_ibge), r.nome, r.uf, r.populacao, ...colunas.map((c) => r[c.campo]), r.empregos_ano_anterior, r.estabelecimentos, r.meses_caged,
+            linhas: ordenados.map((r) => [posicao.get(r.cod_ibge) ?? null, String(r.cod_ibge), r.nome, r.uf, r.populacao, ...colunas.map((c) => r[c.campo]), r.empregos_ano_anterior, r.estabelecimentos, r.meses_caged,
               num(r.meses_caged_ano_anterior) === num(r.meses_caged) ? r.saldo_caged_ano_anterior : null]),
             metadados: [[t('Recorte', 'Scope'), escopo], [t('Ano', 'Year'), String(anoRais)], [t('Ordenação', 'Sorting'), `${colOrd?.titulo ?? ordem.campo} (${ordem.desc ? t('decrescente', 'descending') : t('crescente', 'ascending')})`],
-              [t('Universo', 'Universe'), t(`${ordenados.length} municípios${recorte.min ? `, mínimo de ${recorte.min} vínculos ativos` : ''}; todas as linhas (a tela mostra 50 de início)`, `${ordenados.length} municipalities${recorte.min ? `, minimum ${recorte.min} active jobs` : ''}; all rows (the screen first shows 50)`)],
+              [t('Universo', 'Universe'), t(`${ordenados.length} municípios${recorte.min ? `, mínimo de ${recorte.min} vínculos ativos` : ''}, ${classificados} com posição; todas as linhas (a tela mostra 50 de início)`, `${ordenados.length} municipalities${recorte.min ? `, minimum ${recorte.min} active jobs` : ''}, ${classificados} ranked; all rows (the screen first shows 50)`)],
+              [t('Posição', 'Rank'), t('classificação comum dos rankings: empates com a mesma posição (1, 2, 2, 4); sem o valor, sem posição', 'common ranking rule: ties share a position (1, 2, 2, 4); no value, no rank')],
               [t('Vínculos por mil habitantes', 'Jobs per thousand inhabitants'), notaPorMil(anoRais)], [t('Remuneração', 'Pay'), notaRemuneracao()],
               [t('Saldo CAGED', 'CAGED balance'), t(`competências de ${periodoCaged}; o saldo do ano anterior só aparece com o mesmo número de meses${caged?.ate ? `; última competência carregada ${mesAno(caged.ate)}` : ''}`, `months ${periodoCaged}; the previous-year balance only appears with the same number of months${caged?.ate ? `; latest month loaded ${mesAno(caged.ate)}` : ''}`)],
               ...(quebra ? [[t('Comparabilidade', 'Comparability'), notaComparabilidade([anoRais! - 1, anoRais!])!] as [string, string]] : []),
@@ -746,7 +799,7 @@ export function TrabalhoRankings() {
                   {visiveis.map((r) => (
                     <tr key={String(r.cod_ibge)} className={f.alvo?.cod_ibge === r.cod_ibge ? 'destaque' : undefined}>
                       <td><Link to={`/trabalho?${new URLSearchParams({ ...Object.fromEntries(new URLSearchParams(search)), ente: String(r.cod_ibge), uf: String(r.uf) })}`}>{String(r.nome)}{uf ? '' : ` (${r.uf})`}</Link></td>
-                      <td>{(posicao.get(r.cod_ibge) ?? 0).toLocaleString(local())}</td>
+                      <td>{posicao.get(r.cod_ibge)?.toLocaleString(local()) ?? '–'}</td>
                       {colunas.map((c) => <td key={c.campo}>{c.formato(r[c.campo])}</td>)}
                     </tr>
                   ))}
@@ -761,7 +814,7 @@ export function TrabalhoRankings() {
             </p>
           </>
         )}
-      </section>
+      </section>}
     </>
   );
 }

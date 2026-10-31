@@ -13,7 +13,7 @@ import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { basesAV, codigoConta, formatarPct } from '../src/calculos';
-import { consultaLivre, executar, tabelaDespesaFuncao, tabelasEducacaoSaude, tabelasIaTrabalho, usarMicrodadosNoTeste, usarMotorDeTeste } from '../src/dados';
+import { consultaLivre, executar, sqlClassificacao, type Classificacao, tabelaDespesaFuncao, tabelasEducacaoSaude, tabelasIaTrabalho, usarMicrodadosNoTeste, usarMotorDeTeste } from '../src/dados';
 import {
   anosPedidos, chamarIa, coberturaDaFonte, codigosDoSql, comPergunta, conferir, consultasDaConversa, contextoParaModelo, descreverCobertura, disponibilidadeNoAno, pedeTabelaMunicipal, dadosDoGrafico, executarConsulta, fontesConsultadas, lerModo, lerResposta,
   lerRegressao, paraModelo, pedeTabela, perguntarIa, prepararResposta, recorteDe, revisarMetodo, revisarResposta, rotulosConsultas, semNominal, semUltimaPergunta, sugestoes, valorOficial,
@@ -41,6 +41,7 @@ import { calcular, indicador } from '../src/saude_comum';
 import { cadastro, codigosDoMunicipio, conferirCodigos, executarLocalizacao, localizar } from '../src/ia_territorio';
 import { crc32, paraCsv, paraXlsx, paraXlsxAbas } from '../src/exportar';
 import { ordenarBusca } from '../src/contexto';
+import { gravarEstadoEvolucao, lerEstadoEvolucao, MAX_COMPARADOS, posicaoRelativa, tabelaMudancas, tabelaTrajetorias, variacaoPct, variacaoPosicao } from '../src/posicoes';
 
 const require = createRequire(import.meta.url);
 const FETCH = globalThis.fetch; // alguns testes simulam o Worker trocando o fetch
@@ -2979,4 +2980,206 @@ describe('IA de ponta a ponta: cenários de confiabilidade (Worker local e model
       if (saida) await writeFile(path.join(saida, `cenario_${c.id}.json`), JSON.stringify(registro, null, 1), 'utf8');
     });
   }
+});
+
+describe('evolução das posições (classificação comum dos rankings)', () => {
+  // base controlada: 2020 com empate (A e B), zero (D), negativo (E), um município sozinho no RJ (F) e G sem valor;
+  // 2021 sem E (ausente) e com G
+  const BASE = `SELECT * FROM (VALUES
+    (2020, 1, 'GO', 10.0, NULL::VARCHAR), (2020, 2, 'GO', 10.0, NULL), (2020, 3, 'GO', 5.0, NULL), (2020, 4, 'SP', 0.0, NULL),
+    (2020, 5, 'SP', -3.0, NULL), (2020, 6, 'RJ', 7.0, NULL), (2020, 7, 'GO', NULL, 'sem_valor'),
+    (2021, 1, 'GO', 8.0, NULL), (2021, 2, 'GO', 9.0, NULL), (2021, 3, 'GO', 5.0, NULL), (2021, 4, 'SP', 2.0, NULL),
+    (2021, 6, 'RJ', 7.0, NULL), (2021, 7, 'GO', 4.0, NULL)) v(ano, cod_ibge, uf, indicador, motivo)`;
+  const classificar = async (ordem: 'ASC' | 'DESC', constante: boolean) => {
+    const sql = `WITH ${sqlClassificacao(BASE, { ordem, constante })}
+      SELECT ano, cod_ibge, posicao_br, total_br, posicao_uf, total_uf FROM r ORDER BY ano, cod_ibge`.replaceAll('$de', '2020').replaceAll('$ate', '2021');
+    const r = await consultaLivre(sql, 100);
+    if ('erro' in r) throw new Error(r.erro);
+    return new Map(r.linhas.map((l) => [`${l[0]}-${l[1]}`, l.slice(2).map(Number)]));
+  };
+
+  test('empates competitivos, zero e negativo incluídos, sem valor fora; nacional antes da UF; UF com um município', async () => {
+    const r = await classificar('DESC', false);
+    // 2020, maiores primeiro: A=B=10 (1º), F=7 (3º), C=5 (4º), D=0 (5º), E=−3 (6º); G fica fora
+    assert.deepEqual(r.get('2020-1'), [1, 6, 1, 3]);
+    assert.deepEqual(r.get('2020-2'), [1, 6, 1, 3]);
+    assert.deepEqual(r.get('2020-3'), [4, 6, 3, 3]);
+    assert.deepEqual(r.get('2020-4'), [5, 6, 1, 2]);
+    assert.deepEqual(r.get('2020-5'), [6, 6, 2, 2]);
+    assert.deepEqual(r.get('2020-6'), [3, 6, 1, 1]); // sozinho no RJ: 1º de 1
+    assert.equal(r.get('2020-7'), undefined);
+    // 2021 (universo anual): G entra (B 9, A 8, F 7, C 5, G 4, D 2), E não existe
+    assert.deepEqual(r.get('2021-7'), [5, 6, 4, 4]);
+    assert.equal(r.get('2021-5'), undefined);
+  });
+
+  test('ordem crescente inverte a classificação e mantém os empates', async () => {
+    const r = await classificar('ASC', false);
+    assert.deepEqual(['2020-5', '2020-4', '2020-3', '2020-6', '2020-1', '2020-2'].map((k) => r.get(k)![0]), [1, 2, 3, 4, 5, 5]);
+  });
+
+  test('universo constante: só quem é elegível em todos os anos, com as posições recalculadas nessa amostra', async () => {
+    const r = await classificar('DESC', true);
+    // E (sem 2021) e G (sem valor em 2020) saem; restam A, B, C, D, F em cada ano
+    assert.equal(r.get('2020-5'), undefined);
+    assert.equal(r.get('2021-7'), undefined);
+    assert.deepEqual(r.get('2020-4'), [5, 5, 1, 1]);
+    assert.deepEqual(r.get('2021-2'), [1, 5, 1, 3]);
+    assert.deepEqual(r.get('2021-4'), [5, 5, 1, 1]);
+  });
+
+  const semIndicadores = !existsSync(`${DATA}/gold/indicadores.parquet`);
+  const posicoes = (p: Record<string, string | number | undefined>) => rota<Classificacao>('ranking_posicoes', p);
+
+  test('FPM por habitante de Goiânia, 2023 a 2025: reproduz o ranking anual (Brasil e Goiás) e o teste de 31/10/2026', { skip: semIndicadores }, async () => {
+    const br = await posicoes({ dominio: 'financas', ind: 'fpm', medida: 'per_capita', ordem: 'desc', de: 2023, ate: 2025, entes: '5208707' });
+    const go = await posicoes({ dominio: 'financas', ind: 'fpm', medida: 'per_capita', ordem: 'desc', de: 2023, ate: 2025, entes: '5208707', uf: 'GO' });
+    const esperado: Record<number, [number, number, number, number, number]> = {
+      2023: [5446, 5524, 226, 228, 438.14], 2024: [5418, 5520, 227, 229, 561.24], 2025: [5423, 5493, 243, 245, 514.84],
+    };
+    for (const ano of [2023, 2024, 2025]) {
+      const p = br.serie.find((x) => x.ano === ano)!;
+      const [pb, tb, pu, tu, valor] = esperado[ano];
+      assert.deepEqual([p.posicao_br, p.total_br, p.posicao_uf, p.total_uf], [pb, tb, pu, tu], String(ano));
+      assert.equal(Math.round(p.indicador! * 100) / 100, valor);
+      // o ranking anual da página (rota ranking) dá a mesma posição e o mesmo universo
+      const anual = await rota<{ ente: L; elegiveis: number }>('ranking', { campo: 'fpm', ano, per_capita: 1, ordem: 'desc', ente: 5208707 });
+      assert.deepEqual([anual.ente.posicao_br, anual.ente.total_br, anual.ente.posicao_uf, anual.ente.total_uf], [pb, tb, pu, tu]);
+      assert.equal(br.universos.find((u) => u.ano === ano)!.total_br, tb);
+      assert.equal(go.universos.find((u) => u.ano === ano)!.total_uf, tu);
+    }
+    // mudanças em Goiás de 2023 a 2025: ganho = posição inicial − posição final; todos os municípios do escopo
+    const m = go.mudancas.find((x) => x.cod_ibge === 5208707)!;
+    assert.deepEqual([m.pos_ini, m.pos_fim, m.total_ini, m.total_fim], [226, 243, 228, 245]);
+    assert.ok(go.mudancas.every((x) => x.uf === 'GO'));
+    assert.ok(go.mudancas.length >= 245);
+    // a posição nacional vem do ranking de todos os municípios, antes do filtro de UF
+    assert.equal(go.serie.find((x) => x.ano === 2023)!.posicao_br, 5446);
+  });
+
+  test('finanças: universo constante com o mesmo tamanho em todos os anos e as posições recalculadas', { skip: semIndicadores }, async () => {
+    const a = await posicoes({ dominio: 'financas', ind: 'fpm', ordem: 'desc', de: 2023, ate: 2025, entes: '5208707' });
+    const c = await posicoes({ dominio: 'financas', ind: 'fpm', ordem: 'desc', de: 2023, ate: 2025, universo: 'constante', entes: '5208707' });
+    const tamanhos = new Set(c.universos.map((u) => u.total_br));
+    assert.equal(tamanhos.size, 1, 'universo constante tem o mesmo tamanho em todos os anos');
+    assert.ok([...tamanhos][0] <= Math.min(...a.universos.map((u) => u.total_br)));
+    // a posição no universo constante não é a do anual (recalculada na amostra), salvo se ninguém saiu à frente
+    const pa = a.serie.find((x) => x.ano === 2025)!;
+    const pc = c.serie.find((x) => x.ano === 2025)!;
+    assert.ok(pc.posicao_br! <= pa.posicao_br!);
+  });
+
+  const semRais = !existsSync(`${DATA}/gold/trabalho/municipios.parquet`);
+  test('RAIS: Goiânia é a 1ª em vínculos em Goiás; universo = municípios com o tamanho mínimo', { skip: semRais }, async () => {
+    const anos = (await rota<L[]>('trab_serie', { uf: 'GO' })).map((r) => Number(r.ano));
+    const ano = anos.at(-1)!;
+    const r = await posicoes({ dominio: 'trabalho', ind: 'empregos', ordem: 'desc', de: ano, ate: ano, uf: 'GO', entes: '5208707', min: 1000 });
+    const p = r.serie[0];
+    assert.equal(p.posicao_uf, 1);
+    const muns = await rota<L[]>('trab_municipios', { uf: 'GO', ano });
+    assert.equal(p.total_uf, muns.filter((x) => (x.empregos as number) >= 1000).length);
+    // crescimento no primeiro ano da série não é calculável: o município fica sem posição, com o motivo
+    const v = await posicoes({ dominio: 'trabalho', ind: 'var_empregos', ordem: 'desc', de: anos[0], ate: anos[1], entes: '5208707' });
+    assert.equal(v.serie.find((x) => x.ano === anos[0])!.motivo, 'sem_ano_anterior');
+    assert.ok(v.serie.find((x) => x.ano === anos[1])!.posicao_br! >= 1);
+  });
+
+  const semSaude = !existsSync(`${DATA}/gold/saude/municipios.parquet`);
+  test('saúde: mortalidade infantil de Goiânia em Goiás, 2023, com o mínimo de 1.000 nascidos, confere com a contagem direta', { skip: semSaude }, async () => {
+    const r = await posicoes({ dominio: 'saude', ind: 'mortalidade_infantil', ordem: 'desc', de: 2023, ate: 2023, uf: 'GO', entes: '5208707' });
+    const muns = (await rota<L[]>('saude_municipios', { uf: 'GO', ano: 2023 }))
+      .map((x) => ({ cod: x.cod_ibge, v: calcular(indicador('mortalidade_infantil'), x as never), n: x.nascidos as number }))
+      .filter((x) => x.v !== null && x.n >= 1000);
+    const goiania = muns.find((x) => x.cod === 5208707)!;
+    const p = r.serie[0];
+    assert.equal(p.total_uf, muns.length);
+    assert.equal(p.posicao_uf, 1 + muns.filter((x) => x.v! > goiania.v!).length);
+    quase(p.indicador!, goiania.v!);
+    // antes de 2000 não há população da SVS/MS: a taxa por habitante fica sem denominador (motivo explícito)
+    const g = await posicoes({ dominio: 'saude', ind: 'mortalidade_geral', ordem: 'desc', de: 1999, ate: 2000, entes: '5208707', min: 0 });
+    assert.equal(g.serie.find((x) => x.ano === 1999)!.motivo, 'denominador_invalido');
+    assert.ok(g.serie.find((x) => x.ano === 2000)!.posicao_br! >= 1);
+  });
+});
+
+describe('evolução das posições: convenções, URL e exportações', () => {
+  test('posição relativa: 100 = 1º, 0 = último, empatados iguais, sem valor com um só município', () => {
+    assert.equal(posicaoRelativa(1, 5), 100);
+    assert.equal(posicaoRelativa(5, 5), 0);
+    assert.equal(posicaoRelativa(2, 5), posicaoRelativa(2, 5));
+    assert.equal(posicaoRelativa(1, 1), null);
+    assert.equal(posicaoRelativa(null, 10), null);
+  });
+
+  test('variação da posição = inicial − final (positiva = ganhou posições); % do indicador só com inicial positivo', () => {
+    assert.equal(variacaoPosicao(10, 4), 6);
+    assert.equal(variacaoPosicao(4, 10), -6);
+    assert.equal(variacaoPosicao(null, 3), null);
+    assert.equal(variacaoPct(0, 5), null);
+    assert.equal(variacaoPct(-2, 5), null);
+    quase(variacaoPct(200, 250)!, 25);
+  });
+
+  test('estado na URL: lê, grava e recupera a mesma visualização; período dentro dos anos da fonte', () => {
+    const anos = [2019, 2020, 2021, 2022, 2023, 2024, 2025];
+    const padrao = lerEstadoEvolucao(new URLSearchParams('ind=fpm'), anos, { ente: 5208707, temUf: true });
+    assert.deepEqual(padrao, { de: 2021, ate: 2025, entes: [5208707], universo: 'anual', abrangencia: 'uf', escala: 'posicao', precos: 'nominal' });
+    const b = gravarEstadoEvolucao(new URLSearchParams('ind=fpm&medida=total&vista=evolucao'), {
+      de: 2020, ate: 2024, universo: 'constante', abrangencia: 'br', entes: [5208707, 3550308, 5300108], escala: 'percentil', precos: 'real',
+    });
+    // recarregar a página com esse endereço traz o mesmo estado (e os parâmetros do painel ficam)
+    const de = lerEstadoEvolucao(new URLSearchParams(b.toString()), anos, { ente: null, temUf: true });
+    assert.deepEqual(de, { de: 2020, ate: 2024, entes: [5208707, 3550308, 5300108], universo: 'constante', abrangencia: 'br', escala: 'percentil', precos: 'real' });
+    assert.equal(b.get('ind'), 'fpm');
+    assert.equal(b.get('vista'), 'evolucao');
+    // ano fora da fonte cai no padrão; de > até é corrigido; mais de 5 municípios fica nos 5 primeiros; cmp vazio = nenhum
+    assert.deepEqual([lerEstadoEvolucao(new URLSearchParams('de=1990&ate=2019'), anos, { temUf: false }).de], [2019]);
+    assert.deepEqual(lerEstadoEvolucao(new URLSearchParams('de=2024&ate=2020'), anos, { temUf: false }), { ...padrao, de: 2020, ate: 2024, entes: [], abrangencia: 'br' });
+    assert.equal(lerEstadoEvolucao(new URLSearchParams('cmp=1,2,3,4,5,6,7'), anos, { temUf: false }).entes.length, MAX_COMPARADOS);
+    assert.deepEqual(lerEstadoEvolucao(new URLSearchParams('cmp='), anos, { ente: 5208707, temUf: false }).entes, []);
+  });
+
+  // classificação controlada: o município 2 não tem registro em 2021 e o 3 está abaixo do mínimo em 2020
+  const ponto = (ano: number, cod: number, pos: number | null, total: number | null, indicador: number | null, motivo: string | null) => ({
+    ano, cod_ibge: cod, nome: `M${cod}`, uf: 'GO', valor: indicador, indicador, populacao: 1000, motivo,
+    posicao_br: pos, total_br: total, posicao_uf: pos, total_uf: total, fator_real: 1.1,
+  });
+  const C: Classificacao = {
+    dominio: 'financas', ind: 'fpm', anos: [2020, 2021], monetario: true, base_ipca: 2025,
+    universos: [{ ano: 2020, total_br: 3, total_uf: 3 }, { ano: 2021, total_br: 2, total_uf: 2 }],
+    serie: [ponto(2020, 1, 1, 3, 10, null), ponto(2021, 1, 2, 2, 8, null), ponto(2020, 2, 2, 3, 9, null), ponto(2020, 3, null, null, 1, 'abaixo_minimo'), ponto(2021, 3, 1, 2, 12, null)],
+    mudancas: [
+      { cod_ibge: 3, nome: 'M3', uf: 'GO', valor_ini: null, valor_fim: 12, pos_ini: null, pos_fim: 1, total_ini: null, total_fim: 2, fator_ini: 1.2, fator_fim: 1.1 },
+      { cod_ibge: 1, nome: 'M1', uf: 'GO', valor_ini: 10, valor_fim: 8, pos_ini: 1, pos_fim: 2, total_ini: 3, total_fim: 2, fator_ini: 1.2, fator_fim: 1.1 },
+      { cod_ibge: 2, nome: 'M2', uf: 'GO', valor_ini: 9, valor_fim: null, pos_ini: 2, pos_fim: null, total_ini: 3, total_fim: null, fator_ini: 1.2, fator_fim: 1.1 },
+    ],
+  };
+  const opcoes = { unidade: 'R$ por habitante', monetario: true, uf: false, baseIpca: 2025, nomes: new Map<number, { nome: string; uf: string }>() };
+
+  test('trajetória exportada: uma linha por município e ano do período, inclusive a lacuna, com o motivo', () => {
+    const tab = tabelaTrajetorias(C, [1, 2, 3], opcoes);
+    assert.equal(tab.linhas.length, 6);
+    const col = (nome: string) => tab.colunas.findIndex((c) => c.startsWith(nome));
+    const m2 = tab.linhas.find((l) => l[1] === 2 && l[0] === 2021)!;
+    assert.equal(m2[col('Posição no Brasil')], null);
+    assert.match(String(m2[col('Situação')]), /sem registro na fonte/);
+    const m3 = tab.linhas.find((l) => l[1] === 3 && l[0] === 2020)!;
+    assert.equal(m3[col('Valor (R$')], 1); // o valor fica; a posição não (abaixo do mínimo)
+    assert.match(String(m3[col('Situação')]), /abaixo do mínimo/);
+    const m1 = tab.linhas.find((l) => l[1] === 1 && l[0] === 2020)!;
+    quase(m1[col('Valor real')] as number, 11);
+    assert.equal(m1[col('Posição relativa')], 100);
+  });
+
+  test('mudanças exportadas: todos os municípios, variação com o sinal da convenção e o indicador em termos reais', () => {
+    const tab = tabelaMudancas(C, opcoes, 2020, 2021);
+    assert.equal(tab.linhas.length, C.mudancas.length);
+    const col = (inicio: string) => tab.colunas.findIndex((c) => c.startsWith(inicio));
+    const m1 = tab.linhas.find((l) => l[0] === 1)!;
+    assert.equal(m1[col('Variação da posição')], -1); // 1º → 2º: perdeu uma posição
+    quase(m1[col('Variação do indicador (final')] as number, 8 * 1.1 - 10 * 1.2);
+    const m3 = tab.linhas.find((l) => l[0] === 3)!;
+    assert.equal(m3[col('Variação da posição')], null); // sem posição no ano inicial: não se calcula, não vira zero
+    assert.match(tab.colunas.at(-1)!, /inicial − final; \+ = ganhou posições/);
+  });
 });

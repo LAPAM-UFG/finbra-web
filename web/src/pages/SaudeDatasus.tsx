@@ -4,9 +4,11 @@ import { useApi, type Linha, type Params } from '../api';
 import { Dica } from '../components/Dica';
 import { BotoesExportar } from '../components/Exportar';
 import { barras, CartaoGrafico, Grafico, linhas } from '../components/Grafico';
+import { AlternarVista, EvolucaoPosicao } from '../components/EvolucaoPosicao';
 import { Estado, Kpi } from '../components/Kpi';
 import { TabelaSerie } from '../components/TabelaSerie';
 import { BarraFiltros, useDados, useFiltros } from '../contexto';
+import type { Classificacao } from '../dados';
 import { numero } from '../format';
 import { num } from '../hooks';
 import { local, t } from '../idioma';
@@ -245,7 +247,7 @@ export function SaudeEvolucao() {
 type LinhaRanking = Linha & { _valor: number | null };
 
 export function SaudeRankings() {
-  const { ano, temDados, f, uf, meta } = useSaude();
+  const { ano, anos, temDados, f, uf, meta } = useSaude();
   const [params, setParams] = useSearchParams();
   const { search } = useLocation();
   const ind = indicador(params.get('ind'));
@@ -263,7 +265,13 @@ export function SaudeRankings() {
     .map((r) => ({ ...r, _valor: calcular(ind, r) }) as LinhaRanking)
     .filter((r) => r._valor !== null && (num(r[ind.denominador]) ?? 0) >= minimo), [dados.dados, ind.id, minimo]); // eslint-disable-line react-hooks/exhaustive-deps
   const ordenados = useMemo(() => [...universo].sort((x, y) => ((x._valor ?? 0) - (y._valor ?? 0)) * (desc ? -1 : 1)), [universo, desc]);
-  const posicao = new Map(ordenados.map((r, i) => [r.cod_ibge, i + 1]));
+  // posições da classificação comum dos rankings (empates com a mesma posição: 1, 2, 2, 4), as mesmas da evolução
+  const vista = params.get('vista') === 'evolucao' ? 'evolucao' : 'anual';
+  const classificacao = useApi<Classificacao>(temDados && ano && vista === 'anual' ? 'ranking_posicoes' : null, {
+    dominio: 'saude', ind: ind.id, ordem: desc ? 'desc' : 'asc', de: ano, ate: ano, uf: uf ?? undefined, min: minimo, lista: 1,
+  });
+  const posicao = useMemo(() => new Map<unknown, number | null>((classificacao.dados?.lista ?? []).map((r) => [r.cod_ibge, uf ? r.posicao_uf : r.posicao_br])), [classificacao.dados, uf]);
+  const enteFiltros = f.alvo && f.alvo.esfera !== 'E' ? (f.alvo.esfera === 'D' ? 5300108 : f.alvo.cod_ibge) : null;
   const termo = buscaNome.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   const filtrados = termo ? ordenados.filter((r) => String(r.nome).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').includes(termo)) : ordenados;
   const visiveis = todos || termo ? filtrados : filtrados.slice(0, 50);
@@ -281,16 +289,52 @@ export function SaudeRankings() {
       <p className="subtitulo">{escopoNome} · {ano} <Dica rotulo={t('Fonte', 'Source')}>{fonteSaude()}</Dica></p>
       <BarraFiltros semEnte={t('O município escolhido define a UF do ranking e aparece destacado, com a sua posição.', 'The chosen municipality sets the state of the ranking and is highlighted, with its position.')} />
       <AvisoAno ano={ano} />
-      {escolhido && (
+      <AlternarVista vista={vista} mudar={(v) => definir({ vista: v === 'evolucao' ? v : null })} />
+      {vista === 'evolucao' && (
+        <>
+          <section className="cartao">
+            <div className="filtros">
+              <SeletorIndicador valor={ind.id} mudar={(id) => definir({ ind: id, min: null })} />
+              <div className="campo">
+                <label htmlFor="s-min-ev">{t(`Mínimo: ${nomeContagem(ind.denominador).toLowerCase()}`, `Minimum: ${nomeContagem(ind.denominador).toLowerCase()}`)}</label>
+                <select id="s-min-ev" value={minimo} onChange={(e) => definir({ min: e.target.value })}>
+                  {opcoesMin.sort((a, b) => a - b).map((v) => <option key={v} value={v}>{v ? `≥ ${numero(v)}` : t('todos', 'all')}</option>)}
+                </select>
+              </div>
+              <div className="campo">
+                <label htmlFor="s-ord-ev">{t('Ordem', 'Order')}</label>
+                <select id="s-ord-ev" value={desc ? 'desc' : 'asc'} onChange={(e) => definir({ ord: e.target.value === 'asc' ? 'asc' : null })}>
+                  <option value="desc">{t('maiores primeiro', 'highest first')}</option>
+                  <option value="asc">{t('menores primeiro', 'lowest first')}</option>
+                </select>
+              </div>
+            </div>
+            <p className="desc">{ind.nota()}</p>
+          </section>
+          <EvolucaoPosicao dominio="saude" ind={ind.id} nomeIndicador={ind.nome()} unidade={ind.unidade()} formato={(v) => formatar(ind, v)} monetario={false}
+            params={{ min: minimo }} ordem={desc ? 'desc' : 'asc'} anos={anos} uf={uf} ente={enteFiltros}
+            nota={(de, ate) => [
+              ind.id === 'prematuros' && de < 2011 && ate >= 2011
+                ? t('Prematuridade: em 2011 o SINASC mudou o cálculo da idade gestacional e o indicador subiu de patamar; posições e valores antes e depois de 2011 não se comparam diretamente.', 'Preterm births: in 2011 SINASC changed how gestational age is computed and the indicator rose; positions and values before and after 2011 are not directly comparable.') : '',
+              ind.denominador.startsWith('pop') && de < 2000
+                ? t('A população da SVS/MS começa em 2000: antes disso, as taxas por habitante não são calculadas (anos sem posição).', 'SVS/MS population starts in 2000: before that, rates per inhabitant are not computed (unranked years).') : '',
+              t('O ano mais recente pode ser preliminar no DATASUS.', 'The latest year may be preliminary at DATASUS.'),
+            ].filter(Boolean).join(' ')}
+            definicoes={[[t('Fórmula', 'Formula'), ind.nota()], [t('Critérios', 'Criteria'), t(`municípios do cadastro com denominador (${nomeContagem(ind.denominador).toLowerCase()}) positivo e de pelo menos ${minimo}, e com o numerador registrado; município de residência`, `municipalities in the registry with a positive denominator (${nomeContagem(ind.denominador).toLowerCase()}) of at least ${minimo}, and a recorded numerator; municipality of residence`)],
+              [t('Residência', 'Residence'), notaResidencia()], [t('Fonte', 'Source'), fonteSaude()]]}
+            arquivo={`saude_${ind.id}`} />
+        </>
+      )}
+      {vista === 'anual' && escolhido && (
         <div className="destaque-ente" role="status">
-          <strong>{String(escolhido.nome)}</strong>: {t(`posição ${posicao.get(escolhido.cod_ibge)} de ${ordenados.length}`, `rank ${posicao.get(escolhido.cod_ibge)} of ${ordenados.length}`)} ({formatar(ind, escolhido._valor)}; {t('mediana dos municípios', 'municipal median')}: {formatar(ind, mediana)}){' · '}
+          <strong>{String(escolhido.nome)}</strong>: {t(`posição ${posicao.get(escolhido.cod_ibge) ?? '–'} de ${ordenados.length}`, `rank ${posicao.get(escolhido.cod_ibge) ?? '–'} of ${ordenados.length}`)} ({formatar(ind, escolhido._valor)}; {t('mediana dos municípios', 'municipal median')}: {formatar(ind, mediana)}){' · '}
           <Link to={`/datasus${search}`}>{t('ver o município na visão geral', 'see the municipality in the overview')}</Link>
         </div>
       )}
-      {f.alvo && f.alvo.esfera === 'M' && !escolhido && dados.dados && (
+      {vista === 'anual' && f.alvo && f.alvo.esfera === 'M' && !escolhido && dados.dados && (
         <p className="aviso" role="status">{t(`${f.rotulo} não entra no ranking com o denominador mínimo escolhido.`, `${f.rotulo} is not in the ranking with the chosen minimum denominator.`)}</p>
       )}
-      <section className="cartao">
+      {vista === 'anual' && <section className="cartao">
         <div className="filtros">
           <SeletorIndicador valor={ind.id} mudar={(id) => definir({ ind: id, min: null })} />
           <div className="campo">
@@ -316,9 +360,10 @@ export function SaudeRankings() {
             `Universe: ${numero(universo.length)} municipalities${minimo ? ` with a denominator of at least ${numero(minimo)}` : ''}; below that, rates are too volatile to compare.`)}</p>
           <BotoesExportar nome={`saude_ranking_${ind.id}_${ano}`} obter={() => ({
             colunas: [t('Posição', 'Rank'), 'cod_ibge', t('Município', 'Municipality'), 'UF', `${ind.nome()} (${ind.unidade()})`, nomeContagem(ind.numerador), nomeContagem(ind.denominador), t('População', 'Population')],
-            linhas: ordenados.map((r, i) => [i + 1, String(r.cod_ibge), r.nome, r.uf, r._valor, r[ind.numerador], r[ind.denominador], r.populacao]),
+            linhas: ordenados.map((r) => [posicao.get(r.cod_ibge) ?? null, String(r.cod_ibge), r.nome, r.uf, r._valor, r[ind.numerador], r[ind.denominador], r.populacao]),
             metadados: [[t('Recorte', 'Scope'), escopoNome], [t('Ano', 'Year'), String(ano)], [t('Indicador', 'Indicator'), ind.nome()], [t('Fórmula', 'Formula'), ind.nota()],
               [t('Universo', 'Universe'), t(`${ordenados.length} municípios, denominador mínimo ${minimo}`, `${ordenados.length} municipalities, minimum denominator ${minimo}`)],
+              [t('Posição', 'Rank'), t('classificação comum dos rankings: empates com a mesma posição (1, 2, 2, 4)', 'common ranking rule: ties share a position (1, 2, 2, 4)')],
               [t('Residência', 'Residence'), notaResidencia()], [t('Fonte', 'Source'), fonteSaude()], [t('Versão da base', 'Data version'), meta.geradoEm], [t('Endereço', 'Address'), location.href]],
           })} />
         </div>
@@ -333,7 +378,7 @@ export function SaudeRankings() {
                   {visiveis.map((r) => (
                     <tr key={String(r.cod_ibge)} className={escolhido?.cod_ibge === r.cod_ibge ? 'destaque' : undefined}>
                       <td><Link to={`/datasus?${new URLSearchParams({ ...Object.fromEntries(new URLSearchParams(search)), ente: String(r.cod_ibge), uf: String(r.uf) })}`}>{String(r.nome)}{uf ? '' : ` (${r.uf})`}</Link></td>
-                      <td>{(posicao.get(r.cod_ibge) ?? 0).toLocaleString(local())}</td>
+                      <td>{posicao.get(r.cod_ibge)?.toLocaleString(local()) ?? '–'}</td>
                       <td>{formatar(ind, r._valor)}</td>
                       <td>{numero(num(r[ind.numerador]))}</td>
                       <td>{numero(num(r[ind.denominador]))}</td>
@@ -349,7 +394,7 @@ export function SaudeRankings() {
             </p>
           </>
         )}
-      </section>
+      </section>}
     </>
   );
 }
@@ -391,6 +436,8 @@ export function SaudeMetodologia() {
           <li>{t('Prematuridade: em 2011 o SINASC mudou o cálculo da idade gestacional e o indicador subiu de patamar.', 'Preterm births: in 2011 SINASC changed how gestational age is computed, and the indicator rose.')}</li>
           <li>{t('O ano mais recente pode ser preliminar no DATASUS e mudar após a investigação dos óbitos.', 'The latest year may be preliminary at DATASUS and change after death investigations.')}</li>
           <li>{t('Taxas por habitante não são padronizadas por idade.', 'Rates per inhabitant are not age-standardised.')}</li>
+          <li>{t('Rankings: só municípios do cadastro (residência), com o denominador mínimo escolhido; empates com a mesma posição (1, 2, 2, 4). O ranking anual e a evolução das posições usam a mesma classificação; na evolução, o universo pode ser o de cada ano ou constante (os mesmos municípios em todo o período). A taxa de cada município é a dele (numerador ÷ denominador), nunca a média de outras taxas.',
+            'Rankings: only municipalities in the registry (residence), with the chosen minimum denominator; ties share the same position (1, 2, 2, 4). The annual ranking and positions over time use the same classification; over time, the universe can be each year’s or constant (the same municipalities throughout). Each municipality’s rate is its own (numerator ÷ denominator), never an average of other rates.')}</li>
         </ul>
         <p className="nota-base">{t('Versão da base', 'Data version')}: {meta.geradoEm} · {t('processado em', 'processed on')} {fonte('sim')?.processado_em ?? '–'}</p>
       </section>

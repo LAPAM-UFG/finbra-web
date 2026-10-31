@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { buscar, useApi } from '../api';
 import { Dica } from '../components/Dica';
+import { AlternarVista, EvolucaoPosicao } from '../components/EvolucaoPosicao';
 import { BotoesExportar, useMetadados } from '../components/Exportar';
 import { barras, CartaoGrafico, Grafico } from '../components/Grafico';
 import { Estado } from '../components/Kpi';
@@ -46,6 +47,7 @@ export function Rankings() {
   const perCapita = busca.get('medida') !== 'total';
   const ordem: 'desc' | 'asc' = busca.get('ordem') === 'asc' ? 'asc' : 'desc';
   const pagina = Math.max(1, Number(busca.get('pag')) || 1);
+  const vista = busca.get('vista') === 'evolucao' ? 'evolucao' : 'anual';
   const definir = (novo: Record<string, string | null>) => {
     const p = new URLSearchParams(busca);
     for (const [k, v] of Object.entries(novo)) {
@@ -64,8 +66,8 @@ export function Rankings() {
   const disp = useApi<{ exercicio: number; entes: number }[]>('disponibilidade', { campo });
   const anosDisp = (disp.dados ?? []).map((d) => d.exercicio);
   const disponivel = !disp.dados || anosDisp.includes(f.ano);
-  const r = useApi<Ranking>(disponivel ? 'ranking' : null, { ...params, limite: POR_PAGINA, pagina });
-  const top = useApi<Ranking>(disponivel ? 'ranking' : null, { ...params, limite: 20, pagina: 1 });
+  const r = useApi<Ranking>(disponivel && vista === 'anual' ? 'ranking' : null, { ...params, limite: POR_PAGINA, pagina });
+  const top = useApi<Ranking>(disponivel && vista === 'anual' ? 'ranking' : null, { ...params, limite: 20, pagina: 1 });
   const itens = r.dados?.itens ?? [];
   const destaque = r.dados?.ente;
   const fmt = perCapita ? reaisExato : reais;
@@ -106,7 +108,19 @@ export function Rankings() {
           <button aria-pressed={ordem === 'asc'} className={ordem === 'asc' ? 'ativo' : ''} onClick={() => definir({ ordem: 'asc' })}>{menores}</button>
         </div>
       </div>
-      {!disponivel && (
+      <AlternarVista vista={vista} mudar={(v) => definir({ vista: v === 'evolucao' ? v : null })} />
+      {vista === 'evolucao' && (
+        <EvolucaoPosicao dominio="financas" ind={campo} nomeIndicador={`${nomes[campo]}${perCapita ? ' per capita' : ''}`}
+          unidade={perCapita ? t('R$ por habitante', 'R$ per inhabitant') : 'R$'} formato={perCapita ? reaisExato : reais} monetario
+          params={{ medida: perCapita ? 'per_capita' : 'total', tratamento: f.tratamento }} ordem={ordem} anos={anosDisp}
+          uf={uf ?? null} ente={f.ente?.esfera === 'M' ? f.ente.cod_ibge : null}
+          definicoes={metadados([
+            [t('Medida', 'Measure'), perCapita ? t('per capita: valor ÷ população declarada pelo próprio município na DCA do exercício (não é a estimativa do IBGE)', 'per capita: value ÷ population reported by the municipality itself in the year’s DCA (not the IBGE estimate)') : 'total'],
+            [t('Critérios', 'Criteria'), criterios()],
+          ]).filter(([k]) => k !== t('Exercício selecionado', 'Selected fiscal year'))}
+          arquivo={`ranking_${campo}`} />
+      )}
+      {vista === 'anual' && !disponivel && (
         <p className="aviso" role="status">
           {t(`${nomes[campo]} não está disponível para ${f.ano}.`, `${nomes[campo]} is not available for ${f.ano}.`)}{' '}
           {anosDisp.length > 0 && (
@@ -116,20 +130,16 @@ export function Rankings() {
           )}
         </p>
       )}
-      {r.dados && (
+      {vista === 'anual' && r.dados && (
         <p className="cobertura" role="note">
           <strong>{t('Elegíveis', 'Eligible')}:</strong> {numero(total)} {t('municípios', 'municipalities')}
           {' '}({numero(r.dados.com_dca)} {t('com DCA no exercício', 'with a DCA in the year')}; {numero(r.dados.sem_valor)} {t('sem o valor', 'without the value')};{' '}
           {numero(r.dados.fora)} {t('fora por inconsistência, ausência do total do domínio ou sem população', 'left out for inconsistency, missing domain total or no population')})
           {' '}· {numero(r.dados.zeros)} {t('zeros declarados incluídos', 'reported zeros included')} · {numero(r.dados.negativos)} {t('negativos incluídos', 'negatives included')}.
-          {' '}<Dica rotulo={t('Critérios do ranking', 'Ranking criteria')}>
-            {t(
-              'Entram os municípios com o valor declarado no exercício, inclusive zero e negativo, e com a DCA trazendo o total do domínio (receita ou despesa). Per capita exige população positiva (declarada na DCA). Saem as inconsistências objetivas (mais de 10× a mediana real do próprio ente e acima do PIB municipal) e erros confirmados; suspeitas estatísticas continuam no ranking. Empates recebem a mesma posição e a seguinte salta (1, 2, 2, 4). A posição nacional considera todos os municípios; a da UF, só os do estado.',
-              'Municipalities enter with the value reported for the year, including zero and negative values, and with a DCA that has the domain total (revenue or expenditure). Per capita requires a positive population (reported in the DCA). Objective inconsistencies (more than 10× the government’s own real median and above municipal GDP) and confirmed errors are left out; statistical flags remain in the ranking. Ties share the same position and the next one skips (1, 2, 2, 4). The national position considers all municipalities; the state position, only those in the state.',
-            )}
-          </Dica>
+          {' '}<Dica rotulo={t('Critérios do ranking', 'Ranking criteria')}>{criterios()}</Dica>
         </p>
       )}
+      {vista === 'anual' && <>
       {f.ente && f.ente.esfera !== 'M' && (
         <p className="nota-base">{t('Rankings são só de municípios; o ente selecionado não é município.', 'Rankings only cover municipalities; the selected government is not a municipality.')}</p>
       )}
@@ -201,6 +211,13 @@ export function Rankings() {
           </nav>
         </section>
       )}
+      </>}
     </>
   );
 }
+
+/** Critérios do ranking fiscal (os mesmos no ranking anual e na evolução das posições). */
+const criterios = () => t(
+  'Entram os municípios com o valor declarado no exercício, inclusive zero e negativo, e com a DCA trazendo o total do domínio (receita ou despesa). Per capita exige população positiva (declarada na DCA). Saem as inconsistências objetivas (mais de 10× a mediana real do próprio ente e acima do PIB municipal) e erros confirmados; suspeitas estatísticas continuam no ranking. Empates recebem a mesma posição e a seguinte salta (1, 2, 2, 4). A posição nacional considera todos os municípios; a da UF, só os do estado.',
+  'Municipalities enter with the value reported for the year, including zero and negative values, and with a DCA that has the domain total (revenue or expenditure). Per capita requires a positive population (reported in the DCA). Objective inconsistencies (more than 10× the government’s own real median and above municipal GDP) and confirmed errors are left out; statistical flags remain in the ranking. Ties share the same position and the next one skips (1, 2, 2, 4). The national position considers all municipalities; the state position, only those in the state.',
+);

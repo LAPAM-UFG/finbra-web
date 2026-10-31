@@ -17,6 +17,7 @@ export function tokens() {
   return {
     superficie: v('--superficie'), tinta: v('--tinta'), tinta2: v('--tinta-2'), tinta3: v('--tinta-3'),
     grade: v('--grade'), eixo: v('--eixo'), series: [v('--serie-1'), v('--serie-2'), v('--serie-3')],
+    comparacao: [1, 2, 3, 4, 5].map((i) => v(`--cmp-${i}`)),
   };
 }
 export type Tokens = ReturnType<typeof tokens>;
@@ -130,7 +131,7 @@ const tooltipBase = (t: Tokens) => ({
 /** Cores do tema claro, para gráficos desenhados fora da página (relatório em PDF). */
 const TOKENS_IMPRESSAO: Tokens = {
   superficie: '#ffffff', tinta: '#0f1e2c', tinta2: '#44505f', tinta3: '#626e82', grade: '#e5e1d5', eixo: '#cbc6b6',
-  series: ['#1f5f96', '#7d9c12', '#2492b8'],
+  series: ['#1f5f96', '#7d9c12', '#2492b8'], comparacao: ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4'],
 };
 
 /** O gráfico como SVG (texto), nas cores do tema claro, sem animação: vai dentro do relatório em PDF. */

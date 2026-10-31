@@ -514,6 +514,23 @@ receita bruta > 0), despesa (despesa empenhada > 0) ou patrimônio (balanço dec
 per capita é a desses mesmos entes. `escopos.parquet` guarda, por exercício, escopo e domínio, os entes
 com dados, o universo do cadastro, os sem dados e os excluídos.
 
+### Rankings e evolução das posições
+
+Os rankings dos três painéis (finanças, trabalho e saúde) usam uma classificação só, em `web/src/dados.ts`
+(rota `ranking_posicoes` e `sqlClassificacao`): a base de cada painel diz, por município e ano, o indicador e o
+motivo de ficar fora (`baseFinancas`, `baseTrabalho`, `baseSaude`, com as regras de elegibilidade de cada um);
+a classificação dá as posições com empates competitivos (1, 2, 2, 4), a nacional sobre todos os municípios e,
+depois, a da UF só entre os do estado. O ranking anual de cada página e a "Evolução da posição" (vista=evolucao)
+leem as mesmas posições: o histórico reproduz o ranking de cada ano com os mesmos filtros. Desde 31/10/2026 os
+rankings de trabalho e saúde também têm empates competitivos e deixam sem posição quem não tem o valor (antes,
+1, 2, 3… na ordem da tabela).
+
+Na evolução: universo anual (os elegíveis de cada ano) ou constante (os mesmos municípios em todos os anos do
+período, com as posições recalculadas nessa amostra); variação da posição = posição inicial − posição final
+(positiva = ganhou posições); posição relativa = 100 × (N − posição) ÷ (N − 1) (100 = 1º, 0 = último; sem valor
+com N = 1); ano sem posição fica em branco, com o motivo. As convenções, o estado na URL e as tabelas exportadas
+ficam em `web/src/posicoes.ts`; a tela, em `web/src/components/EvolucaoPosicao.tsx`.
+
 ### Duas populações
 
 `indicadores` tem duas populações, com definições diferentes:
