@@ -286,40 +286,41 @@ export function SaudeRankings() {
   return (
     <>
       <h2 className="titulo-pagina">{t('Rankings de saúde', 'Health rankings')}</h2>
-      <p className="subtitulo">{escopoNome} · {ano} <Dica rotulo={t('Fonte', 'Source')}>{fonteSaude()}</Dica></p>
-      <BarraFiltros semEnte={t('O município escolhido define a UF do ranking e aparece destacado, com a sua posição.', 'The chosen municipality sets the state of the ranking and is highlighted, with its position.')} />
+      <p className="subtitulo">{escopoNome}{vista === 'evolucao' ? '' : ` · ${ano}`} <Dica rotulo={t('Fonte', 'Source')}>{fonteSaude()}</Dica></p>
+      <BarraFiltros semAno={vista === 'evolucao'} semEnte={t('O município escolhido define a UF do ranking e aparece destacado, com a sua posição.', 'The chosen municipality sets the state of the ranking and is highlighted, with its position.')} />
       <AvisoAno ano={ano} />
       <AlternarVista vista={vista} mudar={(v) => definir({ vista: v === 'evolucao' ? v : null })} />
       {vista === 'evolucao' && (
         <>
-          <section className="cartao">
-            <div className="filtros">
-              <SeletorIndicador valor={ind.id} mudar={(id) => definir({ ind: id, min: null })} />
-              <div className="campo">
-                <label htmlFor="s-min-ev">{t(`Mínimo: ${nomeContagem(ind.denominador).toLowerCase()}`, `Minimum: ${nomeContagem(ind.denominador).toLowerCase()}`)}</label>
-                <select id="s-min-ev" value={minimo} onChange={(e) => definir({ min: e.target.value })}>
-                  {opcoesMin.sort((a, b) => a - b).map((v) => <option key={v} value={v}>{v ? `≥ ${numero(v)}` : t('todos', 'all')}</option>)}
-                </select>
-              </div>
-              <div className="campo">
-                <label htmlFor="s-ord-ev">{t('Ordem', 'Order')}</label>
-                <select id="s-ord-ev" value={desc ? 'desc' : 'asc'} onChange={(e) => definir({ ord: e.target.value === 'asc' ? 'asc' : null })}>
-                  <option value="desc">{t('maiores primeiro', 'highest first')}</option>
-                  <option value="asc">{t('menores primeiro', 'lowest first')}</option>
-                </select>
-              </div>
-            </div>
-            <p className="desc">{ind.nota()}</p>
-          </section>
           <EvolucaoPosicao dominio="saude" ind={ind.id} nomeIndicador={ind.nome()} unidade={ind.unidade()} formato={(v) => formatar(ind, v)} monetario={false}
+            percentual={ind.tipo === 'proporcao'}
+            indicador={<SeletorIndicador valor={ind.id} mudar={(id) => definir({ ind: id, min: null })} />}
+            opcoes={
+              <>
+                <div className="campo">
+                  <label htmlFor="s-min-ev">{t(`Mínimo: ${nomeContagem(ind.denominador).toLowerCase()}`, `Minimum: ${nomeContagem(ind.denominador).toLowerCase()}`)}</label>
+                  <select id="s-min-ev" value={minimo} onChange={(e) => definir({ min: e.target.value })}>
+                    {opcoesMin.sort((a, b) => a - b).map((v) => <option key={v} value={v}>{v ? `≥ ${numero(v)}` : t('todos', 'all')}</option>)}
+                  </select>
+                </div>
+                <div className="campo">
+                  <label htmlFor="s-ord-ev">{t('Ordem', 'Order')}</label>
+                  <select id="s-ord-ev" value={desc ? 'desc' : 'asc'} onChange={(e) => definir({ ord: e.target.value === 'asc' ? 'asc' : null })}>
+                    <option value="desc">{t('maiores primeiro', 'highest first')}</option>
+                    <option value="asc">{t('menores primeiro', 'lowest first')}</option>
+                  </select>
+                </div>
+              </>
+            }
+            ativas={[...(desc ? [] : [t('menores primeiro', 'lowest first')]), ...(minimo !== ind.minimo ? [t(`mínimo de ${numero(minimo)}`, `minimum ${numero(minimo)}`)] : [])]}
             params={{ min: minimo }} ordem={desc ? 'desc' : 'asc'} anos={anos} uf={uf} ente={enteFiltros}
-            nota={(de, ate) => [
+            nota={(de, ate) => ({ curta: [
               ind.id === 'prematuros' && de < 2011 && ate >= 2011
                 ? t('Prematuridade: em 2011 o SINASC mudou o cálculo da idade gestacional e o indicador subiu de patamar; posições e valores antes e depois de 2011 não se comparam diretamente.', 'Preterm births: in 2011 SINASC changed how gestational age is computed and the indicator rose; positions and values before and after 2011 are not directly comparable.') : '',
               ind.denominador.startsWith('pop') && de < 2000
                 ? t('A população da SVS/MS começa em 2000: antes disso, as taxas por habitante não são calculadas (anos sem posição).', 'SVS/MS population starts in 2000: before that, rates per inhabitant are not computed (unranked years).') : '',
               t('O ano mais recente pode ser preliminar no DATASUS.', 'The latest year may be preliminary at DATASUS.'),
-            ].filter(Boolean).join(' ')}
+            ].filter(Boolean).join(' ') })}
             definicoes={[[t('Fórmula', 'Formula'), ind.nota()], [t('Critérios', 'Criteria'), t(`municípios do cadastro com denominador (${nomeContagem(ind.denominador).toLowerCase()}) positivo e de pelo menos ${minimo}, e com o numerador registrado; município de residência`, `municipalities in the registry with a positive denominator (${nomeContagem(ind.denominador).toLowerCase()}) of at least ${minimo}, and a recorded numerator; municipality of residence`)],
               [t('Residência', 'Residence'), notaResidencia()], [t('Fonte', 'Source'), fonteSaude()]]}
             arquivo={`saude_${ind.id}`} />

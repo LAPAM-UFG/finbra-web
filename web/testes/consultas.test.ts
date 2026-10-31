@@ -3123,13 +3123,14 @@ describe('evolução das posições: convenções, URL e exportações', () => {
   test('estado na URL: lê, grava e recupera a mesma visualização; período dentro dos anos da fonte', () => {
     const anos = [2019, 2020, 2021, 2022, 2023, 2024, 2025];
     const padrao = lerEstadoEvolucao(new URLSearchParams('ind=fpm'), anos, { ente: 5208707, temUf: true });
-    assert.deepEqual(padrao, { de: 2021, ate: 2025, entes: [5208707], universo: 'anual', abrangencia: 'uf', escala: 'posicao', precos: 'nominal' });
+    assert.deepEqual(padrao, { de: 2021, ate: 2025, entes: [5208707], universo: 'anual', abrangencia: 'uf', escala: 'posicao', precos: 'nominal', grafico: 'posicao' });
     const b = gravarEstadoEvolucao(new URLSearchParams('ind=fpm&medida=total&vista=evolucao'), {
-      de: 2020, ate: 2024, universo: 'constante', abrangencia: 'br', entes: [5208707, 3550308, 5300108], escala: 'percentil', precos: 'real',
+      de: 2020, ate: 2024, universo: 'constante', abrangencia: 'br', entes: [5208707, 3550308, 5300108], escala: 'percentil', precos: 'real', grafico: 'valor',
     });
     // recarregar a página com esse endereço traz o mesmo estado (e os parâmetros do painel ficam)
     const de = lerEstadoEvolucao(new URLSearchParams(b.toString()), anos, { ente: null, temUf: true });
-    assert.deepEqual(de, { de: 2020, ate: 2024, entes: [5208707, 3550308, 5300108], universo: 'constante', abrangencia: 'br', escala: 'percentil', precos: 'real' });
+    assert.deepEqual(de, { de: 2020, ate: 2024, entes: [5208707, 3550308, 5300108], universo: 'constante', abrangencia: 'br', escala: 'percentil', precos: 'real', grafico: 'valor' });
+    assert.equal(b.get('graf'), 'valor');
     assert.equal(b.get('ind'), 'fpm');
     assert.equal(b.get('vista'), 'evolucao');
     // ano fora da fonte cai no padrão; de > até é corrigido; mais de 5 municípios fica nos 5 primeiros; cmp vazio = nenhum
@@ -3181,5 +3182,14 @@ describe('evolução das posições: convenções, URL e exportações', () => {
     const m3 = tab.linhas.find((l) => l[0] === 3)!;
     assert.equal(m3[col('Variação da posição')], null); // sem posição no ano inicial: não se calcula, não vira zero
     assert.match(tab.colunas.at(-1)!, /inicial − final; \+ = ganhou posições/);
+  });
+
+  test('indicador percentual: diferença entre anos em pontos percentuais, variação relativa à parte', () => {
+    const pct: Classificacao = { ...C, monetario: false, mudancas: [{ ...C.mudancas[1], valor_ini: 0.40, valor_fim: 0.45 }] };
+    const tab = tabelaMudancas(pct, { ...opcoes, monetario: false, percentual: true }, 2020, 2021);
+    const col = (inicio: string) => tab.colunas.findIndex((c) => c.startsWith(inicio));
+    quase(tab.linhas[0][col('Diferença do indicador em pontos percentuais')] as number, 5);
+    quase(tab.linhas[0][col('Variação relativa')] as number, 12.5);
+    assert.match(tab.colunas[col('Valor 2020')], /proporção de 0 a 1/);
   });
 });

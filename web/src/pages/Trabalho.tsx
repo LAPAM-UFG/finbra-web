@@ -666,6 +666,9 @@ export function TrabalhoRankings() {
     { campo: 'pct_superior', tipo: t('perfil', 'profile'), titulo: t('% superior', '% college'), formato: (v) => pct(num(v)) },
     { campo: 'pct_adm_publica', tipo: t('perfil', 'profile'), titulo: t('% atividade adm. pública (CNAE 84)', '% public adm. activity (CNAE 84)'), formato: (v) => pct(num(v)) },
   ];
+  const tituloHistorico = (campo: string) => (campo === 'var_empregos' ? t('Variação dos vínculos sobre o ano anterior', 'Change in jobs on the previous year')
+    : campo === 'saldo_caged' ? t('Saldo do CAGED no ano (admissões − desligamentos)', 'CAGED balance in the year (hirings − separations)')
+      : colunas.find((c) => c.campo === campo)?.titulo ?? campo);
   const universo = useMemo(() => (dados.dados ?? []).filter((r) => (num(r.empregos) ?? 0) >= recorte.min), [dados.dados, recorte.min]);
   const ordenados = useMemo(() => [...universo].sort((x, y) => {
     const a = num(x[ordem.campo]);
@@ -695,41 +698,52 @@ export function TrabalhoRankings() {
   return (
     <>
       <h2 className="titulo-pagina">{t('Rankings do mercado de trabalho', 'Labour market rankings')}</h2>
-      <p className="subtitulo">{escopo} · RAIS {anoRais} <Dica rotulo={t('Fonte', 'Source')}>{fonteRais()} {fonteCaged()}</Dica></p>
-      <BarraFiltros semEnte={t('O município escolhido define a UF do ranking e aparece destacado, com a sua posição.', 'The chosen municipality sets the state of the ranking and is highlighted, with its position.')} />
+      <p className="subtitulo">{escopo} · {vista === 'evolucao' ? t('RAIS, vários anos', 'RAIS, several years') : `RAIS ${anoRais}`} <Dica rotulo={t('Fonte', 'Source')}>{fonteRais()} {fonteCaged()}</Dica></p>
+      <BarraFiltros semAno={vista === 'evolucao'} semEnte={t('O município escolhido define a UF do ranking e aparece destacado, com a sua posição.', 'The chosen municipality sets the state of the ranking and is highlighted, with its position.')} />
       <AvisoAno anoRais={anoRais} />
       <AvisoRecorte pagina={t('o ranking', 'the ranking')} />
       {quebra && vista === 'anual' && <NotaQuebra anos={[anoRais! - 1, anoRais!]} />}
       <AlternarVista vista={vista} mudar={(v) => definir({ vista: v === 'evolucao' ? v : null })} />
       {vista === 'evolucao' && (
         <>
-          <section className="cartao">
-            <div className="filtros">
+          <EvolucaoPosicao dominio="trabalho" ind={ordem.campo} nomeIndicador={tituloHistorico(ordem.campo)} unidade={UNIDADES_RANKING()[ordem.campo] ?? ''}
+            formato={(v) => colOrd ? colOrd.formato(v) : numero(v)} monetario={ordem.campo === 'remuneracao_media'}
+            percentual={['var_empregos', 'pct_mulheres', 'pct_superior', 'pct_adm_publica'].includes(ordem.campo)} params={{ min: recorte.min }}
+            indicador={
               <div className="campo">
                 <label htmlFor="r-ind">{t('Indicador', 'Indicator')}</label>
                 <select id="r-ind" value={ordem.campo} onChange={(e) => definir({ rord: `${e.target.value}:${ordem.desc ? 'desc' : 'asc'}` })}>
-                  {colunas.map((c) => <option key={c.campo} value={c.campo}>{c.titulo}</option>)}
+                  {colunas.map((c) => <option key={c.campo} value={c.campo}>{tituloHistorico(c.campo)}</option>)}
                 </select>
               </div>
-              <div className="campo">
-                <label htmlFor="r-ord">{t('Ordem', 'Order')}</label>
-                <select id="r-ord" value={ordem.desc ? 'desc' : 'asc'} onChange={(e) => definir({ rord: `${ordem.campo}:${e.target.value}` })}>
-                  <option value="desc">{t('maiores primeiro', 'highest first')}</option>
-                  <option value="asc">{t('menores primeiro', 'lowest first')}</option>
-                </select>
-              </div>
-              <div className="campo">
-                <label htmlFor="r-min-ev">{t('Tamanho mínimo (vínculos ativos)', 'Minimum size (active jobs)')}</label>
-                <select id="r-min-ev" value={recorte.min} onChange={(e) => definir({ min: Number(e.target.value) || null })}>
-                  {[0, 100, 1000, 10000, 100000].map((v) => <option key={v} value={v}>{v ? `≥ ${numero(v)}` : t('todos', 'all')}</option>)}
-                </select>
-              </div>
-            </div>
-          </section>
-          <EvolucaoPosicao dominio="trabalho" ind={ordem.campo} nomeIndicador={colOrd?.titulo ?? ordem.campo} unidade={UNIDADES_RANKING()[ordem.campo] ?? ''}
-            formato={(v) => colOrd ? colOrd.formato(v) : numero(v)} monetario={ordem.campo === 'remuneracao_media'} params={{ min: recorte.min }}
+            }
+            opcoes={
+              <>
+                <div className="campo">
+                  <label htmlFor="r-ord">{t('Ordem', 'Order')}</label>
+                  <select id="r-ord" value={ordem.desc ? 'desc' : 'asc'} onChange={(e) => definir({ rord: `${ordem.campo}:${e.target.value}` })}>
+                    <option value="desc">{t('maiores primeiro', 'highest first')}</option>
+                    <option value="asc">{t('menores primeiro', 'lowest first')}</option>
+                  </select>
+                </div>
+                <div className="campo">
+                  <label htmlFor="r-min-ev">{t('Tamanho mínimo (vínculos ativos)', 'Minimum size (active jobs)')}</label>
+                  <select id="r-min-ev" value={recorte.min} onChange={(e) => definir({ min: Number(e.target.value) || null })}>
+                    {[0, 100, 1000, 10000, 100000].map((v) => <option key={v} value={v}>{v ? `≥ ${numero(v)}` : t('todos', 'all')}</option>)}
+                  </select>
+                </div>
+              </>
+            }
+            ativas={[...(ordem.desc ? [] : [t('menores primeiro', 'lowest first')]), ...(recorte.min ? [t(`mínimo de ${numero(recorte.min)} vínculos`, `minimum ${numero(recorte.min)} jobs`)] : [])]}
             ordem={ordem.desc ? 'desc' : 'asc'} anos={anos} uf={uf ?? null} ente={f.alvo?.esfera === 'M' || f.alvo?.esfera === 'D' ? (f.alvo.esfera === 'D' ? 5300108 : f.alvo.cod_ibge) : null}
-            nota={(de, ate) => notaComparabilidade([de, ate])}
+            nota={(de, ate) => {
+              const qs = quebrasEntre(de, ate);
+              return qs.length ? {
+                curta: t(`O período atravessa a quebra de série da RAIS em ${qs.map((q) => q.ano).join(' e ')}: parte da mudança pode vir da captação, não só do mercado de trabalho.`,
+                  `The period crosses the RAIS series break in ${qs.map((q) => q.ano).join(' and ')}: part of the change may come from data capture, not only the labour market.`),
+                completa: notaComparabilidade([de, ate]) ?? undefined,
+              } : null;
+            }}
             definicoes={[[t('Critérios', 'Criteria'), t(`municípios com pelo menos ${recorte.min} vínculos ativos em 31/12 no ano e o indicador calculável (crescimento: com o ano anterior na RAIS; por mil habitantes: com população); município do estabelecimento`, `municipalities with at least ${recorte.min} active jobs on Dec 31 in the year and a computable indicator (growth: with the previous RAIS year; per thousand inhabitants: with population); establishment's municipality`)],
               [t('Vínculos por mil habitantes', 'Jobs per thousand inhabitants'), notaPorMil(anoRais)], [t('Remuneração', 'Pay'), notaRemuneracao()],
               [t('Fonte', 'Source'), `${fonteRais()} ${fonteCaged()}`]]}

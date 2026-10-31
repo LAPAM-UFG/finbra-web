@@ -66,6 +66,26 @@ export function Rankings() {
   const disp = useApi<{ exercicio: number; entes: number }[]>('disponibilidade', { campo });
   const anosDisp = (disp.dados ?? []).map((d) => d.exercicio);
   const disponivel = !disp.dados || anosDisp.includes(f.ano);
+  const seletorIndicador = (
+    <div className="campo">
+      <label htmlFor="ind">{t('Indicador', 'Indicator')}</label>
+      <select id="ind" value={campo} onChange={(e) => definir({ ind: e.target.value })}>
+        {Object.entries(nomes).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+      </select>
+    </div>
+  );
+  const medidaEOrdem = (
+    <>
+      <div className="alternar" role="group" aria-label={t('Medida', 'Measure')}>
+        <button aria-pressed={perCapita} className={perCapita ? 'ativo' : ''} onClick={() => definir({ medida: null })}>Per capita</button>
+        <button aria-pressed={!perCapita} className={!perCapita ? 'ativo' : ''} onClick={() => definir({ medida: 'total' })}>Total</button>
+      </div>
+      <div className="alternar" role="group" aria-label={t('Ordem', 'Order')}>
+        <button aria-pressed={ordem === 'desc'} className={ordem === 'desc' ? 'ativo' : ''} onClick={() => definir({ ordem: null })}>{t('Maiores primeiro', 'Highest first')}</button>
+        <button aria-pressed={ordem === 'asc'} className={ordem === 'asc' ? 'ativo' : ''} onClick={() => definir({ ordem: 'asc' })}>{t('Menores primeiro', 'Lowest first')}</button>
+      </div>
+    </>
+  );
   const r = useApi<Ranking>(disponivel && vista === 'anual' ? 'ranking' : null, { ...params, limite: POR_PAGINA, pagina });
   const top = useApi<Ranking>(disponivel && vista === 'anual' ? 'ranking' : null, { ...params, limite: 20, pagina: 1 });
   const itens = r.dados?.itens ?? [];
@@ -86,40 +106,27 @@ export function Rankings() {
     <>
       <h2 className="titulo-pagina">{t('Rankings de municípios', 'Municipal rankings')}</h2>
       <p className="subtitulo">
-        {uf ? t(`Municípios de ${uf}`, `Municipalities in ${uf}`) : t('Municípios com dados no Brasil', 'Municipalities with data in Brazil')} · {f.ano}
+        {uf ? t(`Municípios de ${uf}`, `Municipalities in ${uf}`) : t('Municípios com dados no Brasil', 'Municipalities with data in Brazil')}{vista === 'evolucao' ? '' : ` · ${f.ano}`}
       </p>
-      <BarraFiltros semEnte={t(
+      <BarraFiltros semAno={vista === 'evolucao'} semEnte={t(
         'Nos rankings, o município selecionado não restringe a lista: a posição dele (nacional e na UF) é destacada. A UF restringe a lista.',
         'In rankings, the selected municipality does not restrict the list: its position (national and within the state) is highlighted. The state restricts the list.',
       )} />
-      <div className="filtros">
-        <div className="campo">
-          <label htmlFor="ind">{t('Indicador', 'Indicator')}</label>
-          <select id="ind" value={campo} onChange={(e) => definir({ ind: e.target.value })}>
-            {Object.entries(nomes).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-          </select>
-        </div>
-        <div className="alternar" role="group" aria-label={t('Medida', 'Measure')}>
-          <button aria-pressed={perCapita} className={perCapita ? 'ativo' : ''} onClick={() => definir({ medida: null })}>Per capita</button>
-          <button aria-pressed={!perCapita} className={!perCapita ? 'ativo' : ''} onClick={() => definir({ medida: 'total' })}>Total</button>
-        </div>
-        <div className="alternar" role="group" aria-label={t('Ordem', 'Order')}>
-          <button aria-pressed={ordem === 'desc'} className={ordem === 'desc' ? 'ativo' : ''} onClick={() => definir({ ordem: null })}>{maiores}</button>
-          <button aria-pressed={ordem === 'asc'} className={ordem === 'asc' ? 'ativo' : ''} onClick={() => definir({ ordem: 'asc' })}>{menores}</button>
-        </div>
-      </div>
       <AlternarVista vista={vista} mudar={(v) => definir({ vista: v === 'evolucao' ? v : null })} />
       {vista === 'evolucao' && (
         <EvolucaoPosicao dominio="financas" ind={campo} nomeIndicador={`${nomes[campo]}${perCapita ? ' per capita' : ''}`}
           unidade={perCapita ? t('R$ por habitante', 'R$ per inhabitant') : 'R$'} formato={perCapita ? reaisExato : reais} monetario
           params={{ medida: perCapita ? 'per_capita' : 'total', tratamento: f.tratamento }} ordem={ordem} anos={anosDisp}
           uf={uf ?? null} ente={f.ente?.esfera === 'M' ? f.ente.cod_ibge : null}
+          indicador={seletorIndicador} opcoes={medidaEOrdem}
+          ativas={[...(perCapita ? [] : [t('valor total', 'total value')]), ...(ordem === 'asc' ? [t('menores primeiro', 'lowest first')] : [])]}
           definicoes={metadados([
             [t('Medida', 'Measure'), perCapita ? t('per capita: valor ÷ população declarada pelo próprio município na DCA do exercício (não é a estimativa do IBGE)', 'per capita: value ÷ population reported by the municipality itself in the year’s DCA (not the IBGE estimate)') : 'total'],
             [t('Critérios', 'Criteria'), criterios()],
           ]).filter(([k]) => k !== t('Exercício selecionado', 'Selected fiscal year'))}
           arquivo={`ranking_${campo}`} />
       )}
+      {vista === 'anual' && <div className="filtros">{seletorIndicador}{medidaEOrdem}</div>}
       {vista === 'anual' && !disponivel && (
         <p className="aviso" role="status">
           {t(`${nomes[campo]} não está disponível para ${f.ano}.`, `${nomes[campo]} is not available for ${f.ano}.`)}{' '}

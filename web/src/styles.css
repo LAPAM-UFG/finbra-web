@@ -625,3 +625,29 @@ td.quebra-ano { border-top: 2px dashed var(--tinta-3); }
 .evol-cor { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 .evol-comparados input { min-width: 220px; max-width: 100%; }
 .evol-resumo { border-top: 3px solid var(--borda); }
+.evol-principal { align-items: flex-end; }
+.evol-principal .campo input { min-width: 260px; }
+.evol-compactos { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 6px; font-size: 13px; color: var(--tinta-2); }
+.evol-compacto select { padding: 3px 6px; font-size: 13px; }
+.alternar.compacto button { padding: 3px 10px; font-size: 13px; }
+.evol-acoes { display: inline-flex; gap: 8px; margin-left: auto; flex-wrap: wrap; }
+.evol-ativas { border-color: var(--acento); font-weight: 600; }
+.evol-opcoes { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--grade); }
+.evol-resumos { list-style: none; margin: 4px 0 6px; padding: 0; font-size: 14px; }
+.evol-resumos li { margin: 3px 0; }
+.evol-resumos li .evol-cor { display: inline-block; margin-right: 6px; }
+.evol-nota { font-size: 12px; margin: 6px 0; }
+.evol-detalhes > summary { cursor: pointer; font-weight: 600; font-size: 15px; }
+.evol-detalhes[open] > summary { margin-bottom: 10px; }
+.evol-detalhes h3 { margin-top: 16px; }
+.evol-definicoes { margin: 0; font-size: 13px; }
+.evol-definicoes div { display: grid; grid-template-columns: minmax(120px, 220px) 1fr; gap: 4px 12px; padding: 4px 0; border-top: 1px solid var(--grade); }
+.evol-definicoes dt { color: var(--tinta-3); }
+.evol-definicoes dd { margin: 0; }
+@media (max-width: 640px) {
+  .evol-principal .campo input { min-width: 0; width: 100%; }
+  .evol-acoes { margin-left: 0; }
+  .evol-definicoes div { grid-template-columns: 1fr; }
+}
+details.evol-nota > summary { cursor: pointer; }
+details.evol-nota[open] > summary { margin-bottom: 6px; }

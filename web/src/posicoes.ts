@@ -48,6 +48,8 @@ export function textoMotivo(m: string | null | undefined): string {
 export type EstadoEvolucao = {
   de: number; ate: number; universo: 'anual' | 'constante'; abrangencia: 'br' | 'uf';
   entes: number[]; escala: 'posicao' | 'percentil'; precos: 'nominal' | 'real';
+  /** gráfico mostrado: a posição no ranking (padrão) ou o valor do indicador */
+  grafico: 'posicao' | 'valor';
 };
 
 /**
@@ -74,6 +76,7 @@ export function lerEstadoEvolucao(b: URLSearchParams, anos: number[], padrao: { 
     abrangencia: padrao.temUf && b.get('abr') !== 'br' ? 'uf' : 'br',
     escala: b.get('esc') === 'percentil' ? 'percentil' : 'posicao',
     precos: b.get('precos') === 'real' ? 'real' : 'nominal',
+    grafico: b.get('graf') === 'valor' ? 'valor' : 'posicao',
   };
 }
 
@@ -84,7 +87,7 @@ export function gravarEstadoEvolucao(b: URLSearchParams, e: Partial<EstadoEvoluc
     ['de', 'de', (v: number) => String(v)], ['ate', 'ate', (v: number) => String(v)],
     ['universo', 'univ', (v: string) => (v === 'constante' ? v : null)], ['abrangencia', 'abr', (v: string) => (v === 'br' ? v : null)],
     ['entes', 'cmp', (v: number[]) => v.join(',')], ['escala', 'esc', (v: string) => (v === 'percentil' ? v : null)],
-    ['precos', 'precos', (v: string) => (v === 'real' ? v : null)],
+    ['precos', 'precos', (v: string) => (v === 'real' ? v : null)], ['grafico', 'graf', (v: string) => (v === 'valor' ? v : null)],
   ];
   for (const [chave, param, valor] of pares) {
     if (!(chave in e)) continue;
@@ -97,7 +100,16 @@ export function gravarEstadoEvolucao(b: URLSearchParams, e: Partial<EstadoEvoluc
 
 // ---------------- tabelas (tela e exportação: todas as observações) ----------------
 
-export type OpcoesTabela = { unidade: string; monetario: boolean; uf: boolean; baseIpca: number; nomes: Map<number, { nome: string; uf: string }> };
+/**
+ * percentual: o indicador é uma proporção guardada de 0 a 1 (ex.: % de mulheres, crescimento): a diferença entre dois
+ * anos sai em pontos percentuais (p.p.), separada da variação relativa (%).
+ */
+export type OpcoesTabela = {
+  unidade: string; monetario: boolean; percentual?: boolean; uf: boolean; baseIpca: number; nomes: Map<number, { nome: string; uf: string }>;
+};
+const rotuloValor = (o: OpcoesTabela) => (o.percentual
+  ? t(`proporção de 0 a 1, ${o.unidade}; 0,49 = 49%`, `share from 0 to 1, ${o.unidade}; 0.49 = 49%`)
+  : o.unidade);
 type Celula = string | number | null;
 
 const posicaoDoEscopo = (p: PontoPosicao, uf: boolean) => (uf ? [p.posicao_uf, p.total_uf] : [p.posicao_br, p.total_br]) as [number | null, number | null];
@@ -110,7 +122,7 @@ export function pontosDaTrajetoria(c: Classificacao, entes: number[]) {
 
 export function tabelaTrajetorias(c: Classificacao, entes: number[], o: OpcoesTabela): { colunas: string[]; linhas: Celula[][] } {
   const colunas = [
-    t('Ano', 'Year'), t('Código IBGE', 'IBGE code'), t('Município', 'Municipality'), 'UF', `${t('Valor', 'Value')} (${o.unidade})`,
+    t('Ano', 'Year'), t('Código IBGE', 'IBGE code'), t('Município', 'Municipality'), 'UF', `${t('Valor', 'Value')} (${rotuloValor(o)})`,
     ...(o.monetario ? [t(`Valor real (R$ de dez/${o.baseIpca})`, `Real value (Dec/${o.baseIpca} R$)`)] : []),
     o.uf ? t('Posição na UF', 'State position') : t('Posição no Brasil', 'National position'),
     o.uf ? t('Municípios elegíveis na UF', 'Eligible municipalities in the state') : t('Municípios elegíveis no Brasil', 'Eligible municipalities in Brazil'),
@@ -136,9 +148,12 @@ export function tabelaMudancas(c: Classificacao, o: OpcoesTabela, de: number, at
   const real = (v: number | null, f: number | null) => (v != null && f != null ? v * f : null);
   const colunas = [
     t('Código IBGE', 'IBGE code'), t('Município', 'Municipality'), 'UF',
-    `${t('Valor', 'Value')} ${de} (${o.unidade})`, `${t('Valor', 'Value')} ${ate} (${o.unidade})`,
+    `${t('Valor', 'Value')} ${de} (${rotuloValor(o)})`, `${t('Valor', 'Value')} ${ate} (${rotuloValor(o)})`,
     ...(o.monetario ? [t(`Valor real ${de} (R$ de dez/${o.baseIpca})`, `Real value ${de} (Dec/${o.baseIpca} R$)`), t(`Valor real ${ate} (R$ de dez/${o.baseIpca})`, `Real value ${ate} (Dec/${o.baseIpca} R$)`)] : []),
-    t('Variação do indicador (final − inicial)', 'Change in the indicator (final − initial)'), t('Variação do indicador (%)', 'Change in the indicator (%)'),
+    o.percentual
+      ? t('Diferença do indicador em pontos percentuais (final − inicial)', 'Difference in the indicator in percentage points (final − initial)')
+      : t('Variação do indicador (final − inicial)', 'Change in the indicator (final − initial)'),
+    t('Variação relativa do indicador (%)', 'Relative change in the indicator (%)'),
     t(`Posição ${de}`, `Position ${de}`), t(`Universo ${de}`, `Universe ${de}`), t(`Posição ${ate}`, `Position ${ate}`), t(`Universo ${ate}`, `Universe ${ate}`),
     t('Variação da posição (inicial − final; + = ganhou posições)', 'Change in position (initial − final; + = gained positions)'),
   ];
@@ -148,7 +163,7 @@ export function tabelaMudancas(c: Classificacao, o: OpcoesTabela, de: number, at
     return [
       m.cod_ibge, m.nome, m.uf, m.valor_ini, m.valor_fim, ...(o.monetario ? [ri, rf] : []),
       // monetário: variação em termos reais (nominal não compara anos); contagens, taxas e percentuais: sem deflação
-      ri != null && rf != null ? rf - ri : null, variacaoPct(ri, rf),
+      ri != null && rf != null ? (rf - ri) * (o.percentual ? 100 : 1) : null, variacaoPct(ri, rf),
       m.pos_ini, m.total_ini, m.pos_fim, m.total_fim, variacaoPosicao(m.pos_ini, m.pos_fim),
     ];
   });
