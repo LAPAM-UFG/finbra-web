@@ -258,8 +258,19 @@ figure.grafico { margin: 0; }
 .ia-rodape-info { margin: 26px 0 0; padding-top: 12px; border-top: 1px solid var(--grade); font-size: 12px; color: var(--tinta-3); }
 .ia-rodape-info p { margin: 0 0 6px; max-width: 90ch; }
 .ia-conta { font-size: 12px; color: var(--tinta-3); margin: 2px 0 0; }
-.ia-entrar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
-.ia-entrar p { margin: 0; }
+.ia-entrar { display: grid; gap: 12px; border-left: 3px solid var(--acento); }
+.ia-entrar .desc { margin: 0; font-size: 13px; color: var(--tinta-2); }
+.ia-entrar-passos { list-style: none; counter-reset: passo; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; }
+.ia-entrar-passos li { counter-increment: passo; position: relative; padding: 9px 12px 10px 42px; background: var(--superficie-2); border-radius: 8px; font-size: 13px; color: var(--tinta-2); }
+.ia-entrar-passos li::before {
+  content: counter(passo); position: absolute; left: 11px; top: 9px; width: 22px; height: 22px; border-radius: 50%;
+  display: grid; place-items: center; background: var(--serie-1); color: #fff; font-size: 12px; font-weight: 600;
+}
+.ia-entrar-passos strong { display: block; color: var(--tinta); margin-bottom: 1px; }
+.ia-entrar-acoes { display: flex; gap: 6px 14px; align-items: center; flex-wrap: wrap; }
+.ia-entrar-acoes .botao { margin: 0; padding: 8px 16px; font-weight: 600; text-decoration: none; }
+.ia-entrar-acoes .ia-nota { margin: 0; }
+.ia-entrar-negado { border-left-color: var(--ruim); }
 
 /* contexto: chips e ajustes */
 .ia-contexto { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 10px; }

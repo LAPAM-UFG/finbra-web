@@ -1559,6 +1559,7 @@ export function Ia() {
 
   const [estado, setEstado] = useState<EstadoIa | null | undefined>(undefined);
   const [falhaEstado, setFalhaEstado] = useState<string | null>(null);
+  const [estadoNegado, setEstadoNegado] = useState(false);
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
   const [metas, setMetas] = useState<MetaTurno[]>([]);
   const [resultados, setResultados] = useState<Record<string, Resultado>>({});
@@ -1674,12 +1675,14 @@ export function Ia() {
   // do ar, vale a cópia da última conta usada aqui
   const carregar = () => {
     setFalhaEstado(null);
+    setEstadoNegado(false);
     estadoIa().then((e) => {
       setEstado(e);
       guardar('ia-conta', e?.email ?? null);
       historico.conectar(e?.email ?? null);
     }, (e) => {
       setFalhaEstado(e instanceof Error ? e.message : String(e));
+      setEstadoNegado(e instanceof ErroAcesso && e.tipo === 'negado');
       historico.conectar(e instanceof ErroAcesso ? null : lerGuardado('ia-conta'));
     });
   };
@@ -1741,7 +1744,8 @@ export function Ia() {
     ? t('Uma pergunta desta conversa ainda está sendo respondida (ela continuou quando você saiu da página). A resposta aparece aqui quando terminar.',
       'A question in this conversation is still being answered (it kept running when you left the page). The answer will appear here when it finishes.')
     : estado === undefined
-    ? (falhaEstado ? t('A IA está indisponível no momento.', 'The AI is unavailable right now.') : t('Verificando o acesso…', 'Checking access…'))
+    ? (estadoNegado ? t('Entre com um e-mail autorizado para perguntar.', 'Sign in with an authorized email to ask.')
+      : falhaEstado ? t('A IA está indisponível no momento.', 'The AI is unavailable right now.') : t('Verificando o acesso…', 'Checking access…'))
     : estado === null
       ? t('Entre com um e-mail autorizado para perguntar.', 'Sign in with an authorized email to ask.')
       : !estado.configurada
@@ -1950,14 +1954,41 @@ export function Ia() {
   const seletorModo = <SeletorModo modo={modo} definir={definirModo} travado={!!rodando} />;
   const acesso = (
     <>
-      {falhaEstado && (
+      {falhaEstado && (estadoNegado ? (
+        <section className="cartao ia-entrar ia-entrar-negado" role="alert" aria-labelledby="ia-negado-titulo">
+          <div>
+            <h3 id="ia-negado-titulo">{t('Este e-mail não tem acesso à IA', 'This email does not have access to the AI')}</h3>
+            <p className="desc">{falhaEstado.charAt(0).toUpperCase() + falhaEstado.slice(1)}</p>
+          </div>
+          <div className="ia-entrar-acoes">
+            <a className="botao" href="/cdn-cgi/access/logout">{t('Sair e entrar com outro e-mail', 'Sign out and use another email')}</a>
+            <button type="button" className="botao-leve" onClick={carregar}>{t('Tentar de novo', 'Try again')}</button>
+          </div>
+        </section>
+      ) : (
         <p className="erro" role="alert">{falhaEstado} <button type="button" className="botao-leve" onClick={carregar}>{t('Tentar de novo', 'Try again')}</button></p>
-      )}
+      ))}
       {estado === null && (
-        <div className="cartao ia-entrar">
-          <p>{t('O acesso é restrito a e-mails autorizados pelo LAPAM.', 'Access is restricted to emails authorized by LAPAM.')}</p>
-          <a className="botao" href={urlEntrar()}>{t('Entrar', 'Sign in')}</a>
-        </div>
+        <section className="cartao ia-entrar" aria-labelledby="ia-entrar-titulo">
+          <div>
+            <h3 id="ia-entrar-titulo">{t('Entre para perguntar', 'Sign in to ask')}</h3>
+            <p className="desc">{t('O acesso é restrito a e-mails autorizados pelo LAPAM. Não há senha: você entra com um código enviado ao seu e-mail.',
+              'Access is restricted to emails authorized by LAPAM. There is no password: you sign in with a code sent to your email.')}</p>
+          </div>
+          <ol className="ia-entrar-passos">
+            <li><strong>{t('E-mail', 'Email')}</strong>{t('Clique em “Entrar com e-mail” e digite seu e-mail na tela de login (em inglês, do Cloudflare Access, o serviço que protege o acesso).',
+              'Click “Sign in with email” and type your email on the login screen (from Cloudflare Access, the service that protects access).')}</li>
+            <li><strong>{t('Código', 'Code')}</strong>{t('Clique em “Send login code” e abra o e-mail com o código de 6 dígitos. Se não chegar, veja o spam.',
+              'Click “Send login code” and open the email with the 6-digit code. If it does not arrive, check your spam folder.')}</li>
+            <li><strong>{t('Pronto', 'Done')}</strong>{t('Digite o código: você volta para esta página, com o mesmo contexto, e suas conversas ficam guardadas na sua conta.',
+              'Enter the code: you come back to this page, with the same context, and your conversations are saved to your account.')}</li>
+          </ol>
+          <div className="ia-entrar-acoes">
+            <a className="botao" href={urlEntrar()}>{t('Entrar com e-mail', 'Sign in with email')}</a>
+            <p className="ia-nota">{t('O código não chegou em alguns minutos? O e-mail pode não estar autorizado: peça a inclusão ao LAPAM.',
+              'No code after a few minutes? The email may not be authorized: ask LAPAM to add it.')}</p>
+          </div>
+        </section>
       )}
     </>
   );
