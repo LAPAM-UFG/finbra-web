@@ -12,12 +12,17 @@
  * confere os códigos de território (conferirCodigos); lugares citados pelo nome passam pela ferramenta
  * "localizar", que usa o cadastro de entes.
  */
-import { consultaLivre, manifestoDados, tabelaLrf, tabelasEducacaoSaude, tabelasIaTrabalho } from './dados';
+import { consultaLivre, manifestoDados, tabelaDespesaFuncao, tabelaLrf, tabelasEducacaoSaude, tabelasIaTrabalho } from './dados';
 import { t } from './idioma';
 import {
-  competenciasNoTexto, formatarValor, periodoDasConsultas, periodoDe, rotuloCompetencia, rotuloPeriodo, tiposDoResultado,
+  competenciasNoTexto, formatarValor, periodoDasConsultas, periodoDe, registrarColunas, rotuloCompetencia, rotuloPeriodo, sqlSemTextos, tiposDoResultado,
   unidadeLimpa, type Formato, type Periodo,
 } from './ia_formato';
+import { atendeConceito, COLUNAS, conceitosPedidos } from './ia_catalogo';
+import { mqo, tabelaRegressao, type ErroPadrao } from './ia_estatistica';
+import {
+  juntaFontes, lerVerificacao, problemasDaVerificacao, tabelasDeFato, verificar, type PedidoVerificacao, type VerificacaoFeita,
+} from './ia_verificacao';
 import { citaQuebra, leRais, notasDasFontes, quebrasNoPeriodo, versaoDasBases, type NotaMetodologica } from './ia_notas';
 import { montarTabela, tabelaTem, type CoberturaFonte, type EspecTabela, type TabelaAnalitica } from './ia_tabelas';
 import {
@@ -35,7 +40,8 @@ export type Mensagem = { role: 'user' | 'assistant'; content: string | Bloco[] }
 export type EstadoIa = { email: string; restantes: number; limite: number; configurada: boolean; modelo?: string; pode_conferir?: boolean };
 export type RespostaIa = { conteudo: Bloco[]; parada: string; recusa?: string | null; restantes: number };
 /** Resultado de uma consulta; bloqueada = a página recusou a consulta antes de rodá-la (SQL ou códigos). */
-export type Resultado = { colunas: string[]; linhas: (string | number | boolean | null)[][]; total: number } | { erro: string; bloqueada?: boolean };
+/** verificacao: chave, junções e amostra conferidas pela página (ia_verificacao.ts), quando a consulta as pediu. */
+export type Resultado = { colunas: string[]; linhas: (string | number | boolean | null)[][]; total: number; verificacao?: VerificacaoFeita } | { erro: string; bloqueada?: boolean };
 
 /** Linhas da consulta mostradas na página e enviadas ao modelo. */
 export const LINHAS_TELA = 2000;
@@ -427,7 +433,9 @@ export function rotulosConsultas(mensagens: Mensagem[]): Map<string, string> {
 }
 
 /** Uma consulta da conversa: identificador, SQL, objetivo, a que ela refaz (se refaz) e o resultado. */
-export type ConsultaFeita = { id: string; rotulo: string; sql: string; objetivo: string; substitui: string; resultado?: Resultado };
+export type ConsultaFeita = {
+  id: string; rotulo: string; sql: string; objetivo: string; substitui: string; resultado?: Resultado; regressao?: PedidoRegressao; verificacao?: PedidoVerificacao;
+};
 
 /** Consultas da conversa pelo identificador (C1…), com os resultados que a página guardou. */
 export function consultasDaConversa(mensagens: Mensagem[], resultados: Record<string, Resultado>): Map<string, ConsultaFeita> {
@@ -437,9 +445,15 @@ export function consultasDaConversa(mensagens: Mensagem[], resultados: Record<st
     if (m.role !== 'assistant' || !Array.isArray(m.content)) continue;
     for (const b of m.content) {
       if (b.type !== 'tool_use' || b.name !== 'consultar' || !b.id) continue;
-      const e = (b.input ?? {}) as { sql?: unknown; objetivo?: unknown; substitui?: unknown };
+      const e = (b.input ?? {}) as { sql?: unknown; objetivo?: unknown; substitui?: unknown; colunas?: unknown; regressao?: unknown; verificacao?: unknown };
+      registrarColunas(String(e.sql ?? ''), e.colunas);
       const rotulo = rotulos.get(b.id)!;
-      r.set(rotulo, { id: b.id, rotulo, sql: String(e.sql ?? ''), objetivo: String(e.objetivo ?? ''), substitui: linha(e.substitui, 12), resultado: resultados[b.id] });
+      const reg = lerRegressao(e.regressao);
+      const ver = lerVerificacao(e.verificacao);
+      r.set(rotulo, {
+        id: b.id, rotulo, sql: String(e.sql ?? ''), objetivo: String(e.objetivo ?? ''), substitui: consultaSubstituida(e.substitui), resultado: resultados[b.id],
+        ...(reg && typeof reg === 'object' ? { regressao: reg } : {}), ...(ver && typeof ver === 'object' ? { verificacao: ver } : {}),
+      });
     }
   }
   return r;
@@ -479,6 +493,8 @@ const texto = (v: unknown, max = 6000) => (typeof v === 'string'
   : '');
 /** Rótulos e campos curtos ficam numa linha só. */
 const linha = (v: unknown, max: number) => texto(v, max).replace(/\s*\n\s*/g, ' ');
+/** Consulta que esta refaz ("C4"); vazio, aspas ou "nenhuma" = nenhuma. */
+const consultaSubstituida = (v: unknown) => (/^C\d+$/i.exec(linha(v, 12).replace(/["'\s]/g, ''))?.[0].toUpperCase() ?? '');
 const umFormato = (v: unknown): Formato => (FORMATOS.includes(v as Formato) ? (v as Formato) : 'decimal');
 function lista<T>(v: unknown, ler: (x: Record<string, unknown>) => T | null, max: number): T[] {
   if (!Array.isArray(v)) return [];
@@ -575,18 +591,24 @@ export function conferir(d: Destaque, r?: Resultado): Conferencia {
 }
 
 /** Tabelas → fontes, na ordem em que aparecem na ficha da resposta. */
-const FONTES_TABELAS: [RegExp, () => string][] = [
+const FONTES_TABELAS: [RegExp | ((sql: string) => boolean), () => string][] = [
   [/\brais_vinculos\b/, () => t('RAIS (MTE): microdados por vínculo', 'RAIS (MTE): job-level microdata')],
   [/\brais_(uf|mun)\b/, () => t('RAIS (MTE): tabelas somadas dos microdados', 'RAIS (MTE): tables summed from the microdata')],
   [/\btrab_(municipios|setores|setores_uf|grandes_setores)\b/, () => t('RAIS (MTE): séries do painel', 'RAIS (MTE): dashboard series')],
   [/\btrab_caged(_anual|_uf)?\b/, () => t('Novo CAGED (MTE)', 'New CAGED (MTE)')],
   [/\btrab_(dic|cnae)\b/, () => t('Classificações CBO 2002 e CNAE 2.0', 'CBO 2002 and CNAE 2.0 classifications')],
   [/\bindicadores\b/, () => t('SICONFI/Tesouro Nacional: DCA', 'SICONFI/National Treasury: DCA')],
+  [/\bdespesa_funcao\b/, () => t('SICONFI/Tesouro Nacional: DCA, anexo I-E (despesa por função)', 'SICONFI/National Treasury: DCA, annex I-E (spending by function)')],
   [/\blrf\b/, () => t('SICONFI/Tesouro Nacional: RREO e RGF', 'SICONFI/National Treasury: RREO and RGF')],
   [/\bsiope_[a-z_]+/, () => t('FNDE: SIOPE (declarações de educação)', 'FNDE: SIOPE (education filings)')],
   [/\bsiops_[a-z_]+/, () => t('Ministério da Saúde: SIOPS (declarações de saúde)', 'Ministry of Health: SIOPS (health filings)')],
   [/\b(pib|vab_[a-z_]+)\b/, () => t('IBGE: PIB dos municípios', 'IBGE: municipal GDP')],
-  [/\bpopulacao\b/, () => t('IBGE: estimativas de população', 'IBGE: population estimates')],
+  // as duas populações têm fontes diferentes: a de indicadores e lrf é a declarada pelo ente; a do IBGE é
+  // populacao_ibge (e a de trab_municipios)
+  [(s) => /\bpopulacao_ibge\b/.test(s) || (/\btrab_municipios\b/.test(s) && /\bpopulacao\b/.test(s)),
+    () => t('IBGE: população de referência (Censos 2010 e 2022 e estimativas de 1º de julho; SIDRA 202, 4709 e 6579)', 'IBGE: reference population (2010 and 2022 Censuses and July 1 estimates; SIDRA 202, 4709 and 6579)')],
+  [(s) => /\b(indicadores|lrf)\b/.test(s) && /\bpopulacao\b/.test(s),
+    () => t('SICONFI: população declarada pelo ente na DCA (não é a estimativa do IBGE do ano)', 'SICONFI: population reported by the government in the DCA (not the IBGE estimate for the year)')],
   [/\bbolsa_familia_[a-z]+/, () => t('Portal da Transparência: Bolsa Família', 'Transparency Portal: Bolsa Família')],
   [/\binss_[a-z]+/, () => t('Previdência Social: benefícios do INSS', 'Social Security: INSS benefits')],
   [/\bipca\b/, () => t('IPCA (Banco Central, SGS 433)', 'IPCA (Central Bank of Brazil, SGS 433)')],
@@ -598,7 +620,7 @@ const FONTES_TABELAS: [RegExp, () => string][] = [
 /** Fontes das tabelas que as consultas (as que deram certo) leram de fato; textos entre aspas não contam. */
 export function fontesConsultadas(sqls: string[]): string[] {
   const limpas = sqls.map((s) => s.replace(/'(?:[^']|'')*'/g, "''").toLowerCase());
-  return FONTES_TABELAS.filter(([re]) => limpas.some((s) => re.test(s))).map(([, nome]) => nome());
+  return FONTES_TABELAS.filter(([re]) => limpas.some((s) => (typeof re === 'function' ? re(s) : re.test(s)))).map(([, nome]) => nome());
 }
 
 // ---------------- gráficos ----------------
@@ -673,6 +695,14 @@ export function dadosDoGrafico(g: GraficoIa, r?: Resultado): DadosGrafico | null
 
 export type DestaquePronto = {
   d: Destaque; valor: string; unidade: string; conferencia: Conferencia;
+  /**
+   * De onde o número foi conferido: uma célula do resultado da consulta, um cálculo da página (total, variação)
+   * ou uma coluna que reproduz sem transformação uma publicação oficial (oficial: qual).
+   */
+  origem?: 'resultado' | 'calculo' | 'oficial';
+  oficial?: string;
+  /** Outras consultas da conversa, sobre outras tabelas, em que o mesmo número aparece (consistência entre tabelas). */
+  consistente?: string[];
   periodo: Periodo | null; rotuloPeriodo: string; quebras: NotaMetodologica[];
 };
 export type GraficoPronto = { g: GraficoIa; validacao: ValidacaoGrafico; quebras: NotaMetodologica[]; consulta?: ConsultaFeita };
@@ -715,6 +745,8 @@ export type RespostaPronta = {
   periodo: string | null;
   /** Consultas citadas na resposta (destaques, gráficos e leituras). */
   usadas: Set<string>;
+  /** As consultas da conversa pelo identificador (C1…), para conferir variáveis e estatísticas. */
+  consultas?: Map<string, ConsultaFeita>;
   /** Códigos de CBO e CNAE filtrados nas consultas, como foram executados (o recorte real, não o descrito). */
   codigos: string[];
 };
@@ -854,6 +886,36 @@ function conferirLeitura(l: Leitura, consultas: Map<string, ConsultaFeita>): str
  * explicações; período, território e fontes tirados das consultas (não do texto do modelo).
  * `doTurno`: identificadores das consultas da pergunta; `pergunta`: o texto dela.
  */
+/**
+ * Fonte oficial do número, quando a coluna citada reproduz uma publicação oficial (catálogo: oficial) e a
+ * consulta a lê sem somar, calcular nem renomear outra expressão com o nome dela.
+ */
+export function valorOficial(coluna: string, sql: string): string | null {
+  const c = coluna.toLowerCase();
+  const fonte = COLUNAS[c]?.oficial;
+  if (!fonte) return null;
+  const s = sqlSemTextos(sql).toLowerCase().replace(/--[^\n]*/g, ' ');
+  // outra expressão com o nome da coluna (p.populacao_ibge AS populacao_ibge é a própria coluna); função aplicada a
+  // ela (subconsultas e listas não contam); conta com ela
+  const transformada = new RegExp(`(?<!\\b${c}\\s{1,5})\\bas\\s+"?${c}\\b`).test(s)
+    || new RegExp(`\\b(?!(?:from|as|in|join|exists|on|and|or|where|select|not|over|values|using|with)\\b)\\w+\\s*\\([^()]*\\b${c}\\b`).test(s)
+    || new RegExp(`\\b${c}\\b\\s*[-+*/%]|[-+*/%]\\s*(\\w+\\.)?${c}\\b`).test(s);
+  return !transformada && new RegExp(`\\b${c}\\b`).test(s) ? fonte : null;
+}
+
+/**
+ * Consultas da conversa que leem outras tabelas de fato (nenhuma em comum) e trazem o mesmo número: a
+ * consistência entre tabelas. Inteiros pequenos e anos não contam (coincidem por acaso).
+ */
+function consistenteCom(d: Destaque, c: ConsultaFeita, consultas: Map<string, ConsultaFeita>): string[] {
+  if (Number.isInteger(d.valor) && (Math.abs(d.valor) < 1000 || (d.valor >= 1900 && d.valor <= 2100))) return [];
+  const minhas = tabelasDeFato(c.sql);
+  if (!minhas.length) return [];
+  return [...consultas.values()].filter((o) => o.rotulo !== c.rotulo && o.resultado && !('erro' in o.resultado) && !o.regressao
+    && tabelasDeFato(o.sql).length > 0 && !tabelasDeFato(o.sql).some((x) => minhas.includes(x))
+    && conferir({ ...d, coluna: '' }, o.resultado) === 'conferido').map((o) => o.rotulo);
+}
+
 export function prepararResposta(r: RespostaFinal, consultas: Map<string, ConsultaFeita>, o: {
   doTurno?: string[]; pergunta?: string; cadastro?: Cadastro | null; ultimaCompetencia?: number | null; fontes?: Record<string, Record<string, unknown>>;
   cobertura?: Cobertura | null;
@@ -871,13 +933,17 @@ export function prepararResposta(r: RespostaFinal, consultas: Map<string, Consul
     const c = consultas.get(d.consulta);
     const periodo = periodoDoDestaque(d, c);
     let conferencia = conferir(d, c?.resultado);
+    let origem: 'resultado' | 'calculo' = 'resultado';
     // números calculados pela página nas tabelas da mesma consulta (total, variação) também valem
     if (conferencia === 'divergente' && tabelas.some((x) => x.tabela && x.espec.consulta === d.consulta && tabelaTem(x.tabela, d.valor, 0.5 * 10 ** -casas(d.valor) + 1e-9))) {
       conferencia = 'conferido';
+      origem = 'calculo';
     }
+    const oficial = conferencia === 'conferido' && origem === 'resultado' && c ? valorOficial(d.coluna, c.sql) : null;
+    const consistente = conferencia === 'conferido' && c ? consistenteCom(d, c, consultas) : [];
     return {
       d: { ...d, rotulo: semNominal(d.rotulo, d.formato) }, valor: formatarValor(d.valor, d.formato), unidade: semNominal(unidadeLimpa(d.unidade, d.formato), d.formato),
-      conferencia, periodo, rotuloPeriodo: periodo ? rotuloPeriodo(periodo, o.ultimaCompetencia) : '', quebras: c && leRais(c.sql) ? quebrasNoPeriodo(periodo) : [],
+      conferencia, origem: oficial ? 'oficial' : origem, ...(oficial ? { oficial } : {}), ...(consistente.length ? { consistente } : {}), periodo, rotuloPeriodo: periodo ? rotuloPeriodo(periodo, o.ultimaCompetencia) : '', quebras: c && leRais(c.sql) ? quebrasNoPeriodo(periodo) : [],
     };
   });
   const graficos = r.graficos.map((g): GraficoPronto => {
@@ -907,7 +973,7 @@ export function prepararResposta(r: RespostaFinal, consultas: Map<string, Consul
   const faltantes = [...new Set(tabelas.filter((x) => x.espec.papel === 'principal').flatMap((x) => x.tabela?.faltantes ?? []))];
   return {
     r, destaques, tabelas, faltantes, graficos, leituras, alertas, hipoteses: hipotesesOmitidas ? '' : r.hipoteses, hipotesesOmitidas,
-    notas: unicas([...alertas, ...notasDasFontes(sqls)]),
+    notas: unicas([...alertas, ...notasDasFontes(sqls, { regressao: [...doTurno, ...citadas].some((c) => !!c.regressao) })]),
     // só as consultas que sustentam a resposta: as de exploração (achar os códigos, testar um filtro) não são o recorte
     codigos: codigosDoSql((citadas.length ? citadas : doTurno).map((c) => c.sql)),
     fontes: fontesConsultadas(sqls),
@@ -915,6 +981,7 @@ export function prepararResposta(r: RespostaFinal, consultas: Map<string, Consul
     territorios: territoriosNasConsultas((base.length ? base : citadas).map((c) => c.sql), o.cadastro ?? null),
     periodo: [p.anos && rotuloPeriodo(p.anos), p.meses && rotuloPeriodo(p.meses, o.ultimaCompetencia)].filter(Boolean).join(' · ') || null,
     usadas,
+    consultas,
   };
 }
 
@@ -952,7 +1019,7 @@ const INDISPONIVEL = /indispon|não est[áa]|não h[áa]|não tem|não t[êe]m|n
  */
 export function revisarResposta(p: RespostaPronta, o: { pergunta?: string; modo?: Modo } = {}): string[] {
   if (p.r.tipo !== 'resposta') return [];
-  const problemas: string[] = [];
+  const problemas: string[] = revisarMetodo(p, o);
   for (const x of p.tabelas) if (x.motivo) problemas.push(`Tabela "${x.espec.titulo || x.espec.consulta}": ${x.motivo}.`);
   if (p.r.tabelasAlem) {
     problemas.push(`A resposta trouxe ${MAX_TABELAS + p.r.tabelasAlem} tabelas e a página mostra até ${MAX_TABELAS}: junte recortes na mesma tabela (ex.: uma distribuição em formato longo com a coluna do recorte) ou diga na conclusão quais ficaram de fora.`);
@@ -1035,6 +1102,98 @@ export function revisarResposta(p: RespostaPronta, o: { pergunta?: string; modo?
   return problemas;
 }
 
+const UFS = 'acre|alagoas|amapa|amazonas|bahia|ceara|distrito federal|espirito santo|goias|maranhao|mato grosso do sul|mato grosso|minas gerais|para|paraiba|parana|pernambuco|piaui|rio de janeiro|rio grande do norte|rio grande do sul|rondonia|roraima|santa catarina|sao paulo|sergipe|tocantins|estado';
+/** "outras capitais de Goiás", "capitais do estado": cada UF tem uma capital só. */
+const CAPITAIS_DA_UF = new RegExp(`\\b(capitais|outras?\\s+capita(l|is))\\s+(de|do|da)\\s+(${UFS})\\b`, 'i');
+const semAcento = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+/** Número convertido em texto formatado na consulta. */
+const NUMERO_COMO_TEXTO = /\b(printf|format|to_char|fmt)\s*\(/i;
+
+/** Razão de números-índice do IPCA montada na consulta ("indice / (SELECT indice …)", "b.indice / i.indice"). */
+const RAZAO_DE_INDICES = /\bindice\b\s*\/\s*(\(\s*select\s+indice\b|\(?\s*(\w+\.)?indice\b)/i;
+
+/** Estatísticas inferenciais citadas no texto: só valem se uma consulta da resposta foi uma regressão da página. */
+const ESTATISTICA_INFERENCIAL = /p-?valor|p\s*[<>=]\s*0[,.]\d|signific[âa]ncia|estatisticamente\s+signific|erro[- ]padr[ãa]o|estat[íi]stica\s+t\b|intervalo\s+de\s+confian[çc]a|coeficiente\s+(de\s+regress|estimado)/i;
+/** A pergunta pede prova de causa ou efeito causal. */
+const PEDE_CAUSA = /prov(e|ar|a|em)\b[^.?]{0,60}caus|causalidade|efeito\s+causal|rela[çc][ãa]o\s+causal|\bcausa\s+(o|a)\s+(aumento|queda|redu|eleva)/i;
+const RESSALVA_CAUSAL = /associa[çc]|correla[çc]|não\s+(prova|provam|permite|permitem|estabelece|demonstra|identifica|implica|autoriza)|nao\s+(prova|permite|estabelece)/i;
+/** Controles apresentados como garantia de identificação causal (sem negação na frase). */
+const CONTROLES_CAUSAIS = /controles?\b[^.]{0,80}\b(garant|assegur|permit|possibilit|resolv)\w*\b[^.]{0,50}\b(identifica|isolar|estabelecer|provar|inferir|tratar)\w*\b[^.]{0,40}\b(caus|efeito)/i;
+
+/**
+ * Conferências de método (catálogo ia_catalogo.ts): a variável pedida é a usada nas tabelas principais e nos
+ * destaques; estatísticas inferenciais só com a regressão calculada pela página; associação não vira causa;
+ * sugestões coerentes com a geografia.
+ */
+export function revisarMetodo(p: RespostaPronta, o: { pergunta?: string } = {}): string[] {
+  if (p.r.tipo !== 'resposta') return [];
+  const problemas: string[] = [];
+  const sqlDe = (rotulo: string) => p.consultas?.get(rotulo)?.sql ?? '';
+  const principais = p.tabelas.filter((x) => x.espec.papel === 'principal' && x.consulta).map((x) => x.consulta!.sql);
+  const dosDestaques = p.r.destaques.map((d) => sqlDe(d.consulta)).filter(Boolean);
+  for (const c of o.pergunta !== undefined ? conceitosPedidos(o.pergunta) : []) {
+    const tabelasSem = principais.length > 0 && !principais.some((sql) => atendeConceito(c, sql));
+    const destaquesSem = dosDestaques.filter((sql) => !atendeConceito(c, sql)).length;
+    const nenhuma = ![...principais, ...dosDestaques].some((sql) => atendeConceito(c, sql));
+    if (tabelasSem || (nenhuma && destaquesSem)) {
+      problemas.push(`A pergunta pede ${c.nome}, e ${tabelasSem ? 'as tabelas principais' : 'os destaques'} usam outra variável. Não apresente outra variável como resposta ao pedido: ${c.orientacao}. Se a variável não existir nas tabelas, diga isso na conclusão, sem tabela principal, e ofereça a análise com outra variável só em aprofundar, para a pessoa escolher.`);
+    } else if (nenhuma && !INDISPONIVEL.test(p.r.conclusao)) {
+      problemas.push(`A pergunta pede ${c.nome} e nenhuma tabela ou destaque o usa: ${c.orientacao}; ou diga na conclusão que não está disponível.`);
+    }
+  }
+  const usadas = [...p.usadas, ...p.tabelas.map((x) => x.espec.consulta)].map((r) => p.consultas?.get(r)).filter(Boolean);
+  const regressao = usadas.some((c) => c!.regressao && c!.resultado && !('erro' in c!.resultado));
+  const textos = [p.r.conclusao, p.r.explicacao, p.r.limitacoes, p.r.metodologia, ...p.r.interpretacao.map((l) => l.texto)].join('\n');
+  if (!regressao && ESTATISTICA_INFERENCIAL.test(textos)) {
+    problemas.push('O texto cita p-valor, significância, erro-padrão, estatística t ou intervalo de confiança sem uma regressão calculada pela página. Essas estatísticas só podem vir de consultar com o campo regressao (a página estima por MQO, com o erro-padrão e a distribuição informados); retire-as ou rode a regressão.');
+  }
+  if (o.pergunta !== undefined && PEDE_CAUSA.test(o.pergunta) && !RESSALVA_CAUSAL.test(p.r.conclusao)) {
+    problemas.push('A pergunta pede causa: diga na conclusão que os dados mostram associação e não permitem concluir causalidade (sem desenho de identificação, como experimento ou variação exógena).');
+  }
+  const frases = textos.split(/(?<=[.;!?])\s+/);
+  if (frases.some((f) => CONTROLES_CAUSAIS.test(f) && !/\bn[ãa]o\b/i.test(f))) {
+    problemas.push('Não apresente a inclusão de controles como garantia de identificação causal: controles reduzem confusão por variáveis observadas, mas não eliminam variáveis omitidas, causalidade reversa nem seleção.');
+  }
+  // deflação: só com ipca.fator_real (pronto); razão de índices montada à mão é recusada, e um fator menor que 1
+  // num ano anterior ao ano-base (onde o fator é 1) é o deflator invertido
+  const daResposta = [...usadas, ...p.r.destaques.map((d) => p.consultas?.get(d.consulta))].filter((c): c is ConsultaFeita => !!c);
+  if (daResposta.some((c) => RAZAO_DE_INDICES.test(sqlSemTextos(c.sql)))) {
+    problemas.push('Deflação: use ipca.fator_real (valor em R$ de dezembro do ano-base = nominal × fator_real, maior que 1 nos anos anteriores ao ano-base). Não monte a razão de índices na consulta: refaça as consultas com fator_real.');
+  }
+  // números formatados no SQL (printf('%,d'), format, to_char) viram texto na tela e no Excel
+  const formatadas = [...new Set(daResposta.filter((c) => NUMERO_COMO_TEXTO.test(sqlSemTextos(c.sql))).map((c) => c.rotulo))];
+  if (formatadas.length) {
+    problemas.push(`Não formate números no SQL (${formatadas.join(', ')} usa printf, format ou to_char): devolva o número e declare a unidade em colunas; a página formata, e o Excel precisa do número.`);
+  }
+  for (const c of daResposta) {
+    if (!c.resultado || 'erro' in c.resultado) continue;
+    const r = c.resultado;
+    const iAno = r.colunas.findIndex((x) => /^(ano|exercicio)$/i.test(x));
+    for (const [j, nome] of r.colunas.entries()) {
+      if (iAno < 0 || !/fator|deflator/i.test(nome)) continue;
+      const base = r.linhas.find((l) => typeof l[j] === 'number' && Math.abs((l[j] as number) - 1) < 1e-9)?.[iAno];
+      if (typeof base === 'number' && r.linhas.some((l) => typeof l[iAno] === 'number' && (l[iAno] as number) < base && typeof l[j] === 'number' && (l[j] as number) < 1)) {
+        problemas.push(`Deflator invertido em ${c.rotulo} (${nome}): o fator é menor que 1 para anos anteriores a ${base}, então os valores "reais" ficaram menores que os nominais. Use ipca.fator_real.`);
+      }
+    }
+  }
+  // junções conferidas pela página (chave, cardinalidade, sem correspondência); fontes diferentes juntadas sem conferência
+  const textoResposta = [p.r.conclusao, p.r.metodologia, p.r.limitacoes, p.r.explicacao, ...Object.values(p.r.recorte)].join('\n');
+  for (const c of new Set(daResposta)) {
+    if (!c.resultado || 'erro' in c.resultado) continue;
+    if (c.resultado.verificacao) problemas.push(...problemasDaVerificacao(c.resultado.verificacao, c.rotulo, textoResposta));
+    if (juntaFontes(c.sql) && !c.resultado.verificacao?.juncoes.length) {
+      problemas.push(`${c.rotulo} junta fontes diferentes sem verificação da junção: refaça com verificacao.juncoes (um SELECT com as colunas-chave de cada lado) para a página contar correspondências, chaves repetidas e registros sem par.`);
+    }
+  }
+  const ruins = p.r.aprofundar.filter((q) => CAPITAIS_DA_UF.test(semAcento(q)));
+  if (ruins.length) {
+    problemas.push(`Sugestão incoerente com a geografia (${ruins.map((q) => `"${resumo(q, 70)}"`).join(', ')}): cada UF tem uma capital só. Ofereça outras capitais brasileiras, outros municípios da mesma UF ou a média da UF.`);
+  }
+  return problemas;
+}
+
 const CABECA_REVISAO = 'A resposta não foi mostrada: a página encontrou problemas. Corrija-os (com novas consultas, se precisar) e chame responder de novo, sozinha:';
 
 /**
@@ -1089,7 +1248,7 @@ export function textoDaResposta(p: RespostaPronta): string {
 
 export type ItemTurno =
   | { tipo: 'nota'; texto: string }
-  | { tipo: 'consulta'; id: string; rotulo: string; sql: string; objetivo: string; substitui: string }
+  | { tipo: 'consulta'; id: string; rotulo: string; sql: string; objetivo: string; substitui: string; regressao?: PedidoRegressao }
   | { tipo: 'localizacao'; id: string; nome: string; uf: string }
   | { tipo: 'revisao'; motivos: string[] };
 export type TurnoIa = { pergunta: string; itens: ItemTurno[]; resposta: RespostaFinal | null; textoFinal: string | null };
@@ -1143,8 +1302,10 @@ export function turnos(mensagens: Mensagem[]): TurnoIa[] {
     for (const b of m.content) {
       if (b.type === 'text' && b.text?.trim()) turno.itens.push({ tipo: 'nota', texto: b.text.trim() });
       else if (b.type === 'tool_use' && b.id && b.name === 'consultar') {
-        const e = (b.input ?? {}) as { sql?: string; objetivo?: string; substitui?: string };
-        turno.itens.push({ tipo: 'consulta', id: b.id, rotulo: rotulos.get(b.id) ?? '', sql: String(e.sql ?? ''), objetivo: String(e.objetivo ?? ''), substitui: linha(e.substitui, 12) });
+        const e = (b.input ?? {}) as { sql?: string; objetivo?: string; substitui?: string; colunas?: unknown; regressao?: unknown };
+        const reg = lerRegressao(e.regressao);
+        registrarColunas(String(e.sql ?? ''), e.colunas);
+        turno.itens.push({ tipo: 'consulta', id: b.id, rotulo: rotulos.get(b.id) ?? '', sql: String(e.sql ?? ''), objetivo: String(e.objetivo ?? ''), substitui: consultaSubstituida(e.substitui), ...(reg && typeof reg === 'object' ? { regressao: reg } : {}) });
       } else if (b.type === 'tool_use' && b.id && b.name === 'localizar') {
         const e = (b.input ?? {}) as { nome?: unknown; uf?: unknown };
         turno.itens.push({ tipo: 'localizacao', id: b.id, nome: linha(e.nome, 120), uf: linha(e.uf, 30) });
@@ -1159,6 +1320,9 @@ export function turnos(mensagens: Mensagem[]): TurnoIa[] {
 }
 
 // ---------------- uma pergunta, do envio à resposta ----------------
+
+/** Uma etapa de uma pergunta e quanto tempo levou; reaproveitada = consulta idêntica já rodada na conversa. */
+export type Etapa = { tipo: 'modelo' | 'consulta' | 'localizar' | 'revisao'; ms: number; rotulo?: string; reaproveitada?: boolean };
 
 export type Progresso =
   | { fase: 'modelo'; rodada: number }
@@ -1181,8 +1345,13 @@ export async function perguntarIa(o: {
   aoResultado: (id: string, r: Resultado) => void;
   aoProgresso?: (p: Progresso) => void;
   aoRestantes?: (n: number) => void;
-}): Promise<{ mensagens: Mensagem[]; desfecho: Desfecho; detalhe?: string | null }> {
+}): Promise<{ mensagens: Mensagem[]; desfecho: Desfecho; detalhe?: string | null; etapas: Etapa[] }> {
   let hist = comPergunta(o.historico, o.pergunta, o.contexto);
+  const etapas: Etapa[] = [];
+  const medir = async <T>(tipo: Etapa['tipo'], f: () => Promise<T>, rotulo?: string): Promise<T> => {
+    const t0 = Date.now();
+    try { return await f(); } finally { etapas.push({ tipo, ms: Date.now() - t0, ...(rotulo ? { rotulo } : {}) }); }
+  };
   const resultados: Record<string, Resultado> = { ...(o.resultados ?? {}) };
   const guardar = (id: string, res: Resultado) => {
     resultados[id] = res;
@@ -1193,14 +1362,14 @@ export async function perguntarIa(o: {
   for (let rodada = 0; rodada < MAX_RODADAS; rodada++) {
     if (o.sinal.aborted) throw cancelado();
     o.aoProgresso?.({ fase: 'modelo', rodada });
-    const r = await chamarIa(hist, o.idioma, o.paineis, o.sinal);
+    const r = await medir('modelo', () => chamarIa(hist, o.idioma, o.paineis, o.sinal));
     o.aoRestantes?.(r.restantes);
     hist = [...hist, { role: 'assistant', content: r.conteudo }];
     o.aoAtualizar(hist);
-    if (r.parada === 'refusal') return { mensagens: hist, desfecho: 'recusa', detalhe: r.recusa };
-    if (r.parada === 'max_tokens') return { mensagens: hist, desfecho: 'longa' };
+    if (r.parada === 'refusal') return { mensagens: hist, desfecho: 'recusa', detalhe: r.recusa, etapas };
+    if (r.parada === 'max_tokens') return { mensagens: hist, desfecho: 'longa', etapas };
     const usos = r.conteudo.filter((b): b is Bloco & { id: string } => b.type === 'tool_use' && !!b.id);
-    if (r.parada !== 'tool_use' || !usos.length) return { mensagens: hist, desfecho: 'texto' };
+    if (r.parada !== 'tool_use' || !usos.length) return { mensagens: hist, desfecho: 'texto', etapas };
     const pedidos = usos.filter((u) => u.name === 'consultar' || u.name === 'localizar');
     const final = usos.find((u) => u.name === 'responder');
     let problemas: string[] = [];
@@ -1209,11 +1378,13 @@ export async function perguntarIa(o: {
       o.aoProgresso?.({ fase: 'revisao' });
       const cad = await cadastro().catch(() => null);
       const doTurno = turnos(hist).at(-1)?.itens.flatMap((i) => (i.tipo === 'consulta' ? [i.rotulo] : [])) ?? [];
+      const t0 = Date.now();
       problemas = revisarResposta(prepararResposta(resposta, consultasDaConversa(hist, resultados), {
         doTurno, cadastro: cad, ultimaCompetencia: o.ultimaCompetencia, cobertura: o.cobertura,
       }), { pergunta: o.pergunta, modo: o.modo });
+      etapas.push({ tipo: 'revisao', ms: Date.now() - t0 });
       // sem problemas, ou já devolvida o bastante (ou sem rodada para refazer): a página mostra com os avisos
-      if (!problemas.length || revisoes >= MAX_REVISOES || rodada >= MAX_RODADAS - 1) return { mensagens: hist, desfecho: 'resposta' };
+      if (!problemas.length || revisoes >= MAX_REVISOES || rodada >= MAX_RODADAS - 1) return { mensagens: hist, desfecho: 'resposta', etapas };
       revisoes++;
     }
 
@@ -1228,12 +1399,20 @@ export async function perguntarIa(o: {
       if (u.name === 'consultar') {
         const rotulo = rotulos.get(u.id) ?? '';
         o.aoProgresso?.({ fase: 'consulta', rotulo, objetivo: String((u.input as { objetivo?: unknown } | undefined)?.objetivo ?? '') });
-        const res = await executarConsulta(u.input, o.paineis, o.sinal);
+        // consulta idêntica (mesmo SQL e mesma regressão) que já deu certo nesta conversa: reaproveita o resultado
+        const igual = [...consultasDaConversa(hist, resultados).values()].find((c) => c.id !== u.id && c.resultado && !('erro' in c.resultado)
+          && chaveConsulta(c.sql, c.regressao, c.verificacao) === chaveConsulta(String((u.input as { sql?: unknown })?.sql ?? ''), lerRegressao((u.input as { regressao?: unknown })?.regressao),
+            lerVerificacao((u.input as { verificacao?: unknown })?.verificacao)));
+        const t0 = Date.now();
+        const res = igual ? igual.resultado! : await executarConsulta(u.input, o.paineis, o.sinal);
+        etapas.push({ tipo: 'consulta', ms: Date.now() - t0, rotulo, ...(igual ? { reaproveitada: true } : {}) });
         guardar(u.id, res);
-        devolver.push({ type: 'tool_result', tool_use_id: u.id, content: paraModelo(res, rotulo, aviso), ...('erro' in res ? { is_error: true } : {}) });
+        const avisoReuso = igual ? `Mesma consulta de ${igual.rotulo}: resultado reaproveitado, sem rodar de novo.` : undefined;
+        devolver.push({ type: 'tool_result', tool_use_id: u.id, content: paraModelo(res, rotulo, [avisoReuso, aviso].filter(Boolean).join(' ') || undefined), ...('erro' in res ? { is_error: true } : {}) });
       } else if (u.name === 'localizar') {
         o.aoProgresso?.({ fase: 'localizar', nome: String((u.input as { nome?: unknown } | undefined)?.nome ?? '') });
         const cad = await cadastro().catch(() => null);
+        etapas.push({ tipo: 'localizar', ms: 0, rotulo: String((u.input as { nome?: unknown } | undefined)?.nome ?? '') });
         const l = cad ? executarLocalizacao(u.input, cad, o.paineis) : { modelo: JSON.stringify({ erro: 'cadastro de entes indisponível' }), tabela: { erro: 'cadastro indisponível' }, erro: true };
         guardar(u.id, l.tabela);
         const conteudo = aviso ? JSON.stringify({ ...JSON.parse(l.modelo), aviso }) : l.modelo;
@@ -1253,8 +1432,12 @@ export async function perguntarIa(o: {
     hist = [...hist, { role: 'user', content: devolver }];
     o.aoAtualizar(hist);
   }
-  return { mensagens: hist, desfecho: 'limite' };
+  return { mensagens: hist, desfecho: 'limite', etapas };
 }
+
+/** Identidade de uma consulta para reaproveitar o resultado: SQL sem espaços extras, a regressão e as verificações pedidas. */
+const chaveConsulta = (sql: string, reg: PedidoRegressao | string | null | undefined, ver?: PedidoVerificacao | string | null) =>
+  `${sql.replace(/\s+/g, ' ').trim()}|${reg && typeof reg === 'object' ? JSON.stringify(reg) : ''}|${ver && typeof ver === 'object' ? JSON.stringify(ver) : ''}`;
 
 // ---------------- SQL somente leitura ----------------
 
@@ -1305,19 +1488,71 @@ export async function executarConsulta(entrada: unknown, paineis: Painel[] = PAI
   if (!e || typeof e.sql !== 'string') return { erro: 'entrada inválida: falta o campo sql', bloqueada: true };
   const motivo = validarSql(e.sql);
   if (motivo) return { erro: motivo, bloqueada: true };
+  const ver = lerVerificacao((entrada as { verificacao?: unknown }).verificacao);
+  if (typeof ver === 'string') return { erro: ver, bloqueada: true };
+  // as consultas das verificações (lados das junções, etapas da amostra) passam pelos mesmos filtros
+  const extras = ver ? [...ver.juncoes.flatMap((j) => [j.esquerda, j.direita]), ...ver.amostra.map((x) => x.sql)] : [];
   try {
     const cad = await cadastro().catch(() => null);
-    const codigos = cad && conferirCodigos(e.sql, cad);
-    if (codigos) return { erro: codigos, bloqueada: true };
+    for (const s of [e.sql, ...extras]) {
+      const codigos = cad && conferirCodigos(s, cad);
+      if (codigos) return { erro: codigos, bloqueada: true };
+    }
+    const todas = [e.sql, ...extras].join('\n');
     if (paineis.includes('trabalho')) await tabelasIaTrabalho();
     // a tabela da LRF só é baixada quando alguma consulta a usa; as do SIOPE e do SIOPS, idem
-    if (paineis.includes('financas') && /\blrf\b/i.test(e.sql)) await tabelaLrf();
-    if (paineis.includes('financas') && /\bsiop[es]_/i.test(e.sql)) await tabelasEducacaoSaude();
-    return await consultaLivre(e.sql, limite, sinal);
+    if (paineis.includes('financas') && /\blrf\b/i.test(todas)) await tabelaLrf();
+    if (paineis.includes('financas') && /\bsiop[es]_/i.test(todas)) await tabelasEducacaoSaude();
+    if (paineis.includes('financas') && /\bdespesa_funcao\b/i.test(todas)) await tabelaDespesaFuncao();
+    const reg = lerRegressao((entrada as { regressao?: unknown }).regressao);
+    if (typeof reg === 'string') return { erro: reg, bloqueada: true };
+    const r = reg ? await estimar(e.sql, reg, sinal) : await consultaLivre(e.sql, limite, sinal);
+    if (!ver || 'erro' in r) return r;
+    // exemplos de chaves sem correspondência com o nome do ente ("Sanclerlândia (GO) 5220009")
+    const nomear = (coluna: string, v: unknown) => {
+      const ente = typeof v === 'number' ? (coluna === 'municipio' ? cad?.porRais.get(v) : coluna === 'cod_ibge' ? cad?.porCodigo.get(v) : undefined) : undefined;
+      return ente ? `${ente.nome} (${ente.uf}) ${v}` : null;
+    };
+    return { ...r, verificacao: await verificar(e.sql, ver, (s) => consultaLivre(s, 50, sinal), { validar: validarSql, nomear, colunas: r.colunas }) };
   } catch (err) {
     if (sinal?.aborted || foiCancelado(err)) throw cancelado();
     return { erro: err instanceof Error ? err.message : String(err) };
   }
+}
+
+/** Linhas lidas para uma regressão: todos os municípios do Brasil cabem com folga. */
+export const LINHAS_REGRESSAO = 20_000;
+export type PedidoRegressao = { y: string; x: string[]; erroPadrao: ErroPadrao };
+
+/** Campo regressao de "consultar": null se ausente; texto com o problema se mal formado. */
+export function lerRegressao(v: unknown): PedidoRegressao | string | null {
+  if (v === undefined || v === null || v === '' || (typeof v === 'object' && !Object.keys(v as object).length)) return null;
+  const r = v as { y?: unknown; x?: unknown; erro_padrao?: unknown };
+  // consulta comum: {"y": "", "x": [], "erro_padrao": ""}
+  if (!r.y && (!Array.isArray(r.x) || !r.x.length)) return null;
+  const nome =(s: unknown) => (typeof s === 'string' && /^[a-z_][a-z0-9_]*$/i.test(s.trim()) ? s.trim() : null);
+  const y = nome(r.y);
+  const x = Array.isArray(r.x) ? r.x.map(nome) : [];
+  if (!y || !x.length || x.some((c) => !c)) return 'regressao precisa de y (uma coluna do resultado) e x (lista de colunas do resultado)';
+  if (x.length > 10) return 'regressao aceita até 10 regressores';
+  const ep = r.erro_padrao === 'classico' ? 'classico' : 'hc1';
+  return { y, x: x as string[], erroPadrao: ep };
+}
+
+/**
+ * Regressão linear calculada pela página (ia_estatistica.ts) com todas as linhas da consulta (uma por
+ * observação): o resultado é a tabela de coeficientes, com amostra, erro-padrão e distribuição usados.
+ */
+async function estimar(sql: string, p: PedidoRegressao, sinal?: AbortSignal): Promise<Resultado> {
+  const r = await consultaLivre(sql, LINHAS_REGRESSAO + 1, sinal);
+  if (r.total > LINHAS_REGRESSAO) return { erro: `a regressão aceita até ${LINHAS_REGRESSAO} observações; a consulta devolveu ${r.total}` };
+  const col = (c: string) => r.colunas.findIndex((x) => x.toLowerCase() === c.toLowerCase());
+  const faltam = [p.y, ...p.x].filter((c) => col(c) < 0);
+  if (faltam.length) return { erro: `colunas da regressão ausentes no resultado: ${faltam.join(', ')} (colunas: ${r.colunas.join(', ')})` };
+  const valores = (c: string) => r.linhas.map((l) => (typeof l[col(c)] === 'number' ? (l[col(c)] as number) : null));
+  const est = mqo(valores(p.y), p.x.map((c) => ({ nome: c, valores: valores(c) })), p.erroPadrao);
+  if ('erro' in est) return { erro: `regressão não estimada: ${est.erro}` };
+  return tabelaRegressao(est, p.y);
 }
 
 /**
@@ -1330,7 +1565,8 @@ export function paraModelo(r: Resultado, consulta?: string, aviso?: string): str
   if ('erro' in r) return JSON.stringify({ ...extra, erro: r.erro, ...(r.bloqueada ? { bloqueada: 'a página recusou a consulta antes de rodá-la' } : {}), ...fim });
   let n = Math.min(LINHAS_MODELO, r.linhas.length);
   for (;;) {
-    const json = JSON.stringify({ ...extra, colunas: r.colunas, linhas: r.linhas.slice(0, n), total_linhas: r.total, linhas_enviadas: n, ...fim });
+    const json = JSON.stringify({ ...extra, colunas: r.colunas, linhas: r.linhas.slice(0, n), total_linhas: r.total, linhas_enviadas: n,
+      ...(r.verificacao ? { verificacao_da_pagina: r.verificacao } : {}), ...fim });
     if (json.length <= TAMANHO_MODELO || n <= 5) return json;
     n = Math.floor(n / 2);
   }

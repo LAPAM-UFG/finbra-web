@@ -6,12 +6,16 @@
  *
  * Ausência não é zero: um período pedido que não está no resultado fica "indisponível"; um grupo sem linha
  * num período que existe fica "sem registro"; um total com algum grupo faltando não é calculado
- * ("incompleto"); variação percentual sobre base zero, negativa ou ausente não é calculada.
+ * ("incompleto"); variação percentual sobre base zero, negativa ou ausente não é calculada. Nulos de uma coluna
+ * cujo significado a consulta declarou (campo nulo de "colunas") viram "não se aplica", "denominador inválido",
+ * "suprimido" ou "não calculado"; sem declaração, "—" (dado ausente). Zero é zero.
  */
 import {
-  ehCompetencia, formatarCelula, lerMarco, periodosComoNumero, rotuloColuna, rotuloCompetencia, tiposDoResultado,
+  colunasDeclaradas, ehCompetencia, formatarCelula, lerMarco, periodosComoNumero, rotuloColuna, rotuloCompetencia, tiposDoResultado,
   type Formato, type Tabela, type TipoColuna, type Valor,
 } from './ia_formato';
+import { fichaDaColuna } from './ia_catalogo';
+import type { Cobertura } from './ia';
 import { local, t } from './idioma';
 
 /** Pedido do modelo (campo "tabelas" da ferramenta responder). */
@@ -39,7 +43,8 @@ export type EspecTabela = {
   nota: string;
 };
 
-export type Ausencia = 'indisponivel' | 'sem_registro' | 'incompleto' | 'base_zero' | 'base_negativa' | 'nao_calculada';
+export type Ausencia = 'indisponivel' | 'sem_registro' | 'incompleto' | 'base_zero' | 'base_negativa' | 'nao_calculada' | 'sem_referencia'
+  | 'nao_aplicavel' | 'denominador_invalido' | 'suprimido';
 export type CelulaT = { v: Valor; a?: Ausencia };
 /** Coluna da tabela: tipo de formatação e, nas variações, o sinal explícito (+). */
 export type ColunaT = { nome: string; tipo: TipoColuna; sinal?: boolean; destaque?: boolean };
@@ -68,6 +73,8 @@ export type TabelaAnalitica = {
   /** Linhas da consulta: existentes e carregadas na página (a tabela simples mostra as carregadas). */
   registros: number;
   carregados: number;
+  /** Colunas do resultado usadas na tabela (nomes originais, para as fichas do catálogo na exportação). */
+  nomes?: string[];
 };
 
 export type Montagem = { ok: true; tabela: TabelaAnalitica } | { ok: false; motivo: string };
@@ -125,6 +132,10 @@ export const ROTULO_AUSENCIA = (): Record<Ausencia, [string, string]> => ({
   base_zero: [t('n.c.', 'n.c.'), t('n.c. = variação percentual não calculada: valor inicial zero', 'n.c. = percentage change not computed: initial value is zero')],
   base_negativa: [t('n.c.', 'n.c.'), t('n.c. = variação percentual não calculada: valor inicial negativo', 'n.c. = percentage change not computed: initial value is negative')],
   nao_calculada: [t('n.c.', 'n.c.'), t('n.c. = não calculada: falta o valor de um dos períodos', 'n.c. = not computed: a period value is missing')],
+  sem_referencia: [t('n.c.', 'n.c.'), t('n.c. = variação não calculada nesta linha (sem período ou valor de referência, como na primeira linha da série); o valor da linha existe', 'n.c. = change not computed in this row (no reference period or value, as in the first row of a series); the row value exists')],
+  nao_aplicavel: [t('n.a.', 'n.a.'), t('n.a. = não se aplica a esta linha (o indicador não existe para esse ente ou período)', 'n.a. = not applicable to this row (the indicator does not exist for this government or period)')],
+  denominador_invalido: [t('den. inv.', 'inv. den.'), t('den. inv. = não calculado: denominador ausente, zero ou negativo (ex.: população não informada)', 'inv. den. = not computed: denominator missing, zero or negative (e.g. population not reported)')],
+  suprimido: [t('supr.', 'suppr.'), t('supr. = valor suprimido (sigilo ou poucas observações); existe, mas não é divulgado', 'suppr. = suppressed value (confidentiality or few observations); it exists but is not released')],
 });
 
 /** Texto de uma célula: ausências com rótulo curto, — para dado ausente, sinal explícito nas variações. */
@@ -173,6 +184,7 @@ export function montarTabela(e: EspecTabela, c: { rotulo: string; sql: string; r
   const base = {
     espec: e, consulta: e.consulta, sql: c.sql, titulo: e.titulo || t('Tabela', 'Table'), unidade: e.unidade, fonte: '',
     registros: r.total, carregados: r.linhas.length,
+    nomes: e.tipo === 'tabela' ? (e.colunas.length ? e.colunas : r.colunas) : [e.periodo, e.grupo, e.valor].filter(Boolean),
   };
   if (e.tipo === 'tabela') return montarSimples(e, r, tipos, base, cobertura);
 
@@ -224,10 +236,14 @@ export function montarTabela(e: EspecTabela, c: { rotulo: string; sql: string; r
     notas.push(t(`O resultado também tem ${rotuloIntervalo(fora, tipoP, e.tipo === 'comparacao')}, fora dos períodos pedidos: não ${fora.length === 1 ? 'entra' : 'entram'} nesta tabela.`,
       `The result also has ${rotuloIntervalo(fora, tipoP, e.tipo === 'comparacao')}, outside the requested periods: not included in this table.`));
   }
+  // nulo da coluna de valor com significado declarado na consulta (não se aplica, denominador inválido…)
+  const nuloV = colunasDeclaradas(c.sql)?.get(e.valor.toLowerCase())?.nulo;
   const celula = (p: number, g: string): CelulaT => {
     if (!presentes.has(p)) return { v: null, a: 'indisponivel' };
     const k = `${p}|${g}`;
-    return valores.has(k) ? { v: valores.get(k)! } : { v: null, a: 'sem_registro' };
+    if (!valores.has(k)) return { v: null, a: 'sem_registro' };
+    const v = valores.get(k)!;
+    return v === null && nuloV ? { v: null, a: nuloV } : { v };
   };
   const tipoV = TIPO_DO_FORMATO[e.formato] ?? 'numero';
   const comTotal = e.total && grupos.length > 1 && e.formato !== 'percentual';
@@ -275,7 +291,15 @@ export function montarTabela(e: EspecTabela, c: { rotulo: string; sql: string; r
     const dif: CelulaT = typeof x.v === 'number' && typeof y.v === 'number' ? { v: y.v - x.v } : { v: null, a: 'nao_calculada' };
     return [x, y, dif];
   };
-  const linhaDe = (rotulo: string, a: CelulaT, b: CelulaT): CelulaT[] => [{ v: rotulo }, a, b, ...variacoes(a, b), ...(comPart ? participacoes(a, b) : [])];
+  // contribuição para a variação do total, em p.p.: variação absoluta do grupo ÷ total inicial × 100 (somam a variação % do total)
+  const comContrib = comTotal && !pct;
+  const contribuicao = (a: CelulaT, b: CelulaT): CelulaT => {
+    const t0 = totais[0];
+    return typeof a.v === 'number' && typeof b.v === 'number' && !a.a && !b.a && typeof t0?.v === 'number' && !t0.a && t0.v > 0
+      ? { v: (((b.v as number) - (a.v as number)) / t0.v) * 100 } : { v: null, a: 'nao_calculada' };
+  };
+  const linhaDe = (rotulo: string, a: CelulaT, b: CelulaT): CelulaT[] => [{ v: rotulo }, a, b, ...variacoes(a, b),
+    ...(comContrib ? [contribuicao(a, b)] : []), ...(comPart ? participacoes(a, b) : [])];
   const linhas = grupos.map((g) => linhaDe(g || rotuloColuna(e.valor, 'numero'), celula(p0, g), celula(p1, g)));
   if (comTotal) linhas.push(linhaDe(t('Total', 'Total'), totais[0], totais[1]));
   const r0 = rotuloP(p0, tipoP);
@@ -286,6 +310,7 @@ export function montarTabela(e: EspecTabela, c: { rotulo: string; sql: string; r
     { nome: r1, tipo: tipoV },
     pct ? { nome: t('Diferença (p.p.)', 'Difference (p.p.)'), tipo: 'percentual', sinal: true } : { nome: t('Variação absoluta', 'Absolute change'), tipo: tipoV, sinal: true },
     ...(pct ? [] : [{ nome: t('Variação (%)', 'Change (%)'), tipo: 'percentual' as TipoColuna, sinal: true }]),
+    ...(comContrib ? [{ nome: t('Contribuição para a variação do total (p.p.)', 'Contribution to the change in the total (p.p.)'), tipo: 'percentual' as TipoColuna, sinal: true }] : []),
     ...(comPart ? [
       { nome: t(`Participação ${r0} (%)`, `Share ${r0} (%)`), tipo: 'percentual' as TipoColuna },
       { nome: t(`Participação ${r1} (%)`, `Share ${r1} (%)`), tipo: 'percentual' as TipoColuna },
@@ -295,6 +320,7 @@ export function montarTabela(e: EspecTabela, c: { rotulo: string; sql: string; r
   notas.push(pct
     ? t(`Diferença em pontos percentuais = valor de ${r1} − valor de ${r0}.`, `Difference in percentage points = ${r1} value − ${r0} value.`)
     : t(`Variação absoluta = valor de ${r1} − valor de ${r0}; variação (%) = (${r1} ÷ ${r0} − 1) × 100.`, `Absolute change = ${r1} value − ${r0} value; change (%) = (${r1} ÷ ${r0} − 1) × 100.`));
+  if (comContrib) notas.push(t(`Variação (%) é o crescimento de cada grupo; contribuição (p.p.) = variação absoluta do grupo ÷ total de ${r0} × 100: as contribuições somam a variação (%) do total.`, `Change (%) is each group’s growth; contribution (p.p.) = group’s absolute change ÷ ${r0} total × 100: contributions add up to the total’s change (%).`));
   if (comPart) notas.push(t('Participação = valor do grupo ÷ total do período × 100 (denominador: o total da tabela).', 'Share = group value ÷ period total × 100 (denominator: the table total).'));
   if (comTotal) notas.push(t('Total = soma dos grupos da tabela; não é calculado quando falta algum grupo.', 'Total = sum of the groups in the table; not computed when a group is missing.'));
   return { ok: true, tabela: { ...comum, colunas, linhas, linhaTotal: comTotal ? linhas.length - 1 : null, notas: [...notas, ...notaDoModelo(e)] } };
@@ -307,8 +333,18 @@ const notaDoModelo = (e: EspecTabela) => (e.nota.trim() ? [e.nota.trim()] : []);
 function montarSimples(e: EspecTabela, r: Tabela, tipos: TipoColuna[], base: Omit<TabelaAnalitica, 'colunas' | 'linhas' | 'linhaTotal' | 'pedidos' | 'faltantes' | 'usado' | 'intervalo' | 'notas'>,
   cobertura: CoberturaFonte | null): Montagem {
   const idx = (e.colunas.length ? e.colunas : r.colunas).map((c) => r.colunas.indexOf(c));
-  const colunas: ColunaT[] = idx.map((j) => ({ nome: rotuloColuna(r.colunas[j], tipos[j]), tipo: tipos[j] }));
-  const linhas = r.linhas.map((l) => idx.map((j): CelulaT => ({ v: l[j] })));
+  const decl = colunasDeclaradas(base.sql);
+  const colunas: ColunaT[] = idx.map((j) => ({ nome: rotuloColuna(r.colunas[j], tipos[j], decl?.get(r.colunas[j].toLowerCase())), tipo: tipos[j] }));
+  const variacao = idx.map((j) => /(^|_)(var|variacao|crescimento|cresc|dif|diferenca|delta|contribuicao)(_|$)/i.test(r.colunas[j]));
+  const linhas = r.linhas.map((l) => {
+    // a linha tem o valor medido (não conta ano, competência nem código): a variação vazia é "não calculada"
+    const temValor = idx.some((j, k) => !variacao[k] && typeof l[j] === 'number' && !['ano', 'competencia', 'codigo'].includes(tipos[j]));
+    return idx.map((j, k): CelulaT => {
+      if (l[j] !== null) return { v: l[j] };
+      const nulo = decl?.get(r.colunas[j].toLowerCase())?.nulo;
+      return nulo ? { v: null, a: nulo } : variacao[k] && temValor ? { v: null, a: 'sem_referencia' } : { v: null };
+    });
+  });
   const notas: string[] = [];
   if (e.nota.trim()) notas.push(e.nota.trim());
   let pedidos: string[] = [];
@@ -386,7 +422,19 @@ export function tabelaTsv(tab: TabelaAnalitica, decimal = ','): string {
 }
 
 /** Tabela para CSV/XLSX: números como números (ausências como texto) e metadados. */
-export function tabelaExportavel(tab: TabelaAnalitica, extras: [string, string][] = []) {
+/** Nome legível do tipo de cada coluna, para a ficha da exportação. */
+const NOME_TIPO = (): Partial<Record<TipoColuna, string>> => ({
+  reais: t('R$', 'R$'), contagem: t('contagem (inteiro)', 'count (integer)'), percentual: t('percentual (0–100)', 'percentage (0–100)'),
+  codigo: t('código', 'code'), ano: t('ano', 'year'), competencia: t('competência (AAAAMM)', 'month (YYYYMM)'), texto: t('texto', 'text'),
+  estatistica: t('estatística (sem unidade)', 'statistic (unitless)'), indice: t('índice/fator', 'index/factor'), razao: t('razão', 'ratio'), numero: t('número', 'number'),
+});
+
+export function tabelaExportavel(tab: TabelaAnalitica, extras: [string, string][] = [], cobertura?: Cobertura | null) {
+  // definição, fonte, cobertura, filtros e classificação das colunas do catálogo (as calculadas na consulta não têm)
+  const fichas = [...new Set(tab.nomes ?? [])].flatMap((n) => {
+    const f = fichaDaColuna(n, cobertura);
+    return f ? [[`${t('Definição', 'Definition')}: ${n}`, f] as [string, string]] : [];
+  });
   return {
     colunas: tab.colunas.map((c) => c.nome),
     linhas: tab.linhas.map((l) => l.map((c) => (c.a ? ROTULO_AUSENCIA()[c.a][0] : c.v))),
@@ -398,7 +446,11 @@ export function tabelaExportavel(tab: TabelaAnalitica, extras: [string, string][
       ...(tab.usado ? [[t('Período com dados', 'Period with data'), tab.usado] as [string, string]] : []),
       ...tab.notas.map((n) => [t('Nota', 'Note'), n] as [string, string]),
       ...legendaAusencias(tab).map((n) => [t('Legenda', 'Legend'), n] as [string, string]),
+      [t('Unidade das colunas', 'Column units'), tab.colunas.map((c) => `${c.nome}: ${NOME_TIPO()[c.tipo] ?? c.tipo}`).join(' | ')] as [string, string],
+      ...fichas,
       ...extras,
+      [t('Consulta', 'Query'), tab.consulta] as [string, string],
+      ['SQL', tab.sql.slice(0, 32000)] as [string, string],
     ],
   };
 }

@@ -2,6 +2,8 @@
 
   ibge_pib.parquet       PIB e valor adicionado por setor (IBGE/SIDRA, tabela 5938)
   ipca.parquet           IPCA anual dez/dez (Banco Central, série SGS 433)
+  ibge_populacao.parquet população de referência do IBGE por publicação: Censos 2010 e 2022 e estimativas de
+                         1º de julho (SIDRA 202, 4709 e 6579); a regra de escolha por exercício fica no gold.py
 
 Bolsa Família e INSS vêm das fontes oficiais, em familias.py.
 
@@ -60,6 +62,31 @@ def pib():
     return df
 
 
+# População de referência do IBGE (municípios e UFs), por publicação: (tabela, variável, tipo, períodos).
+# Estimativas de 1º de julho (6579) não existem nos anos de censo e contagem (2007, 2010, 2022) nem em 2023.
+POPULACAO = [
+    ("202", "93", "censo", ["2010"]),
+    ("4709", "93", "censo", ["2022"]),
+    ("6579", "9324", "estimativa", None),  # todos os anos publicados, a partir de 2010
+]
+
+
+def populacao_ibge():
+    """ano, cod_ibge (município 7 dígitos; UF 2 dígitos, DF = 53), populacao, tipo, tabela (SIDRA)."""
+    linhas = []
+    for tabela, var, tipo, periodos in POPULACAO:
+        api = f"https://servicodados.ibge.gov.br/api/v3/agregados/{tabela}"
+        anos = periodos or [p["id"] for p in get_json(f"{api}/periodos") if int(p["id"]) >= 2010]
+        for ano in anos:
+            dados = get_json(f"{api}/periodos/{ano}/variaveis/{var}", localidades="N6[all]|N3[all]")
+            for serie in dados[0]["resultados"][0]["series"]:
+                valor = serie["serie"][ano]
+                if str(valor).isdigit():
+                    linhas.append((int(ano), int(serie["localidade"]["id"]), int(valor), tipo, tabela))
+            print(f"  população {tipo} {ano} (SIDRA {tabela}) ok")
+    return pd.DataFrame(linhas, columns=["ano", "cod_ibge", "populacao", "tipo", "tabela"])
+
+
 def ipca():
     serie = pd.DataFrame(get_json(BCB_IPCA, formato="json", dataInicial="01/01/2010"))
     serie["data"] = pd.to_datetime(serie["data"], dayfirst=True)
@@ -77,7 +104,8 @@ def main():
     SILVER.mkdir(parents=True, exist_ok=True)
 
     for nome, funcao, arquivo in (("IPCA (Banco Central)", ipca, "ipca.parquet"),
-                                  ("PIB municipal (IBGE)", pib, "ibge_pib.parquet")):
+                                  ("PIB municipal (IBGE)", pib, "ibge_pib.parquet"),
+                                  ("População (IBGE)", populacao_ibge, "ibge_populacao.parquet")):
         print(f"{nome}...")
         try:
             funcao().to_parquet(SILVER / arquivo, index=False)

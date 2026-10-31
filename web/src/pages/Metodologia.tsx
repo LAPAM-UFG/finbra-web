@@ -196,7 +196,8 @@ export function Qualidade() {
             (<a href={fontes.inss?.url ?? 'https://www.gov.br/previdencia/'} target="_blank" rel="noreferrer">gov.br/previdencia</a>),{' '}
             {(fontes.inss as { exercicios?: number[] } | undefined)?.exercicios?.join(', ') || '–'}{' '}
             ({t('não há planilha publicada para os demais anos', 'no spreadsheet is published for the other years')}) · {t('processado em', 'processed on')} {data(fontes.inss?.processado_em)}.</li>
-          <li>{t('População: a declarada pelo ente na DCA do exercício (SICONFI).', 'Population: the one reported by the government in the year’s DCA (SICONFI).')}</li>
+          <li>{t('População: a declarada pelo ente na DCA do exercício (SICONFI). Ela costuma repetir uma estimativa do IBGE de um ou dois anos antes e não é a estimativa do IBGE do ano; a população de referência do IBGE fica à parte (populacao_ibge), para o PIB per capita e a IA.',
+            'Population: the one reported by the government in the year’s DCA (SICONFI). It usually repeats an IBGE estimate from one or two years earlier and is not IBGE’s estimate for the year; IBGE’s reference population is kept separately (populacao_ibge), for GDP per capita and the AI.')}</li>
         </ul>
         <h3 style={{ marginTop: 14 }}>{t('Como os valores são montados', 'How the values are built')}</h3>
         <ul>

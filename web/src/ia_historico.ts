@@ -12,6 +12,7 @@ import { useSyncExternalStore } from 'react';
 import {
   ehPergunta, enderecoIa, ErroAcesso, paraModelo, rotuloModo, rotulosConsultas, rotuloTerritorio, textoDaPergunta, turnos,
   type ContextoIa, type Desfecho, type Mensagem, type Painel, type Resultado,
+  type Etapa,
 } from './ia';
 import type { NotaMetodologica } from './ia_notas';
 import { local, t } from './idioma';
@@ -35,6 +36,8 @@ export type MetaTurno = {
   dados?: string;
   /** Modelo do Worker (IA_MODELO) quando a pergunta foi feita. */
   modelo?: string;
+  /** Tempo de cada etapa (chamadas ao modelo, consultas, revisão), em ms: para medir antes de otimizar. */
+  etapas?: Etapa[];
   registro?: RegistroTurno;
   reexecucao?: Reexecucao;
 };
@@ -177,7 +180,8 @@ export function paraImportar(c: Conversa, existente: Conversa | null, agora = Da
  * passam a ser os novos; os textos das respostas (conclusão, análise, ressalvas) continuam os originais.
  */
 export async function novaVersaoComDadosAtuais(c: Conversa, o: {
-  executar: (sql: string, paineis: Painel[]) => Promise<Resultado>; dados: string; fontes: Record<string, Record<string, unknown>>; agora?: number;
+  /** entrada: o pedido inteiro de "consultar" (com a regressão, se houver), para refazer a mesma conta */
+  executar: (sql: string, paineis: Painel[], entrada?: unknown) => Promise<Resultado>; dados: string; fontes: Record<string, Record<string, unknown>>; agora?: number;
 }): Promise<Conversa> {
   const agora = o.agora ?? Date.now();
   const rotulos = rotulosConsultas(c.mensagens);
@@ -191,7 +195,7 @@ export async function novaVersaoComDadosAtuais(c: Conversa, o: {
     for (const b of m.content) {
       if (b.type !== 'tool_use' || b.name !== 'consultar' || !b.id) continue;
       const sql = String((b.input as { sql?: unknown } | undefined)?.sql ?? '');
-      const r = await o.executar(sql, c.metas[turno]?.contexto.paineis ?? ['financas', 'trabalho']);
+      const r = await o.executar(sql, c.metas[turno]?.contexto.paineis ?? ['financas', 'trabalho'], b.input);
       resultados[b.id] = r;
       novos.set(b.id, r);
       if ('erro' in r) falhas.set(turno, (falhas.get(turno) ?? 0) + 1);

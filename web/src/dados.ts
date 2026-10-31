@@ -580,6 +580,17 @@ export function tabelaLrf() {
   return lrfCarregada;
 }
 
+/** Despesa por função (anexo I-E), lida por Range quando uma consulta da IA a cita; sem o arquivo, fica de fora. */
+let despesaFuncao: Promise<void> | null = null;
+export function tabelaDespesaFuncao() {
+  despesaFuncao ??= (async () => {
+    const { con } = await iniciar();
+    await con.query(`CREATE OR REPLACE VIEW despesa_funcao AS SELECT * FROM read_parquet(${arq('gold/despesa_funcao.parquet')})`);
+  })();
+  despesaFuncao.catch(() => (despesaFuncao = null));
+  return despesaFuncao;
+}
+
 // ---------------- educação (SIOPE) e saúde (SIOPS) ----------------
 
 /** Tabelas da IA sobre as declarações de educação e saúde: fonte no manifesto e arquivo do gold. */
@@ -1024,6 +1035,52 @@ const rotasTrabalho: Record<string, (q: Params) => Promise<unknown>> = {
        LEFT JOIN trab_caged_anual c ON c.cod_ibge = m.cod_ibge AND c.ano = m.ano
        LEFT JOIN trab_caged_anual c0 ON c0.cod_ibge = m.cod_ibge AND c0.ano = m.ano - 1
        WHERE ${e.onde} AND m.ano = $ano::INTEGER ORDER BY m.empregos DESC`,
+      p,
+    );
+  },
+};
+
+// ---------------- saúde (SIM, SINASC e população da SVS/MS) ----------------
+
+/**
+ * Ano × município de residência (~5 MB): população, óbitos, óbitos fetais e nascimentos (pipeline/saude.py).
+ * Baixada só quando uma página da área de saúde pede. Códigos fora do cadastro (município ignorado) não têm
+ * cod_ibge: entram nos totais da UF e do Brasil, nunca nos rankings.
+ */
+let saudeCarregada: Promise<void> | null = null;
+export function tabelasSaude() {
+  saudeCarregada ??= (async () => {
+    const { con } = await iniciar();
+    await db.registerFileBuffer('saude_municipios.parquet', await baixar('gold/saude/municipios.parquet'));
+    await con.query(`CREATE TABLE saude_municipios AS SELECT * FROM read_parquet('saude_municipios.parquet')`);
+  })();
+  saudeCarregada.catch(() => (saudeCarregada = null));
+  return saudeCarregada;
+}
+
+const CHAVES_SAUDE = 'ano, cod_ibge, municipio, nome, uf';
+
+const rotasSaude: Record<string, (q: Params) => Promise<unknown>> = {
+  /** Série anual do escopo (município, UF ou Brasil): somas de todas as contagens; as taxas saem na página. */
+  async saude_serie(q) {
+    await tabelasSaude();
+    const p: Record<string, Valor> = {};
+    const e = escopoTrabalho(q, p);
+    return consultar(
+      `SELECT ano, count(cod_ibge)::INTEGER AS municipios, sum(COLUMNS(* EXCLUDE (${CHAVES_SAUDE})))::DOUBLE
+       FROM saude_municipios m WHERE ${e.onde} GROUP BY ano ORDER BY ano`,
+      p,
+    );
+  },
+
+  /** Municípios de uma UF (ou do Brasil) num ano, com as contagens; os indicadores saem na página. */
+  async saude_municipios(q) {
+    await tabelasSaude();
+    const p: Record<string, Valor> = { ano: inteiro(q.ano) };
+    const e = escopoTrabalho({ uf: q.uf }, p);
+    return consultar(
+      `SELECT cod_ibge, nome, uf, COLUMNS(* EXCLUDE (${CHAVES_SAUDE}))::DOUBLE
+       FROM saude_municipios m WHERE ${e.onde} AND m.ano = $ano::INTEGER AND m.cod_ibge IS NOT NULL ORDER BY m.nome`,
       p,
     );
   },
@@ -1701,7 +1758,7 @@ export async function consultaLivre(sql: string, limite: number, sinal?: AbortSi
 }
 
 export async function executar(caminho: string, params: Params): Promise<unknown> {
-  const rota = rotas[caminho] ?? rotasLrf[caminho] ?? rotasSaudeEducacao[caminho] ?? rotasTrabalho[caminho] ?? rotasConsulta[caminho];
+  const rota = rotas[caminho] ?? rotasLrf[caminho] ?? rotasSaudeEducacao[caminho] ?? rotasTrabalho[caminho] ?? rotasConsulta[caminho] ?? rotasSaude[caminho];
   if (!rota) throw new Error(`rota desconhecida: ${caminho}`);
   return rota(params);
 }

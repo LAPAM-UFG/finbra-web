@@ -69,8 +69,73 @@ export const FERRAMENTAS = [
         sql: { type: 'string', description: 'Uma única consulta SELECT/WITH em SQL do DuckDB.' },
         objetivo: { type: 'string', description: 'Frase curta, no idioma da resposta, dizendo o que a consulta mede.' },
         substitui: { type: 'string', description: 'Identificador da consulta que esta corrige ou refaz (ex.: C4), ou "" se for nova.' },
+        colunas: {
+          type: 'array',
+          description: 'Unidade de cada coluna do resultado, na ordem do SELECT; a página formata por ela (não pelo nome). '
+            + 'unidade: "reais", "reais_por_habitante", "contagem" (municípios, vínculos, pessoas: inteiros), "habitantes", '
+            + '"percentual" (0–100), "pontos_percentuais", "razao", "estatistica" (correlação, R², t, p), "indice" (deflator, número-índice), '
+            + '"codigo" (código IBGE, CNAE, CBO), "ano", "competencia" ou "texto". rotulo: cabeçalho legível, com acentos e unidade '
+            + '(ex.: "Despesa da função 04 por habitante (R$ de 2025)"), ou "". nulo: o que um valor nulo da coluna significa — '
+            + '"ausente" (padrão: dado que falta), "nao_aplicavel", "denominador_invalido" (razão com denominador nulo ou zero, '
+            + 'ex.: per capita sem população), "suprimido" ou "nao_calculado".',
+          items: {
+            type: 'object',
+            properties: { nome: { type: 'string' }, unidade: { type: 'string' }, rotulo: { type: 'string' }, nulo: { type: 'string' } },
+            required: ['nome', 'unidade', 'rotulo', 'nulo'],
+            additionalProperties: false,
+          },
+        },
+        regressao: {
+          type: 'object',
+          description: 'Só para regressão linear: a página roda a consulta inteira (uma linha por observação, até 20 mil) e estima por '
+            + 'MQO; o resultado desta consulta passa a ser a tabela de coeficientes (termo, coeficiente, erro_padrao, estatistica_t, '
+            + 'p_valor, ic95_inferior, ic95_superior, n_observacoes, r2, r2_ajustado, graus_liberdade, descartadas_por_ausencia, '
+            + 'tipo_erro_padrao, distribuicao). y e x são colunas do resultado; erro_padrao: "hc1" (robusto, padrão) ou "classico". '
+            + 'Nas consultas comuns: {"y": "", "x": [], "erro_padrao": ""}.',
+          properties: {
+            y: { type: 'string' },
+            x: { type: 'array', items: { type: 'string' } },
+            erro_padrao: { type: 'string' },
+          },
+          required: ['y', 'x', 'erro_padrao'],
+          additionalProperties: false,
+        },
+        verificacao: {
+          type: 'object',
+          description: 'Verificações que a página roda junto com a consulta e devolve em "verificacao_da_pagina" (números do DuckDB). '
+            + 'chaves: colunas do próprio resultado que deveriam identificar uma linha dele (ex.: cod_ibge numa tabela por município; '
+            + '[] numa consulta agregada); a página conta linhas e combinações distintas. '
+            + 'juncoes: para cada junção, esquerda e direita são SELECTs que devolvem as colunas-chave de cada lado, com os mesmos nomes '
+            + '(ex.: SELECT cod_ibge FROM indicadores WHERE exercicio = 2025 AND uf = \'GO\'); a página conta linhas, chaves distintas, '
+            + 'cardinalidade (1:1, 1:N, N:1, N:N) e chaves sem correspondência, com exemplos. amostra: etapas em ordem, cada uma um SELECT '
+            + 'que devolve uma contagem (quantos entes antes e depois de cada filtro). Obrigatório ao juntar tabelas de fontes diferentes '
+            + '(ex.: DCA e RAIS). Sem verificações: {"chaves": [], "juncoes": [], "amostra": []}.',
+          properties: {
+            chaves: { type: 'array', items: { type: 'string' } },
+            juncoes: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: { rotulo: { type: 'string' }, esquerda: { type: 'string' }, direita: { type: 'string' }, chaves: { type: 'array', items: { type: 'string' } } },
+                required: ['rotulo', 'esquerda', 'direita', 'chaves'],
+                additionalProperties: false,
+              },
+            },
+            amostra: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: { etapa: { type: 'string' }, sql: { type: 'string' } },
+                required: ['etapa', 'sql'],
+                additionalProperties: false,
+              },
+            },
+          },
+          required: ['chaves', 'juncoes', 'amostra'],
+          additionalProperties: false,
+        },
       },
-      required: ['sql', 'objetivo', 'substitui'],
+      required: ['sql', 'objetivo', 'substitui', 'colunas', 'regressao', 'verificacao'],
       additionalProperties: false,
     },
   },

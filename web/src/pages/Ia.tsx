@@ -11,7 +11,7 @@ import {
   avisoFaltantes, consultasDaConversa, contextoParaModelo, descreverCobertura, descricaoModo, ErroAcesso, estadoIa, executarConsulta, exemploPergunta, foiCancelado,
   fontesConsultadas, lerModo, LINHAS_TELA, MAX_PERGUNTA, mesmoContexto, MODOS, nomeDaUf, PAINEIS, perguntarIa, prepararResposta,
   recorteDe, rotuloAno, rotuloModo, rotuloTerritorio, semUltimaPergunta, sugestoes, tabelaInteira, textoDaResposta, turnos, urlEntrar,
-  type Cobertura, type ConsultaFeita, type ContextoIa, type DadosGrafico, type EstadoIa, type GraficoIa,
+  type Cobertura, type ConsultaFeita, type ContextoIa, type DadosGrafico, type DestaquePronto, type Etapa, type EstadoIa, type GraficoIa,
   type GraficoPronto, type ItemTurno, type Mensagem, type Modo, type Painel, type Progresso, type RespostaPronta, type Resultado,
   type Sugestao, type TabelaPronta, type Territorio, type TurnoIa,
 } from '../ia';
@@ -25,6 +25,7 @@ import {
   ehTexto, formatarCelulaT, rodapeTabela, tabelaExportavel, tabelaHtml, tabelaTsv, type TabelaAnalitica,
 } from '../ia_tabelas';
 import { pedidoConferencia } from '../ia_conferencia';
+import { linhasDaVerificacao } from '../ia_verificacao';
 import { cadastro as carregarCadastro, type Cadastro } from '../ia_territorio';
 
 const LINHAS_INICIAIS = 25;
@@ -275,7 +276,7 @@ async function baixarExcel(lista: TurnoIa[], metas: MetaTurno[], prontas: (Respo
       if (!tab) continue;
       n += 1;
       const e = tabelaExportavel(tab, [[t('Pergunta', 'Question'), turno.pergunta], [t('Dados processados em', 'Data processed on'), versaoDoTurno(metas[i], geradoEm).geradoEm],
-        ...linhasGuardadas(tab, versaoDoTurno(metas[i], geradoEm))]);
+        ...(p ? recorteDe(p) : []), ...linhasGuardadas(tab, versaoDoTurno(metas[i], geradoEm))], cobertura);
       const nome = `${t('Tabela', 'Table')} ${n} ${tab.titulo}`;
       nomes.push(nome.slice(0, 31));
       abas.push({ nome, linhas: [...e.metadados.map(([k, v]): Celula[] => [k, v]), [], e.colunas, ...e.linhas] });
@@ -423,7 +424,13 @@ function apendiceHtml(turno: TurnoIa, p: RespostaPronta | null, resultados: Reco
     if (p.hipotesesOmitidas) partes.push(`<h4>${html(t('Hipóteses (omitidas da resposta: a pergunta não pedia explicações)', 'Hypotheses (left out of the answer: the question did not ask for explanations)'))}</h4>${textoHtml(p.r.hipoteses)}`);
     const leituras = p.leituras.filter((l) => !l.motivo);
     if (leituras.length) partes.push(`<h4>${html(t('Leituras e colunas que as sustentam', 'Readings and supporting columns'))}</h4><ul>${leituras.map((l) => `<li>${html(l.texto)} <span class="nota">(${html(`${l.consulta}: ${l.colunas.join(', ')}`)})</span></li>`).join('')}</ul>`);
-    const conferencia = p.destaques.map((x) => `<li>${html(x.d.rotulo)}: ${html(x.valor)} <span class="nota">(${html(x.conferencia === 'conferido' ? t(`conferido na consulta ${x.d.consulta}, coluna ${x.d.coluna}`, `checked in query ${x.d.consulta}, column ${x.d.coluna}`) : t(`não encontrado na consulta ${x.d.consulta}`, `not found in query ${x.d.consulta}`))})</span></li>`).join('');
+    const conferencia = p.destaques.map((x) => `<li>${html(x.d.rotulo)}: ${html(x.valor)} <span class="nota">(${html([
+      x.conferencia !== 'conferido' ? t(`não encontrado na consulta ${x.d.consulta}`, `not found in query ${x.d.consulta}`)
+        : x.origem === 'calculo' ? t(`calculado pela página a partir da consulta ${x.d.consulta}`, `computed by the page from query ${x.d.consulta}`)
+          : x.origem === 'oficial' ? t(`valor oficial (${x.oficial}) no resultado da consulta ${x.d.consulta}, coluna ${x.d.coluna}, sem transformação`, `official value (${x.oficial}) in the result of query ${x.d.consulta}, column ${x.d.coluna}, unchanged`)
+            : t(`localizado no resultado da consulta ${x.d.consulta}, coluna ${x.d.coluna}; sem comparação com referência oficial externa`, `found in the result of query ${x.d.consulta}, column ${x.d.coluna}; not compared with an external official reference`),
+      x.consistente?.length ? textoConsistencia(x.consistente)[0] : '',
+    ].filter(Boolean).join('; '))})</span></li>`).join('');
     if (conferencia) partes.push(`<h4>${html(t('Conferência dos números principais', 'Check of the key numbers'))}</h4><ul>${conferencia}</ul>`);
     const origem = p.tabelas.filter((x) => x.tabela).map((x) => `<li>${html(x.tabela!.titulo)}: ${html(t(`consulta ${x.espec.consulta}`, `query ${x.espec.consulta}`))} (${html(x.espec.tipo)}${x.espec.grupo ? `, ${html(t('grupo', 'group'))} ${html(x.espec.grupo)}` : ''}${x.espec.periodo ? `, ${html(t('período', 'period'))} ${html(x.espec.periodo)}` : ''}${x.espec.valor ? `, ${html(t('valor', 'value'))} ${html(x.espec.valor)}` : ''})</li>`).join('');
     if (origem) partes.push(`<h4>${html(t('Origem das tabelas', 'Table sources'))}</h4><ul>${origem}</ul>`);
@@ -570,6 +577,48 @@ function Chips({ contexto, rotulo, pequenos, periodo }: { contexto: ContextoIa; 
   );
 }
 
+/** "modelo 41 s em 5 chamadas · consultas 9 s (1 reaproveitada) · revisão 0 s": onde foi o tempo da pergunta. */
+function tempoPorEtapa(etapas: Etapa[]): string {
+  const s = (ms: number) => `${Math.round(ms / 1000)} s`;
+  const de = (tipo: Etapa['tipo']) => etapas.filter((e) => e.tipo === tipo);
+  const soma = (xs: Etapa[]) => xs.reduce((a, e) => a + e.ms, 0);
+  const modelo = de('modelo');
+  const consultas = de('consulta');
+  const reuso = consultas.filter((e) => e.reaproveitada).length;
+  return [
+    modelo.length && t(`modelo ${s(soma(modelo))} em ${contar(modelo.length, 'chamada', 'chamadas')}`, `model ${s(soma(modelo))} in ${modelo.length} calls`),
+    consultas.length && t(`consultas ${s(soma(consultas))}${reuso ? ` (${reuso} reaproveitada${reuso > 1 ? 's' : ''})` : ''}`, `queries ${s(soma(consultas))}${reuso ? ` (${reuso} reused)` : ''}`),
+    de('revisao').length && t(`conferência ${s(soma(de('revisao')))}`, `checks ${s(soma(de('revisao')))}`),
+  ].filter(Boolean).join(' · ');
+}
+
+/**
+ * Cabeçalho de cada resposta: o recorte que as consultas executaram de fato (território lido dos códigos no SQL,
+ * período dos resultados, fontes lidas) e, à parte, o contexto da página quando ele não foi o usado.
+ */
+function RecorteExecutado({ contexto, pronta }: { contexto: ContextoIa; pronta: RespostaPronta | null }) {
+  const territorio = pronta?.territorios.length ? pronta.territorios.join('; ') : null;
+  const periodo = pronta?.periodo ?? null;
+  const daPagina = rotuloTerritorio(contexto.territorio);
+  const diferente = (territorio && territorio !== daPagina) || (periodo && contexto.ano && !periodo.includes(String(contexto.ano)));
+  return (
+    <div className="ia-recorte-executado">
+      <ul className="ia-chips pequenos" aria-label={t('Recorte executado nesta resposta', 'Scope executed in this answer')}>
+        <li className="ia-chip" title={t('Painéis consultados', 'Dashboards queried')}>{contexto.paineis.map((p) => NOMES_PAINEIS()[p]).join(' + ')}</li>
+        <li className="ia-chip" title={t('Território das consultas executadas', 'Territory of the executed queries')}>{territorio ?? daPagina}</li>
+        <li className="ia-chip" title={t('Período dos resultados', 'Period of the results')}>{periodo ?? rotuloDoPeriodo(contexto, null)}</li>
+        <li className="ia-chip" title={t('Modo de resposta', 'Answer mode')}>{rotuloModo(contexto.modo)}</li>
+      </ul>
+      {pronta && diferente && (
+        <p className="ia-nota ia-contexto-pagina">
+          {t(`Recorte lido das consultas executadas. Contexto da página quando a pergunta foi feita: ${daPagina}${contexto.ano ? `, ${contexto.ano}` : ''} (a pergunta especificou outro recorte).`,
+            `Scope read from the executed queries. Page context when the question was asked: ${daPagina}${contexto.ano ? `, ${contexto.ano}` : ''} (the question specified another scope).`)}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function BarraContexto({ rotulo, contexto, aberto, alternar }: { rotulo: string; contexto: ContextoIa; aberto: boolean; alternar: () => void }) {
   return (
     <div className="ia-contexto">
@@ -667,7 +716,7 @@ function Compositor({ valor, mudar, enviar, cancelar, ocupado, bloqueio, exemplo
   }, [valor, grande, campo]);
   const restantes = MAX_PERGUNTA - valor.length;
   return (
-    <form className={`ia-compositor${grande ? ' grande' : ''}`} onSubmit={(e) => { e.preventDefault(); enviar(valor); }}>
+    <form className={`ia-compositor${grande ? ' grande' : !valor && !ocupado ? ' compacto' : ''}`} onSubmit={(e) => { e.preventDefault(); enviar(valor); }}>
       <label htmlFor="ia-pergunta" className="sr-only">{t('Sua pergunta', 'Your question')}</label>
       <textarea
         id="ia-pergunta"
@@ -774,6 +823,17 @@ function Andamento({ progresso, inicio }: { progresso: Progresso | null; inicio:
   );
 }
 
+/** Verificações rodadas pela página junto com a consulta (chave, junções, amostra): números do DuckDB, não do modelo. */
+function Verificacoes({ linhas }: { linhas: string[] }) {
+  if (!linhas.length) return null;
+  return (
+    <div className="ia-verificacoes">
+      <p className="ia-verificacoes-titulo">{t('Verificações da página (chaves, junções e amostra)', 'Page checks (keys, joins and sample)')}</p>
+      <ul>{linhas.map((l, i) => <li key={i}>{l}</li>)}</ul>
+    </div>
+  );
+}
+
 /** Tabela já formatada (tela e PDF usam a mesma): uma linha só com muitas colunas aparece em linhas. */
 function TabelaIa({ tabela }: { tabela: TabelaFormatada }) {
   return (
@@ -809,6 +869,11 @@ function Consulta({ item, resultado, pergunta, paineis, usada, refeitaEm }: {
           <span className="ia-rotulo-consulta">{item.rotulo}</span>
           <strong>{item.objetivo || t('Consulta', 'Query')}</strong>
           <span className={`ia-situacao ${situacao.classe}`}>{situacao.texto}</span>
+          {item.regressao && (
+            <span className="ia-marca" title={t('Estimada pela página com todas as linhas da consulta (não pelo modelo)', 'Estimated by the page with all rows of the query (not by the model)')}>
+              {t('regressão MQO calculada pela página', 'OLS regression computed by the page')}: {item.regressao.y} ~ {item.regressao.x.join(' + ')} ({item.regressao.erroPadrao === 'hc1' ? t('erro-padrão HC1', 'HC1 standard error') : t('erro-padrão clássico', 'classical standard error')})
+            </span>
+          )}
           {item.substitui && <span className="ia-marca">{t(`refaz ${item.substitui}`, `redoes ${item.substitui}`)}</span>}
           {refeitaEm && <span className="ia-marca">{t(`refeita em ${refeitaEm}`, `redone in ${refeitaEm}`)}</span>}
           {usada && <span className="ia-marca usada">{t('usada na resposta', 'used in the answer')}</span>}
@@ -825,6 +890,7 @@ function Consulta({ item, resultado, pergunta, paineis, usada, refeitaEm }: {
                 [t('Consulta', 'Query'), `${item.rotulo} · ${item.objetivo}`],
                 [t('Consulta SQL (proposta pela IA)', 'SQL query (proposed by AI)'), item.sql],
                 [t('Linhas', 'Rows'), `${ok.linhas.length} / ${ok.total}`],
+                ...(ok.verificacao ? linhasDaVerificacao(ok.verificacao).map((l) => [t('Verificação', 'Check'), l] as [string, string]) : []),
                 [t('Dados processados em', 'Data processed on'), versao.geradoEm],
                 [t('Exportado em', 'Exported on'), new Date().toISOString()],
               ],
@@ -836,6 +902,7 @@ function Consulta({ item, resultado, pergunta, paineis, usada, refeitaEm }: {
         <summary>SQL</summary>
         <pre className="ia-sql">{item.sql}</pre>
       </details>
+      {ok?.verificacao && <Verificacoes linhas={linhasDaVerificacao(ok.verificacao)} />}
       {!resultado ? null : 'erro' in resultado ? (
         <p className="erro">{resultado.bloqueada ? t('Recusada antes de executar', 'Refused before running') : t('A consulta falhou', 'The query failed')}: {resultado.erro}</p>
       ) : !tabela ? (
@@ -883,9 +950,10 @@ function Processo({ itens, resultados, ativo, abertoPadrao, pergunta, paineis, u
           if (c.tipo === 'revisao') return <li key={`r${k}`} className="erro">{t('Resposta devolvida à IA para correção', 'Answer returned to the AI for correction')}</li>;
           if (c.tipo !== 'consulta') return null;
           const s = estadoConsulta(resultados[c.id]);
+          const em = refeita.get(c.rotulo);
           return (
-            <li key={c.id} className={s.classe}>
-              <span className="ia-rotulo-consulta">{c.rotulo}</span> {c.objetivo} <span className={`ia-situacao ${s.classe}`}>{s.texto}</span>
+            <li key={c.id} className={em ? undefined : s.classe}>
+              <span className="ia-rotulo-consulta">{c.rotulo}</span> {c.objetivo} <span className={`ia-situacao ${s.classe}`}>{s.texto}{em && ` · ${t(`refeita em ${em}`, `redone in ${em}`)}`}</span>
             </li>
           );
         })}
@@ -971,6 +1039,14 @@ function TabelaResposta({ x, numero, pergunta }: { x: TabelaPronta; numero: numb
   const cobertura = coberturaDe(meta, false);
   const [todas, setTodas] = useState(false);
   const [copiada, setCopiada] = useState<boolean | null>(null);
+  // tabela ampliada: ocupa a tela, com cabeçalho e primeira coluna fixos; Esc fecha
+  const [ampliada, setAmpliada] = useState(false);
+  useEffect(() => {
+    if (!ampliada) return;
+    const fechar = (e: KeyboardEvent) => { if (e.key === 'Escape') setAmpliada(false); };
+    window.addEventListener('keydown', fechar);
+    return () => window.removeEventListener('keydown', fechar);
+  }, [ampliada]);
   const tab = x.tabela;
   if (!tab) {
     const r = x.consulta?.resultado;
@@ -991,11 +1067,15 @@ function TabelaResposta({ x, numero, pergunta }: { x: TabelaPronta; numero: numb
     setTimeout(() => setCopiada(null), 2000);
   };
   return (
-    <figure className={`ia-tab${x.espec.papel !== 'principal' ? ` papel-${x.espec.papel}` : ''}`}>
+    <figure className={`ia-tab${x.espec.papel !== 'principal' ? ` papel-${x.espec.papel}` : ''}${ampliada ? ' ia-tab-ampliada' : ''}`}
+      {...(ampliada ? { role: 'dialog', 'aria-modal': true, 'aria-label': tab.titulo } : {})}>
       {papel && <p className="ia-tab-papel">{papel}</p>}
       <div className="ia-tab-cabeca">
         <figcaption className="ia-tab-titulo"><span className="ia-tab-num">{t('Tabela', 'Table')} {numero}</span> {tab.titulo}</figcaption>
         <div className="ia-tab-acoes">
+          <button type="button" className="botao-leve" aria-pressed={ampliada} onClick={() => { setAmpliada((a) => !a); if (!ampliada) setTodas(true); }}>
+            {ampliada ? t('Fechar (Esc)', 'Close (Esc)') : t('Ampliar', 'Expand')}
+          </button>
           <button type="button" className="botao-leve" onClick={copiar} title={t('Cola em linhas e colunas no Word e no Excel', 'Pastes as rows and columns in Word and Excel')}>
             {copiada === true ? t('Copiada ✓', 'Copied ✓') : copiada === false ? t('Não foi possível copiar', 'Could not copy') : t('Copiar tabela', 'Copy table')}
           </button>
@@ -1004,7 +1084,7 @@ function TabelaResposta({ x, numero, pergunta }: { x: TabelaPronta; numero: numb
             [t('Dados processados em', 'Data processed on'), versao.geradoEm],
             ...linhasGuardadas(tab, versao),
             [t('Exportado em', 'Exported on'), new Date().toISOString()],
-          ])} />
+          ], cobertura)} />
         </div>
       </div>
       <div className="rolagem">
@@ -1063,11 +1143,26 @@ function GraficoResposta({ p }: { p: GraficoPronto }) {
   );
 }
 
-const TEXTO_CONFERENCIA = (c: 'conferido' | 'divergente' | 'sem_consulta', consulta: string) => ({
-  conferido: [t(`conferido em ${consulta}`, `checked in ${consulta}`), t(`O número está na tabela da consulta ${consulta}.`, `The number is in the table of query ${consulta}.`)],
+/**
+ * Selo de cada número principal. Diz só o que foi verificado: que o número está no resultado da consulta (ou
+ * foi calculado pela página a partir dele). Não é comparação com uma referência oficial externa.
+ */
+const TEXTO_CONFERENCIA = (c: 'conferido' | 'divergente' | 'sem_consulta', consulta: string, origem: DestaquePronto['origem'] = 'resultado', oficial = '') => ({
+  conferido: origem === 'calculo'
+    ? [t(`calculado pela página a partir de ${consulta}`, `computed by the page from ${consulta}`), t(`Total ou variação calculados pela página com o resultado da consulta ${consulta}. Não é comparação com uma referência oficial externa.`, `Total or change computed by the page from the result of query ${consulta}. Not a comparison with an external official reference.`)]
+    : origem === 'oficial'
+      ? [t(`valor oficial (${oficial}), em ${consulta}`, `official value (${oficial}), in ${consulta}`), t(`O número está no resultado da consulta ${consulta}, numa coluna que reproduz sem transformação a publicação ${oficial}; a página não o recalculou nem somou.`, `The number is in the result of query ${consulta}, in a column that reproduces the ${oficial} publication unchanged; the page did not recompute or sum it.`)]
+      : [t(`localizado em ${consulta}`, `found in ${consulta}`), t(`O número está no resultado da consulta ${consulta} (localização no resultado, não validação externa: não foi comparado com uma referência oficial).`, `The number is in the result of query ${consulta} (located in the result, not an external validation: it was not compared with an official reference).`)],
   divergente: [t(`não encontrado em ${consulta}`, `not found in ${consulta}`), t(`O número não aparece na tabela da consulta ${consulta}: confira antes de usar.`, `The number does not appear in the table of query ${consulta}: check before using it.`)],
   sem_consulta: [t('sem consulta correspondente', 'no matching query'), t('A resposta cita uma consulta que não existe ou falhou: confira antes de usar.', 'The answer cites a query that does not exist or failed: check before using it.')],
 })[c];
+
+/** Selo de consistência entre tabelas: o mesmo número em consultas que leem outras tabelas. */
+const textoConsistencia = (outras: string[]) => [
+  t(`confere com ${outras.join(', ')} (outra tabela)`, `matches ${outras.join(', ')} (another table)`),
+  t(`O mesmo número aparece em ${outras.join(', ')}, que lê outras tabelas. Tabelas geradas pelo mesmo processamento podem compartilhar um erro comum: a concordância não prova que o número está certo.`,
+    `The same number appears in ${outras.join(', ')}, which reads other tables. Tables produced by the same processing may share a common error: agreement does not prove the number is right.`),
+];
 
 /** Alerta de comparabilidade junto à conclusão: a diferença atravessa uma mudança de captação da RAIS. */
 function AlertaSerie({ notas }: { notas: NotaMetodologica[] }) {
@@ -1087,13 +1182,22 @@ function AlertaSerie({ notas }: { notas: NotaMetodologica[] }) {
   );
 }
 
-function NotasVerificadas({ notas }: { notas: NotaMetodologica[] }) {
+/**
+ * Notas verificadas da resposta. As que já apareceram em respostas anteriores da conversa (vistas) ficam numa
+ * linha só, pelo título, para a leitura não repetir os mesmos parágrafos a cada pergunta.
+ */
+function NotasVerificadas({ notas, vistas }: { notas: NotaMetodologica[]; vistas?: Set<string> }) {
   if (!notas.length) return null;
+  const novas = notas.filter((n) => !vistas?.has(n.id));
+  const repetidas = notas.filter((n) => vistas?.has(n.id));
   return (
     <section className="ia-bloco">
       <h4>{t('Notas metodológicas verificadas', 'Verified methodological notes')}</h4>
+      {repetidas.length > 0 && (
+        <p className="ia-nota">{t('Valem também, como nas respostas anteriores', 'Also applicable, as in the previous answers')}: {repetidas.map((n) => n.titulo()).join('; ')}.</p>
+      )}
       <ul className="ia-notas">
-        {notas.map((n) => (
+        {novas.map((n) => (
           <li key={n.id}>
             <strong>{n.titulo()}.</strong> {n.texto()}
             <span className="ia-nota">
@@ -1145,8 +1249,10 @@ function Reproducao({ p, consultas, contexto }: { p: RespostaPronta; consultas: 
   );
 }
 
-function Resposta({ p, modo, pergunta, consultas, contexto }: {
+function Resposta({ p, modo, pergunta, consultas, contexto, notasVistas }: {
   p: RespostaPronta; modo: Modo; pergunta: string; consultas: ItemConsulta[]; contexto?: ContextoIa;
+  /** Notas já mostradas em respostas anteriores da conversa. */
+  notasVistas?: Set<string>;
 }) {
   const r = p.r;
   const rapida = modo === 'rapida';
@@ -1174,7 +1280,8 @@ function Resposta({ p, modo, pergunta, consultas, contexto }: {
   const destaques = p.destaques.length > 0 && (
     <ul className="ia-destaques" aria-label={t('Números principais', 'Key numbers')}>
       {p.destaques.map((x, k) => {
-        const [curto, longo] = TEXTO_CONFERENCIA(x.conferencia, x.d.consulta);
+        const [curto, longo] = TEXTO_CONFERENCIA(x.conferencia, x.d.consulta, x.origem, x.oficial);
+        const consistencia = x.consistente?.length ? textoConsistencia(x.consistente) : null;
         return (
           <li key={k} className="ia-destaque">
             <span className="ia-destaque-rotulo">{x.d.rotulo}</span>
@@ -1189,6 +1296,11 @@ function Resposta({ p, modo, pergunta, consultas, contexto }: {
             <span className={`ia-conferencia ${x.conferencia}`} title={longo}>
               <span aria-hidden="true">{x.conferencia === 'conferido' ? '✓ ' : '⚠ '}</span>{curto}<span className="sr-only">. {longo}</span>
             </span>
+            {consistencia && (
+              <span className="ia-conferencia consistente" title={consistencia[1]}>
+                <span aria-hidden="true">≡ </span>{consistencia[0]}<span className="sr-only">. {consistencia[1]}</span>
+              </span>
+            )}
           </li>
         );
       })}
@@ -1226,7 +1338,7 @@ function Resposta({ p, modo, pergunta, consultas, contexto }: {
               {blocoLeituras}
               {blocoHipoteses}
               <Recorte p={p} />
-              <NotasVerificadas notas={p.notas} />
+              <NotasVerificadas notas={p.notas} vistas={notasVistas} />
               {r.metodologia && <section className="ia-bloco"><h4>{t('Metodologia', 'Methodology')}</h4><TextoRico texto={r.metodologia} /></section>}
             </details>
           )}
@@ -1261,7 +1373,7 @@ function Resposta({ p, modo, pergunta, consultas, contexto }: {
             <h4 className="ia-parte-titulo">{t('Metodologia e fontes', 'Methodology and sources')}</h4>
             <TextoRico texto={r.metodologia} />
             {p.fontes.length > 0 && <ul className="ia-notas">{p.fontes.map((f) => <li key={f}>{f}</li>)}</ul>}
-            <NotasVerificadas notas={p.notas} />
+            <NotasVerificadas notas={p.notas} vistas={notasVistas} />
             <Reproducao p={p} consultas={consultas} contexto={contexto} />
           </section>
         </>
@@ -1296,8 +1408,8 @@ function Incompleta({ meta, aoUsar }: { meta?: MetaTurno; aoUsar: (s: string) =>
   );
 }
 
-function Turno({ i, turno, pronta, meta, resultados, ativo, progresso, ultimo, paineis, feitas, aoEditar, aoUsar, aoCopiar, aoPedirConferencia }: {
-  i: number; turno: TurnoIa; pronta: RespostaPronta | null; meta?: MetaTurno; resultados: Record<string, Resultado>;
+function Turno({ i, turno, pronta, meta, resultados, ativo, progresso, ultimo, paineis, feitas, notasVistas, aoEditar, aoUsar, aoCopiar, aoPedirConferencia }: {
+  i: number; turno: TurnoIa; pronta: RespostaPronta | null; meta?: MetaTurno; resultados: Record<string, Resultado>; notasVistas?: Set<string>;
   ativo: boolean; progresso: Progresso | null; ultimo: boolean; paineis: Painel[]; feitas: Set<string>;
   aoEditar: () => void; aoUsar: (s: string) => void; aoCopiar: (texto: string) => Promise<boolean>;
   /** Baixa o pedido de conferência (só para quem pode pedir); devolve o motivo se não der para montá-lo. */
@@ -1322,7 +1434,7 @@ function Turno({ i, turno, pronta, meta, resultados, ativo, progresso, ultimo, p
     <article id={`ia-turno-${i}`} className="ia-turno" aria-labelledby={`ia-pergunta-${i}`} aria-busy={ativo}>
       <header className="ia-turno-cabeca">
         <h3 id={`ia-pergunta-${i}`} className="ia-pergunta">{turno.pergunta}</h3>
-        {meta && <Chips contexto={meta.contexto} rotulo={t('Contexto usado nesta resposta', 'Context used for this answer')} pequenos periodo={pronta?.periodo} />}
+        {meta && <RecorteExecutado contexto={meta.contexto} pronta={pronta} />}
       </header>
       {re && (
         <div className="ia-reexecutada" role="note">
@@ -1341,7 +1453,7 @@ function Turno({ i, turno, pronta, meta, resultados, ativo, progresso, ultimo, p
       )}
       {ativo && meta && <Andamento progresso={progresso} inicio={meta.inicio} />}
       {pronta ? (
-        <Resposta p={pronta} modo={meta?.contexto.modo ?? 'rapida'} pergunta={turno.pergunta} contexto={meta?.contexto}
+        <Resposta p={pronta} modo={meta?.contexto.modo ?? 'rapida'} pergunta={turno.pergunta} contexto={meta?.contexto} notasVistas={notasVistas}
           consultas={consultasDoTurno(turno).filter((c) => pronta.usadas.has(c.rotulo))} />
       ) : turno.textoFinal ? (
         <div className="ia-resposta texto-livre">
@@ -1366,8 +1478,9 @@ function Turno({ i, turno, pronta, meta, resultados, ativo, progresso, ultimo, p
             </button>
           )}
           {meta?.fim && (
-            <span className="ia-tempo">
+            <span className="ia-tempo" title={meta.etapas?.length ? t('Tempo por etapa', 'Time per step') : undefined}>
               {t(`Concluída em ${segundos} s`, `Finished in ${segundos} s`)} · {contar(nConsultas, t('consulta', 'query'), t('consultas', 'queries'))}
+              {meta.etapas?.length ? ` (${tempoPorEtapa(meta.etapas)})` : ''}
             </span>
           )}
           {falhaConferencia && <p className="ia-nota" role="status">{t('Pedido de conferência não gerado', 'Review request not generated')}: {falhaConferencia}</p>}
@@ -1590,6 +1703,8 @@ export function Ia() {
     const reg = m?.registro;
     return reg ? { ...p, fontes: reg.fontes, notas: reg.notas.map(lerNota), codigos: reg.codigos, bases: reg.bases ?? p.bases } : p;
   }), [lista, consultas, cadastro, ultimaCompetencia, meta.fontes, cobertura, metas, aberta?.fontes]);
+  // notas já mostradas nas respostas anteriores de cada pergunta (as repetidas aparecem só pelo título)
+  const notasVistas = useMemo(() => prontas.map((_, i) => new Set(prontas.slice(0, i).flatMap((p) => p?.notas.map((n) => n.id) ?? []))), [prontas]);
   // fontes, versões das bases, notas e códigos da resposta que acabou de chegar, para guardar com ela
   const registroDoTurno = (msgs: Mensagem[], res: Record<string, Resultado>, pergunta: string): RegistroTurno | undefined => {
     const ultimo = turnos(msgs).at(-1);
@@ -1683,7 +1798,7 @@ export function Ia() {
         },
         aoRestantes: (n) => setEstado((e) => (e ? { ...e, restantes: n } : e)),
       });
-      const feita: MetaTurno = { ...inicio, fim: Date.now(), desfecho: r.desfecho, detalhe: r.detalhe, registro: registroDoTurno(r.mensagens, res, pergunta) };
+      const feita: MetaTurno = { ...inicio, fim: Date.now(), desfecho: r.desfecho, detalhe: r.detalhe, etapas: r.etapas, registro: registroDoTurno(r.mensagens, res, pergunta) };
       // com login, a conversa (inclusive uma que estava só neste navegador) é gravada na conta
       const conversa: Conversa = {
         ...base, conta: h.conta ?? base.conta, atualizadaEm: Date.now(), mensagens: r.mensagens, metas: [...antes.metas, feita], resultados: res,
@@ -1777,7 +1892,7 @@ export function Ia() {
     setRefazendo(true);
     setStatus(t('Refazendo as consultas com os dados atuais, aqui no navegador…', 'Rerunning the queries with the current data, here in the browser…'));
     try {
-      const nova = await novaVersaoComDadosAtuais(c, { executar: (sql, p) => executarConsulta({ sql }, p), dados: meta.geradoEm, fontes: meta.fontes });
+      const nova = await novaVersaoComDadosAtuais(c, { executar: (sql, p, entrada) => executarConsulta(entrada ?? { sql }, p), dados: meta.geradoEm, fontes: meta.fontes });
       if (await historico.salvar(nova)) abrirConversa(nova.id);
     } finally {
       setRefazendo(false);
@@ -2010,7 +2125,7 @@ export function Ia() {
           {avisoVersao}
           <div className="ia-conversa">
             {lista.map((turno, i) => (
-              <Turno key={i} i={i} turno={turno} pronta={prontas[i]} meta={metas[i]} resultados={resultados}
+              <Turno key={i} i={i} turno={turno} pronta={prontas[i]} meta={metas[i]} resultados={resultados} notasVistas={notasVistas[i]}
                 ativo={!!rodando && i === lista.length - 1} progresso={progresso} ultimo={i === lista.length - 1} paineis={contexto.paineis}
                 feitas={feitas} aoEditar={editarUltima} aoUsar={usarTexto} aoCopiar={copiar} aoPedirConferencia={conferencia(i)} />
             ))}

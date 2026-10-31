@@ -49,10 +49,13 @@ const TRATAMENTO = 'filtrado';
 export function useFiltros() {
   const { meta, porCodigo, entes } = useDados();
   const [busca, setBusca] = useSearchParams();
-  // a área de trabalho usa os anos da RAIS (2010 em diante); as finanças, os do SICONFI
-  const trabalho = useLocation().pathname.startsWith('/trabalho');
+  // a área de trabalho usa os anos da RAIS (2010 em diante); a de saúde, os do SIM; as finanças, os do SICONFI
+  const caminho = useLocation().pathname;
+  const trabalho = caminho.startsWith('/trabalho');
+  const saude = caminho.startsWith('/datasus');
   const anosRais = (meta.fontes.rais as { anos?: number[] } | undefined)?.anos;
-  const anos = trabalho && anosRais?.length ? anosRais : meta.anos;
+  const anosSim = (meta.fontes.sim as { anos?: number[] } | undefined)?.anos;
+  const anos = trabalho && anosRais?.length ? anosRais : saude && anosSim?.length ? anosSim : meta.anos;
   const anoUrl = Number(busca.get('ano'));
   const ano = anos.includes(anoUrl) ? anoUrl : anos.at(-1)!;
   /** Ano pedido na URL que não está na base (ex.: 2026 vindo das finanças): a página avisa a troca. */
@@ -127,8 +130,9 @@ type Opcoes = { semAno?: boolean; semEnte?: string };
 
 export function BarraFiltros(opcoes: Opcoes = {}) {
   const f = useFiltros();
-  // as sinalizações são das declarações do SICONFI: não valem para a área de mercado de trabalho (RAIS e CAGED)
-  const financas = !useLocation().pathname.startsWith('/trabalho');
+  // as sinalizações são das declarações do SICONFI: não valem para as áreas de mercado de trabalho e de saúde
+  const caminho = useLocation().pathname;
+  const financas = !caminho.startsWith('/trabalho') && !caminho.startsWith('/datasus');
   const alertas = useApi<Alerta[]>(f.alvo && financas ? 'alertas' : null, { ente: f.alvo?.cod_ibge });
   const doAno = (alertas.dados ?? []).filter((a) => a.exercicio === f.ano);
   return (
@@ -156,12 +160,14 @@ export function BarraFiltros(opcoes: Opcoes = {}) {
 function Filtros({ semAno, semEnte }: Opcoes) {
   const { entes } = useDados();
   const f = useFiltros();
-  const trabalho = useLocation().pathname.startsWith('/trabalho');
+  const caminho = useLocation().pathname;
+  const trabalho = caminho.startsWith('/trabalho');
+  const saude = caminho.startsWith('/datasus');
   return (
     <div className="filtros">
       {!semAno && (
         <div className="campo">
-          <label htmlFor="f-ano">{trabalho ? t('Ano da RAIS', 'RAIS year') : t('Exercício', 'Fiscal year')}</label>
+          <label htmlFor="f-ano">{trabalho ? t('Ano da RAIS', 'RAIS year') : saude ? t('Ano', 'Year') : t('Exercício', 'Fiscal year')}</label>
           <select id="f-ano" value={f.ano} onChange={(e) => f.definir({ ano: Number(e.target.value) })}>
             {[...f.anos].reverse().map((a) => (
               <option key={a}>{a}</option>

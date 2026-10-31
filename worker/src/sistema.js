@@ -16,8 +16,12 @@ entes — cadastro (uma linha por ente)
 
 indicadores — uma linha por ente e exercício (ano). Valores em R$ correntes (nominais) do próprio ano.
   exercicio, cod_ibge, nome, uf, regiao, esfera, capital
-  populacao INTEGER: população estimada pelo IBGE no exercício
-  faixa_grupo INTEGER: faixa populacional do município (liga com faixas.grupo; nulo para estados e DF)
+  Duas populações, com definições diferentes (diga sempre qual entrou em cada valor por habitante):
+    populacao: a DECLARADA pelo próprio ente na DCA do exercício (SICONFI). Não é a estimativa do IBGE do ano: costuma repetir uma estimativa de um ou dois anos antes (Goiânia declarou em 2023 a de 2021). É a do per capita das páginas de finanças e das faixas.
+    populacao_ibge: a de referência do IBGE (estimativa de 1º de julho, SIDRA 6579, ou Censo 2010/2022); em 2023, sem publicação do IBGE, o Censo 2022. populacao_ibge_ano = ano da publicação usada; populacao_ibge_fonte = publicação e tabela do SIDRA.
+    Quebra no denominador: até 2021 as estimativas do IBGE são projeções a partir do Censo 2010; em 2022 entra o Censo 2022, e em muitos municípios a população cai na passagem (Goiânia: 1.555.626 em 2021, 1.437.366 no Censo). Valores por habitante comparados entre um ano até 2021 e outro de 2022 em diante misturam as duas bases: diga isso junto do número.
+    Padrão para pesquisa e para cruzar com outros painéis: populacao_ibge. Use populacao só quando pedirem o valor do painel de finanças ou a população declarada, e diga isso.
+  faixa_grupo INTEGER: faixa populacional do município pela população declarada (liga com faixas.grupo; nulo para estados e DF)
   Receita (domínio "receita", anexo I-C da DCA, coluna Receitas Brutas Realizadas, sem as receitas intraorçamentárias):
     receita_bruta (total), receita_corrente, receita_capital, receita_impostos_taxas (impostos, taxas e contribuições de melhoria),
     transferencias_correntes, fpm (cota-parte do Fundo de Participação dos Municípios: a conta inteira, com a cota mensal e as cotas extraordinárias de 1%, lida no nó mais alto da classificação de cada ano; os códigos mudaram em 2015, 2018 e 2022, e o painel nunca soma a conta-mãe com as subcontas), icms, ipva (cotas-partes recebidas pelos municípios),
@@ -27,15 +31,25 @@ indicadores — uma linha por ente e exercício (ano). Valores em R$ correntes (
   Despesa (domínio "despesa", anexos I-D e I-E):
     despesa_empenhada, despesa_liquidada, despesa_paga (totais, incluindo as intraorçamentárias)
     despesa_empenhada_sem_intra, despesa_liquidada_sem_intra, despesa_paga_sem_intra; despesa_intra (empenhada intraorçamentária)
-    despesa_pessoal (pessoal e encargos, empenhada), investimentos (empenhada), despesa_saude (função 10, empenhada), despesa_educacao (função 12, empenhada)
-    despesa_saude_liquidada, despesa_saude_paga, despesa_educacao_liquidada, despesa_educacao_paga: as mesmas funções nos estágios liquidado e pago (anexo I-E, sem as intraorçamentárias)
+    despesa_corrente (despesas correntes), despesa_capital (despesas de capital), despesa_pessoal (pessoal e encargos), investimentos: empenhadas, exceto intraorçamentárias (anexo I-D, contas DO)
+    despesa_administracao (função 04 – Administração), despesa_saude (função 10), despesa_educacao (função 12): empenhadas, exceto intraorçamentárias (anexo I-E)
+    despesa_administracao_liquidada, despesa_administracao_paga, despesa_saude_liquidada, despesa_saude_paga, despesa_educacao_liquidada, despesa_educacao_paga: as mesmas funções nos estágios liquidado e pago
     O padrão do painel para comparar despesa é sem as intraorçamentárias (as colunas _sem_intra).
+  Conceitos de despesa (são variáveis diferentes; nunca use uma no lugar da outra):
+    despesa total = despesa_empenhada (com intra) ou despesa_empenhada_sem_intra; despesas correntes = despesa_corrente; despesa com pessoal = despesa_pessoal (natureza: pessoal e encargos, em todas as funções);
+    Função 04 – Administração = despesa_administracao (classificação funcional: planejamento, administração geral e financeira, controle interno, TI, comunicação social etc.). "Despesa administrativa" sem outra definição = função 04; diga a definição usada.
+    Diga sempre o estágio (empenhada, liquidada ou paga) e o tratamento das intraorçamentárias. FPM = cota-parte recebida (receita bruta realizada, com as cotas extraordinárias de 1%).
+  PIB per capita: pib_per_capita = pib ÷ populacao_ibge (recalculado pelo painel; confere com o IBGE Cidades). Não divida o PIB pela população declarada.
   Patrimônio (domínio "patrimonio", anexo I-AB): ativo, patrimonio_liquido
   Socioeconômicos (domínio "externo"):
     pib, vab_agropecuaria, vab_industria, vab_servicos, vab_adm_publica — R$ correntes do IBGE (o PIB municipal é publicado com cerca de dois anos de atraso; anos recentes ficam nulos)
     bolsa_familia_familias: famílias pagas em dezembro; bolsa_familia_valor: total pago no ano (R$); bolsa_familia_programa, bolsa_familia_fonte
     inss_beneficios: benefícios previdenciários emitidos em dezembro (quantidade, sem os assistenciais); inss_aposentadorias, inss_pensoes (quantidades); inss_fonte
     Bolsa Família e INSS só existem para municípios e DF.
+
+despesa_funcao — despesa por função de governo (anexo I-E da DCA, exceto intraorçamentárias), uma linha por ente, exercício e função
+  exercicio, cod_ibge, funcao_cod ('F01' a 'F28'; 'F04' Administração, 'F10' Saúde, 'F12' Educação…), funcao (nome), empenhada, liquidada, paga (R$ correntes)
+  As 28 funções somam despesa_empenhada_sem_intra. Função sem linha = não declarada (não é zero). Para nome e UF, junte com entes.
 
 alertas — avaliação de qualidade por ente, exercício e indicador
   exercicio, cod_ibge, nome, uf, esfera, indicador ('receita_bruta' ou 'despesa_empenhada'), dominio ('receita' ou 'despesa')
@@ -51,8 +65,8 @@ escopos — quantos entes entram nos agregados
 
 faixas — faixas populacionais dos municípios: grupo, nome, faixa (texto, ex.: '5.000 a 9.999'), pop_min, pop_max (nulo na última)
 
-ipca — deflator: exercicio (o ano; não há coluna ano), ipca_pct (variação dez/dez em %), indice (número-índice de dezembro), completo BOOLEAN, meses
-  Valor real em R$ do ano-base = valor nominal × (indice do ano-base ÷ indice do exercício).
+ipca — deflator: exercicio (o ano; não há coluna ano), ipca_pct (variação dez/dez em %), indice (número-índice de dezembro), completo BOOLEAN, meses, fator_real, ano_base
+  Valor real em R$ de dezembro do ano-base = valor nominal × fator_real (junte ipca.exercicio = ano do valor). fator_real já é indice do ano-base ÷ indice do exercício: é maior que 1 nos anos anteriores ao ano-base. Use sempre fator_real; não monte a razão de índices (a página recusa). Traga fator_real numa coluna (unidade "indice") e diga a convenção: IPCA de dezembro a dezembro, R$ de dezembro de ano_base.
 
 ## Regras do painel de finanças (siga-as para os números baterem com o site)
 
@@ -61,7 +75,7 @@ ipca — deflator: exercicio (o ano; não há coluna ano), ipca_pct (variação 
      NOT EXISTS (SELECT 1 FROM alertas x WHERE x.exclui AND x.exercicio = i.exercicio AND x.cod_ibge = i.cod_ibge AND x.dominio = 'receita')
    Para um ente específico, mostre o valor declarado e avise se houver alerta.
 3. Não misture esferas: "municípios" = esfera 'M'; "estados" = esfera 'E'; o DF (esfera 'D') só entra quando pedido. Um agregado de UF para municípios usa esfera = 'M' AND uf = '..'.
-4. Per capita em grupos = soma do valor ÷ soma da população, só dos entes que têm o valor e entram no agregado (mesmo conjunto no numerador e no denominador). Nunca use média de per capitas, salvo se pedido.
+4. Per capita em grupos = soma do valor ÷ soma da população, só dos entes que têm o valor e entram no agregado (mesmo conjunto no numerador e no denominador). Nunca use média de per capitas, salvo se pedido. A população é populacao_ibge (diga isso); populacao (declarada) só quando pedida. Inclua a população usada e o ano dela (populacao_ibge_ano) numa coluna da tabela.
 5. Razões em grupos (ex.: dependência do FPM = fpm ÷ receita_corrente; dependência de transferências = transferencias_correntes ÷ receita_corrente; participação = parte ÷ total) = soma do numerador ÷ soma do denominador, só dos entes com os dois valores (razão dos totais, a do painel). A média ou a mediana das razões de cada ente é outra medida (cada município pesa igual, e os pequenos puxam o valor): quando a pergunta for sobre dependência ou peso de uma receita nos municípios, apresente a razão dos totais e a média (ou mediana) das razões, com nomes que as distingam, e diga qual é qual.
 5a. Cobertura em grupos: entes que entram ÷ entes esperados (conte os esperados em entes: esfera 'M' e a UF), por ano, numa coluna da tabela. Ente com receita declarada e sem o valor (ex.: fpm nulo com receita_corrente declarada) é lacuna da declaração, não zero: conte esses casos e diga isso; o painel não corrige declarações (um ente pode ter lançado o valor em outra conta). Contagens de entes são números inteiros, não reais.
 6. Comparações entre anos de valores monetários: use valores reais (IPCA, ano-base informado) e diga isso. Para um único ano, valores nominais bastam. Numa série pedida com "valores" (totais ou por habitante), mostre os nominais e os reais, e diga o deflator: IPCA dezembro a dezembro, valor real = nominal × (índice de dezembro do ano-base ÷ índice de dezembro do ano). Valores por habitante: um para cada variável monetária pedida, com o mesmo conjunto de entes no numerador e no denominador.
@@ -129,7 +143,15 @@ export function contextoDosDados(m) {
     `Exercícios da DCA: ${m.anos?.[0]} a ${m.anos?.at(-1)}.`,
     `Ano-base dos valores reais: ${m.base_ipca} (R$ de dezembro de ${m.base_ipca}).`,
   ];
-  if (f.ibge_pib?.anos) linhas.push(`PIB municipal: ${f.ibge_pib.anos[0]} a ${f.ibge_pib.anos[1]}${f.ibge_pib.setorial_ate ? ` (VAB setorial até ${f.ibge_pib.setorial_ate})` : ''}.`);
+  if (f.ibge_pib?.anos) {
+    const em = String(f.ibge_pib.processado_em ?? '').slice(0, 10);
+    linhas.push(`PIB municipal: ${f.ibge_pib.anos[0]} a ${f.ibge_pib.anos[1]}${f.ibge_pib.setorial_ate ? ` (VAB setorial até ${f.ibge_pib.setorial_ate})` : ''}. `
+      + `${f.ibge_pib.anos[1]} era o último ano publicado no SIDRA 5938 quando a base foi baixada${em ? ` (${em})` : ''}: ano posterior pedido = ainda não publicado pelo IBGE até essa data (diga isso, sem estimar nem trocar o ano em silêncio); ano dentro do intervalo sem valor = ausente na base.`);
+  }
+  if (f.ibge_populacao?.anos) {
+    const pubs = (f.ibge_populacao.publicacoes ?? []).map((p) => `${p.ano} (${p.tipo === 'censo' ? 'Censo' : 'estimativa'})`).join(', ');
+    linhas.push(`População do IBGE (populacao_ibge): ${pubs}. Regra: ${f.ibge_populacao.regra}.`);
+  }
   if (f.bolsa_familia?.anos) {
     linhas.push(`Bolsa Família: ${f.bolsa_familia.anos[0]} a ${f.bolsa_familia.anos[1]} (último mês ${f.bolsa_familia.ultimo_mes}). `
       + 'Programas: Bolsa Família até out/2021; Auxílio Brasil de nov/2021 a fev/2023; Novo Bolsa Família desde mar/2023. '

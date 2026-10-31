@@ -10,6 +10,7 @@ import { Ia } from './pages/Ia';
 import { LrfDemonstrativos, LrfIndicadores } from './pages/Lrf';
 import { Deflatores, Qualidade } from './pages/Metodologia';
 import { Rankings } from './pages/Rankings';
+import { SaudeEvolucao, SaudeMetodologia, SaudeRankings, SaudeVisaoGeral } from './pages/SaudeDatasus';
 import { ReceitasEvolucao, ReceitasVisaoGeral } from './pages/Receitas';
 import { Educacao, RemuneracaoEducacao, Saude } from './pages/SaudeEducacao';
 import { Socioeconomico } from './pages/Socioeconomico';
@@ -46,13 +47,21 @@ const menuTrabalho = (): [string, [string, string][]][] => [
   [t('Metodologia', 'Methodology'), [['/trabalho/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
 ];
 
+/** Área de saúde (SIM, SINASC e população da SVS/MS), em /datasus; o /saude das finanças é o SIOPS. */
+const menuSaude = (): [string, [string, string][]][] => [
+  [t('Nascimentos e óbitos', 'Births and deaths'), [['/datasus', t('Visão geral', 'Overview')], ['/datasus/evolucao', t('Evolução', 'Trends')],
+    ['/datasus/rankings', 'Rankings']]],
+  [t('Metodologia', 'Methodology'), [['/datasus/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
+];
+
 /** Aba geral da IA (/ia), que consulta os painéis marcados na página. */
 const menuIa = (): [string, [string, string][]][] => [
   [t('Inteligência artificial', 'Artificial intelligence'), [['/ia', t('Pergunte aos dados', 'Ask the data')]]],
 ];
 
-type Area = 'financas' | 'trabalho' | 'ia';
-const areaDe = (pathname: string): Area => (pathname === '/ia' ? 'ia' : pathname.startsWith('/trabalho') ? 'trabalho' : 'financas');
+type Area = 'financas' | 'trabalho' | 'saude' | 'ia';
+const areaDe = (pathname: string): Area => (pathname === '/ia' ? 'ia' : pathname.startsWith('/trabalho') ? 'trabalho'
+  : pathname.startsWith('/datasus') ? 'saude' : 'financas');
 
 function lerTema(): string | null {
   try {
@@ -114,9 +123,10 @@ export function App() {
   if (area === 'trabalho') for (const k of PARAMS_TRABALHO) if (atuais.get(k)) dentro.set(k, atuais.get(k)!);
   const busca = filtros.toString() ? `?${filtros}` : '';
   const buscaArea = dentro.toString() ? `?${dentro}` : '';
-  // a aba da IA abre com o painel da área de onde se veio (dá para marcar o outro nos ajustes, antes da 1ª pergunta)
+  // a aba da IA abre com o painel da área de onde se veio (dá para marcar o outro nos ajustes, antes da 1ª pergunta);
+  // a saúde ainda não está na IA
   const filtrosIa = new URLSearchParams(area === 'ia' ? atuais : filtros);
-  if (area !== 'ia') filtrosIa.set('paineis', area);
+  if (area === 'financas' || area === 'trabalho') filtrosIa.set('paineis', area);
   const buscaIa = `?${filtrosIa}`;
 
   return (
@@ -127,12 +137,14 @@ export function App() {
         <h1>{{
           financas: `${t('Finanças municipais', 'Municipal finances')} · SICONFI`,
           trabalho: t('Mercado de trabalho · RAIS e CAGED', 'Labour market · RAIS and CAGED'),
+          saude: t('Saúde · SIM e SINASC', 'Health · SIM and SINASC'),
           ia: t('Pergunte aos dados · LAPAM/UFG', 'Ask the data · LAPAM/UFG'),
         }[area]}</h1>
         <nav className="areas" aria-label={t('Áreas', 'Areas')}>
           <NavLink to={{ pathname: '/ia', search: buscaIa }} className={area === 'ia' ? 'ativo' : ''}>{t('Pergunte aos dados (IA)', 'Ask the data (AI)')}</NavLink>
           <NavLink to={{ pathname: '/receitas', search: busca }} className={area === 'financas' ? 'ativo' : ''}>{t('Finanças públicas', 'Public finances')}</NavLink>
           <NavLink to={{ pathname: '/trabalho', search: busca }} className={area === 'trabalho' ? 'ativo' : ''}>{t('Mercado de trabalho', 'Labour market')}</NavLink>
+          <NavLink to={{ pathname: '/datasus', search: busca }} className={area === 'saude' ? 'ativo' : ''}>{t('Saúde', 'Health')}</NavLink>
         </nav>
         <span className="espaco" />
         <AlternarIdioma />
@@ -140,7 +152,7 @@ export function App() {
       </header>
       <div className="casca">
         <nav className={`menu${area === 'ia' ? ' menu-ia' : ''}`} aria-label={t('Páginas', 'Pages')}>
-          {({ financas: menu, trabalho: menuTrabalho, ia: menuIa }[area])().map(([grupo, itens]) => (
+          {({ financas: menu, trabalho: menuTrabalho, saude: menuSaude, ia: menuIa }[area])().map(([grupo, itens]) => (
             <div key={grupo} style={{ display: 'contents' }}>
               <h4>{grupo}</h4>
               {itens.map(([para, rotulo]) => (
@@ -182,6 +194,10 @@ export function App() {
               <Route path="/trabalho/perfil" element={<TrabalhoPerfil />} />
               <Route path="/trabalho/metodologia" element={<TrabalhoMetodologia />} />
               <Route path="/trabalho/ia" element={<Navigate to="/ia?paineis=trabalho" replace />} />
+              <Route path="/datasus" element={<SaudeVisaoGeral />} />
+              <Route path="/datasus/evolucao" element={<SaudeEvolucao />} />
+              <Route path="/datasus/rankings" element={<SaudeRankings />} />
+              <Route path="/datasus/metodologia" element={<SaudeMetodologia />} />
               <Route path="/deflatores" element={<Deflatores />} />
               <Route path="/qualidade" element={<Qualidade />} />
               <Route path="*" element={<p className="vazio">{t('Página não encontrada.', 'Page not found.')}</p>} />

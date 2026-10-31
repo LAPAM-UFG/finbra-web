@@ -280,47 +280,33 @@ def cnae(con):
     con.execute(f"COPY cnae_t TO '{destino.as_posix()}' (FORMAT parquet)")
 
 
-SIDRA = "https://apisidra.ibge.gov.br/values"
-# população municipal do IBGE por ano: Censo de 2010 (tabela 1378, total) e estimativas (tabela 6579)
-SIDRA_POPULACAO = {2010: "t/1378/n6/all/v/93/p/2010/c1/0/c2/0/c287/0/c455/0"}
-
-
 def populacao_ibge(con) -> str:
     """
-    População do IBGE para os anos da RAIS sem a população do painel de finanças (as declarações do SICONFI
-    começam em 2013): silver/trabalho/populacao_ibge.parquet (ano, cod_ibge, populacao). Os anos que o painel de
-    finanças cobre continuam com a população dele. Devolve o caminho, ou "" se nenhum ano precisar.
+    População de referência do IBGE por ano e município (externos.py → silver/ibge_populacao.parquet), com a mesma
+    regra do painel de finanças (indicadores.populacao_ibge): a publicação do próprio ano (estimativa de 1º de julho
+    ou censo); sem publicação no ano (2023), a do ano anterior. Tabela temporária pop_ref (ano, cod_ibge, populacao,
+    populacao_ano). Devolve "" se a população do IBGE ainda não foi baixada.
     """
-    destino = SILVER_T / "populacao_ibge.parquet"
-    rais = {int(p.stem.split("=")[1]) for p in (SILVER_T / "rais_vinculos").glob("ano=*.parquet")}
-    financas = {r[0] for r in con.execute(f"SELECT DISTINCT exercicio FROM '{GOLD.as_posix()}/indicadores.parquet'").fetchall()}
-    faltam = sorted(rais - financas)
-    if not faltam:
+    arquivo = SILVER / "ibge_populacao.parquet"
+    if not arquivo.exists():
         return ""
-    tem = set()
-    if destino.exists():
-        tem = {r[0] for r in con.execute(f"SELECT DISTINCT ano FROM '{destino.as_posix()}'").fetchall()}
-    if not set(faltam) <= tem:
-        linhas = []
-        for ano in faltam:
-            caminho = SIDRA_POPULACAO.get(ano, f"t/6579/n6/all/v/9324/p/{ano}")
-            dados = requests.get(f"{SIDRA}/{caminho}/f/c/h/n", timeout=300).json()
-            linhas += [(ano, int(d["D1C"]), int(d["V"])) for d in dados if str(d.get("V", "")).isdigit()]
-            print(f"  população IBGE {ano}: {sum(1 for x in linhas if x[0] == ano)} municípios", flush=True)
-        con.execute("CREATE OR REPLACE TEMP TABLE pop_ibge (ano SMALLINT, cod_ibge INTEGER, populacao BIGINT)")
-        con.executemany("INSERT INTO pop_ibge VALUES (?, ?, ?)", linhas)
-        con.execute(f"COPY pop_ibge TO '{destino.as_posix()}' (FORMAT parquet)")
-    return destino.as_posix()
+    con.execute(f"""CREATE OR REPLACE TEMP TABLE pop_ref AS
+        WITH anos AS (SELECT DISTINCT ano FROM '{(SILVER_T / "rais_vinculos").as_posix()}/*.parquet'),
+        alvo AS (SELECT a.ano, m.cod_ibge FROM anos a CROSS JOIN muni m)
+        SELECT a.ano, a.cod_ibge, p.populacao, p.ano::SMALLINT AS populacao_ano
+        FROM alvo a ASOF JOIN '{arquivo.as_posix()}' p ON p.cod_ibge = a.cod_ibge AND p.ano <= a.ano
+        WHERE p.ano >= a.ano - 1""")
+    return "pop_ref"
 
 
 def gerar_gold(con):
     GOLD_T.mkdir(parents=True, exist_ok=True)
     s, g = SILVER_T.as_posix(), GOLD_T.as_posix()
-    pop_ibge = populacao_ibge(con)
     # RAIS usa o código IBGE de 6 dígitos; Brasília (530010) é o Distrito Federal
     con.execute(f"""CREATE OR REPLACE TEMP TABLE muni AS
                     SELECT cod_ibge, cod_ibge // 10 AS municipio, nome, uf, regiao FROM '{SILVER.as_posix()}/entes.parquet'
                     WHERE esfera = 'M'""")
+    pop_ibge = populacao_ibge(con)
     # UF pelo prefixo do código, para movimentações em códigos fora do cadastro (Fernando de Noronha, 260545);
     # o código 999999 (município ignorado) não tem UF e entra só no total do Brasil
     con.execute(f"""CREATE OR REPLACE TEMP TABLE estados AS
@@ -329,7 +315,8 @@ def gerar_gold(con):
                                    FROM {rel} x LEFT JOIN muni m ON m.municipio = x.{cod}
                                    LEFT JOIN estados u ON u.cod = x.{cod} // 10000)"""
     if any((SILVER_T / "rais_vinculos").glob("*.parquet")):
-        setores = ", ".join(f"sum(vinculos) FILTER (grande_setor = '{x}') AS empregos_{x}" for x in SETORES)
+        # zero, e não nulo, no setor sem vínculo: o município tem RAIS no ano (a linha existe) e nenhum vínculo ativo ali
+        setores = ", ".join(f"coalesce(sum(vinculos) FILTER (grande_setor = '{x}'), 0) AS empregos_{x}" for x in SETORES)
         con.execute(f"""
             COPY (
                 WITH v AS (
@@ -344,15 +331,12 @@ def gerar_gold(con):
                            sum(rem_dez_soma) FILTER (sexo = 1) AS massa_dez_homens, sum(rem_dez_n) FILTER (sexo = 1) AS n_rem_dez_homens
                     FROM '{s}/rais_vinculos/*.parquet' GROUP BY ALL),
                 e AS (SELECT ano, municipio, sum(estabelecimentos) AS estabelecimentos FROM '{s}/rais_estab/*.parquet' GROUP BY ALL)
-                SELECT v.ano, m.cod_ibge, m.nome, m.uf, m.regiao, {'coalesce(i.populacao, p.populacao)' if pop_ibge else 'i.populacao'} AS populacao,
+                SELECT v.ano, m.cod_ibge, m.nome, m.uf, m.regiao, {'p.populacao, p.populacao_ano' if pop_ibge else 'NULL::BIGINT AS populacao, NULL::SMALLINT AS populacao_ano'},
                        v.* EXCLUDE (ano, municipio), e.estabelecimentos
                 FROM v JOIN muni m USING (municipio)
                 LEFT JOIN e USING (ano, municipio)
-                -- população do painel de finanças; Brasília usa a do ente Distrito Federal (53)
-                LEFT JOIN '{GOLD.as_posix()}/indicadores.parquet' i
-                       ON i.exercicio = v.ano AND i.cod_ibge = CASE WHEN m.cod_ibge = 5300108 THEN 53 ELSE m.cod_ibge END
-                -- anos sem a população do painel de finanças (antes de 2013): a do IBGE (Censo 2010 e estimativas)
-                {f"LEFT JOIN '{pop_ibge}' p ON p.ano = v.ano AND p.cod_ibge = m.cod_ibge" if pop_ibge else ''}
+                -- população de referência do IBGE (a mesma regra de indicadores.populacao_ibge); Brasília = DF
+                {f"LEFT JOIN {pop_ibge} p ON p.ano = v.ano AND p.cod_ibge = m.cod_ibge" if pop_ibge else ''}
                 ORDER BY m.cod_ibge, v.ano
             ) TO '{g}/municipios.parquet' (FORMAT parquet, COMPRESSION zstd)""")
         con.execute(f"""

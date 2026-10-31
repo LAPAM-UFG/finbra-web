@@ -333,6 +333,11 @@ figure.grafico { margin: 0; }
 .ia-conferencia { margin-top: 4px; font-size: 11px; font-weight: 600; }
 .ia-conferencia.conferido { color: color-mix(in srgb, var(--bom) 75%, var(--tinta)); }
 .ia-conferencia.divergente, .ia-conferencia.sem_consulta { color: color-mix(in srgb, var(--ruim) 75%, var(--tinta)); }
+.ia-conferencia.consistente { color: var(--tinta-2); font-weight: 500; }
+.ia-verificacoes { margin: 6px 0; padding: 6px 10px; border-left: 3px solid color-mix(in srgb, var(--bom) 60%, var(--borda)); background: var(--superficie-2); font-size: 12px; }
+.ia-verificacoes-titulo { margin: 0 0 2px; font-weight: 600; }
+.ia-verificacoes ul { margin: 0; padding-left: 18px; }
+.ia-verificacoes li { overflow-wrap: anywhere; }
 .ia-texto { line-height: 1.6; max-width: 80ch; }
 .ia-texto p { margin: 0 0 10px; }
 .ia-texto ul { margin: 0 0 10px; padding-left: 20px; }
@@ -400,7 +405,8 @@ figure.grafico { margin: 0; }
 .ia-passos { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .ia-passo-nota { font-size: 13px; color: var(--tinta-2); font-style: italic; border-left: 2px solid var(--grade); padding-left: 10px; white-space: pre-wrap; }
 .ia-passos.ao-vivo { gap: 4px; margin: 0 0 8px; font-size: 13px; color: var(--tinta-2); }
-.ia-passos.ao-vivo li { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.ia-passos.ao-vivo li { overflow-wrap: anywhere; }
+.ia-passos.ao-vivo .ia-rotulo-consulta { margin-right: 4px; }
 .ia-rotulo-consulta { font-size: 11px; font-weight: 700; color: var(--marca-tinta); background: var(--serie-1); border-radius: 4px; padding: 1px 6px; font-variant-numeric: tabular-nums; }
 .ia-situacao { font-size: 11px; color: var(--tinta-3); }
 .ia-situacao.erro { color: color-mix(in srgb, var(--ruim) 75%, var(--tinta)); }
@@ -485,6 +491,20 @@ figure.grafico { margin: 0; }
 .ia-tab-tabela tbody tr:nth-child(even) { background: color-mix(in srgb, var(--superficie-2) 60%, transparent); }
 .ia-tab-tabela tr.ia-tab-total td { font-weight: 700; border-top: 1.5px solid var(--eixo); }
 .ia-tab-tabela td.ia-ausente { color: var(--tinta-3); font-style: italic; }
+/* tabelas largas: cabeçalho e primeira coluna fixos ao rolar */
+.ia-tab-tabela thead th { position: sticky; top: 0; z-index: 2; background: var(--superficie); }
+.ia-tab-tabela th:first-child, .ia-tab-tabela td:first-child { position: sticky; left: 0; z-index: 1; background: var(--superficie); }
+.ia-tab-tabela thead th:first-child { z-index: 3; }
+.ia-tab-tabela tbody tr:nth-child(even) td:first-child { background: color-mix(in srgb, var(--superficie-2) 60%, var(--superficie)); }
+/* tabela ampliada: tela inteira, com rolagem própria */
+.ia-tab.ia-tab-ampliada {
+  position: fixed; inset: 12px; z-index: 60; margin: 0; overflow: auto; background: var(--superficie);
+  border: 1px solid var(--borda); border-radius: 12px; padding: 14px 16px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
+}
+.ia-tab.ia-tab-ampliada .rolagem { max-height: calc(100vh - 180px); }
+@media (max-width: 600px) { .ia-tab.ia-tab-ampliada { inset: 0; border-radius: 0; } }
+/* campo da pergunta compacto enquanto se lê as respostas; cresce ao receber o foco */
+.ia-compositor.compacto:not(:focus-within) textarea { min-height: 1.6em; height: 1.9em !important; overflow: hidden; }
 .ia-tab-paginas { margin: 6px 0 0; font-size: 12px; color: var(--tinta-2); }
 .ia-tab-rodape { margin-top: 6px; font-size: 12px; color: var(--tinta-3); line-height: 1.45; max-width: 90ch; }
 .ia-tab-rodape p { margin: 0 0 2px; }

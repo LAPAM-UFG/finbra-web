@@ -23,12 +23,23 @@ Feito com os microdados públicos da RAIS (Relação Anual de Informações Soci
 - CNAE 2.0: seção (letra), divisão (2 dígitos), classe (5), subclasse (7), texto com zeros à esquerda. CBO 2002: grande grupo (1 dígito), família (4), ocupação (6), texto.
 - Nomes: tabela trab_dic (variavel, codigo, descricao) com variavel em 'cbo', 'cbo_grande_grupo', 'cnae_classe', 'cnae_subclasse', 'causa_afastamento', 'motivo_desligamento', 'tipo_vinculo', 'escolaridade', 'raca_cor', 'sexo' (1 masculino, 2 feminino), 'tamanho_estab', 'natureza_juridica', 'natureza_juridica_grupo', 'tipo_admissao', 'nacionalidade', 'situacao', 'cbo_familia' (4 dígitos), 'cbo_subgrupo' (3), 'cbo_subgrupo_principal' (2); os códigos estão como texto. Divisões e seções da CNAE: trab_cnae. Para achar códigos pelo nome, use strip_accents(lower(descricao)) LIKE '%...%' em trab_dic.
 
+## Definições que mudam o número (diga qual usou)
+
+- Vínculos × trabalhadores únicos: a RAIS pública não identifica pessoas; não há como contar trabalhadores únicos.
+- Ativos em 31/12 (estoque, situacao = 1) × todos os vínculos existentes no ano (inclui os desligados e os não ativos): as tabelas trab_* são só os ativos; rais_uf, rais_mun e rais_vinculos têm todos, separados por situacao.
+- Remuneração de dezembro (só ativos com valor em dezembro) × remuneração média do ano (média mensal do período ativo de cada vínculo).
+- Município: o do estabelecimento (onde o vínculo é declarado), não o de residência; o município de trabalho (municipio_trab) só existe nos microdados.
+- Setor público: pela natureza jurídica (grupo 1 da tabela do IBGE: órgãos e entidades públicas de qualquer atividade) × administração pública pela atividade (divisão 84 da CNAE). Vínculos da prefeitura = natureza jurídica municipal (1031, 1244, 1120, 1155), só nos microdados; vínculos de todas as esferas situados no município (CNAE 84 ou grupo 1) são outra medida.
+- Códigos que mudam entre anos: a RAIS usa a CNAE 2.0 em toda a série do painel (2010 em diante) e a CBO 2002; a captação mudou em 2022 e 2023 (ver Quebra de série).
+
 ## Tabelas do painel de trabalho
 
 trab_municipios — RAIS, uma linha por ano e município (vínculos ativos em 31/12)
-  ano, cod_ibge (7 dígitos), nome, uf (sigla), regiao, populacao
+  ano, cod_ibge (7 dígitos), nome, uf (sigla), regiao
+  populacao: população de referência do IBGE (estimativa de 1º de julho ou censo; em 2023, o Censo 2022); populacao_ano = ano da publicação. É a mesma de indicadores.populacao_ibge, não a declarada na DCA.
   empregos, mulheres, superior (ensino superior completo), ate24, de50mais (faixas de idade)
-  empregos_agropecuaria, empregos_industria, empregos_construcao, empregos_comercio, empregos_servicos, empregos_adm_publica
+  empregos_agropecuaria, empregos_industria, empregos_construcao, empregos_comercio, empregos_servicos, empregos_adm_publica: grandes setores pela divisão da CNAE 2.0 do estabelecimento (agropecuária 01–03; indústria 05–39, com extrativa, energia e saneamento; construção 41–43; comércio 45–47; administração pública = divisão 84; serviços = 49–99 exceto 84). Zero = o município tem RAIS no ano e nenhum vínculo ativo no setor (não é ausência).
+  empregos_adm_publica é ATIVIDADE (divisão 84: administração pública, defesa e seguridade social), de todas as esferas (municipal, estadual e federal) com estabelecimento no município; não é a natureza jurídica nem só a prefeitura. Escolas e hospitais públicos ficam em serviços (educação, saúde). Totais iguais aos da divisão 84 em trab_setores decorrem da definição e não comprovam equivalência com o setor público por natureza jurídica.
   massa_dez, n_rem_dez (massa de dezembro e vínculos com remuneração; média = massa_dez ÷ n_rem_dez), massa_dez_mulheres, n_rem_dez_mulheres, massa_dez_homens, n_rem_dez_homens
   estabelecimentos (com vínculo ativo)
 trab_grandes_setores — os seis grandes setores de trab_municipios em linhas: ano, cod_ibge, nome, uf, ordem, setor ('Agropecuária', 'Indústria', 'Construção', 'Comércio', 'Serviços', 'Administração pública'), vinculos (ativos em 31/12)
@@ -42,7 +53,7 @@ trab_caged_uf — por competência, escopo ('BR' ou sigla) e seção CNAE ('TOTA
 trab_cnae — divisao, divisao_nome, secao, secao_nome
 trab_dic — dicionário de códigos (acima)
 entes — cadastro: cod_ibge, nome, uf, regiao, esfera ('M' município, 'E' estado, 'D' DF); para nomes e UFs
-ipca — colunas: exercicio, indice (dezembro), ipca_pct. O ano é exercicio (não há coluna ano): junte com ipca.exercicio = ano. Valor real em R$ do ano-base = nominal × (indice do ano-base ÷ indice do ano)
+ipca — colunas: exercicio, indice (dezembro), ipca_pct, fator_real, ano_base. O ano é exercicio (não há coluna ano): junte com ipca.exercicio = ano. Valor real em R$ de dezembro de ano_base = nominal × fator_real (já é indice do ano-base ÷ indice do ano; maior que 1 antes do ano-base). Não monte a razão de índices.
 
 ## Tabelas somadas dos microdados da RAIS (consulta detalhada)
 

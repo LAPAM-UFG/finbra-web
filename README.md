@@ -178,7 +178,7 @@ Microdados do PDET (Ministério do Trabalho), baixados à mão do FTP para a pas
 | Totais do painel | `pipeline/trabalho.py`: `silver/trabalho` (somas por município, divisão CNAE e perfil) e `gold/trabalho` (páginas de mercado de trabalho) |
 | Microdados | `pipeline/microdados.py`: uma linha por vínculo da RAIS (ativos ou não em 31/12), por estabelecimento e por movimentação do CAGED, com todas as colunas e nomes padronizados entre os anos. Fica em `E:/finbra/micro/silver/trabalho/micro/` (no HD externo; ~25–30 GB), em arquivos por ano e UF ordenados por município, CNAE e CBO. Sobe para o R2 com `py pipeline/r2.py enviar --raiz E:/finbra/micro --camadas silver` (o `indice.json` vai por último); o `baixar` os pula, a menos que se passe `--com-micro` |
 | Tabelas da consulta na web | o mesmo script soma os microdados em `gold/trabalho/cubo_uf/ano=AAAA.parquet` (UF × classe CNAE × CBO × sexo × situação × afastamento) e `gold/trabalho/cubo_mun/ano=AAAA.parquet` (município × divisão CNAE × grande grupo CBO × …), ~90 MB por ano; `py pipeline/microdados.py --so cubos` refaz só elas |
-| População | anos da RAIS sem a população do painel de finanças (2010–2012): IBGE, Censo de 2010 (SIDRA 1378) e estimativas (SIDRA 6579), em `silver/trabalho/populacao_ibge.parquet`; de 2013 em diante, a mesma do painel de finanças |
+| População | população de referência do IBGE em todos os anos (`silver/ibge_populacao.parquet`, de `externos.py`): a publicação do próprio ano (Censos 2010 e 2022, SIDRA 202 e 4709; estimativas de 1º de julho, SIDRA 6579) ou, no ano sem publicação (2023), a do ano anterior; `populacao_ano` diz qual entrou. A mesma regra de `indicadores.populacao_ibge` |
 | CAGED por ocupação | `pipeline/trabalho.py` soma os microdados do CAGED em `gold/trabalho/caged_cbo.parquet` (competência × UF/Brasil × família CBO, série com ajustes, salário de admissão com N e admissões fora da faixa); `py pipeline/trabalho.py --so-caged-cbo` refaz só ela e o dicionário |
 | Dicionário | `pipeline/dicionario_trabalho.csv`: CBO em todos os níveis (ocupação dos layouts do PDET; família, subgrupo e subgrupo principal da estrutura oficial da CBO 2002, MTE), CNAE, natureza jurídica (Tabela de Natureza Jurídica 2021, CONCLA/IBGE), afastamento, desligamento, vínculo…; vira `gold/trabalho/dicionario.parquet` no `trabalho.py`. Setor institucional, esfera administrativa e faixas de jornada e de tempo no emprego são derivados no site (`web/src/dados.ts`) |
 | Tempo | algumas horas para a RAIS 2010–2025 e o CAGED desde 2020; retomável (pula o que já terminou) |
@@ -191,6 +191,18 @@ tabelas pré-somadas (médias, sem medianas; municípios só com divisão CNAE e
 
 Os arquivos públicos não identificam pessoas nem empresas: a unidade é o vínculo (quem tem dois empregos
 aparece duas vezes) e não há como seguir o mesmo trabalhador entre anos.
+
+### Saúde (SIM, SINASC e população da SVS/MS)
+
+Painel próprio em `/datasus` (o `/saude` das finanças é o SIOPS). Microdados públicos do DATASUS
+(`ftp.datasus.gov.br/dissemin/publicos`), no HD externo.
+
+| | |
+|---|---|
+| Download | `pipeline/saude_baixar.py`: os .dbc de SIM, SINASC, SIH, CNES, SINAN, CIHA, SISCAN, SISPRENATAL, Oncologia e RESP, mais a população do IBGE/SVS, em `E:/finbra/brutos/saude` (mesma estrutura do FTP; ~220 GB). Ficam de fora o SIA e o PNI antigo, e as cópias do SIH em XML, DBF e CSV. Retomável |
+| Conversão | `pipeline/saude_micro.py`: cada .dbc vira um .parquet com as colunas como texto, em `E:/finbra/micro/saude/dbc`. Precisa do pacote `pyreaddbc` (só no computador local, fora do `requirements.txt`) |
+| Totais do painel | `pipeline/saude.py`: `gold/saude/municipios.parquet` (ano × município de residência: população, óbitos por idade, causa e capítulo da CID-10, óbitos fetais e nascidos vivos com peso, gestação, parto, pré-natal e idade da mãe), mais as tabelas de cada fonte; atualiza `sim`, `sinasc` e `populacao_svs` no manifesto |
+| Duplicações evitadas | SIM e SINASC usam os arquivos de cada UF: o do Brasil (DOBR, DNBR) repete os mesmos registros, e DNEX são mães residentes no exterior |
 
 ## Publicação do site
 
@@ -331,6 +343,27 @@ pergunta, contexto, modo, SQL, resultados e resposta. `py pipeline/auditoria_ia.
 --plataforma arquivo.json --relatorio comparacao.md` recalcula os mesmos números nas camadas de origem (DCA conta
 a conta com os códigos do FPM de cada ementário, microdados da RAIS, movimentações do CAGED, SIOPS como veio do
 TABNET, PIB do IBGE), sem as tabelas da IA, e compara: confere, divergente ou não apresentado.
+
+**Confiabilidade (variável pedida, unidades, estatística).** O catálogo `web/src/ia_catalogo.ts` diz a unidade, a
+definição e a fonte das colunas e os conceitos que a página confere (Função 04, despesa com pessoal, despesas e
+receitas correntes, FPM, PIB per capita, vínculos da prefeitura): a resposta que troca a variável pedida por outra
+volta ao modelo (`revisarMetodo` em `web/src/ia.ts`), assim como p-valores sem regressão da página, controles
+apresentados como prova de causa, deflator montado à mão ou invertido (use `ipca.fator_real`), números formatados
+como texto no SQL e sugestões como "outras capitais de Goiás". A consulta declara a unidade de cada coluna
+(`colunas` em "consultar"); a regressão (`regressao`) é estimada pela página por MQO, com erro-padrão clássico ou
+HC1 e t de Student (`web/src/ia_estatistica.ts`, conferida com o conjunto I de Anscombe). Os selos dos números dizem
+"localizado em C1", "calculado pela página" ou "valor oficial (IBGE…)" (coluna que reproduz a publicação sem
+transformação), e "confere com C3" quando o mesmo número sai de outra tabela (o que não exclui erro comum ao
+processamento). Junções e amostra são contadas pela página (`verificacao` em "consultar", `web/src/ia_verificacao.ts`):
+chave do resultado única ou repetida, cardinalidade, registros sem par com exemplos e quantos entes sobram a cada
+filtro; cruzar fontes diferentes sem essa verificação, chave repetida, junção N:N ou perdas não mencionadas voltam ao
+modelo. O significado dos nulos de cada coluna pode ser declarado (não se aplica, denominador inválido, suprimido,
+não calculado), e a exportação leva a ficha das colunas do catálogo (definição, fonte, cobertura, filtros e
+classificação). Cenários de
+aceitação com o modelo: `IA_CENARIOS=1 IA_CENARIOS_DIR=pasta npm test` em `web/` (Worker local ligado), um JSON por
+cenário (A: vínculos de Goiás e grandes setores; B: receitas correntes de Goiânia nominais, reais e per capita; C: PIB
+de 2025 não publicado; D: FPM per capita × administração pública por mil habitantes; E: regressão com a Função 04 e
+pedido de prova de causa), com as consultas, a revisão e o tempo por etapa.
 
 **Histórico de conversas (na conta e no navegador).** A lateral da aba da IA (`web/src/components/HistoricoIa.tsx`) tem
 "Nova conversa", busca (título, perguntas e conclusões) e as conversas anteriores, com renomear, exportar e
@@ -477,6 +510,19 @@ Os agregados (UF, Brasil, faixas, rankings) somam só os entes com dados no dom�
 receita bruta > 0), despesa (despesa empenhada > 0) ou patrimônio (balanço declarado). A população do
 per capita é a desses mesmos entes. `escopos.parquet` guarda, por exercício, escopo e domínio, os entes
 com dados, o universo do cadastro, os sem dados e os excluídos.
+
+### Duas populações
+
+`indicadores` tem duas populações, com definições diferentes:
+
+| Coluna | O que é | Uso |
+|---|---|---|
+| `populacao` | a declarada pelo próprio ente na DCA do exercício (SICONFI). Costuma repetir uma estimativa do IBGE de um ou dois anos antes (Goiânia declarou em 2023 a estimativa de 2021, 1.555.626) | per capita das páginas de finanças, faixas populacionais |
+| `populacao_ibge` | a de referência do IBGE: a publicação do próprio ano (estimativa de 1º de julho, SIDRA 6579, ou Censo 2010/2022, SIDRA 202/4709); no ano sem publicação (2023), a do ano anterior, como o IBGE faz no PIB per capita. `populacao_ibge_ano` e `populacao_ibge_fonte` dizem qual entrou | per capita da IA e do painel de trabalho, `pib_per_capita` |
+
+Em 2022 e 2023, 3.356 municípios declararam uma população mais de 5% diferente da do IBGE (diferença mediana de 6,6%, porque declararam a estimativa de 2021 em vez do Censo 2022); em 2024 e 2025, cerca de 1.300 a 1.400. `pib_per_capita` é recalculado pelo painel (PIB ÷ `populacao_ibge`; o SIDRA 5938 não publica o per capita) e bate com o IBGE Cidades (Goiânia, 2023: R$ 52.722,02).
+
+`despesa_funcao.parquet`: despesa por função (anexo I-E, funções 01 a 28, exceto intraorçamentárias) nos três estágios; a função 04 (Administração) também está em `indicadores.despesa_administracao`.
 
 A política é única: os totais somam todas as declarações com dados, menos as **inconsistências
 objetivas e os erros confirmados**, e só no domínio afetado. Suspeitas estatísticas continuam nos totais,

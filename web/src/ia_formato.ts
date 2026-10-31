@@ -1,9 +1,11 @@
 /**
  * Como a IA mostra números, períodos e tabelas (página /ia, cópia em texto e relatório em PDF). O tipo de
- * cada coluna sai do nome dela e da consulta (MIN(competencia) AS primeira também é competência), e a mesma
- * formatação vale na tela, no PDF e nos destaques: competências como "set/2025", códigos sem separador de
- * milhar, reais com duas casas, percentuais com uma.
+ * cada coluna vem, nesta ordem, da unidade que a consulta declarou (campo colunas de "consultar"), do catálogo
+ * (ia_catalogo.ts) e, só sem nenhum dos dois, do nome e da consulta (MIN(competencia) AS primeira também é
+ * competência). A mesma formatação vale na tela, no PDF e nos destaques: competências como "set/2025", códigos
+ * sem separador de milhar, reais com duas casas, percentuais com uma, estatísticas sem unidade monetária.
  */
+import { COLUNAS, RE_ESTATISTICA, UNIDADES } from './ia_catalogo';
 import { numero, reais, reaisExato } from './format';
 import { local, t } from './idioma';
 
@@ -102,7 +104,35 @@ export function tempoNoSql(sql: string): Map<string, 'ano' | 'mes'> {
 
 // ---------------- tipo e formato das colunas ----------------
 
-export type TipoColuna = 'competencia' | 'ano' | 'codigo' | 'percentual' | 'reais' | 'contagem' | 'numero' | 'texto';
+export type TipoColuna = 'competencia' | 'ano' | 'codigo' | 'percentual' | 'reais' | 'contagem' | 'numero' | 'texto'
+  | 'estatistica' | 'indice' | 'razao';
+
+/** Unidade e rótulo que a consulta declarou para uma coluna (campo colunas de "consultar"). */
+/** O que um nulo da coluna significa, quando a consulta o declara (sem declaração: dado ausente). */
+export type NuloDeclarado = 'nao_aplicavel' | 'denominador_invalido' | 'suprimido' | 'nao_calculada';
+const NULOS: Record<string, NuloDeclarado> = {
+  nao_aplicavel: 'nao_aplicavel', denominador_invalido: 'denominador_invalido', suprimido: 'suprimido', nao_calculado: 'nao_calculada', nao_calculada: 'nao_calculada',
+};
+export type ColunaDeclarada = { tipo: TipoColuna; unidade: string; rotulo: string; nulo?: NuloDeclarado };
+const declaradas = new Map<string, Map<string, ColunaDeclarada>>();
+
+/**
+ * Guarda as unidades que o modelo declarou na consulta (pela SQL, que identifica a consulta na conversa):
+ * a tela, o PDF e o Excel formatam por elas. Unidade desconhecida fica de fora (vale o catálogo ou a inferência).
+ */
+export function registrarColunas(sql: string, colunas: unknown) {
+  if (!sql || !Array.isArray(colunas)) return;
+  const m = new Map<string, ColunaDeclarada>();
+  for (const c of colunas) {
+    const x = (c ?? {}) as { nome?: unknown; unidade?: unknown; rotulo?: unknown; nulo?: unknown };
+    const unidade = typeof x.unidade === 'string' ? x.unidade.trim().toLowerCase() : '';
+    if (typeof x.nome !== 'string' || !UNIDADES[unidade]) continue;
+    const nulo = typeof x.nulo === 'string' ? NULOS[x.nulo.trim().toLowerCase()] : undefined;
+    m.set(x.nome.toLowerCase(), { tipo: UNIDADES[unidade], unidade, rotulo: typeof x.rotulo === 'string' ? x.rotulo.trim().slice(0, 120) : '', ...(nulo ? { nulo } : {}) });
+  }
+  if (m.size) declaradas.set(sql, m);
+}
+export const colunasDeclaradas = (sql: string) => declaradas.get(sql);
 
 const RE_ANO = /^(ano|exercicio)(_[a-z0-9_]+)?$|^[a-z0-9_]+_(ano|exercicio)$/i;
 const RE_CODIGO = /^(cod|codigo|id)(_\w+)?$|^\w+_(cod|codigo|id)$|^(cod_ibge|municipio|municipio_trab|uf|cbo(_\w+)?|cnae(_\w+)?|divisao|classe|subclasse|secao|grupo|natureza_juridica(_\w+)?|ibge_subsetor)$/i;
@@ -110,8 +140,8 @@ const RE_CODIGO = /^(cod|codigo|id)(_\w+)?$|^\w+_(cod|codigo|id)$|^(cod_ibge|mun
 const RE_PONTOS = /(^|_)(pp|p_p)(_|$)/i;
 const RE_PERCENTUAL = /(^|_)(pct|perc|percent|percentual|participacao|proporcao|taxa|share)(_|$)|%/i;
 const RE_CONTAGEM_EXPLICITA = /^(n|qtd|num|numero|quantidade)_|_n$/i;
-// contagens de entes, vínculos, meses…: vêm antes de reais ("municipios_com_receita" conta municípios, não é R$)
-const RE_CONTAGEM_PREFIXO = /^(municipios|entes|lacunas|excluidos|ativos|vinculos|empregos|estabelecimentos|familias|pessoas|profissionais|meses|anos|admissoes|desligamentos|observacoes|linhas|pares)(_|$)/i;
+// contagens de entes, vínculos, meses…: vêm antes de reais ("municipios_com_receita" e "com_receita" contam municípios, não são R$)
+const RE_CONTAGEM_PREFIXO = /^(com|sem|qtde|municipios|entes|lacunas|excluidos|ativos|vinculos|empregos|estabelecimentos|familias|pessoas|profissionais|meses|anos|admissoes|desligamentos|observacoes|linhas|pares)(_|$)/i;
 const RE_REAIS = /(^|_)(rem|remuneracao|salario|salarios|massa|valor|valores|receita|receitas|despesa|despesas|renda|rendimento|reais|pib|vab|rcl|dcl|divida|patrimonio|investimentos|deducoes|fpm|icms|ipva|iptu|iss|itbi|transferencias|custo|gasto|gastos|preco|rc|receita_corrente)(_|$)|^ativo$/i;
 const RE_CONTAGEM = /(^|_)(vinculos|empregos|admissoes|desligamentos|saldo|estabelecimentos|mulheres|homens|municipios|entes|meses|familias|beneficios|aposentadorias|pensoes|afastados|ativos|desligados|pessoas|trabalhadores|linhas|registros|populacao|total|soma)(_|$)/i;
 
@@ -119,10 +149,21 @@ const RE_CONTAGEM = /(^|_)(vinculos|empregos|admissoes|desligamentos|saldo|estab
  * Tipo de uma coluna pelo nome (e, para anos e competências, também pelos valores e pela consulta):
  * competência e ano só quando todos os valores são válidos; reais e contagem pelo vocabulário dos painéis.
  */
-export function tipoColuna(nome: string, valores: Valor[], tempo?: 'ano' | 'mes'): TipoColuna {
+export function tipoColuna(nome: string, valores: Valor[], tempo?: 'ano' | 'mes', declarada?: ColunaDeclarada): TipoColuna {
   const nums = valores.filter((v): v is number => typeof v === 'number');
   const presentes = valores.filter((v) => v !== null);
   const todosNumeros = presentes.length > 0 && nums.length === presentes.length;
+  // declarada na consulta ou no catálogo: vale, salvo se os valores a desmentem (texto numa coluna numérica,
+  // ano ou competência fora do formato)
+  const conhecido = declarada?.tipo ?? COLUNAS[nome.toLowerCase()]?.tipo;
+  if (conhecido) {
+    const valida = conhecido === 'texto' || conhecido === 'codigo' ? true
+      : conhecido === 'competencia' ? todosNumeros && nums.every(ehCompetencia)
+        : conhecido === 'ano' ? todosNumeros && nums.every(ehAno)
+          : !presentes.length || todosNumeros;
+    if (valida) return conhecido;
+  }
+  if (RE_ESTATISTICA.test(nome) && (!presentes.length || todosNumeros)) return 'estatistica';
   if ((tempo === 'mes' || /compet/i.test(nome)) && todosNumeros && nums.every(ehCompetencia)) return 'competencia';
   if ((tempo === 'ano' || RE_ANO.test(nome)) && todosNumeros && nums.every(ehAno)) return 'ano';
   if (RE_CODIGO.test(nome)) return 'codigo';
@@ -148,19 +189,46 @@ export function formatarCelula(v: Valor | undefined, tipo: TipoColuna): string {
     case 'percentual': return f(1, Math.round(v * 10) === 0 && v !== 0 ? 2 : 1);
     case 'reais': return f(2, 2);
     case 'contagem': return f(0, Number.isInteger(v) ? 0 : 1);
+    // estatísticas e razões com quatro casas; p-valores muito pequenos em notação científica
+    case 'estatistica': return v !== 0 && Math.abs(v) < 1e-4 ? v.toExponential(2).replace('.', local().startsWith('pt') ? ',' : '.') : f(4, 4);
+    case 'razao': return f(4, 4);
+    // fatores e números-índice com seis casas, para reproduzir a deflação
+    case 'indice': return f(6, 6);
     default: return f(0, Number.isInteger(v) ? 0 : Math.abs(v) < 1 ? 4 : 2);
   }
 }
 
 /** Cabeçalho legível: "salario medio admissao (R$)", "variacao (%)", "primeira (mês)". */
-export function rotuloColuna(nome: string, tipo: TipoColuna): string {
-  let s = nome.replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+export function rotuloColuna(nome: string, tipo: TipoColuna, declarada?: ColunaDeclarada): string {
+  if (declarada?.rotulo) return declarada.rotulo;
+  const cat = COLUNAS[nome.toLowerCase()];
+  if (cat && cat.tipo === tipo) return cat.rotulo;
+  let s = acentuar(nome.replace(/_/g, ' ').replace(/\s+/g, ' ').trim());
+  if (declarada?.unidade === 'reais_por_habitante') return `${s} (R$/hab.)`;
   if (tipo === 'percentual' && RE_PONTOS.test(nome)) s = `${s.replace(/\b(pp|p p)\b/i, '').replace(/\s+/g, ' ').trim()} (p.p.)`;
   else if (tipo === 'percentual' && !s.includes('%')) s =`${s.replace(/\bpct\b/i, '').replace(/\s+/g, ' ').trim()} (%)`.trim();
   if (tipo === 'reais') s += ' (R$)';
   if (tipo === 'competencia' && !/compet/i.test(nome)) s += t(' (mês)', ' (month)');
   return s.startsWith('(') ? s.slice(1, -1) : s;
 }
+
+/** Palavras frequentes nos nomes de colunas, com acento (os nomes do SQL não têm). */
+const ACENTOS: Record<string, string> = {
+  populacao: 'população', municipios: 'municípios', municipio: 'município', vinculos: 'vínculos', vinculo: 'vínculo',
+  salario: 'salário', salarios: 'salários', medio: 'médio', media: 'média', remuneracao: 'remuneração', variacao: 'variação',
+  participacao: 'participação', administracao: 'administração', educacao: 'educação', saude: 'saúde', exercicio: 'exercício',
+  numero: 'número', publica: 'pública', publico: 'público', previdencia: 'previdência', funcao: 'função',
+  deducoes: 'deduções', transferencias: 'transferências', admissao: 'admissão', admissoes: 'admissões', contribuicao: 'contribuição',
+  correlacao: 'correlação', regressao: 'regressão', observacoes: 'observações', ausencia: 'ausência',
+  agropecuaria: 'agropecuária', industria: 'indústria', construcao: 'construção', comercio: 'comércio', servicos: 'serviços',
+  pensoes: 'pensões', beneficios: 'benefícios', proporcao: 'proporção', competencia: 'competência',
+  ultimo: 'último', ultima: 'última', minimo: 'mínimo', maximo: 'máximo', indice: 'índice', diferenca: 'diferença',
+  razao: 'razão', analise: 'análise', estatistica: 'estatística', medias: 'médias', periodo: 'período',
+};
+export const acentuar = (s: string) => s.replace(/[a-z]+/gi, (w) => {
+  const a = ACENTOS[w.toLowerCase()];
+  return a ? (w[0] === w[0].toUpperCase() ? a[0].toUpperCase() + a.slice(1) : a) : w;
+});
 
 const CATEGORIAS: Record<string, [string, string]> = {
   agropecuaria: ['Agropecuária', 'Agriculture'], industria: ['Indústria', 'Industry'], construcao: ['Construção', 'Construction'],
@@ -221,7 +289,8 @@ function emLinhas(r: Tabela, tipos: TipoColuna[]): TabelaFormatada {
 /** Tipos das colunas de um resultado, com as de tempo reconhecidas também pela consulta. */
 export function tiposDoResultado(r: Tabela, sql = ''): TipoColuna[] {
   const tempo = tempoNoSql(sql);
-  const tipos = r.colunas.map((c, j) => tipoColuna(c, r.linhas.map((l) => l[j]), tempo.get(c.toLowerCase())));
+  const decl = colunasDeclaradas(sql);
+  const tipos = r.colunas.map((c, j) => tipoColuna(c, r.linhas.map((l) => l[j]), tempo.get(c.toLowerCase()), decl?.get(c.toLowerCase())));
   // unidade dita linha a linha (ex.: indicadores do SIOPS em %, R$ e R$/hab): a coluna de valores não leva unidade única
   const iu = r.colunas.findIndex((c) => /^unidade$/i.test(c));
   if (iu >= 0 && new Set(r.linhas.map((l) => l[iu])).size > 1) return tipos.map((x) => (x === 'reais' || x === 'percentual' ? 'numero' : x));
@@ -247,7 +316,8 @@ export function formatarTabela(bruta: Tabela, sql = '', limite = Infinity): Tabe
   if (r.linhas.length === 1 && r.colunas.length > 6) return emLinhas(r, tipos);
   const linhas = r.linhas.slice(0, limite).map((l) => l.map((v, j) => formatarCelula(v, tipos[j])));
   const texto = r.colunas.map((_, j) => tipos[j] === 'texto' && linhas.some((l) => l[j].length > 24));
-  return { cabecalho: r.colunas.map((c, j) => rotuloColuna(c, tipos[j])), linhas, texto, emLinhas: false, extras: [] };
+  const decl = colunasDeclaradas(sql);
+  return { cabecalho: r.colunas.map((c, j) => rotuloColuna(c, tipos[j], decl?.get(c.toLowerCase()))), linhas, texto, emLinhas: false, extras: [] };
 }
 
 // ---------------- destaques e textos ----------------

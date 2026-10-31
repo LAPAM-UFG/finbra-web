@@ -44,8 +44,15 @@ POR_CHAVE = {
     "despesa_empenhada": ("I-D", "Despesas Empenhadas", "TotalDespesas"),
     "despesa_liquidada": ("I-D", "Despesas Liquidadas", "TotalDespesas"),
     "despesa_paga": ("I-D", "Despesas Pagas", "TotalDespesas"),
+    # I-D: as contas DO são as despesas exceto intraorçamentárias (as DI, as intraorçamentárias)
+    "despesa_corrente": ("I-D", "Despesas Empenhadas", "DO3"),
+    "despesa_capital": ("I-D", "Despesas Empenhadas", "DO4"),
     "despesa_pessoal": ("I-D", "Despesas Empenhadas", "DO3.1"),
     "investimentos": ("I-D", "Despesas Empenhadas", "DO4.4"),
+    # função 04 (Administração) do anexo I-E, nos três estágios; as demais funções ficam em despesa_funcao.parquet
+    "despesa_administracao": ("I-E", "Despesas Empenhadas", "F04"),
+    "despesa_administracao_liquidada": ("I-E", "Despesas Liquidadas", "F04"),
+    "despesa_administracao_paga": ("I-E", "Despesas Pagas", "F04"),
     "despesa_saude": ("I-E", "Despesas Empenhadas", "F10"),
     "despesa_educacao": ("I-E", "Despesas Empenhadas", "F12"),
     # saúde e educação nos outros estágios: para comparar com o SIOPS e o SIOPE sem presumir o estágio
@@ -335,6 +342,54 @@ def tabela_familias(con):
         print(f"bolsa família: {fonte}: {anos}")
 
 
+def tabela_populacao_ibge(con):
+    """População de referência do IBGE por ente e exercício (pop_ibge), separada da declarada na DCA.
+
+    Regra: a publicação do próprio ano (estimativa de 1º de julho ou censo); no ano sem publicação (2023, entre
+    o Censo 2022 e a estimativa de 2024), a do ano anterior, como o IBGE faz no PIB per capita municipal.
+    Nunca mais de um ano de distância: populacao_ibge_ano diz qual publicação entrou.
+    """
+    arquivo = SILVER / "ibge_populacao.parquet"
+    if not arquivo.exists():
+        con.execute("CREATE OR REPLACE TABLE pop_ibge (exercicio BIGINT, cod_ibge BIGINT, populacao_ibge BIGINT, "
+                    "populacao_ibge_ano SMALLINT, populacao_ibge_fonte VARCHAR)")
+        print("população do IBGE: silver/ibge_populacao.parquet ausente (rode externos.py); colunas vazias")
+        return
+    s = SILVER.as_posix()
+    con.execute(f"""
+        CREATE OR REPLACE TABLE pop_ibge AS
+        WITH pub AS (SELECT ano, cod_ibge, populacao, tipo, tabela FROM '{arquivo.as_posix()}'),
+        alvo AS (SELECT DISTINCT exercicio, cod_ibge FROM '{s}/populacao/*.parquet')
+        SELECT a.exercicio, a.cod_ibge, p.populacao AS populacao_ibge, p.ano::SMALLINT AS populacao_ibge_ano,
+               CASE p.tipo WHEN 'censo' THEN 'IBGE, Censo ' || p.ano
+                           ELSE 'IBGE, estimativa de 1º/7/' || p.ano END
+               || ' (SIDRA ' || p.tabela || ')' AS populacao_ibge_fonte
+        FROM alvo a ASOF JOIN pub p ON p.cod_ibge = a.cod_ibge AND p.ano <= a.exercicio
+        WHERE p.ano >= a.exercicio - 1
+    """)
+    for ano, n, fonte in con.execute("""SELECT exercicio, count(*), any_value(populacao_ibge_fonte) FROM pop_ibge
+                                        GROUP BY 1 ORDER BY 1""").fetchall():
+        print(f"população IBGE: {ano}: {n} entes ({fonte})")
+
+
+def tabela_despesa_funcao(con):
+    """Despesa por função (anexo I-E da DCA: funções 01 a 28, exceto intraorçamentárias) nos três estágios,
+    uma linha por ente, exercício e função: gold/despesa_funcao.parquet."""
+    con.execute(f"""
+        COPY (
+            SELECT d.exercicio::SMALLINT AS exercicio, d.cod_ibge, d.chave AS funcao_cod,
+                   any_value(c.descricao) AS funcao,
+                   sum(d.valor) FILTER (d.coluna = 'Despesas Empenhadas') AS empenhada,
+                   sum(d.valor) FILTER (d.coluna = 'Despesas Liquidadas') AS liquidada,
+                   sum(d.valor) FILTER (d.coluna = 'Despesas Pagas') AS paga
+            FROM dca d JOIN contas c ON c.exercicio = d.exercicio AND c.anexo = 'I-E' AND c.chave = d.chave
+            WHERE d.anexo = 'I-E' AND regexp_full_match(d.chave, 'F[0-9]{{2}}')
+            GROUP BY ALL
+            ORDER BY d.cod_ibge, exercicio, funcao_cod
+        ) TO '{GOLD.as_posix()}/despesa_funcao.parquet' (FORMAT parquet, COMPRESSION zstd)
+    """)
+
+
 def _quando(caminho: Path) -> str | None:
     arquivos = [caminho] if caminho.is_file() else list(caminho.glob("*.parquet"))
     if not arquivos:
@@ -368,10 +423,39 @@ def fontes(con):
                      "SELECT DISTINCT exercicio FROM familias WHERE inss_fonte IS NOT NULL ORDER BY 1").fetchall()],
                  "processado_em": _quando(SILVER / "inss_municipios.parquet"),
                  "url": "https://www.gov.br/previdencia/pt-br/assuntos/previdencia-social/emitidos-municipios-2023"},
+        **fonte_populacao(con),
         **fonte_lrf(con),
         **fonte_trabalho(con),
         **fonte_educacao_saude(con),
+        **fonte_datasus(con),
     }
+
+
+def fonte_datasus(con):
+    """SIM, SINASC e população da SVS (saude.py): sem isto, refazer o gold apagaria essas fontes do manifesto."""
+    from saude import fonte_saude
+
+    return fonte_saude(con)
+
+
+def fonte_populacao(con):
+    """As duas populações de indicadores: a declarada na DCA e a de referência do IBGE (publicações e regra)."""
+    arquivo = SILVER / "ibge_populacao.parquet"
+    saida = {"populacao_declarada": {
+        "definicao": "população informada pelo próprio ente na DCA do exercício (SICONFI); costuma repetir uma "
+                     "estimativa do IBGE de um ou dois anos antes", "coluna": "indicadores.populacao"}}
+    if arquivo.exists():
+        pubs = con.execute(f"SELECT ano, tipo, tabela FROM '{arquivo.as_posix()}' GROUP BY ALL ORDER BY 1").fetchall()
+        saida["ibge_populacao"] = {
+            "publicacoes": [{"ano": a, "tipo": t, "tabela": tb} for a, t, tb in pubs],
+            "anos": [pubs[0][0], pubs[-1][0]],
+            "coluna": "indicadores.populacao_ibge",
+            "regra": "publicação do próprio ano (estimativa de 1º de julho ou censo); sem publicação no ano (2023), "
+                     "a do ano anterior (Censo 2022), como no PIB per capita do IBGE",
+            "processado_em": _quando(arquivo),
+            "url": "https://sidra.ibge.gov.br/tabela/6579",
+        }
+    return saida
 
 
 def fonte_educacao_saude(con):
@@ -497,15 +581,20 @@ def main():
     con.execute(f"CREATE TABLE largo AS SELECT exercicio, cod_ibge, {colunas} FROM longo GROUP BY ALL")
 
     tabela_familias(con)
+    tabela_populacao_ibge(con)
     con.execute(f"""
         COPY (
             SELECT p.exercicio, p.cod_ibge, e.nome, e.uf, e.regiao, e.esfera, e.capital, p.populacao,
+                   q.populacao_ibge, q.populacao_ibge_ano, q.populacao_ibge_fonte,
                    f.grupo AS faixa_grupo, i.* EXCLUDE (exercicio, cod_ibge),
                    i.receita_bruta - coalesce(i.deducoes, 0) AS receita_liquida,
                    g.pib, g.vab_agropecuaria, g.vab_industria, g.vab_servicos, g.vab_adm_publica,
+                   -- recalculado pelo painel (o SIDRA 5938 não publica o per capita): PIB ÷ população de referência do IBGE
+                   g.pib / nullif(q.populacao_ibge, 0) AS pib_per_capita,
                    t.* EXCLUDE (exercicio, cod_ibge6)
             FROM '{s}/populacao/*.parquet' p
             JOIN '{s}/entes.parquet' e USING (cod_ibge)
+            LEFT JOIN pop_ibge q USING (exercicio, cod_ibge)
             LEFT JOIN largo i USING (exercicio, cod_ibge)
             LEFT JOIN faixas f ON e.esfera = 'M' AND p.populacao >= f.pop_min
                                AND (f.pop_max IS NULL OR p.populacao < f.pop_max)
@@ -517,9 +606,15 @@ def main():
             ORDER BY p.cod_ibge, p.exercicio
         ) TO '{GOLD.as_posix()}/indicadores.parquet' (FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 100000)
     """)
+    tabela_despesa_funcao(con)
     gerar_alertas(con)
     gerar_web(con)
-    con.execute(f"COPY (SELECT * FROM '{s}/ipca.parquet') TO '{GOLD.as_posix()}/ipca.parquet' (FORMAT parquet)")
+    # fator_real: R$ de dezembro do ano-base (o último ano completo) = nominal × fator_real; pronto, para ninguém
+    # montar a razão de índices (e invertê-la)
+    con.execute(f"""COPY (SELECT p.*, b.indice / p.indice AS fator_real, b.exercicio AS ano_base
+                          FROM '{s}/ipca.parquet' p
+                          CROSS JOIN (SELECT exercicio, indice FROM '{s}/ipca.parquet' WHERE completo ORDER BY exercicio DESC LIMIT 1) b)
+                    TO '{GOLD.as_posix()}/ipca.parquet' (FORMAT parquet)""")
     faixas.to_parquet(GOLD / "faixas.parquet", index=False)
 
     n, anos = con.execute(f"SELECT count(*), list(DISTINCT exercicio ORDER BY exercicio) "

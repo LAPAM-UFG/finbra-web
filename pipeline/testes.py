@@ -5,6 +5,7 @@ Uso:
 """
 import json
 import sys
+from pathlib import Path
 
 import duckdb
 
@@ -87,7 +88,7 @@ mensal = SILVER / "bolsa_familia_mensal"
 if mensal.exists() and any(mensal.glob("*.parquet")):
     teste("mapa SIAFI→IBGE cobre todos os municípios dos pagamentos (exceto Fernando de Noronha)",
           um(f"""SELECT count(*) FROM (SELECT DISTINCT uf, siafi FROM '{mensal.as_posix()}/*.parquet') m
-                 WHERE NOT EXISTS (SELECT 1 FROM read_csv('{(GOLD.parent.parent / "pipeline" / "siafi_ibge.csv").as_posix()}', all_varchar=true) k
+                 WHERE NOT EXISTS (SELECT 1 FROM read_csv('{(Path(__file__).resolve().parent / "siafi_ibge.csv").as_posix()}', all_varchar=true) k
                                    WHERE k.uf = m.uf AND k.siafi = m.siafi) AND m.siafi <> '3001'""") == 0)
     teste("valor anual oficial só com os 12 meses",
           um(f"""SELECT count(*) FROM {ind} i WHERE bolsa_familia_fonte LIKE 'Portal%' AND bolsa_familia_valor IS NOT NULL
@@ -122,6 +123,24 @@ if (GOLD / "lrf.parquet").exists():
                   FROM {lrf} WHERE rcl_ajustada > 0 AND despesa_pessoal IS NOT NULL AND pessoal_rcl_pct IS NOT NULL""") or 0) <= 0.02)
     teste("LRF: todo ente-ano tem ao menos um dos relatórios",
           um(f"SELECT count(*) FROM {lrf} WHERE rreo_tipo IS NULL AND rgf_tipo IS NULL") == 0)
+
+# População: a declarada na DCA (populacao) e a de referência do IBGE (populacao_ibge) são colunas distintas
+if (SILVER / "ibge_populacao.parquet").exists():
+    ind = f"'{g}/indicadores.parquet'"
+    teste("população do IBGE em todos os entes com população declarada",
+          um(f"SELECT count(*) FROM {ind} WHERE populacao IS NOT NULL AND populacao_ibge IS NULL") == 0)
+    teste("população do IBGE é a do próprio ano (só 2023, sem publicação, usa o Censo 2022)",
+          um(f"""SELECT count(*) FROM {ind} WHERE populacao_ibge_ano <> exercicio
+                 AND NOT (exercicio = 2023 AND populacao_ibge_ano = 2022)""") == 0)
+    teste("PIB per capita = PIB ÷ população do IBGE",
+          um(f"SELECT count(*) FROM {ind} WHERE abs(pib_per_capita - pib / populacao_ibge) > 1e-6") == 0)
+if (GOLD / "despesa_funcao.parquet").exists():
+    teste("despesa por função: uma linha por ente, exercício e função",
+          um(f"""SELECT count(*) FROM (SELECT exercicio, cod_ibge, funcao_cod FROM '{g}/despesa_funcao.parquet'
+                 GROUP BY ALL HAVING count(*) > 1)""") == 0)
+    teste("função 04 da tabela de funções = indicadores.despesa_administracao",
+          um(f"""SELECT count(*) FROM '{g}/despesa_funcao.parquet' f JOIN '{g}/indicadores.parquet' i USING (exercicio, cod_ibge)
+                 WHERE f.funcao_cod = 'F04' AND f.empenhada IS DISTINCT FROM i.despesa_administracao""") == 0)
 
 m = json.loads((GOLD / "manifesto.json").read_text(encoding="utf-8"))
 teste("manifesto com fontes, mapeamento e política", all(k in m for k in ("fontes", "mapa_indicadores", "politica_alertas", "ipca_ultimo")))
