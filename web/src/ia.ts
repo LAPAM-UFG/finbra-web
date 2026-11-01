@@ -375,20 +375,22 @@ export function sugestoes(paineis: Painel[], tr: Territorio, c: Cobertura, ano: 
   return lista;
 }
 
-/** Exemplo do campo de pergunta, no contexto da página. */
+/**
+ * Exemplo do campo de pergunta, no contexto da página: uma pergunta curta e direta, sem siglas das fontes, sobre a
+ * mudança desde dez anos antes do último ano com dados.
+ */
 export function exemploPergunta(paineis: Painel[], tr: Territorio, c: Cobertura): string {
   const f = formas(tr);
-  if (paineis.includes('trabalho') && c.caged) {
-    return t(`Ex.: qual foi o saldo de empregos com carteira ${f.em} nos últimos 12 meses do Novo CAGED?`, `E.g. what was the net change in formal (CLT) jobs ${f.em} over the last 12 months of New CAGED?`);
-  }
+  const desde = (anos: number[]) => Math.max(anos[0], anos.at(-1)! - 10);
   if (paineis.includes('trabalho') && c.rais.length) {
-    return t(`Ex.: quantos empregos formais havia ${f.em} em ${c.rais.at(-1)}?`, `E.g. how many formal jobs were there ${f.em} in ${c.rais.at(-1)}?`);
+    return t(`Ex.: como mudou o emprego formal ${f.em} desde ${desde(c.rais)}?`, `E.g. How has formal employment ${f.em} changed since ${desde(c.rais)}?`);
   }
   if (paineis.includes('saude') && c.sim?.length) {
-    return t(`Ex.: qual foi a mortalidade infantil ${f.em} em ${c.sim.at(-1)}?`, `E.g. what was infant mortality ${f.em} in ${c.sim.at(-1)}?`);
+    return t(`Ex.: como mudou a mortalidade infantil ${f.em} desde ${desde(c.sim)}?`, `E.g. How has infant mortality ${f.em} changed since ${desde(c.sim)}?`);
   }
   if (c.dca.length) {
-    return t(`Ex.: qual foi a receita corrente per capita ${escopoFinancas(tr)} em ${c.dca.at(-1)}?`, `E.g. what was the current revenue per capita ${escopoFinancas(tr)} in ${c.dca.at(-1)}?`);
+    return t(`Ex.: como mudou a receita por habitante ${escopoFinancas(tr)} desde ${desde(c.dca)}?`,
+      `E.g. How has revenue per person ${escopoFinancas(tr)} changed since ${desde(c.dca)}?`);
   }
   return t('Escreva sua pergunta…', 'Type your question…');
 }

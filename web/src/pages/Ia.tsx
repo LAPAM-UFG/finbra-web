@@ -1672,6 +1672,9 @@ export function Ia() {
   const nova = busca.get('nova');
   useEffect(() => {
     if (nova) {
+      // só diz que a anterior está no histórico quando ela foi salva de fato (está na lista)
+      const anterior = idNaTela.current;
+      const salva = !!anterior && h.resumos.some((r) => r.id === anterior);
       mostrar(null);
       setNaoAchada(null);
       setTexto('');
@@ -1680,7 +1683,9 @@ export function Ia() {
       b.delete('nova');
       b.delete('conversa');
       setBusca(b, { replace: true });
-      setStatus(t('Nova conversa. A anterior ficou no histórico.', 'New conversation. The previous one is in the history.'));
+      setStatus(salva
+        ? t('Nova conversa iniciada. A anterior está no histórico.', 'New conversation started. The previous one is in the history.')
+        : t('Nova conversa iniciada.', 'New conversation started.'));
       focarCampo();
       return;
     }
