@@ -106,10 +106,15 @@ export function resumoTrajetoria(c: Classificacao, cod: number, de: number, ate:
     const p = pontos.find((x) => x.ano === ano);
     return p && pos(p) != null ? null : textoMotivo(p?.motivo);
   };
+  // código do motivo (sem registro na fonte = 'sem_registro'), para a página dizer qual mínimo, por exemplo
+  const codigoNo = (ano: number) => {
+    const p = pontos.find((x) => x.ano === ano);
+    return p && pos(p) != null ? null : p?.motivo ?? 'sem_registro';
+  };
   return {
     ini, fim,
     /** por que não há posição no ano inicial/final do período (null = há posição) */
-    semInicio: motivoNo(de), semFim: motivoNo(ate),
+    semInicio: motivoNo(de), semFim: motivoNo(ate), codigoInicio: codigoNo(de), codigoFim: codigoNo(ate),
     variacao: ini && fim && ini !== fim ? variacaoPosicao(pos(ini), pos(fim)) : null,
   };
 }

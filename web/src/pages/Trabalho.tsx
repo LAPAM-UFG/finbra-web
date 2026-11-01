@@ -709,6 +709,9 @@ export function TrabalhoRankings() {
           <EvolucaoPosicao dominio="trabalho" ind={ordem.campo} nomeIndicador={tituloHistorico(ordem.campo)} unidade={UNIDADES_RANKING()[ordem.campo] ?? ''}
             formato={(v) => colOrd ? colOrd.formato(v) : numero(v)} monetario={ordem.campo === 'remuneracao_media'}
             percentual={['var_empregos', 'pct_mulheres', 'pct_superior', 'pct_adm_publica'].includes(ordem.campo)} params={{ min: recorte.min }}
+            fonte={ordem.campo === 'saldo_caged' ? t('Novo CAGED (MTE)', 'New CAGED (MTE)') : ordem.campo === 'empregos_por_mil' ? t('RAIS (MTE); população: IBGE', 'RAIS (MTE); population: IBGE') : t('RAIS (MTE)', 'RAIS (MTE)')}
+            atualizadoEm={String((meta.fontes[ordem.campo === 'saldo_caged' ? 'caged' : 'rais'] as { processado_em?: string } | undefined)?.processado_em ?? meta.geradoEm)}
+            minimo={t(`vínculos ativos (${numero(recorte.min)})`, `active jobs (${numero(recorte.min)})`)}
             indicador={
               <div className="campo">
                 <label htmlFor="r-ind">{t('Indicador', 'Indicator')}</label>

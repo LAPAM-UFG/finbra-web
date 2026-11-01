@@ -10,7 +10,7 @@ import { BuscaEnte, useDados } from '../contexto';
 import type { Ente } from '../api';
 import type { Classificacao, DominioRanking, PontoPosicao } from '../dados';
 import { numero, numero1 } from '../format';
-import { t } from '../idioma';
+import { local, t } from '../idioma';
 import {
   gravarEstadoEvolucao, lerEstadoEvolucao, MAX_COMPARADOS, pontosDaTrajetoria, posicaoRelativa, resumoTrajetoria, tabelaMudancas,
   tabelaTrajetorias, textoMotivo, variacaoPosicao,
@@ -44,6 +44,12 @@ type Props = {
   ativas?: string[];
   /** definições, critérios e fonte, para "Ver dados e metodologia" e as exportações */
   definicoes: [string, string][];
+  /** fonte em poucas palavras, para a linha abaixo do gráfico (ex.: "SIM e SINASC (DATASUS)") */
+  fonte: string;
+  /** quando a base da fonte foi processada (ISO); sem ela, a versão geral dos dados */
+  atualizadoEm?: string;
+  /** o mínimo do painel, para o resumo dizer qual (ex.: "nascidos vivos (1.000)") */
+  minimo?: string;
   /** nota de comparabilidade do período (quebra de série, ano parcial): uma frase curta e, se houver, o texto completo */
   nota?: (de: number, ate: number) => { curta: string; completa?: string } | null;
   arquivo: string;
@@ -119,6 +125,24 @@ export function EvolucaoPosicao(p: Props) {
     definir({ entes: [...e.entes, alvo.cod_ibge] });
   };
   const [maisOpcoes, setMaisOpcoes] = useState(false);
+  const [copiado, setCopiado] = useState(false);
+  const linkDaAnalise = () => {
+    const b = gravarEstadoEvolucao(busca, { de: e.de, ate: e.ate, entes: e.entes });
+    b.set('vista', 'evolucao');
+    if (e.entes[0]) b.set('ente', String(e.entes[0]));
+    return `${location.origin}${location.pathname}?${b}`;
+  };
+  const compartilhar = async () => {
+    const link = linkDaAnalise();
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 4000);
+    } catch {
+      // sem acesso à área de transferência: mostra o link para copiar à mão
+      window.prompt(t('Copie o link da análise:', 'Copy the analysis link:'), link);
+    }
+  };
 
   const pos = (x: { posicao_uf: number | null; posicao_br: number | null }) => (ufEscopo ? x.posicao_uf : x.posicao_br);
   const tot = (x: { total_uf: number | null; total_br: number | null }) => (ufEscopo ? x.total_uf : x.total_br);
@@ -142,22 +166,25 @@ export function EvolucaoPosicao(p: Props) {
   const pontos = useMemo(() => (d ? pontosDaTrajetoria(d, e.entes) : []), [d, e.entes.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // resumo de cada município: primeira e última posição do período (os anos sem posição ficam de fora)
-  const resumos = e.entes.map((cod) => ({ cod, ...(d ? resumoTrajetoria(d, cod, e.de, e.ate, !!ufEscopo) : { ini: undefined, fim: undefined, semInicio: null, semFim: null, variacao: null }) }));
-  const em = (x: PontoPosicao) => t(`${numero(pos(x))}ª posição entre ${numero(tot(x))} municípios, em ${x.ano}`, `${numero(pos(x))} of ${numero(tot(x))} municipalities in ${x.ano}`);
+  const resumos = e.entes.map((cod) => ({ cod, ...(d ? resumoTrajetoria(d, cod, e.de, e.ate, !!ufEscopo) : { ini: undefined, fim: undefined, semInicio: null, semFim: null, codigoInicio: null, codigoFim: null, variacao: null }) }));
+  const lugar = (x: PontoPosicao) => t(`${numero(pos(x))}ª de ${numero(tot(x))} municípios, em ${x.ano}`, `${numero(pos(x))} of ${numero(tot(x))} municipalities in ${x.ano}`);
+  // motivo em poucas palavras; "abaixo do mínimo" diz qual mínimo
+  const motivoCurto = (codigo: string | null, texto: string | null) => (codigo === 'abaixo_minimo' && p.minimo
+    ? t(`abaixo do mínimo de ${p.minimo}`, `below the minimum of ${p.minimo}`) : texto ?? '');
   const fraseResumo = (r: (typeof resumos)[number]) => {
-    if (!r.ini || !r.fim) return t(`sem posição no período (em ${e.ate}: ${r.semFim ?? ''})`, `unranked in the period (in ${e.ate}: ${r.semFim ?? ''})`);
+    if (!r.ini || !r.fim) return t(`sem posição no período (em ${e.ate}: ${motivoCurto(r.codigoFim, r.semFim)}).`, `unranked in the period (in ${e.ate}: ${motivoCurto(r.codigoFim, r.semFim)}).`);
     if (!r.semInicio && !r.semFim) {
-      return t(`passou da ${numero(pos(r.ini))}ª posição entre ${numero(tot(r.ini))} municípios, em ${r.ini.ano}, para a ${numero(pos(r.fim))}ª entre ${numero(tot(r.fim))}, em ${r.fim.ano} (${textoVariacao(r.variacao)})`,
-        `went from ${numero(pos(r.ini))} of ${numero(tot(r.ini))} municipalities in ${r.ini.ano} to ${numero(pos(r.fim))} of ${numero(tot(r.fim))} in ${r.fim.ano} (${textoVariacao(r.variacao)})`);
+      return t(`passou da ${numero(pos(r.ini))}ª posição entre ${numero(tot(r.ini))} municípios, em ${r.ini.ano}, para a ${numero(pos(r.fim))}ª entre ${numero(tot(r.fim))}, em ${r.fim.ano} (${textoVariacao(r.variacao)}).`,
+        `went from ${numero(pos(r.ini))} of ${numero(tot(r.ini))} municipalities in ${r.ini.ano} to ${numero(pos(r.fim))} of ${numero(tot(r.fim))} in ${r.fim.ano} (${textoVariacao(r.variacao)}).`);
     }
-    // ano inicial ou final sem posição: a ausência vem primeiro, e a posição disponível mais próxima à parte
-    const partes = [
-      r.semInicio ? t(`sem posição em ${e.de} (${r.semInicio}); a primeira disponível é a ${em(r.ini)}`, `unranked in ${e.de} (${r.semInicio}); the first available is ${em(r.ini)}`)
-        : t(`${em(r.ini)}`, em(r.ini)),
-      r.semFim ? t(`sem posição em ${e.ate} (${r.semFim}); a última disponível é a ${em(r.fim)}`, `unranked in ${e.ate} (${r.semFim}); the last available is ${em(r.fim)}`)
-        : em(r.fim),
-    ];
-    return `${partes.join('; ')}${r.variacao != null && r.ini !== r.fim ? ` (${t(`de ${r.ini.ano} a ${r.fim.ano}`, `from ${r.ini.ano} to ${r.fim.ano}`)}: ${textoVariacao(r.variacao)})` : ''}`;
+    // ano inicial ou final sem posição: frases curtas, a ausência primeiro; os detalhes ficam em "Ver dados e metodologia"
+    const inicio = r.semInicio
+      ? t(`sem posição em ${e.de}: ${motivoCurto(r.codigoInicio, r.semInicio)}. Primeira classificação: ${lugar(r.ini)}.`, `unranked in ${e.de}: ${motivoCurto(r.codigoInicio, r.semInicio)}. First ranking: ${lugar(r.ini)}.`)
+      : t(`em ${e.de}, ${numero(pos(r.ini))}ª de ${numero(tot(r.ini))} municípios.`, `in ${e.de}, ${numero(pos(r.ini))} of ${numero(tot(r.ini))} municipalities.`);
+    const fim = r.semFim
+      ? t(`Sem posição em ${e.ate}: ${motivoCurto(r.codigoFim, r.semFim)}. Última classificação: ${lugar(r.fim)}.`, `Unranked in ${e.ate}: ${motivoCurto(r.codigoFim, r.semFim)}. Last ranking: ${lugar(r.fim)}.`)
+      : t(`Em ${e.ate}, ${numero(pos(r.fim))}ª de ${numero(tot(r.fim))} municípios.`, `In ${e.ate}, ${numero(pos(r.fim))} of ${numero(tot(r.fim))} municipalities.`);
+    return `${inicio} ${fim}`;
   };
   const universoMudou = (() => {
     const u = d?.universos ?? [];
@@ -319,6 +346,10 @@ export function EvolucaoPosicao(p: Props) {
             </div>
           )}
           <span className="evol-acoes">
+            <button className="botao-leve" onClick={compartilhar} title={t('Copia o link com o município, o indicador, o período e as opções', 'Copies the link with the municipality, indicator, period and options')}>
+              {copiado ? t('Link copiado', 'Link copied') : t('Compartilhar análise', 'Share analysis')}
+            </button>
+            <span className="sr-only" aria-live="polite">{copiado ? t('Link da análise copiado', 'Analysis link copied') : ''}</span>
             <button className="botao-leve" aria-expanded={comparando} onClick={() => setComparando(!comparando)}>
               {t('Comparar municípios', 'Compare municipalities')}{e.entes.length > 1 ? ` (${e.entes.length})` : ''}
             </button>
@@ -388,7 +419,7 @@ export function EvolucaoPosicao(p: Props) {
                 {resumos.map((r, i) => (
                   <li key={r.cod}>
                     {e.entes.length > 1 && <span className="evol-cor" style={{ background: `var(--cmp-${i + 1})` }} aria-hidden="true" />}
-                    <strong>{nomeDe(r.cod)}</strong> {fraseResumo(r)}.
+                    <strong>{nomeDe(r.cod)}</strong> {fraseResumo(r)}
                   </li>
                 ))}
               </ul>
@@ -414,6 +445,10 @@ export function EvolucaoPosicao(p: Props) {
                   descricao={t('Gráfico da posição por ano; os valores estão em Ver dados e metodologia', 'Chart of position by year; values are under See data and methodology')} />
                 : <Grafico opcao={opcaoValor} altura={320} nome={`${p.arquivo}_valor_${e.de}_${e.ate}`}
                   descricao={t('Gráfico do valor do indicador por ano; os valores estão em Ver dados e metodologia', 'Chart of the indicator value by year; values are under See data and methodology')} />}
+              <p className="evol-fonte">
+                {t(`Fonte: ${p.fonte}. Base atualizada em ${new Date(p.atualizadoEm ?? meta.geradoEm).toLocaleDateString(local())}; último ano disponível para este indicador: ${anosCobertos.at(-1)}.`,
+                  `Source: ${p.fonte}. Data updated on ${new Date(p.atualizadoEm ?? meta.geradoEm).toLocaleDateString(local())}; latest year available for this indicator: ${anosCobertos.at(-1)}.`)}
+              </p>
               <p className="nota-base">
                 {e.grafico === 'posicao'
                   ? (e.escala === 'percentil' ? t('Posição relativa: 100 = 1º lugar, 0 = último.', 'Relative position: 100 = 1st place, 0 = last.')

@@ -294,6 +294,9 @@ export function SaudeRankings() {
         <>
           <EvolucaoPosicao dominio="saude" ind={ind.id} nomeIndicador={ind.nome()} unidade={ind.unidade()} formato={(v) => formatar(ind, v)} monetario={false}
             percentual={ind.tipo === 'proporcao'}
+            fonte={t('SIM e SINASC (DATASUS); população: SVS/MS', 'SIM and SINASC (DATASUS); population: SVS/MS')}
+            atualizadoEm={String((meta.fontes.sim as { processado_em?: string } | undefined)?.processado_em ?? meta.geradoEm)}
+            minimo={`${nomeContagem(ind.denominador).toLowerCase()} (${numero(minimo)})`}
             indicador={<SeletorIndicador valor={ind.id} mudar={(id) => definir({ ind: id, min: null })} />}
             opcoes={
               <>

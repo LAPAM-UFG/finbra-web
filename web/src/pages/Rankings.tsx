@@ -6,7 +6,7 @@ import { AlternarVista, EvolucaoPosicao } from '../components/EvolucaoPosicao';
 import { BotoesExportar, useMetadados } from '../components/Exportar';
 import { barras, CartaoGrafico, Grafico } from '../components/Grafico';
 import { Estado } from '../components/Kpi';
-import { BarraFiltros, useFiltros } from '../contexto';
+import { BarraFiltros, useDados, useFiltros } from '../contexto';
 import { numero, reais, reaisCurto, reaisExato } from '../format';
 import { t } from '../idioma';
 
@@ -40,6 +40,7 @@ const POR_PAGINA = 50;
 
 export function Rankings() {
   const f = useFiltros();
+  const { meta } = useDados();
   const metadados = useMetadados();
   const [busca, setBusca] = useSearchParams();
   const nomes = indicadores();
@@ -119,6 +120,8 @@ export function Rankings() {
           params={{ medida: perCapita ? 'per_capita' : 'total', tratamento: f.tratamento }} ordem={ordem} anos={anosDisp}
           uf={uf ?? null} ente={f.ente?.esfera === 'M' ? f.ente.cod_ibge : null}
           indicador={seletorIndicador} opcoes={medidaEOrdem}
+          fonte={campo === 'pib' ? t('IBGE (PIB dos municípios); população: DCA (SICONFI)', 'IBGE (municipal GDP); population: DCA (SICONFI)') : t('SICONFI/Tesouro Nacional (DCA)', 'SICONFI/National Treasury (DCA)')}
+          atualizadoEm={String((meta.fontes[campo === 'pib' ? 'ibge_pib' : 'siconfi'] as { processado_em?: string } | undefined)?.processado_em ?? meta.geradoEm)}
           ativas={[...(perCapita ? [] : [t('valor total', 'total value')]), ...(ordem === 'asc' ? [t('menores primeiro', 'lowest first')] : [])]}
           definicoes={metadados([
             [t('Medida', 'Measure'), perCapita ? t('per capita: valor ÷ população declarada pelo próprio município na DCA do exercício (não é a estimativa do IBGE)', 'per capita: value ÷ population reported by the municipality itself in the year’s DCA (not the IBGE estimate)') : 'total'],

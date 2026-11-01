@@ -651,3 +651,4 @@ td.quebra-ano { border-top: 2px dashed var(--tinta-3); }
 }
 details.evol-nota > summary { cursor: pointer; }
 details.evol-nota[open] > summary { margin-bottom: 6px; }
+.evol-fonte { margin: 6px 0 0; font-size: 11px; color: var(--tinta-3); }
