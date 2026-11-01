@@ -6,7 +6,8 @@ import { BotoesExportar } from './Exportar';
 import { Dica } from './Dica';
 import { Grafico, type Tokens } from './Grafico';
 import { Estado } from './Kpi';
-import { useDados } from '../contexto';
+import { BuscaEnte, useDados } from '../contexto';
+import type { Ente } from '../api';
 import type { Classificacao, DominioRanking, PontoPosicao } from '../dados';
 import { numero, numero1 } from '../format';
 import { t } from '../idioma';
@@ -103,26 +104,19 @@ export function EvolucaoPosicao(p: Props) {
   };
   const opcoesMunicipios = useMemo(() => entes.filter((x) => x.esfera === 'M' && (!ufEscopo || x.uf === ufEscopo))
     .sort((a, b) => a.nome.localeCompare(b.nome)), [entes, ufEscopo]);
-  const achar = (texto: string) => opcoesMunicipios.find((x) => `${x.nome} (${x.uf})` === texto || String(x.cod_ibge) === texto.trim());
 
-  // município principal (o 1º da lista) e comparação opcional (os demais, até 5 no total)
+  // município principal (o 1º da lista) e comparação opcional (os demais, até 5 no total); o principal também vai
+  // para o filtro da página (ente), o mesmo do ranking anual
   const principal = e.entes[0] ?? null;
-  const [textoPrincipal, setTextoPrincipal] = useState<string | null>(null);
-  const trocarPrincipal = (texto: string) => {
-    setTextoPrincipal(texto);
-    const alvo = achar(texto);
+  const trocarPrincipal = (alvo: Ente | null) => {
     if (!alvo) return;
     definir({ entes: [alvo.cod_ibge, ...e.entes.slice(1).filter((x) => x !== alvo.cod_ibge)] },
       { ente: String(alvo.cod_ibge), ...(busca.get('uf') ? { uf: alvo.uf } : {}) });
-    setTextoPrincipal(null);
   };
   const [comparando, setComparando] = useState(e.entes.length > 1);
-  const [novo, setNovo] = useState('');
-  const adicionar = (texto: string) => {
-    const alvo = achar(texto);
+  const adicionar = (alvo: Ente | null) => {
     if (!alvo || e.entes.includes(alvo.cod_ibge) || e.entes.length >= MAX_COMPARADOS) return;
     definir({ entes: [...e.entes, alvo.cod_ibge] });
-    setNovo('');
   };
   const [maisOpcoes, setMaisOpcoes] = useState(false);
 
@@ -303,15 +297,10 @@ export function EvolucaoPosicao(p: Props) {
     <>
       <section className="cartao evol-entrada">
         <div className="filtros evol-principal">
-          <div className="campo">
-            <label htmlFor="ev-municipio">{t('Município', 'Municipality')}</label>
-            <input id="ev-municipio" list="ev-municipios" value={textoPrincipal ?? (principal ? nomeDe(principal) : '')}
-              placeholder={t('nome do município…', 'municipality name…')} onChange={(x) => trocarPrincipal(x.target.value)}
-              onBlur={() => setTextoPrincipal(null)} />
-          </div>
+          <BuscaEnte id="ev-municipio" rotulo={t('Município', 'Municipality')} entes={opcoesMunicipios} uf={ufEscopo}
+            atual={principal ? porCodigo.get(principal) ?? null : null} aoEscolher={trocarPrincipal} semLimpar />
           {p.indicador}
         </div>
-        <datalist id="ev-municipios">{opcoesMunicipios.map((x) => <option key={x.cod_ibge} value={`${x.nome} (${x.uf})`} />)}</datalist>
         <div className="evol-compactos">
           <label className="evol-compacto">{t('De', 'From')}{' '}
             <select value={e.de} onChange={(x) => mudarPeriodo({ de: Number(x.target.value) })}>
@@ -348,8 +337,8 @@ export function EvolucaoPosicao(p: Props) {
               </span>
             ))}
             {e.entes.length < MAX_COMPARADOS && (
-              <input list="ev-municipios" value={novo} placeholder={t(`acrescentar município (até ${MAX_COMPARADOS})…`, `add municipality (up to ${MAX_COMPARADOS})…`)} aria-label={t('Acrescentar município', 'Add municipality')}
-                onChange={(x) => { setNovo(x.target.value); adicionar(x.target.value); }} onKeyDown={(x) => x.key === 'Enter' && adicionar(novo)} />
+              <BuscaEnte id="ev-comparar" rotulo={t(`Acrescentar município (até ${MAX_COMPARADOS})`, `Add municipality (up to ${MAX_COMPARADOS})`)}
+                entes={opcoesMunicipios.filter((x) => !e.entes.includes(x.cod_ibge))} uf={ufEscopo} atual={null} aoEscolher={adicionar} />
             )}
           </div>
         )}

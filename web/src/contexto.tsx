@@ -224,8 +224,12 @@ export function ordenarBusca(entes: Ente[], termo: string, uf: string | null, li
 const descreverEnte = (e: Ente) => (e.esfera === 'M' ? `${e.nome} (${e.uf}) — ${esfera(e.esfera)}` : `${e.nome} — ${esfera(e.esfera)}`);
 
 /** Busca de ente por nome ou código (usada nos filtros e no contexto da página da IA). */
-export function BuscaEnte({ entes, uf, atual, aoEscolher, explicacao, rotulo }: {
+export function BuscaEnte({ entes, uf, atual, aoEscolher, explicacao, rotulo, id = 'f-ente', semLimpar = false }: {
   entes: Ente[]; uf: string | null; atual: Ente | null; aoEscolher: (e: Ente | null) => void; explicacao?: string; rotulo?: string;
+  /** id do campo (mais de uma busca na mesma página) */
+  id?: string;
+  /** sem o botão "limpar" (quando a página sempre precisa de um ente) */
+  semLimpar?: boolean;
 }) {
   const [texto, setTexto] = useState('');
   const [aberto, setAberto] = useState(false);
@@ -240,22 +244,22 @@ export function BuscaEnte({ entes, uf, atual, aoEscolher, explicacao, rotulo }: 
 
   return (
     <div className="campo combo">
-      <label htmlFor="f-ente">
+      <label htmlFor={id}>
         {rotulo ?? t('Ente (município, estado ou DF)', 'Government (municipality, state or DF)')}
         {explicacao && <Dica rotulo={t('Função do ente nesta página', 'Role of the government on this page')}>{explicacao}</Dica>}
-        {atual && (
+        {atual && !semLimpar && (
           <button className="limpar" style={{ padding: '0 0 0 8px', textTransform: 'none' }} onClick={() => escolher(null)}>
             {t('limpar', 'clear')}
           </button>
         )}
       </label>
       <input
-        id="f-ente"
+        id={id}
         role="combobox"
         aria-expanded={aberto}
-        aria-controls="f-ente-lista"
+        aria-controls={`${id}-lista`}
         aria-autocomplete="list"
-        aria-activedescendant={aberto && opcoes[foco] ? `f-ente-${opcoes[foco].cod_ibge}` : undefined}
+        aria-activedescendant={aberto && opcoes[foco] ? `${id}-${opcoes[foco].cod_ibge}` : undefined}
         placeholder={atual ? descreverEnte(atual) : t('Buscar por nome ou código IBGE…', 'Search by name or IBGE code…')}
         value={texto}
         onFocus={() => setAberto(true)}
@@ -273,11 +277,11 @@ export function BuscaEnte({ entes, uf, atual, aoEscolher, explicacao, rotulo }: 
         }}
       />
       {aberto && opcoes.length > 0 && (
-        <ul id="f-ente-lista" role="listbox">
+        <ul id={`${id}-lista`} role="listbox">
           {opcoes.map((e, i) => (
             <li
               key={e.cod_ibge}
-              id={`f-ente-${e.cod_ibge}`}
+              id={`${id}-${e.cod_ibge}`}
               role="option"
               aria-selected={i === foco}
               className={i === foco ? 'foco' : undefined}
