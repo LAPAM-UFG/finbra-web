@@ -360,7 +360,7 @@ export function SaudeRankings() {
           <p className="desc">{ind.nota()} {t(`Universo: ${numero(universo.length)} municípios${minimo ? ` com denominador de pelo menos ${numero(minimo)}` : ''}; com menos, as taxas oscilam demais para comparar.`,
             `Universe: ${numero(universo.length)} municipalities${minimo ? ` with a denominator of at least ${numero(minimo)}` : ''}; below that, rates are too volatile to compare.`)}</p>
           <BotoesExportar nome={`saude_ranking_${ind.id}_${ano}`} obter={() => ({
-            colunas: [t('Posição', 'Rank'), 'cod_ibge', t('Município', 'Municipality'), 'UF', `${ind.nome()} (${ind.unidade()})`, nomeContagem(ind.numerador), nomeContagem(ind.denominador), t('População', 'Population')],
+            colunas: [t('Posição', 'Rank'), 'cod_ibge', t('Município', 'Municipality'), 'UF', `${ind.nome()} (${ind.unidade()})`, `${nomeContagem(ind.numerador)} (${t('numerador', 'numerator')})`, `${nomeContagem(ind.denominador)} (${t('denominador', 'denominator')})`, t('População', 'Population')],
             linhas: ordenados.map((r) => [posicao.get(r.cod_ibge) ?? null, String(r.cod_ibge), r.nome, r.uf, r._valor, r[ind.numerador], r[ind.denominador], r.populacao]),
             metadados: [[t('Recorte', 'Scope'), escopoNome], [t('Ano', 'Year'), String(ano)], [t('Indicador', 'Indicator'), ind.nome()], [t('Fórmula', 'Formula'), ind.nota()],
               [t('Universo', 'Universe'), t(`${ordenados.length} municípios, denominador mínimo ${minimo}`, `${ordenados.length} municipalities, minimum denominator ${minimo}`)],
@@ -374,7 +374,11 @@ export function SaudeRankings() {
           <>
             <div className="rolagem">
               <table className="tabela-fixa">
-                <thead><tr><th>{t('Município', 'Municipality')}</th><th>#</th><th>{ind.nome()}</th><th>{nomeContagem(ind.numerador)}</th><th>{nomeContagem(ind.denominador)}</th></tr></thead>
+                <thead><tr><th>{t('Município', 'Municipality')}</th><th>#</th>
+                  {/* taxa e contagens com o papel de cada coluna: em homicídios, suicídios e trânsito o nome do indicador e o da contagem coincidem */}
+                  <th>{ind.nome()}<br /><small>{ind.unidade()}</small></th>
+                  <th>{nomeContagem(ind.numerador)}<br /><small>{t('numerador (casos no ano)', 'numerator (cases in the year)')}</small></th>
+                  <th>{nomeContagem(ind.denominador)}<br /><small>{t('denominador', 'denominator')}</small></th></tr></thead>
                 <tbody>
                   {visiveis.map((r) => (
                     <tr key={String(r.cod_ibge)} className={escolhido?.cod_ibge === r.cod_ibge ? 'destaque' : undefined}>
