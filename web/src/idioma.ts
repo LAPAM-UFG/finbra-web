@@ -2,7 +2,27 @@ import { useSyncExternalStore } from 'react';
 
 export type Idioma = 'pt' | 'en';
 
+/**
+ * Idioma salvo no navegador. Um link com ?lang=en (ou pt) escolhe o idioma, que fica salvo para o login e a
+ * navegação; o parâmetro sai do endereço para não voltar a valer depois que a pessoa trocar o idioma.
+ */
 function lerIdioma(): Idioma {
+  try {
+    const url = new URL(location.href);
+    const pedido = url.searchParams.get('lang');
+    if (pedido === 'en' || pedido === 'pt') {
+      url.searchParams.delete('lang');
+      history.replaceState(history.state, '', url.pathname + url.search + url.hash);
+      try {
+        localStorage.setItem('idioma', pedido);
+      } catch {
+        /* sem armazenamento: vale nesta visita */
+      }
+      return pedido;
+    }
+  } catch {
+    /* fora do navegador */
+  }
   try {
     return localStorage.getItem('idioma') === 'en' ? 'en' : 'pt';
   } catch {

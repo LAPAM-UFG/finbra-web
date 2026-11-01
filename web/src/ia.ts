@@ -151,12 +151,12 @@ export function rotuloTerritorio(tr: Territorio) {
 
 export const rotuloModo = (m: Modo) => (m === 'pesquisa' ? t('Análise para pesquisa', 'Research analysis') : t('Resposta rápida', 'Quick answer'));
 export const descricaoModo = (m: Modo) => (m === 'pesquisa'
-  ? t('Tabelas completas, análise detalhada, fontes e metodologia.', 'Complete tables, detailed analysis, sources and methodology.')
-  : t('Resumo dos resultados, com os dados essenciais.', 'Summary of the results, with the essential data.'));
+  ? t('Tabelas completas, análise detalhada, metodologia e fontes.', 'Complete tables, detailed analysis, methodology and sources.')
+  : t('O essencial, em poucas linhas e com os números principais.', 'The essentials, in a few lines, with the key numbers.'));
 /** Modo guardado no navegador; o antigo "estilo técnico" vira análise para pesquisa. */
 export const lerModo = (v: string | null): Modo => (v === 'pesquisa' || v === 'tecnica' ? 'pesquisa' : 'rapida');
-/** Ano escolhido na página; sem ele, vale o período que a pergunta pedir (e a resposta mostra o consultado). */
-export const rotuloAno = (ano: number | null) => (ano ? t(`Ano de referência ${ano}`, `Reference year ${ano}`) : t('Sem ano de referência', 'No reference year'));
+/** Ano escolhido na página; no automático, vale o ano que a pergunta pedir ou o mais recente disponível. */
+export const rotuloAno = (ano: number | null) => (ano ? t(`Ano: ${ano}`, `Year: ${ano}`) : t('Ano: automático', 'Year: automatic'));
 
 export const mesmoContexto = (a: ContextoIa, b: ContextoIa) =>
   rotuloTerritorio(a.territorio) === rotuloTerritorio(b.territorio) && a.ano === b.ano && a.modo === b.modo && a.paineis.join() === b.paineis.join();
@@ -229,7 +229,8 @@ export type Cobertura = {
   lrf?: { de: number; ate: number } | null; bolsa?: { de: number; ate: number; mes: number } | null; inss?: number[];
   sim?: number[]; sinasc?: number[]; popSvs?: number[];
 };
-export type Sugestao = { categoria: string; texto: string };
+/** Sugestão: título curto no botão e a pergunta completa, que vai para o campo; tema = painel (ou "entre painéis"). */
+export type Sugestao = { titulo: string; tema: string; texto: string };
 
 /** Formas do território nas frases: "em Goiás" / "no Pará"; sujeito "o Pará"; "de Goiás" / "do Pará". */
 function formas(tr: Territorio) {
@@ -252,86 +253,101 @@ function escopoFinancas(tr: Territorio) {
 }
 
 /**
- * Até quatro perguntas para começar, com os anos que existem nos dados e o território escolhido na página
- * (sem território, o Brasil): evolução, remuneração, comparação e composição, conforme os painéis marcados.
+ * Perguntas para começar, com os anos que existem nos dados e o território escolhido na página (sem território, o
+ * Brasil). A ordem alterna os painéis marcados (as três primeiras ficam à vista; as demais, em "Mais exemplos"), e as
+ * perguntas entre painéis entram logo depois da primeira de cada um.
  */
 export function sugestoes(paineis: Painel[], tr: Territorio, c: Cobertura, ano: number | null): Sugestao[] {
   const trabalho = paineis.includes('trabalho') && c.rais.length > 0;
   const financas = paineis.includes('financas') && c.dca.length > 0;
   const saude = paineis.includes('saude') && (c.sim?.length ?? 0) > 0;
-  // quatro sugestões no total: com mais de um painel, cada um entra com parte delas, mais uma entre painéis
-  const n = [trabalho, financas, saude].filter(Boolean).length;
-  const cota = { trabalho: n === 1 ? 4 : n === 2 ? 2 : 1, financas: n === 1 ? 4 : 1, saude: n === 1 ? 4 : n === 2 ? 2 : 1 };
   const ult = (anos: number[]) => (ano && anos.includes(ano) ? ano : anos.at(-1)!);
   const recuo = (anos: number[], n: number) => Math.max(anos[0], ult(anos) - n);
   const f = formas(tr);
   const uf = tr.tipo === 'municipio' ? formas({ tipo: 'uf', uf: tr.uf, nome: nomeDaUf(tr.uf), cod: 0 }) : null;
-  const cat = {
-    evolucao: t('Evolução', 'Trends'), remuneracao: t('Remuneração', 'Pay'), comparacao: t('Comparação', 'Comparison'),
-    composicao: t('Composição', 'Composition'), dependencia: t('Dependência', 'Dependency'), cruzamento: t('Entre painéis', 'Across dashboards'),
-    causas: t('Causas de morte', 'Causes of death'), nascimentos: t('Nascimentos', 'Births'),
+  const tema = {
+    trabalho: t('Mercado de trabalho', 'Labour market'), financas: t('Finanças públicas', 'Public finances'), saude: t('Saúde', 'Health'),
+    cruzamento: t('Entre painéis', 'Across dashboards'),
   };
-  const lista: Sugestao[] = [];
+  const grupos: Sugestao[][] = [];
   if (trabalho) {
     const a = ult(c.rais);
     const a10 = recuo(c.rais, 10);
     const a5 = recuo(c.rais, 5);
     const comparacao = tr.tipo === 'brasil'
-      ? t(`Quais UFs tiveram o maior crescimento percentual do emprego formal entre ${a5} e ${a}?`, `Which states had the largest percentage growth in formal jobs between ${a5} and ${a}?`)
+      ? { titulo: t('UFs com maior alta do emprego', 'States with the fastest job growth'),
+        texto: t(`Quais UFs tiveram o maior crescimento percentual do emprego formal entre ${a5} e ${a}?`, `Which states had the largest percentage growth in formal jobs between ${a5} and ${a}?`) }
       : tr.tipo === 'municipio'
-        ? t(`Como ${f.sujeito} se compara com os demais municípios ${uf!.de} em empregos formais por mil habitantes em ${a}?`,
-          `How does ${f.sujeito} compare with other municipalities ${uf!.de} in formal jobs per thousand inhabitants in ${a}?`)
-        : t(`Como ${f.sujeito} se compara com o Brasil em empregos formais por mil habitantes e remuneração média em ${a}?`,
-          `How does ${f.sujeito} compare with Brazil in formal jobs per thousand inhabitants and average pay in ${a}?`);
-    const itens = [
-      { categoria: cat.evolucao, texto: t(`Como evoluiu o número de empregos formais ${f.em} de ${a10} a ${a}?`, `How did the number of formal jobs ${f.em} change from ${a10} to ${a}?`) },
-      { categoria: cat.remuneracao, texto: t(`Qual era a remuneração média de dezembro ${f.em} em ${a} e como ela variou em termos reais desde ${a5}?`, `What was average December pay ${f.em} in ${a}, and how did it change in real terms since ${a5}?`) },
-      { categoria: cat.comparacao, texto: comparacao },
-      { categoria: cat.composicao, texto: t(`Como se distribuem os vínculos ativos ${f.em} em ${a} entre os grandes setores da economia e por sexo?`, `How are active jobs ${f.em} in ${a} distributed across broad economic sectors and by sex?`) },
-    ];
-    lista.push(...itens.slice(0, cota.trabalho));
+        ? { titulo: t('Empregos por mil habitantes no estado', 'Jobs per 1,000 people across the state'),
+          texto: t(`Como ${f.sujeito} se compara com os demais municípios ${uf!.de} em empregos formais por mil habitantes em ${a}?`,
+            `How does ${f.sujeito} compare with other municipalities ${uf!.de} in formal jobs per thousand inhabitants in ${a}?`) }
+        : { titulo: t('Emprego e remuneração ante o Brasil', 'Jobs and pay compared with Brazil'),
+          texto: t(`Como ${f.sujeito} se compara com o Brasil em empregos formais por mil habitantes e remuneração média em ${a}?`,
+            `How does ${f.sujeito} compare with Brazil in formal jobs per thousand inhabitants and average pay in ${a}?`) };
+    grupos.push([
+      { titulo: t('Evolução do emprego formal', 'Formal employment over time'),
+        texto: t(`Como evoluiu o número de empregos formais ${f.em} de ${a10} a ${a}?`, `How did the number of formal jobs ${f.em} change from ${a10} to ${a}?`) },
+      { titulo: t('Remuneração média real', 'Real average pay'),
+        texto: t(`Qual era a remuneração média de dezembro ${f.em} em ${a} e como ela variou em termos reais desde ${a5}?`, `What was average December pay ${f.em} in ${a}, and how did it change in real terms since ${a5}?`) },
+      comparacao,
+      { titulo: t('Empregos por setor e sexo', 'Jobs by sector and sex'),
+        texto: t(`Como se distribuem os vínculos ativos ${f.em} em ${a} entre os grandes setores da economia e por sexo?`, `How are active jobs ${f.em} in ${a} distributed across broad economic sectors and by sex?`) },
+    ].map((x) => ({ ...x, tema: tema.trabalho })));
   }
   if (financas) {
     const a = ult(c.dca);
     const a10 = recuo(c.dca, 10);
     const esc = escopoFinancas(tr);
     const comparacao = tr.tipo === 'brasil'
-      ? t(`Quais os 10 municípios com maior receita corrente per capita em ${a}?`, `Which 10 municipalities had the highest current revenue per capita in ${a}?`)
+      ? { titulo: t('Maiores receitas per capita', 'Highest revenue per capita'),
+        texto: t(`Quais os 10 municípios com maior receita corrente per capita em ${a}?`, `Which 10 municipalities had the highest current revenue per capita in ${a}?`) }
       : tr.tipo === 'uf'
-        ? t(`Quais os 10 municípios ${f.de} com maior receita corrente per capita em ${a}?`, `Which 10 municipalities ${f.de} had the highest current revenue per capita in ${a}?`)
+        ? { titulo: t('Maiores receitas per capita', 'Highest revenue per capita'),
+          texto: t(`Quais os 10 municípios ${f.de} com maior receita corrente per capita em ${a}?`, `Which 10 municipalities ${f.de} had the highest current revenue per capita in ${a}?`) }
         : tr.tipo === 'municipio'
-          ? t(`Como ${f.sujeito} se compara com os demais municípios ${uf!.de} em receita e despesa per capita em ${a}?`, `How does ${f.sujeito} compare with other municipalities ${uf!.de} in revenue and expenditure per capita in ${a}?`)
-          : t(`Como o Distrito Federal se compara com os estados em receita corrente per capita em ${a}?`, `How does the Federal District compare with the states in current revenue per capita in ${a}?`);
-    const itens = [
-      { categoria: cat.evolucao, texto: t(`Como evoluiu a receita corrente per capita ${esc} de ${a10} a ${a}, em valores reais?`, `How did current revenue per capita ${esc} change from ${a10} to ${a}, in real terms?`) },
-      { categoria: cat.composicao, texto: t(`Quanto da despesa empenhada ${esc} em ${a} foi para pessoal, saúde e educação?`, `How much of the committed expenditure ${esc} in ${a} went to personnel, health and education?`) },
-      { categoria: cat.comparacao, texto: comparacao },
-      { categoria: cat.dependencia, texto: t(`Quanto a receita corrente ${esc} depende de transferências, e como isso mudou desde ${a10}?`, `How much does the current revenue ${esc} depend on transfers, and how has that changed since ${a10}?`) },
-    ];
-    lista.push(...itens.slice(0, cota.financas));
+          ? { titulo: t('Receita e despesa ante o estado', 'Revenue and spending across the state'),
+            texto: t(`Como ${f.sujeito} se compara com os demais municípios ${uf!.de} em receita e despesa per capita em ${a}?`, `How does ${f.sujeito} compare with other municipalities ${uf!.de} in revenue and expenditure per capita in ${a}?`) }
+          : { titulo: t('Distrito Federal ante os estados', 'Federal District compared with the states'),
+            texto: t(`Como o Distrito Federal se compara com os estados em receita corrente per capita em ${a}?`, `How does the Federal District compare with the states in current revenue per capita in ${a}?`) };
+    grupos.push([
+      { titulo: t('Receita per capita ao longo do tempo', 'Revenue per capita over time'),
+        texto: t(`Como evoluiu a receita corrente per capita ${esc} de ${a10} a ${a}, em valores reais?`, `How did current revenue per capita ${esc} change from ${a10} to ${a}, in real terms?`) },
+      { titulo: t('Gasto com pessoal, saúde e educação', 'Spending on staff, health and education'),
+        texto: t(`Quanto da despesa empenhada ${esc} em ${a} foi para pessoal, saúde e educação?`, `How much of the committed expenditure ${esc} in ${a} went to personnel, health and education?`) },
+      comparacao,
+      { titulo: t('Dependência de transferências', 'Reliance on transfers'),
+        texto: t(`Quanto a receita corrente ${esc} depende de transferências, e como isso mudou desde ${a10}?`, `How much does the current revenue ${esc} depend on transfers, and how has that changed since ${a10}?`) },
+    ].map((x) => ({ ...x, tema: tema.financas })));
   }
   if (saude) {
     const a = ult(c.sim!);
     const a10 = recuo(c.sim!, 10);
     const comparacao = tr.tipo === 'brasil'
-      ? t(`Quais UFs tiveram as maiores taxas de homicídio por 100 mil habitantes em ${a}?`, `Which states had the highest homicide rates per 100,000 inhabitants in ${a}?`)
+      ? { titulo: t('UFs com mais homicídios', 'States with the highest homicide rates'),
+        texto: t(`Quais UFs tiveram as maiores taxas de homicídio por 100 mil habitantes em ${a}?`, `Which states had the highest homicide rates per 100,000 inhabitants in ${a}?`) }
       : tr.tipo === 'uf'
-        ? t(`Entre os municípios ${f.de} com pelo menos mil nascidos vivos, quais tiveram a maior mortalidade infantil em ${a}?`,
-          `Among municipalities ${f.de} with at least 1,000 live births, which had the highest infant mortality in ${a}?`)
+        ? { titulo: t('Maior mortalidade infantil', 'Highest infant mortality'),
+          texto: t(`Entre os municípios ${f.de} com pelo menos mil nascidos vivos, quais tiveram a maior mortalidade infantil em ${a}?`,
+            `Among municipalities ${f.de} with at least 1,000 live births, which had the highest infant mortality in ${a}?`) }
         : tr.tipo === 'municipio'
-          ? t(`Como ${f.sujeito} se compara com ${uf!.sujeito} em mortalidade infantil e baixo peso ao nascer em ${a}?`,
-            `How does ${f.sujeito} compare with ${uf!.sujeito} in infant mortality and low birth weight in ${a}?`)
-          : t(`Como o Distrito Federal se compara com o Brasil em mortalidade infantil e baixo peso ao nascer em ${a}?`,
-            `How does the Federal District compare with Brazil in infant mortality and low birth weight in ${a}?`);
-    const itens = [
-      { categoria: cat.evolucao, texto: t(`Como evoluiu a mortalidade infantil ${f.em} de ${a10} a ${a}?`, `How did infant mortality ${f.em} change from ${a10} to ${a}?`) },
-      { categoria: cat.causas, texto: t(`Quais foram as principais causas de morte ${f.em} em ${a}, pelos capítulos da CID-10?`, `What were the main causes of death ${f.em} in ${a}, by ICD-10 chapter?`) },
-      { categoria: cat.comparacao, texto: comparacao },
-      { categoria: cat.nascimentos, texto: t(`Como mudaram as proporções de partos cesáreos e de mães adolescentes ${f.em} de ${a10} a ${a}?`,
-        `How did the shares of caesarean births and adolescent mothers ${f.em} change from ${a10} to ${a}?`) },
-    ];
-    lista.push(...itens.slice(0, cota.saude));
+          ? { titulo: t('Saúde infantil ante o estado', 'Infant health compared with the state'),
+            texto: t(`Como ${f.sujeito} se compara com ${uf!.sujeito} em mortalidade infantil e baixo peso ao nascer em ${a}?`,
+              `How does ${f.sujeito} compare with ${uf!.sujeito} in infant mortality and low birth weight in ${a}?`) }
+          : { titulo: t('Saúde infantil ante o Brasil', 'Infant health compared with Brazil'),
+            texto: t(`Como o Distrito Federal se compara com o Brasil em mortalidade infantil e baixo peso ao nascer em ${a}?`,
+              `How does the Federal District compare with Brazil in infant mortality and low birth weight in ${a}?`) };
+    grupos.push([
+      { titulo: t('Mortalidade infantil ao longo do tempo', 'Infant mortality over time'),
+        texto: t(`Como evoluiu a mortalidade infantil ${f.em} de ${a10} a ${a}?`, `How did infant mortality ${f.em} change from ${a10} to ${a}?`) },
+      { titulo: t('Principais causas de morte', 'Leading causes of death'),
+        texto: t(`Quais foram as principais causas de morte ${f.em} em ${a}, pelos capítulos da CID-10?`, `What were the main causes of death ${f.em} in ${a}, by ICD-10 chapter?`) },
+      comparacao,
+      { titulo: t('Cesáreas e mães adolescentes', 'Caesarean births and teenage mothers'),
+        texto: t(`Como mudaram as proporções de partos cesáreos e de mães adolescentes ${f.em} de ${a10} a ${a}?`,
+          `How did the shares of caesarean births and adolescent mothers ${f.em} change from ${a10} to ${a}?`) },
+    ].map((x) => ({ ...x, tema: tema.saude })));
   }
+  const cruzadas: Sugestao[] = [];
   if (financas && saude && !trabalho) {
     const a = Math.min(ult(c.dca), ult(c.sim!));
     const texto = tr.tipo === 'brasil'
@@ -339,7 +355,7 @@ export function sugestoes(paineis: Painel[], tr: Territorio, c: Cobertura, ano: 
       : tr.tipo === 'uf'
         ? t(`Nos municípios ${f.de}, qual a relação entre a despesa com saúde por habitante e a mortalidade infantil em ${a}?`, `In municipalities ${f.de}, how does health spending per inhabitant relate to infant mortality in ${a}?`)
         : t(`Como evoluíram juntas a despesa com saúde por habitante e a mortalidade infantil ${f.em} até ${a}?`, `How did health spending per inhabitant and infant mortality ${f.em} evolve together up to ${a}?`);
-    lista.push({ categoria: cat.cruzamento, texto });
+    cruzadas.push({ titulo: t('Gasto em saúde e mortalidade infantil', 'Health spending and infant mortality'), tema: tema.cruzamento, texto });
   }
   if (trabalho && financas) {
     const a = Math.min(ult(c.rais), ult(c.dca));
@@ -348,9 +364,15 @@ export function sugestoes(paineis: Painel[], tr: Territorio, c: Cobertura, ano: 
       : tr.tipo === 'uf'
         ? t(`Nos municípios ${f.de}, qual a relação entre a despesa com pessoal e os empregos formais na administração pública em ${a}?`, `In municipalities ${f.de}, how does personnel spending relate to formal public-administration jobs in ${a}?`)
         : t(`Como evoluíram juntos a despesa com pessoal e os empregos formais na administração pública ${f.em} até ${a}?`, `How did personnel spending and formal public-administration jobs ${f.em} evolve together up to ${a}?`);
-    lista.push({ categoria: cat.cruzamento, texto });
+    cruzadas.push({ titulo: t('Gasto com pessoal e emprego público', 'Staff spending and public-sector jobs'), tema: tema.cruzamento, texto });
   }
-  return lista.slice(0, 4);
+  // uma de cada painel, depois as entre painéis (com dois painéis, a cruzada é a terceira à vista), e o resto alternado
+  const lista: Sugestao[] = [];
+  for (let i = 0; grupos.some((g) => g.length > i); i++) {
+    for (const g of grupos) if (g[i]) lista.push(g[i]);
+    if (i === 0) lista.push(...cruzadas);
+  }
+  return lista;
 }
 
 /** Exemplo do campo de pergunta, no contexto da página. */

@@ -55,9 +55,8 @@ const menuSaude = (): [string, [string, string][]][] => [
 ];
 
 /** Aba geral da IA (/ia), que consulta os painéis marcados na página. */
-const menuIa = (): [string, [string, string][]][] => [
-  [t('Inteligência artificial', 'Artificial intelligence'), [['/ia', t('Pergunte aos dados', 'Ask the data')]]],
-];
+// a aba da IA tem uma página só: a lateral fica para o histórico de conversas (o nome já está no topo e nas abas)
+const menuIa = (): [string, [string, string][]][] => [];
 
 type Area = 'financas' | 'trabalho' | 'saude' | 'ia';
 const areaDe = (pathname: string): Area => (pathname === '/ia' ? 'ia' : pathname.startsWith('/trabalho') ? 'trabalho'

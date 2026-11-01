@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { Ente, Meta } from '../api';
 import { BotoesExportar } from '../components/Exportar';
@@ -130,18 +130,14 @@ function territorioDe(alvo: Ente | null, uf: string | null, entes: Ente[]): Terr
   return { tipo: 'uf', uf: sigla, nome: estado?.nome ?? nomeDaUf(sigla), cod: estado?.cod_ibge ?? 0 };
 }
 
-/** Temas dos painéis no título ("finanças públicas, mercado de trabalho e saúde"). */
+/** Temas dos painéis marcados, no subtítulo ("finanças, emprego e saúde"). */
 const TEMAS = (): Record<Painel, string> => ({
-  financas: t('finanças públicas', 'public finances'), trabalho: t('mercado de trabalho', 'the labour market'), saude: t('saúde', 'health'),
+  financas: t('finanças', 'public finances'), trabalho: t('emprego', 'employment'), saude: t('saúde', 'health'),
 });
-const titulo = (p: Painel[]) => (p.length > 1
-  ? t(`O que você quer saber sobre ${p.map((x) => TEMAS()[x]).join(', ').replace(/, ([^,]*)$/, ' e $1')}?`,
-    `What would you like to know about ${p.map((x) => TEMAS()[x]).join(', ').replace(/, ([^,]*)$/, ' and $1')}?`)
-  : p[0] === 'trabalho'
-    ? t('O que você quer saber sobre o mercado de trabalho?', 'What would you like to know about the labour market?')
-    : p[0] === 'saude'
-      ? t('O que você quer saber sobre a saúde?', 'What would you like to know about health?')
-      : t('O que você quer saber sobre as finanças públicas?', 'What would you like to know about public finances?'));
+const subtitulo = (p: Painel[]) => {
+  const temas = p.map((x) => TEMAS()[x]).join(', ').replace(/, ([^,]*)$/, t(' e $1', ' and $1'));
+  return t(`Explore dados públicos de ${temas}.`, `Explore public data on ${temas}.`);
+};
 
 const descricao = (p: Painel[]) => (p.length > 1
   ? t('Pergunte em linguagem natural, inclusive cruzando os painéis. A IA consulta as bases aqui no seu navegador, faz os cálculos com SQL e explica o resultado, com as consultas à vista para conferência.',
@@ -583,10 +579,11 @@ function TextoRico({ texto }: { texto: string }) {
 function Chips({ contexto, rotulo, pequenos, periodo }: { contexto: ContextoIa; rotulo: string; pequenos?: boolean; periodo?: string | null }) {
   return (
     <ul className={`ia-chips${pequenos ? ' pequenos' : ''}`} aria-label={rotulo}>
-      <li className="ia-chip" title={t('Painéis consultados', 'Dashboards queried')}>{contexto.paineis.map((p) => NOMES_PAINEIS()[p]).join(' + ')}</li>
-      <li className="ia-chip" title={t('Território', 'Territory')}>{rotuloTerritorio(contexto.territorio)}</li>
-      <li className="ia-chip" title={t('Período', 'Period')}>{rotuloDoPeriodo(contexto, periodo)}</li>
-      <li className="ia-chip" title={t('Modo de resposta', 'Answer mode')}>{rotuloModo(contexto.modo)}</li>
+      <li className="ia-chip" title={t('Painéis consultados', 'Dashboards queried')}>
+        {contexto.paineis.length > 1 ? t('Temas', 'Topics') : t('Tema', 'Topic')}: {contexto.paineis.map((p) => NOMES_PAINEIS()[p]).join(' + ')}
+      </li>
+      <li className="ia-chip">{t('Território', 'Territory')}: {rotuloTerritorio(contexto.territorio)}</li>
+      <li className="ia-chip">{rotuloDoPeriodo(contexto, periodo)}</li>
     </ul>
   );
 }
@@ -633,14 +630,20 @@ function RecorteExecutado({ contexto, pronta }: { contexto: ContextoIa; pronta: 
   );
 }
 
-function BarraContexto({ rotulo, contexto, aberto, alternar }: { rotulo: string; contexto: ContextoIa; aberto: boolean; alternar: () => void }) {
+function BarraContexto({ rotulo, contexto, aberto, alternar, nota }: {
+  rotulo: string; contexto: ContextoIa; aberto: boolean; alternar: () => void; nota?: boolean;
+}) {
   return (
     <div className="ia-contexto">
       <span className="ia-contexto-rotulo">{rotulo}</span>
       <Chips contexto={contexto} rotulo={rotulo} />
       <button type="button" className="ia-ajustar" aria-expanded={aberto} aria-controls="ia-ajustes" onClick={alternar}>
-        {aberto ? t('Fechar ajustes', 'Close settings') : t('Ajustar contexto', 'Adjust context')}
+        {aberto ? t('Fechar', 'Close') : t('Ajustar', 'Adjust')}<span className="sr-only"> {t('o contexto', 'the context')}</span>
       </button>
+      {nota && (
+        <p className="ia-nota ia-contexto-nota">{t('É só uma referência: vale quando a pergunta não disser o lugar ou o ano.',
+          'This is only a default: it applies when the question does not name the place or the year.')}</p>
+      )}
     </div>
   );
 }
@@ -654,7 +657,7 @@ function Ajustes({ paineis, alternarPainel, travarPaineis, anos, ano, definirAno
   return (
     <div id="ia-ajustes" className="ia-ajustes">
       <fieldset className="ia-grupo">
-        <legend>{t('Painéis consultados', 'Dashboards queried')}</legend>
+        <legend>{t('Temas (painéis consultados)', 'Topics (dashboards queried)')}</legend>
         <div className="ia-linha">
           {PAINEIS.map((p) => (
             <label key={p} className="caixa">
@@ -685,14 +688,16 @@ function Ajustes({ paineis, alternarPainel, travarPaineis, anos, ano, definirAno
           'Used when the question does not name a place. With no territory, the AI answers for Brazil and says so. It is the same filter as the dashboards.')}</p>
       </fieldset>
       <fieldset className="ia-grupo">
-        <legend>{t('Ano de referência', 'Reference year')}</legend>
+        <legend>{t('Ano', 'Year')}</legend>
         <div className="campo">
-          <label htmlFor="ia-ano" className="sr-only">{t('Ano de referência', 'Reference year')}</label>
-          <select id="ia-ano" value={ano ?? ''} onChange={(e) => definirAno(e.target.value ? Number(e.target.value) : null)}>
-            <option value="">{t('O da pergunta (sem ano, o mais recente)', 'From the question (otherwise the latest)')}</option>
+          <label htmlFor="ia-ano" className="sr-only">{t('Ano', 'Year')}</label>
+          <select id="ia-ano" value={ano ?? ''} onChange={(e) => definirAno(e.target.value ? Number(e.target.value) : null)} aria-describedby="ia-ano-nota">
+            <option value="">{t('Automático', 'Automatic')}</option>
             {[...anos].reverse().map((a) => <option key={a} value={a}>{rotulo(a)}</option>)}
           </select>
         </div>
+        <p id="ia-ano-nota" className="ia-nota">{t('Automático: vale o ano que a pergunta citar; se ela não citar nenhum, a IA usa o mais recente disponível em cada fonte. Um ano escolhido aqui vale só para as perguntas que não disserem o ano.',
+          'Automatic: the year named in the question is used; if it names none, the AI uses the latest year available in each source. A year chosen here applies only to questions that do not name a year.')}</p>
       </fieldset>
       {f.temFiltros && (
         <button type="button" className="limpar" onClick={f.limpar}>{t('Limpar território e ano', 'Clear territory and year')}</button>
@@ -701,25 +706,25 @@ function Ajustes({ paineis, alternarPainel, travarPaineis, anos, ano, definirAno
   );
 }
 
-/** Escolha do modo de resposta, junto ao campo da pergunta; vale para as próximas perguntas e fica guardada. */
+/** Modo de resposta: alternância compacta no rodapé do campo da pergunta; vale para as próximas perguntas e fica guardada. */
 function SeletorModo({ modo, definir, travado }: { modo: Modo; definir: (m: Modo) => void; travado: boolean }) {
   return (
-    <fieldset className="ia-modos">
+    <fieldset className="ia-modos" disabled={travado}>
       <legend className="sr-only">{t('Modo de resposta', 'Answer mode')}</legend>
       {MODOS.map((m) => (
         <label key={m} className={`ia-modo${modo === m ? ' ativo' : ''}`}>
-          <input type="radio" name="ia-modo" value={m} checked={modo === m} disabled={travado} onChange={() => definir(m)} />
-          <span className="ia-modo-nome">{rotuloModo(m)}</span>
-          <span className="ia-modo-desc">{descricaoModo(m)}</span>
+          <input type="radio" className="sr-only" name="ia-modo" value={m} checked={modo === m} onChange={() => definir(m)} aria-describedby="ia-modo-desc" />
+          {rotuloModo(m)}
         </label>
       ))}
     </fieldset>
   );
 }
 
-function Compositor({ valor, mudar, enviar, cancelar, ocupado, bloqueio, exemplo, grande, campo }: {
+function Compositor({ valor, mudar, enviar, cancelar, ocupado, bloqueio, exemplo, grande, campo, modo, descricaoDoModo }: {
   valor: string; mudar: (v: string) => void; enviar: (v: string) => void; cancelar: () => void; ocupado: boolean;
   bloqueio: string | null; exemplo: string; grande?: boolean; campo: RefObject<HTMLTextAreaElement | null>;
+  modo: ReactNode; descricaoDoModo: string;
 }) {
   // o campo cresce com o texto, até um limite (depois rola)
   useEffect(() => {
@@ -752,36 +757,81 @@ function Compositor({ valor, mudar, enviar, cancelar, ocupado, bloqueio, exemplo
         }}
       />
       <div className="ia-compositor-rodape">
-        <span id="ia-dica" className="ia-dica">
-          {ocupado ? t('Esc ou o botão Cancelar interrompem a análise', 'Esc or the Cancel button stop the analysis') : t('Enter envia · Shift+Enter quebra a linha', 'Enter sends · Shift+Enter adds a line')}
-          {restantes < 300 && <> · <span className={restantes < 50 ? 'ia-alerta' : undefined}>{t(`${contar(restantes, 'caractere restante', 'caracteres restantes')}`, `${contar(restantes, 'character left', 'characters left')}`)}</span></>}
-        </span>
+        {modo}
         {ocupado
           ? <button type="button" className="botao ia-cancelar" onClick={cancelar}>{t('Cancelar', 'Cancel')}</button>
-          : <button type="submit" className="botao ia-enviar" disabled={!!bloqueio || !valor.trim()}>{t('Perguntar', 'Ask')}</button>}
+          : <button type="submit" className="botao ia-enviar" disabled={!!bloqueio || !valor.trim()} aria-describedby={bloqueio ? 'ia-bloqueio' : undefined}>{t('Perguntar', 'Ask')}</button>}
       </div>
-      {bloqueio && <p className="ia-bloqueio" role="status">{bloqueio}</p>}
+      <p id="ia-dica" className="ia-dica">
+        <span id="ia-modo-desc">{descricaoDoModo}</span>
+        {' · '}
+        {ocupado ? t('Esc ou o botão Cancelar interrompem a análise', 'Esc or the Cancel button stop the analysis') : t('Enter envia · Shift+Enter quebra a linha', 'Enter sends · Shift+Enter adds a line')}
+        {restantes < 300 && <> · <span className={restantes < 50 ? 'ia-alerta' : undefined}>{t(`${contar(restantes, 'caractere restante', 'caracteres restantes')}`, `${contar(restantes, 'character left', 'characters left')}`)}</span></>}
+      </p>
+      {bloqueio && <p id="ia-bloqueio" className="ia-bloqueio" role="status">{bloqueio}</p>}
     </form>
   );
 }
 
-function Sugestoes({ lista, aoEscolher }: { lista: Sugestao[]; aoEscolher: (s: string) => void }) {
+const SUGESTOES_A_VISTA = 3;
+
+function Sugestoes({ lista, aoEscolher, mostrarTema }: { lista: Sugestao[]; aoEscolher: (s: string) => void; mostrarTema: boolean }) {
+  const [mais, setMais] = useState(false);
   if (!lista.length) return null;
   return (
     <section className="ia-sugestoes" aria-labelledby="ia-sugestoes-titulo">
-      <h3 id="ia-sugestoes-titulo" className="ia-secao">{t('Sugestões para começar', 'Suggestions to get started')}</h3>
-      <ul>
-        {lista.map((s) => (
+      <h3 id="ia-sugestoes-titulo" className="ia-secao">{t('Exemplos', 'Examples')}</h3>
+      <ul id="ia-sugestoes-lista">
+        {(mais ? lista : lista.slice(0, SUGESTOES_A_VISTA)).map((s) => (
           <li key={s.texto}>
-            <button type="button" className="ia-sugestao" onClick={() => aoEscolher(s.texto)}>
-              <span className="ia-sugestao-cat">{s.categoria}</span>
-              <span>{s.texto}</span>
+            <button type="button" className="ia-sugestao" onClick={() => aoEscolher(s.texto)} title={s.texto}>
+              {mostrarTema && <span className="ia-sugestao-cat">{s.tema}</span>}
+              <span className="ia-sugestao-titulo">{s.titulo}</span>
             </button>
           </li>
         ))}
       </ul>
-      <p className="ia-nota">{t('A sugestão vai para o campo de pergunta: revise ou complete antes de enviar.', 'The suggestion goes into the question box: review or complete it before sending.')}</p>
+      <p className="ia-sugestoes-rodape">
+        {lista.length > SUGESTOES_A_VISTA && (
+          <button type="button" className="ia-ajustar" aria-expanded={mais} aria-controls="ia-sugestoes-lista" onClick={() => setMais(!mais)}>
+            {mais ? t('Menos exemplos', 'Fewer examples') : t('Mais exemplos', 'More examples')}
+          </button>
+        )}
+        <span className="ia-nota">{t('O exemplo preenche o campo com a pergunta completa: revise antes de enviar.', 'An example fills the box with the full question: review it before sending.')}</span>
+      </p>
     </section>
+  );
+}
+
+/** Pé da tela inicial: a orientação para conferir à vista; cobertura, funcionamento e privacidade recolhidos. */
+function Complementos({ estado, paineis, cobertura }: { estado: EstadoIa | null | undefined; paineis: Painel[]; cobertura: Cobertura }) {
+  const linhas = descreverCobertura(paineis, cobertura);
+  return (
+    <footer className="ia-complementos">
+      <p className="ia-conferir">{t('Respostas geradas por IA podem conter erros: confira as consultas e as ressalvas de cada resposta antes de usar os números.',
+        'AI-generated answers may contain errors: check the queries and the caveats of each answer before using the numbers.')}</p>
+      {linhas.length > 0 && (
+        <details className="ia-detalhes">
+          <summary>{t('Dados disponíveis', 'Available data')}</summary>
+          <ul>{linhas.map((l) => <li key={l}>{l}</li>)}</ul>
+        </details>
+      )}
+      <details className="ia-detalhes">
+        <summary>{t('Como funciona', 'How it works')}</summary>
+        <p>{descricao(paineis)}</p>
+        <p>{t('Tema, território e ano do contexto valem quando a pergunta não os disser; a pergunta sempre tem prioridade. Cada resposta mostra o recorte que as consultas usaram de fato.',
+          'The topic, territory and year in the context apply when the question does not state them; the question always takes priority. Each answer shows the scope its queries actually used.')}</p>
+        <p>{t('Na resposta rápida vem o essencial; na análise para pesquisa, tabelas completas, metodologia e fontes. As duas mostram as consultas (SQL) para conferência.',
+          'The quick answer brings the essentials; the research analysis adds complete tables, methodology and sources. Both show the queries (SQL) for checking.')}</p>
+        <p>
+          {t('As respostas são geradas pelo Claude, da Anthropic. Para a Anthropic vão só a pergunta, o contexto da página e os resultados resumidos das consultas, nunca os arquivos.',
+            'Answers are generated by Claude, by Anthropic. Only the question, the page context and the summarized query results go to Anthropic, never the files.')}
+          {paineis.includes('trabalho') && ` ${t('Na RAIS, a unidade é o vínculo, não a pessoa.', 'In RAIS, the unit is the job, not the person.')}`}
+          {paineis.includes('saude') && ` ${t('Na saúde, as taxas são calculadas diretamente, pelo município de residência e sem correção de subnotificação.', 'In health, rates are computed directly, by municipality of residence and without under-reporting correction.')}`}
+        </p>
+      </details>
+      {estado && <Conta estado={estado} />}
+    </footer>
   );
 }
 
@@ -1624,6 +1674,7 @@ export function Ia() {
     if (nova) {
       mostrar(null);
       setNaoAchada(null);
+      setTexto('');
       guardar('ia-conversa-aberta', null, true);
       const b = new URLSearchParams(busca);
       b.delete('nova');
@@ -1763,7 +1814,7 @@ export function Ia() {
     ? (estadoNegado ? t('Entre com um e-mail autorizado para perguntar.', 'Sign in with an authorized email to ask.')
       : falhaEstado ? t('A IA está indisponível no momento.', 'The AI is unavailable right now.') : t('Verificando o acesso…', 'Checking access…'))
     : estado === null
-      ? t('Entre com um e-mail autorizado para perguntar.', 'Sign in with an authorized email to ask.')
+      ? t('O botão Perguntar é liberado depois que você entra com seu e-mail.', 'The Ask button is enabled once you sign in with your email.')
       : !estado.configurada
         ? t('A IA ainda não foi configurada no servidor (falta a chave da Anthropic).', 'The AI is not configured on the server yet (missing Anthropic key).')
         : estado.restantes <= 0
@@ -1967,7 +2018,7 @@ export function Ia() {
       rotulo={(a) => rotuloDoAno(a, cobertura, contexto.paineis)}
       definirAno={definirAno} />
   );
-  const seletorModo = <SeletorModo modo={modo} definir={definirModo} travado={!!rodando} />;
+
   const acesso = (
     <>
       {falhaEstado && (estadoNegado ? (
@@ -1985,32 +2036,34 @@ export function Ia() {
         <p className="erro" role="alert">{falhaEstado} <button type="button" className="botao-leve" onClick={carregar}>{t('Tentar de novo', 'Try again')}</button></p>
       ))}
       {estado === null && (
-        <section className="cartao ia-entrar" aria-labelledby="ia-entrar-titulo">
-          <div>
-            <h3 id="ia-entrar-titulo">{t('Entre para perguntar', 'Sign in to ask')}</h3>
-            <p className="desc">{t('O acesso é restrito a e-mails autorizados pelo LAPAM. Não há senha: você entra com um código enviado ao seu e-mail.',
-              'Access is restricted to emails authorized by LAPAM. There is no password: you sign in with a code sent to your email.')}</p>
-          </div>
-          <ol className="ia-entrar-passos">
-            <li><strong>{t('E-mail', 'Email')}</strong>{t('Clique em “Entrar com e-mail” e digite seu e-mail na tela de login (em inglês, do Cloudflare Access, o serviço que protege o acesso).',
-              'Click “Sign in with email” and type your email on the login screen (from Cloudflare Access, the service that protects access).')}</li>
-            <li><strong>{t('Código', 'Code')}</strong>{t('Clique em “Send login code” e abra o e-mail com o código de 6 dígitos. Se não chegar, veja o spam.',
-              'Click “Send login code” and open the email with the 6-digit code. If it does not arrive, check your spam folder.')}</li>
-            <li><strong>{t('Pronto', 'Done')}</strong>{t('Digite o código: você volta para esta página, com o mesmo contexto, e suas conversas ficam guardadas na sua conta.',
-              'Enter the code: you come back to this page, with the same context, and your conversations are saved to your account.')}</li>
-          </ol>
-          <div className="ia-entrar-acoes">
+        <section className="ia-entrar" aria-label={t('Acesso', 'Access')}>
+          <div className="ia-entrar-linha">
+            <p className="ia-entrar-texto">{t('Entre com seu e-mail para perguntar.', 'Sign in with your email to ask.')}</p>
             <a className="botao" href={urlEntrar()}>{t('Entrar com e-mail', 'Sign in with email')}</a>
+          </div>
+          <details className="ia-entrar-como">
+            <summary>{t('Como funciona o acesso?', 'How does access work?')}</summary>
+            <p>{t('O acesso é restrito a e-mails autorizados pelo LAPAM. Não há senha: você entra com um código enviado ao seu e-mail.',
+              'Access is restricted to emails authorized by LAPAM. There is no password: you sign in with a code sent to your email.')}</p>
+            <ol className="ia-entrar-passos">
+              <li><strong>{t('E-mail', 'Email')}</strong>{t('Clique em “Entrar com e-mail” e digite seu e-mail na tela de login (em inglês, do Cloudflare Access, o serviço que protege o acesso).',
+                'Click “Sign in with email” and type your email on the login screen (from Cloudflare Access, the service that protects access).')}</li>
+              <li><strong>{t('Código', 'Code')}</strong>{t('Clique em “Send login code” e abra o e-mail com o código de 6 dígitos. Se não chegar, veja o spam.',
+                'Click “Send login code” and open the email with the 6-digit code. If it does not arrive, check your spam folder.')}</li>
+              <li><strong>{t('Pronto', 'Done')}</strong>{t('Digite o código: você volta para esta página, com o mesmo contexto e idioma, e suas conversas ficam guardadas na sua conta.',
+                'Enter the code: you come back to this page, with the same context and language, and your conversations are saved to your account.')}</li>
+            </ol>
             <p className="ia-nota">{t('O código não chegou em alguns minutos? O e-mail pode não estar autorizado: peça a inclusão ao LAPAM.',
               'No code after a few minutes? The email may not be authorized: ask LAPAM to add it.')}</p>
-          </div>
+          </details>
         </section>
       )}
     </>
   );
   const compositor = (
     <Compositor valor={texto} mudar={setTexto} enviar={enviar} cancelar={cancelar} ocupado={!!rodando} bloqueio={bloqueio}
-      exemplo={exemplo} grande={!conversa} campo={campo} />
+      exemplo={exemplo} grande={!conversa} campo={campo}
+      modo={<SeletorModo modo={modo} definir={definirModo} travado={!!rodando} />} descricaoDoModo={descricaoModo(modo)} />
   );
   const aviso = falha && (
     <div className="ia-falha" role="alert">
@@ -2086,23 +2139,15 @@ export function Ia() {
             </div>
           )}
           {avisoHistorico}
-          <p className="ia-sobretitulo">{t('Pergunte aos dados', 'Ask the data')} · {t('análise com IA', 'AI analysis')}</p>
-          <h2 id="ia-titulo" className="ia-titulo">{titulo(contexto.paineis)}</h2>
-          <p className="ia-descricao">{descricao(contexto.paineis)}</p>
-          <BarraContexto rotulo={t('Contexto', 'Context')} contexto={contexto} aberto={ajustes} alternar={() => setAjustes(!ajustes)} />
+          <h2 id="ia-titulo" className="ia-titulo">{t('O que você quer analisar?', 'What would you like to analyse?')}</h2>
+          <p className="ia-descricao">{subtitulo(contexto.paineis)}</p>
+          <BarraContexto rotulo={t('Contexto', 'Context')} contexto={contexto} aberto={ajustes} alternar={() => setAjustes(!ajustes)} nota />
           {painelAjustes}
           {acesso}
-          {seletorModo}
           {compositor}
           {aviso}
-          <Sugestoes lista={sugestoes(contexto.paineis, territorio, cobertura, ano)} aoEscolher={usarTexto} />
-          {descreverCobertura(contexto.paineis, cobertura).length > 0 && (
-            <section className="ia-cobertura" aria-labelledby="ia-cobertura-titulo">
-              <h3 id="ia-cobertura-titulo" className="ia-secao">{t('Dados disponíveis', 'Available data')}</h3>
-              <ul>{descreverCobertura(contexto.paineis, cobertura).map((l) => <li key={l}>{l}</li>)}</ul>
-            </section>
-          )}
-          <Rodape estado={estado} paineis={contexto.paineis} conta />
+          <Sugestoes lista={sugestoes(contexto.paineis, territorio, cobertura, ano)} aoEscolher={usarTexto} mostrarTema={contexto.paineis.length > 1} />
+          <Complementos estado={estado} paineis={contexto.paineis} cobertura={cobertura} />
         </section>
       ) : (
         <>
@@ -2188,7 +2233,6 @@ export function Ia() {
             <BarraContexto rotulo={t('Próximas respostas', 'Next answers')} contexto={contexto} aberto={ajustes} alternar={() => setAjustes(!ajustes)} />
             {painelAjustes}
             {acesso}
-            {seletorModo}
             {compositor}
           </div>
           <Rodape estado={estado} paineis={contexto.paineis} conta={false} />

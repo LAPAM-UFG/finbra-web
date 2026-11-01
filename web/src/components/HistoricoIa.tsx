@@ -1,14 +1,101 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { baixarArquivo, nomeArquivo } from '../exportar';
 import { contar } from '../ia_formato';
 import { dataHora, exportarConversa, filtrarResumos, historico, useHistorico, type ResumoConversa } from '../ia_historico';
 import { t } from '../idioma';
 
+const CELULAR = '(max-width: 800px)';
+const RECOLHIDA = 'ia-historico-recolhido';
+
+function useCelular() {
+  const [celular, setCelular] = useState(() => typeof matchMedia !== 'undefined' && matchMedia(CELULAR).matches);
+  useEffect(() => {
+    const m = matchMedia(CELULAR);
+    const mudar = () => setCelular(m.matches);
+    m.addEventListener('change', mudar);
+    return () => m.removeEventListener('change', mudar);
+  }, []);
+  return celular;
+}
+
+function lerRecolhida() {
+  try {
+    return localStorage.getItem(RECOLHIDA) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/** Menu "⋯" de uma conversa: abre por clique, toque ou teclado (setas, Home/End; Esc fecha e devolve o foco). */
+function MenuConversa({ titulo, acoes }: { titulo: string; acoes: [string, () => void][] }) {
+  const [aberto, setAberto] = useState(false);
+  const raiz = useRef<HTMLSpanElement>(null);
+  const botao = useRef<HTMLButtonElement>(null);
+  const itens = () => [...(raiz.current?.querySelectorAll<HTMLButtonElement>('[role=menuitem]') ?? [])];
+  useEffect(() => {
+    if (!aberto) return;
+    itens()[0]?.focus();
+    const fora = (e: PointerEvent) => {
+      if (!raiz.current?.contains(e.target as Node)) setAberto(false);
+    };
+    document.addEventListener('pointerdown', fora);
+    return () => document.removeEventListener('pointerdown', fora);
+  }, [aberto]);
+  const fechar = () => {
+    setAberto(false);
+    botao.current?.focus();
+  };
+  const teclas = (e: KeyboardEvent) => {
+    const l = itens();
+    const i = l.indexOf(document.activeElement as HTMLButtonElement);
+    const ir = (j: number) => {
+      e.preventDefault();
+      l[(j + l.length) % l.length]?.focus();
+    };
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      fechar();
+    } else if (e.key === 'ArrowDown') ir(i + 1);
+    else if (e.key === 'ArrowUp') ir(i - 1);
+    else if (e.key === 'Home') ir(0);
+    else if (e.key === 'End') ir(l.length - 1);
+    else if (e.key === 'Tab') setAberto(false);
+  };
+  return (
+    <span ref={raiz} className="ia-historico-mais" onKeyDown={aberto ? teclas : undefined}>
+      <button ref={botao} type="button" className="ia-historico-mais-botao" aria-haspopup="menu" aria-expanded={aberto}
+        aria-label={t(`Ações da conversa “${titulo}”`, `Actions for “${titulo}”`)} title={t('Renomear, exportar ou excluir', 'Rename, export or delete')}
+        onClick={() => setAberto(!aberto)}
+        onKeyDown={(e) => {
+          if (!aberto && e.key === 'ArrowDown') {
+            e.preventDefault();
+            setAberto(true);
+          }
+        }}>
+        <span aria-hidden="true">⋯</span>
+      </button>
+      {aberto && (
+        <ul role="menu" className="ia-historico-menu" aria-label={t(`Ações da conversa “${titulo}”`, `Actions for “${titulo}”`)}>
+          {acoes.map(([rotulo, fazer]) => (
+            <li key={rotulo} role="none">
+              <button type="button" role="menuitem" tabIndex={-1} onClick={() => {
+                fechar();
+                fazer();
+              }}>{rotulo}</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </span>
+  );
+}
+
 /**
- * Lateral da aba da IA: nova conversa, busca e conversas anteriores (título e data), com renomear, exportar e
- * excluir, e a importação de um arquivo exportado. Com login, mostra as conversas da conta e oferece levar para ela
- * as que estão só neste navegador. No celular, fica recolhida.
+ * Lateral da aba da IA: nova conversa, busca e conversas anteriores (título em até duas linhas e data), com
+ * renomear, exportar e excluir no menu "⋯", e a importação de um arquivo exportado. Com login, mostra as conversas
+ * da conta e oferece levar para ela as que estão só neste navegador. No computador, a lateral recolhe numa faixa
+ * estreita (a escolha fica guardada); no celular, a lista abre num painel por cima da página.
  */
 export function HistoricoIa() {
   const h = useHistorico();
@@ -18,8 +105,42 @@ export function HistoricoIa() {
   const [termo, setTermo] = useState('');
   const [editando, setEditando] = useState<{ id: string; titulo: string } | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
-  const [aberto, setAberto] = useState(() => typeof matchMedia === 'undefined' || !matchMedia('(max-width: 800px)').matches);
+  const celular = useCelular();
+  const [recolhida, setRecolhida] = useState(lerRecolhida);
+  const [gaveta, setGaveta] = useState(false);
+  const aberto = celular ? gaveta : !recolhida;
+  const alternador = useRef<HTMLButtonElement>(null);
+  const campoBusca = useRef<HTMLInputElement>(null);
   const arquivo = useRef<HTMLInputElement>(null);
+  const alternar = () => {
+    if (celular) {
+      setGaveta(!gaveta);
+      return;
+    }
+    setRecolhida(!recolhida);
+    try {
+      localStorage.setItem(RECOLHIDA, recolhida ? '0' : '1');
+    } catch {
+      /* sem armazenamento: vale nesta visita */
+    }
+  };
+  const fecharGaveta = () => {
+    setGaveta(false);
+    alternador.current?.focus();
+  };
+  // no celular, o painel abre com o foco na busca e fecha com Esc (o Esc de um menu "⋯" aberto fecha só o menu)
+  useEffect(() => {
+    if (!celular || !gaveta) return;
+    campoBusca.current?.focus();
+    const esc = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape' && !e.defaultPrevented) {
+        setGaveta(false);
+        alternador.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', esc);
+    return () => document.removeEventListener('keydown', esc);
+  }, [celular, gaveta]);
   // a lista espera a página saber se há login (conta ou só este navegador)
   useEffect(() => {
     if (h.verificado && !h.carregado) void historico.recarregar();
@@ -28,12 +149,16 @@ export function HistoricoIa() {
   const [levando, setLevando] = useState(false);
 
   const lista = filtrarResumos(h.resumos, termo);
-  const abrir = (id: string) => navegar({ pathname: '/ia', search: `?conversa=${encodeURIComponent(id)}` });
+  const abrir = (id: string) => {
+    setGaveta(false);
+    navegar({ pathname: '/ia', search: `?conversa=${encodeURIComponent(id)}` });
+  };
   // a conversa aberta fica no histórico; a nova herda os filtros da página (painéis, ano, território)
   const nova = () => {
     const b = new URLSearchParams();
     for (const k of ['paineis', 'ano', 'uf', 'ente']) if (busca.get(k)) b.set(k, busca.get(k)!);
     b.set('nova', String(Date.now()));
+    setGaveta(false);
     navegar({ pathname: '/ia', search: `?${b}` });
   };
   const renomear = async (e: { preventDefault: () => void }) => {
@@ -83,79 +208,112 @@ export function HistoricoIa() {
     }
   };
 
+  const total = h.resumos.length ? ` (${h.resumos.length})` : '';
   return (
-    <details className="ia-historico" open={aberto} onToggle={(e) => setAberto(e.currentTarget.open)}>
-      <summary>{t('Conversas', 'Conversations')}{h.resumos.length ? ` (${h.resumos.length})` : ''}</summary>
-      <button type="button" className="botao ia-historico-nova" onClick={nova}>{t('+ Nova conversa', '+ New conversation')}</button>
-      <input type="search" className="ia-historico-busca" value={termo} onChange={(e) => setTermo(e.target.value)}
-        placeholder={t('Buscar nas conversas', 'Search conversations')} aria-label={t('Buscar no título, nas perguntas e nas conclusões', 'Search titles, questions and conclusions')} />
-      {h.erro && <p className="erro" role="alert">{h.erro}</p>}
-      {h.semServidor && (
-        <p className="ia-nota" role="status">{t(`Sem resposta do servidor (${h.semServidor}): a lista é a cópia deste navegador e o que for salvo segue para a conta quando a conexão voltar.`,
-          `No answer from the server (${h.semServidor}): the list is this browser’s copy and what is saved goes to the account when the connection is back.`)}</p>
-      )}
-      {soAqui > 0 && (
-        <p className="ia-historico-levar">
-          <button type="button" className="botao-leve" onClick={() => void levar()} disabled={levando}>
-            {levando ? t('Levando…', 'Moving…') : t(`Levar para a minha conta (${soAqui})`, `Move to my account (${soAqui})`)}
-          </button>
-          <span className="ia-nota">{t('conversas que estão só neste navegador', 'conversations that are only in this browser')}</span>
-        </p>
-      )}
-      {!h.carregado ? (
-        <p className="ia-nota">{t('Carregando o histórico…', 'Loading the history…')}</p>
-      ) : !lista.length ? (
-        <p className="ia-nota">{termo.trim() ? t('Nenhuma conversa com esses termos.', 'No conversation with these terms.') : t('Nenhuma conversa salva ainda.', 'No saved conversations yet.')}</p>
-      ) : (
-        <ul className="ia-historico-lista">
-          {lista.map((r) => (
-            <li key={r.id} className={r.id === atual ? 'ativa' : undefined}>
-              {editando?.id === r.id ? (
-                <form className="ia-historico-renomear" onSubmit={(e) => void renomear(e)}>
-                  <input value={editando.titulo} onChange={(e) => setEditando({ id: r.id, titulo: e.target.value })} aria-label={t('Novo título', 'New title')} autoFocus
-                    onKeyDown={(e) => e.key === 'Escape' && setEditando(null)} maxLength={200} />
-                  <button type="submit" className="botao-leve">{t('Salvar', 'Save')}</button>
-                  <button type="button" className="botao-leve" onClick={() => setEditando(null)}>{t('Cancelar', 'Cancel')}</button>
-                </form>
-              ) : (
-                <a href={`/ia?conversa=${encodeURIComponent(r.id)}`} aria-current={r.id === atual ? 'page' : undefined}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    abrir(r.id);
-                  }}>
-                  <span className="ia-historico-titulo">{r.titulo}</span>
-                  <span className="ia-historico-data">
-                    {dataHora(r.atualizadaEm)} · {contar(r.perguntas, t('pergunta', 'question'), t('perguntas', 'questions'))}
-                    {r.origem.tipo === 'versao' && ` · ${t('nova versão', 'new version')}`}
-                    {h.conta && !r.conta && ` · ${t('só neste navegador', 'only in this browser')}`}
-                    {r.pendente && ` · ${t('ainda não enviada à conta', 'not yet sent to the account')}`}
-                    {h.emAndamento.includes(r.id) && ` · ${t('respondendo…', 'answering…')}`}
-                  </span>
-                </a>
-              )}
-              {editando?.id !== r.id && (
-                <span className="ia-historico-acoes">
-                  <button type="button" className="botao-leve" onClick={() => setEditando({ id: r.id, titulo: r.titulo })} aria-label={t(`Renomear “${r.titulo}”`, `Rename “${r.titulo}”`)}>{t('Renomear', 'Rename')}</button>
-                  <button type="button" className="botao-leve" onClick={() => void exportar(r)} aria-label={t(`Exportar “${r.titulo}” em JSON`, `Export “${r.titulo}” as JSON`)}>{t('Exportar', 'Export')}</button>
-                  <button type="button" className="botao-leve" onClick={() => void excluir(r)} aria-label={t(`Excluir “${r.titulo}”`, `Delete “${r.titulo}”`)}>{t('Excluir', 'Delete')}</button>
-                </span>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-      <label className="botao-leve ia-historico-importar">
-        {t('Importar conversa (JSON)', 'Import conversation (JSON)')}
-        <input ref={arquivo} type="file" accept="application/json,.json" className="sr-only" onChange={(e) => void importar(e.target.files?.[0])} />
-      </label>
-      {aviso && <p className="ia-nota" role="status">{aviso}</p>}
-      <p className="ia-nota ia-historico-nota">
-        {h.conta
-          ? t(`As conversas ficam na sua conta (${h.conta}), no servidor do LAPAM, e abrem em qualquer computador em que você entrar com este e-mail. Cada pessoa só vê as próprias conversas, mas quem administra o servidor do LAPAM tem acesso a elas. Excluir apaga do servidor de vez. Uma cópia fica neste navegador para a lista abrir rápido. As perguntas à IA seguem o caminho de sempre (servidor do LAPAM e Anthropic).`,
-            `Conversations are kept in your account (${h.conta}), on the LAPAM server, and open on any computer where you sign in with this email. Each person only sees their own conversations, but LAPAM server administrators can access them. Deleting erases them from the server for good. A copy stays in this browser so the list opens fast. Questions to the AI follow the usual path (LAPAM server and Anthropic).`)
-          : t('Sem login, as conversas ficam só neste navegador: o endereço de uma conversa não abre em outro computador, e limpar os dados de navegação apaga o histórico (exporte em JSON as importantes). Entre com seu e-mail para guardá-las na sua conta. As perguntas à IA seguem o caminho de sempre (servidor do LAPAM e Anthropic).',
-            'Without signing in, conversations are kept only in this browser: a conversation address does not open on another computer, and clearing browsing data erases the history (export the important ones as JSON). Sign in with your email to keep them in your account. Questions to the AI follow the usual path (LAPAM server and Anthropic).')}
-      </p>
-    </details>
+    <section className={`ia-historico${aberto ? ' aberto' : ' recolhido'}${celular ? ' celular' : ''}`} aria-label={t('Conversas', 'Conversations')}>
+      <div className="ia-historico-barra">
+        <button ref={alternador} type="button" className="ia-historico-alternar" aria-expanded={aberto} aria-controls="ia-historico-painel" onClick={alternar}
+          title={celular ? undefined : aberto ? t('Recolher a lista de conversas', 'Collapse the conversation list') : t('Mostrar a lista de conversas', 'Show the conversation list')}>
+          {celular
+            ? <><span aria-hidden="true">☰ </span>{t('Conversas', 'Conversations')}{total}</>
+            : aberto
+              ? <><span aria-hidden="true">«</span> {t('Conversas', 'Conversations')}{total}<span className="sr-only">{t(': recolher', ': collapse')}</span></>
+              : <><span aria-hidden="true">☰</span><span className="sr-only">{t('Mostrar conversas', 'Show conversations')}</span></>}
+        </button>
+        <button type="button" className="botao ia-historico-nova" onClick={nova} title={!celular && !aberto ? t('Nova conversa', 'New conversation') : undefined}>
+          {!celular && !aberto
+            ? <><span aria-hidden="true">+</span><span className="sr-only">{t('Nova conversa', 'New conversation')}</span></>
+            : t('+ Nova conversa', '+ New conversation')}
+        </button>
+      </div>
+      {celular && gaveta && <div className="ia-historico-fundo" aria-hidden="true" onClick={fecharGaveta} />}
+      <div id="ia-historico-painel" className="ia-historico-painel" hidden={!aberto}
+        {...(celular ? { role: 'dialog', 'aria-modal': true, 'aria-label': t('Conversas', 'Conversations') } : {})}>
+        {celular && (
+          <div className="ia-historico-topo">
+            <h2>{t('Conversas', 'Conversations')}{total}</h2>
+            <button type="button" className="botao-leve" onClick={fecharGaveta}>{t('Fechar', 'Close')}</button>
+          </div>
+        )}
+        {celular && <button type="button" className="botao ia-historico-nova" onClick={nova}>{t('+ Nova conversa', '+ New conversation')}</button>}
+        <input ref={campoBusca} type="search" className="ia-historico-busca" value={termo} onChange={(e) => setTermo(e.target.value)}
+          placeholder={t('Buscar nas conversas', 'Search conversations')} aria-label={t('Buscar no título, nas perguntas e nas conclusões', 'Search titles, questions and conclusions')} />
+        {h.erro && <p className="erro" role="alert">{h.erro}</p>}
+        {h.semServidor && (
+          <p className="ia-nota" role="status">{t(`Sem resposta do servidor (${h.semServidor}): a lista é a cópia deste navegador e o que for salvo segue para a conta quando a conexão voltar.`,
+            `No answer from the server (${h.semServidor}): the list is this browser’s copy and what is saved goes to the account when the connection is back.`)}</p>
+        )}
+        {soAqui > 0 && (
+          <p className="ia-historico-levar">
+            <button type="button" className="botao-leve" onClick={() => void levar()} disabled={levando}>
+              {levando ? t('Levando…', 'Moving…') : t(`Levar para a minha conta (${soAqui})`, `Move to my account (${soAqui})`)}
+            </button>
+            <span className="ia-nota">{t('conversas que estão só neste navegador', 'conversations that are only in this browser')}</span>
+          </p>
+        )}
+        {!h.carregado ? (
+          <p className="ia-nota">{t('Carregando o histórico…', 'Loading the history…')}</p>
+        ) : !lista.length ? (
+          <p className="ia-nota">{termo.trim() ? t('Nenhuma conversa com esses termos.', 'No conversation with these terms.') : t('Nenhuma conversa salva ainda.', 'No saved conversations yet.')}</p>
+        ) : (
+          <ul className="ia-historico-lista">
+            {lista.map((r) => (
+              <li key={r.id} className={r.id === atual ? 'ativa' : undefined}>
+                {editando?.id === r.id ? (
+                  <form className="ia-historico-renomear" onSubmit={(e) => void renomear(e)}>
+                    <input value={editando.titulo} onChange={(e) => setEditando({ id: r.id, titulo: e.target.value })} aria-label={t('Novo título', 'New title')} autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') {
+                          e.preventDefault();
+                          setEditando(null);
+                        }
+                      }} maxLength={200} />
+                    <button type="submit" className="botao-leve">{t('Salvar', 'Save')}</button>
+                    <button type="button" className="botao-leve" onClick={() => setEditando(null)}>{t('Cancelar', 'Cancel')}</button>
+                  </form>
+                ) : (
+                  <div className="ia-historico-item">
+                    <a href={`/ia?conversa=${encodeURIComponent(r.id)}`} aria-current={r.id === atual ? 'page' : undefined} title={r.titulo}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        abrir(r.id);
+                      }}>
+                      <span className="ia-historico-titulo">{r.titulo}</span>
+                      <span className="ia-historico-data">
+                        {dataHora(r.atualizadaEm)} · {contar(r.perguntas, t('pergunta', 'question'), t('perguntas', 'questions'))}
+                        {r.origem.tipo === 'versao' && ` · ${t('nova versão', 'new version')}`}
+                        {h.conta && !r.conta && ` · ${t('só neste navegador', 'only in this browser')}`}
+                        {r.pendente && ` · ${t('ainda não enviada à conta', 'not yet sent to the account')}`}
+                        {h.emAndamento.includes(r.id) && ` · ${t('respondendo…', 'answering…')}`}
+                      </span>
+                    </a>
+                    <MenuConversa titulo={r.titulo} acoes={[
+                      [t('Renomear', 'Rename'), () => setEditando({ id: r.id, titulo: r.titulo })],
+                      [t('Exportar (JSON)', 'Export (JSON)'), () => void exportar(r)],
+                      [t('Excluir', 'Delete'), () => void excluir(r)],
+                    ]} />
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        <label className="botao-leve ia-historico-importar">
+          {t('Importar conversa (JSON)', 'Import conversation (JSON)')}
+          <input ref={arquivo} type="file" accept="application/json,.json" className="sr-only" onChange={(e) => void importar(e.target.files?.[0])} />
+        </label>
+        {aviso && <p className="ia-nota" role="status">{aviso}</p>}
+        <details className="ia-historico-sobre">
+          <summary>{t('Onde ficam as conversas?', 'Where are conversations kept?')}</summary>
+          <p className="ia-nota">
+            {h.conta
+              ? t(`As conversas ficam na sua conta (${h.conta}), no servidor do LAPAM, e abrem em qualquer computador em que você entrar com este e-mail. Cada pessoa só vê as próprias conversas, mas quem administra o servidor do LAPAM tem acesso a elas. Excluir apaga do servidor de vez. Uma cópia fica neste navegador para a lista abrir rápido. As perguntas à IA seguem o caminho de sempre (servidor do LAPAM e Anthropic).`,
+                `Conversations are kept in your account (${h.conta}), on the LAPAM server, and open on any computer where you sign in with this email. Each person only sees their own conversations, but LAPAM server administrators can access them. Deleting erases them from the server for good. A copy stays in this browser so the list opens fast. Questions to the AI follow the usual path (LAPAM server and Anthropic).`)
+              : t('Sem login, as conversas ficam só neste navegador: o endereço de uma conversa não abre em outro computador, e limpar os dados de navegação apaga o histórico (exporte em JSON as importantes). Entre com seu e-mail para guardá-las na sua conta. As perguntas à IA seguem o caminho de sempre (servidor do LAPAM e Anthropic).',
+                'Without signing in, conversations are kept only in this browser: a conversation address does not open on another computer, and clearing browsing data erases the history (export the important ones as JSON). Sign in with your email to keep them in your account. Questions to the AI follow the usual path (LAPAM server and Anthropic).')}
+          </p>
+        </details>
+      </div>
+    </section>
   );
 }

@@ -606,8 +606,11 @@ describe('IA: histórico, resposta estruturada e conferência', () => {
     const pa = sugestoes(['trabalho'], { tipo: 'uf', uf: 'PA', nome: 'Pará', cod: 15 }, cob, 2020);
     assert.match(pa[0].texto, /no Pará de 2013 a 2020/);
     assert.match(pa[2].texto, /Como o Pará se compara com o Brasil/);
+    // dois painéis: um de cada e a pergunta entre painéis à vista (as três primeiras); o resto alternado
     const ambos = sugestoes(['financas', 'trabalho'], { tipo: 'brasil' }, cob, null);
-    assert.equal(ambos.length, 4);
+    assert.deepEqual(ambos.slice(0, 3).map((s) => s.tema), ['Mercado de trabalho', 'Finanças públicas', 'Entre painéis']);
+    assert.equal(ambos.length, 9);
+    assert.ok(ambos.every((s) => s.titulo.length <= 40 && s.texto.endsWith('?')), JSON.stringify(ambos.map((s) => s.titulo)));
     assert.equal(sugestoes(['trabalho'], { tipo: 'brasil' }, { ...cob, rais: [] }, null).length, 0);
   });
 });
@@ -2478,9 +2481,11 @@ describe('saúde (SIM, SINASC e população da SVS/MS)', () => {
     assert.equal(so.length, 4);
     assert.match(so[0].texto, /mortalidade infantil no Brasil de 2014 a 2024/);
     const go = sugestoes(['financas', 'saude'], { tipo: 'uf', uf: 'GO', nome: 'Goiás', cod: 52 }, cob, null);
-    assert.equal(go.length, 4);
-    assert.match(go.at(-1)!.texto, /despesa com saúde por habitante e a mortalidade infantil/);
-    assert.equal(sugestoes(['financas', 'trabalho', 'saude'], { tipo: 'brasil' }, cob, null).length, 4);
+    assert.match(go[2].texto, /despesa com saúde por habitante e a mortalidade infantil/);
+    // três painéis: as três à vista são uma de cada painel
+    const todos = sugestoes(['financas', 'trabalho', 'saude'], { tipo: 'brasil' }, cob, null);
+    assert.deepEqual(todos.slice(0, 3).map((s) => s.tema), ['Mercado de trabalho', 'Finanças públicas', 'Saúde']);
+    assert.equal(new Set(todos.map((s) => s.texto)).size, todos.length);
     assert.match(descreverCobertura(['saude'], cob).join('\n'), /SIM 1996–2024: óbitos[\s\S]*SINASC 1996–2024[\s\S]*População da SVS\/MS 2000–2025/);
     const d = disponibilidadeNoAno(2025, ['saude'], cob);
     assert.match(d, /com dados nesse ano: população da SVS\/MS/);

@@ -100,9 +100,7 @@ main { padding: 20px 24px 48px; min-width: 0; }
   .menu h4 { display: none; }
   .menu a { white-space: nowrap; border-left: 0; border-bottom: 3px solid transparent; }
   .menu a.ativo { border-bottom-color: var(--acento); }
-  .menu.menu-ia { display: block; overflow-x: visible; position: static; max-height: none; }
-  .menu.menu-ia > div > a { display: inline-block; }
-  .ia-historico { margin-top: 4px; }
+  .menu.menu-ia { display: block; overflow: visible; position: static; max-height: none; padding: 8px 16px; }
   main { padding: 16px; }
 }
 
@@ -240,30 +238,40 @@ figure.grafico { margin: 0; }
 .ia-nota { font-size: 12px; color: var(--tinta-3); margin: 6px 0 0; }
 .ia-secao { font-size: 12px; font-weight: 600; color: var(--tinta-3); text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 8px; }
 
-/* tela inicial */
-.ia-inicio { padding: 12px 0 8px; }
-.ia-sobretitulo { margin: 0 0 6px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--marca-2); }
-:root[data-theme='dark'] .ia-sobretitulo { color: var(--acento); }
-@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) .ia-sobretitulo { color: var(--acento); } }
-.ia-titulo { margin: 0 0 8px; font-size: 26px; line-height: 1.25; font-weight: 650; max-width: 30ch; }
-.ia-descricao { margin: 0 0 18px; font-size: 15px; line-height: 1.55; color: var(--tinta-2); max-width: 70ch; }
-.ia-sugestoes { margin: 26px 0 0; }
-.ia-sugestoes ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
+/* tela inicial: a pergunta primeiro, numa largura confortável de leitura */
+.ia-inicio { padding: 12px 0 8px; max-width: 760px; margin: 0 auto; }
+.ia-titulo { margin: 0 0 4px; font-size: 26px; line-height: 1.25; font-weight: 650; }
+.ia-descricao { margin: 0 0 16px; font-size: 15px; line-height: 1.55; color: var(--tinta-2); }
+.ia-sugestoes { margin: 22px 0 0; }
+.ia-sugestoes ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
 .ia-sugestao {
-  width: 100%; height: 100%; display: flex; flex-direction: column; gap: 6px; text-align: left; cursor: pointer;
-  background: var(--superficie); color: var(--tinta); border: 1px solid var(--borda); border-radius: 10px; padding: 12px 14px;
-  font-size: 14px; line-height: 1.45; box-shadow: var(--sombra); transition: border-color 0.15s, background 0.15s;
+  width: 100%; height: 100%; display: flex; flex-direction: column; gap: 3px; text-align: left; cursor: pointer;
+  background: var(--superficie); color: var(--tinta); border: 1px solid var(--borda); border-radius: 10px; padding: 10px 12px;
+  font-size: 14px; line-height: 1.35; transition: border-color 0.15s, background 0.15s;
 }
 .ia-sugestao:hover { border-color: color-mix(in srgb, var(--serie-1) 55%, transparent); background: var(--superficie-2); }
+.ia-sugestao-titulo { font-weight: 600; }
 .ia-sugestao-cat { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--tinta-3); }
-.ia-cobertura { margin: 22px 0 0; }
-.ia-cobertura ul { margin: 0; padding-left: 18px; color: var(--tinta-2); font-size: 13px; }
-.ia-cobertura li { margin: 2px 0; }
+.ia-sugestoes-rodape { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 8px 0 0; }
+.ia-sugestoes-rodape .ia-nota { margin: 0; }
+.ia-complementos { margin: 26px 0 0; padding-top: 12px; border-top: 1px solid var(--grade); font-size: 13px; color: var(--tinta-2); }
+.ia-conferir { margin: 0 0 8px; }
+.ia-detalhes { margin: 0 0 6px; }
+.ia-detalhes > summary { cursor: pointer; font-weight: 600; color: var(--tinta-2); padding: 4px 0; }
+.ia-detalhes > ul { margin: 4px 0 8px; padding-left: 18px; }
+.ia-detalhes li { margin: 2px 0; }
+.ia-detalhes > p { margin: 4px 0 8px; line-height: 1.5; }
 .ia-rodape-info { margin: 26px 0 0; padding-top: 12px; border-top: 1px solid var(--grade); font-size: 12px; color: var(--tinta-3); }
 .ia-rodape-info p { margin: 0 0 6px; max-width: 90ch; }
 .ia-conta { font-size: 12px; color: var(--tinta-3); margin: 2px 0 0; }
-.ia-entrar { display: grid; gap: 12px; border-left: 3px solid var(--acento); }
-.ia-entrar .desc { margin: 0; font-size: 13px; color: var(--tinta-2); }
+/* acesso: uma linha com o botão; as instruções do código ficam recolhidas */
+.ia-entrar { margin: 0 0 10px; padding: 10px 14px; border: 1px solid var(--borda); border-left: 3px solid var(--acento); border-radius: 10px; background: var(--superficie); }
+.ia-entrar-linha { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; }
+.ia-entrar-texto { margin: 0; font-weight: 600; }
+.ia-entrar .botao { margin: 0; padding: 7px 16px; font-weight: 600; text-decoration: none; }
+.ia-entrar-como { margin-top: 6px; font-size: 13px; color: var(--tinta-2); }
+.ia-entrar-como > summary { cursor: pointer; display: inline-block; color: color-mix(in srgb, var(--serie-1) 70%, var(--tinta)); text-decoration: underline; text-underline-offset: 3px; font-size: 12.5px; }
+.ia-entrar-como > p { margin: 8px 0; }
 .ia-entrar-passos { list-style: none; counter-reset: passo; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; }
 .ia-entrar-passos li { counter-increment: passo; position: relative; padding: 9px 12px 10px 42px; background: var(--superficie-2); border-radius: 8px; font-size: 13px; color: var(--tinta-2); }
 .ia-entrar-passos li::before {
@@ -271,10 +279,10 @@ figure.grafico { margin: 0; }
   display: grid; place-items: center; background: var(--serie-1); color: #fff; font-size: 12px; font-weight: 600;
 }
 .ia-entrar-passos strong { display: block; color: var(--tinta); margin-bottom: 1px; }
+.ia-entrar-negado { display: grid; gap: 12px; border-left: 3px solid var(--ruim); }
+.ia-entrar-negado .desc { margin: 0; font-size: 13px; color: var(--tinta-2); }
 .ia-entrar-acoes { display: flex; gap: 6px 14px; align-items: center; flex-wrap: wrap; }
 .ia-entrar-acoes .botao { margin: 0; padding: 8px 16px; font-weight: 600; text-decoration: none; }
-.ia-entrar-acoes .ia-nota { margin: 0; }
-.ia-entrar-negado { border-left-color: var(--ruim); }
 
 /* contexto: chips e ajustes */
 .ia-contexto { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 10px; }
@@ -283,6 +291,7 @@ figure.grafico { margin: 0; }
 .ia-chip { font-size: 12px; color: var(--tinta-2); background: var(--superficie-2); border: 1px solid var(--borda); border-radius: 999px; padding: 2px 10px; }
 .ia-chips.pequenos .ia-chip { font-size: 11px; padding: 1px 8px; }
 /* textos pequenos coloridos: a cor da série misturada à tinta mantém o contraste nos dois temas */
+.ia-contexto-nota { flex-basis: 100%; margin: 0; }
 .ia-ajustar { background: none; border: 0; padding: 2px 4px; cursor: pointer; color: color-mix(in srgb, var(--serie-1) 70%, var(--tinta)); font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
 .ia-ajustes {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px 18px; margin: 0 0 14px;
@@ -315,8 +324,8 @@ figure.grafico { margin: 0; }
 .ia-compositor textarea::placeholder { color: var(--tinta-3); }
 /* o foco do campo aparece na borda do quadro (:focus-within) */
 .ia .ia-compositor textarea:focus-visible { outline: 0; }
-.ia-compositor-rodape { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
-.ia-dica { font-size: 12px; color: var(--tinta-3); }
+.ia-compositor-rodape { display: flex; align-items: center; justify-content: space-between; gap: 8px 10px; flex-wrap: wrap; margin-top: 6px; }
+.ia-dica { font-size: 12px; color: var(--tinta-3); margin: 6px 0 0; }
 .ia-alerta { color: color-mix(in srgb, var(--ruim) 75%, var(--tinta)); font-weight: 600; }
 .ia-compositor .botao { margin: 0; padding: 7px 16px; font-weight: 600; }
 .ia-compositor .botao:disabled { opacity: 0.45; cursor: default; }
@@ -377,26 +386,74 @@ figure.grafico { margin: 0; }
 
 /* histórico de conversas (lateral da aba da IA) */
 /* fica à vista enquanto a conversa rola (abaixo do topo fixo) */
-.menu.menu-ia { position: sticky; top: 56px; align-self: start; max-height: calc(100vh - 56px); overflow-y: auto; box-sizing: border-box; }
-.ia-historico { margin: 14px 0 0; }
-.ia-historico > summary { margin: 0 10px 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--tinta-3); cursor: pointer; }
-.ia-historico-nova { display: block; width: calc(100% - 4px); margin: 4px 2px 8px; }
-.ia-historico-busca { width: 100%; box-sizing: border-box; padding: 5px 8px; border: 1px solid var(--borda); border-radius: 6px; background: var(--superficie); color: var(--tinta); font: inherit; font-size: 13px; }
+.menu.menu-ia { position: sticky; top: 56px; align-self: start; max-height: calc(100vh - 56px); overflow-y: auto; box-sizing: border-box; padding-top: 12px; }
+/* recolhida no computador: uma faixa estreita com os botões de abrir e de nova conversa */
+.casca:has(.ia-historico.recolhido:not(.celular)) { grid-template-columns: 60px 1fr; }
+.casca:has(.ia-historico.recolhido:not(.celular)) .menu-ia { padding: 12px 8px; }
+.ia-historico-barra { display: flex; flex-direction: column; gap: 6px; }
+.ia-historico-alternar {
+  display: flex; align-items: center; gap: 6px; background: none; border: 0; border-radius: 6px; padding: 4px 6px; cursor: pointer;
+  font: inherit; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--tinta-3); text-align: left;
+}
+.ia-historico-alternar:hover { background: var(--superficie-2); color: var(--tinta); }
+.ia-historico-nova { margin: 0; font-weight: 600; }
+.ia-historico.recolhido:not(.celular) .ia-historico-alternar,
+.ia-historico.recolhido:not(.celular) .ia-historico-nova { justify-content: center; width: 44px; height: 36px; padding: 0; font-size: 18px; letter-spacing: 0; }
+.ia-historico-painel { margin-top: 8px; }
+.ia-historico-painel[hidden] { display: none !important; }
+.ia-historico-busca { width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid var(--borda); border-radius: 6px; background: var(--superficie); color: var(--tinta); font: inherit; font-size: 13px; }
 .ia-historico-lista { list-style: none; margin: 8px 0; padding: 0; }
-.ia-historico-lista li { border-radius: 6px; padding: 2px 0 4px; }
+.ia-historico-lista li { border-radius: 6px; }
 .ia-historico-lista li.ativa { background: var(--superficie-2); }
-.menu .ia-historico-lista a { padding: 5px 8px; border-left: 3px solid transparent; }
-.menu .ia-historico-lista li.ativa a { border-left-color: var(--acento); color: var(--tinta); }
-.ia-historico-titulo { display: block; font-size: 13px; line-height: 1.3; overflow-wrap: anywhere; }
+.ia-historico-item { display: flex; align-items: flex-start; gap: 2px; position: relative; }
+.menu .ia-historico-item > a { flex: 1; min-width: 0; padding: 6px 4px 6px 8px; border-left: 3px solid transparent; }
+.menu .ia-historico-lista li.ativa .ia-historico-item > a { border-left-color: var(--acento); color: var(--tinta); }
+/* título em até duas linhas (o completo fica no title e no menu) */
+.ia-historico-titulo {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
+  font-size: 13px; line-height: 1.3; overflow-wrap: anywhere;
+}
 .ia-historico-data { display: block; font-size: 11px; color: var(--tinta-3); margin-top: 2px; }
-.ia-historico-acoes { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 8px; }
-.ia-historico-acoes .botao-leve { font-size: 11px; padding: 1px 6px; }
+.ia-historico-mais { position: relative; flex: none; }
+.ia-historico-mais-botao {
+  width: 30px; height: 30px; margin-top: 3px; display: grid; place-items: center; background: none; border: 0; border-radius: 6px;
+  cursor: pointer; color: var(--tinta-3); font-size: 18px; line-height: 1;
+}
+.ia-historico-mais-botao:hover, .ia-historico-mais-botao[aria-expanded='true'] { background: var(--superficie-2); color: var(--tinta); }
+.ia-historico-menu {
+  position: absolute; right: 0; top: calc(100% + 2px); z-index: 30; min-width: 150px; margin: 0; padding: 4px; list-style: none;
+  background: var(--superficie); border: 1px solid var(--borda); border-radius: 8px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.16);
+}
+.ia-historico-menu button {
+  display: block; width: 100%; text-align: left; background: none; border: 0; border-radius: 5px; padding: 7px 10px; cursor: pointer;
+  font: inherit; font-size: 13px; color: var(--tinta);
+}
+.ia-historico-menu button:hover, .ia-historico-menu button:focus-visible { background: var(--superficie-2); outline: 0; }
+.ia-historico-menu li:last-child button { color: color-mix(in srgb, var(--ruim) 80%, var(--tinta)); }
 .ia-historico-renomear { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 6px; }
 .ia-historico-renomear input { flex: 1 1 100%; padding: 4px 6px; border: 1px solid var(--borda); border-radius: 6px; font: inherit; font-size: 13px; background: var(--superficie); color: var(--tinta); }
 .ia-historico-importar { display: inline-block; margin: 4px 0; }
-.ia-historico-nota { padding: 0 4px; }
+.ia-historico-sobre { margin: 8px 0 0; font-size: 12px; color: var(--tinta-3); }
+.ia-historico-sobre > summary { cursor: pointer; }
 .ia-historico-levar { display: flex; flex-direction: column; gap: 2px; margin: 6px 0; padding: 0 2px; }
 .ia-historico-levar .ia-nota { margin: 0; font-size: 11px; }
+/* celular: barra com "Conversas" e "Nova conversa"; a lista abre num painel lateral por cima da página (a lateral
+   deixa de ser sticky, senão o painel fica preso no contexto de empilhamento dela, por baixo do topo) */
+@media (max-width: 800px) {
+  .menu.menu-ia { position: static; max-height: none; overflow: visible; }
+}
+.ia-historico.celular .ia-historico-barra { flex-direction: row; justify-content: space-between; align-items: center; }
+.ia-historico.celular .ia-historico-alternar { font-size: 13px; text-transform: none; letter-spacing: 0; color: var(--tinta); border: 1px solid var(--borda); padding: 6px 10px; }
+.ia-historico.celular .ia-historico-nova { padding: 7px 12px; }
+.ia-historico-fundo { position: fixed; inset: 0; z-index: 70; background: rgba(0, 0, 0, 0.45); }
+.ia-historico.celular .ia-historico-painel {
+  position: fixed; top: 0; bottom: 0; left: 0; z-index: 71; width: min(86vw, 360px); box-sizing: border-box; margin: 0; padding: 14px;
+  overflow-y: auto; background: var(--superficie); box-shadow: 4px 0 24px rgba(0, 0, 0, 0.25); display: flex; flex-direction: column; gap: 8px;
+}
+.ia-historico-topo { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.ia-historico-topo h2 { margin: 0; font-size: 15px; }
+.ia-historico.celular .ia-historico-lista { margin: 0; }
+.ia-historico.celular .ia-historico-mais-botao { width: 40px; height: 40px; }
 .ia-id code { font-size: 11px; overflow-wrap: anywhere; }
 .ia-versao, .ia-reexecutada {
   margin: 12px 0; border-left: 3px solid var(--acento); border-radius: 6px; padding: 10px 14px;
@@ -467,18 +524,12 @@ figure.grafico { margin: 0; }
 .ia-apendice { font-size: 12.5px; color: var(--tinta-2); margin: 0; }
 .ia-exportar-nota { flex-basis: 100%; margin: 0; }
 
-/* modo de resposta, junto ao campo da pergunta */
-.ia-modos { border: 0; margin: 0 0 8px; padding: 0; min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.ia-modo {
-  display: grid; grid-template-columns: auto 1fr; column-gap: 8px; align-items: baseline; cursor: pointer;
-  background: var(--superficie); border: 1px solid var(--borda); border-radius: 10px; padding: 7px 12px;
-}
-.ia-modo input { grid-row: span 2; margin: 0; }
-.ia-modo-nome { font-size: 13px; font-weight: 600; }
-.ia-modo-desc { font-size: 12px; color: var(--tinta-3); }
-.ia-modo.ativo { border-color: color-mix(in srgb, var(--serie-1) 60%, transparent); background: color-mix(in srgb, var(--serie-1) 8%, var(--superficie)); }
-.ia-modo:has(input:focus-visible) { outline: 2px solid var(--serie-1); outline-offset: 2px; }
-.ia-modo:has(input:disabled) { cursor: default; opacity: 0.7; }
+/* modo de resposta: alternância compacta no rodapé do campo da pergunta */
+.ia-modos { border: 0; margin: 0; padding: 2px; min-width: 0; display: inline-flex; background: var(--superficie-2); border-radius: 8px; }
+.ia-modo { position: relative; cursor: pointer; padding: 4px 11px; border-radius: 6px; font-size: 12.5px; color: var(--tinta-2); white-space: nowrap; }
+.ia-modo.ativo { background: var(--superficie); color: var(--tinta); font-weight: 600; box-shadow: 0 0 0 1px var(--borda); }
+.ia-modo:has(input:focus-visible) { outline: 2px solid var(--serie-1); outline-offset: 1px; }
+.ia-modos:disabled .ia-modo { cursor: default; opacity: 0.7; }
 .ia-modo-resposta { margin: 0 0 6px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--tinta-3); }
 .modo-pesquisa .ia-modo-resposta { color: color-mix(in srgb, var(--serie-1) 70%, var(--tinta)); }
 
@@ -548,7 +599,6 @@ figure.grafico { margin: 0; }
   .ia-destaque-valor { font-size: 18px; }
   .ia-ficha { grid-template-columns: 1fr; }
   .ia-ficha dd { margin-bottom: 6px; }
-  .ia-modos { grid-template-columns: 1fr; }
   .ia-tab-tabela { font-size: 12px; }
   .ia-tab-tabela th, .ia-tab-tabela td { padding: 4px 8px; }
   .ia-compositor textarea, .ia-compositor.grande textarea { font-size: 16px; }
