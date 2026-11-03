@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState, type R
 import { useSearchParams } from 'react-router-dom';
 import type { Ente, Meta } from '../api';
 import { BotoesExportar } from '../components/Exportar';
+import { Icone } from '../components/Icone';
+import { Dialogo, Popover } from '../components/IaPaineis';
 import { barrasAgrupadas, Grafico, graficoSvg, linhas, type Marca } from '../components/Grafico';
 import { BuscaEnte, UFS, useDados, useFiltros } from '../contexto';
 import { tabelasIaTrabalho } from '../dados';
@@ -576,17 +578,16 @@ function TextoRico({ texto }: { texto: string }) {
   );
 }
 
-function Chips({ contexto, rotulo, pequenos, periodo }: { contexto: ContextoIa; rotulo: string; pequenos?: boolean; periodo?: string | null }) {
-  return (
-    <ul className={`ia-chips${pequenos ? ' pequenos' : ''}`} aria-label={rotulo}>
-      <li className="ia-chip" title={t('Painéis consultados', 'Dashboards queried')}>
-        {contexto.paineis.length > 1 ? t('Temas', 'Topics') : t('Tema', 'Topic')}: {contexto.paineis.map((p) => NOMES_PAINEIS()[p]).join(' + ')}
-      </li>
-      <li className="ia-chip">{t('Território', 'Territory')}: {rotuloTerritorio(contexto.territorio)}</li>
-      <li className="ia-chip">{rotuloDoPeriodo(contexto, periodo)}</li>
-    </ul>
-  );
-}
+/** Nomes curtos das bases, no resumo do contexto. */
+const NOMES_CURTOS = (): Record<Painel, string> => ({
+  financas: t('Finanças', 'Finances'), trabalho: t('Trabalho', 'Labour'), saude: t('Saúde', 'Health'),
+});
+/** "Todas as bases · Brasil · Ano automático": o contexto em uma linha, no botão que abre os ajustes. */
+const resumoContexto = (c: ContextoIa) => [
+  c.paineis.length === PAINEIS.length ? t('Todas as bases', 'All datasets') : c.paineis.map((p) => NOMES_CURTOS()[p]).join(' + '),
+  rotuloTerritorio(c.territorio),
+  c.ano ? t(`Ano ${c.ano}`, `Year ${c.ano}`) : t('Ano automático', 'Automatic year'),
+].join(' · ');
 
 /** "modelo 41 s em 5 chamadas · consultas 9 s (1 reaproveitada) · revisão 0 s": onde foi o tempo da pergunta. */
 function tempoPorEtapa(etapas: Etapa[]): string {
@@ -618,7 +619,6 @@ function RecorteExecutado({ contexto, pronta }: { contexto: ContextoIa; pronta: 
         <li className="ia-chip" title={t('Painéis consultados', 'Dashboards queried')}>{contexto.paineis.map((p) => NOMES_PAINEIS()[p]).join(' + ')}</li>
         <li className="ia-chip" title={t('Território das consultas executadas', 'Territory of the executed queries')}>{territorio ?? daPagina}</li>
         <li className="ia-chip" title={t('Período dos resultados', 'Period of the results')}>{periodo ?? rotuloDoPeriodo(contexto, null)}</li>
-        <li className="ia-chip" title={t('Modo de resposta', 'Answer mode')}>{rotuloModo(contexto.modo)}</li>
       </ul>
       {pronta && diferente && (
         <p className="ia-nota ia-contexto-pagina">
@@ -630,34 +630,26 @@ function RecorteExecutado({ contexto, pronta }: { contexto: ContextoIa; pronta: 
   );
 }
 
-function BarraContexto({ rotulo, contexto, aberto, alternar, nota }: {
-  rotulo: string; contexto: ContextoIa; aberto: boolean; alternar: () => void; nota?: boolean;
-}) {
-  return (
-    <div className="ia-contexto">
-      <span className="ia-contexto-rotulo">{rotulo}</span>
-      <Chips contexto={contexto} rotulo={rotulo} />
-      <button type="button" className="ia-ajustar" aria-expanded={aberto} aria-controls="ia-ajustes" onClick={alternar}>
-        {aberto ? t('Fechar', 'Close') : t('Ajustar', 'Adjust')}<span className="sr-only"> {t('o contexto', 'the context')}</span>
-      </button>
-      {nota && (
-        <p className="ia-nota ia-contexto-nota">{t('É só uma referência: vale quando a pergunta não disser o lugar ou o ano.',
-          'This is only a default: it applies when the question does not name the place or the year.')}</p>
-      )}
-    </div>
-  );
-}
-
-function Ajustes({ paineis, alternarPainel, travarPaineis, anos, ano, definirAno, rotulo }: {
+function Ajustes({ paineis, alternarPainel, travarPaineis, anos, ano, definirAno, rotulo, temAjustes, limpar, concluir }: {
   paineis: Painel[]; alternarPainel: (p: Painel) => void; travarPaineis: boolean;
   anos: number[]; ano: number | null; definirAno: (a: number | null) => void; rotulo: (a: number) => string;
+  temAjustes: boolean; limpar: () => void; concluir: () => void;
 }) {
   const { entes } = useDados();
   const f = useFiltros();
   return (
-    <div id="ia-ajustes" className="ia-ajustes">
+    <div id="ia-ajustes" className="ia-ajustes" role="group" aria-label={t('Contexto da pergunta', 'Question context')}
+      onKeyDown={(e) => {
+        // Esc fecha o painel (o Esc da lista de municípios só fecha a lista)
+        if (e.key === 'Escape' && !e.defaultPrevented && !(e.target as HTMLElement).closest('[aria-expanded="true"]')) {
+          e.preventDefault();
+          concluir();
+        }
+      }}>
+      <p className="ia-ajustes-intro">{t('Opcional. Bases, território e ano valem quando a pergunta não os disser; o que a pergunta disser prevalece.',
+        'Optional. Datasets, territory and year apply when the question does not state them; what the question says takes priority.')}</p>
       <fieldset className="ia-grupo">
-        <legend>{t('Temas (painéis consultados)', 'Topics (dashboards queried)')}</legend>
+        <legend>{t('Bases consultadas', 'Datasets queried')}</legend>
         <div className="ia-linha">
           {PAINEIS.map((p) => (
             <label key={p} className="caixa">
@@ -667,8 +659,8 @@ function Ajustes({ paineis, alternarPainel, travarPaineis, anos, ano, definirAno
           ))}
         </div>
         {travarPaineis && (
-          <p className="ia-nota">{t('Para mudar os painéis, comece uma nova conversa: cada painel traz tabelas e regras próprias.',
-            'To change the dashboards, start a new conversation: each dashboard brings its own tables and rules.')}</p>
+          <p className="ia-nota">{t('Para mudar as bases, comece uma nova conversa: cada base traz tabelas e regras próprias.',
+            'To change the datasets, start a new conversation: each dataset brings its own tables and rules.')}</p>
         )}
       </fieldset>
       <fieldset className="ia-grupo">
@@ -699,20 +691,21 @@ function Ajustes({ paineis, alternarPainel, travarPaineis, anos, ano, definirAno
         <p id="ia-ano-nota" className="ia-nota">{t('Automático: vale o ano que a pergunta citar; se ela não citar nenhum, a IA usa o mais recente disponível em cada fonte. Um ano escolhido aqui vale só para as perguntas que não disserem o ano.',
           'Automatic: the year named in the question is used; if it names none, the AI uses the latest year available in each source. A year chosen here applies only to questions that do not name a year.')}</p>
       </fieldset>
-      {f.temFiltros && (
-        <button type="button" className="limpar" onClick={f.limpar}>{t('Limpar território e ano', 'Clear territory and year')}</button>
-      )}
+      <div className="ia-ajustes-acoes">
+        {temAjustes && <button type="button" className="ia-botao-leve" onClick={limpar}>{t('Limpar ajustes', 'Clear settings')}</button>}
+        <button type="button" className="ia-botao-primario" onClick={concluir}>{t('Concluir', 'Done')}</button>
+      </div>
     </div>
   );
 }
 
-/** Modo de resposta: alternância compacta no rodapé do campo da pergunta; vale para as próximas perguntas e fica guardada. */
+/** Modo de resposta: alternância compacta no compositor; vale para as próximas perguntas e fica guardada. */
 function SeletorModo({ modo, definir, travado }: { modo: Modo; definir: (m: Modo) => void; travado: boolean }) {
   return (
     <fieldset className="ia-modos" disabled={travado}>
       <legend className="sr-only">{t('Modo de resposta', 'Answer mode')}</legend>
       {MODOS.map((m) => (
-        <label key={m} className={`ia-modo${modo === m ? ' ativo' : ''}`}>
+        <label key={m} className={`ia-modo${modo === m ? ' ativo' : ''}`} title={descricaoModo(m)}>
           <input type="radio" className="sr-only" name="ia-modo" value={m} checked={modo === m} onChange={() => definir(m)} aria-describedby="ia-modo-desc" />
           {rotuloModo(m)}
         </label>
@@ -721,131 +714,208 @@ function SeletorModo({ modo, definir, travado }: { modo: Modo; definir: (m: Modo
   );
 }
 
-function Compositor({ valor, mudar, enviar, cancelar, ocupado, bloqueio, exemplo, grande, campo, modo, descricaoDoModo }: {
+/**
+ * O compositor: campo da pergunta e, na faixa de baixo, o modo, o resumo do contexto (abre os ajustes) e o envio.
+ * Sem login, o envio vira "Entrar para perguntar": a pergunta fica guardada (sessionStorage) e o contexto e o idioma
+ * voltam com o login.
+ */
+function Compositor({ valor, mudar, enviar, cancelar, ocupado, bloqueio, exemplo, grande, campo, modo, descricaoDoModo,
+  resumo, ajustesAbertos, alternarAjustes, botaoContexto, painelAjustes, entrar, verificando, aoComoAcesso, alerta }: {
   valor: string; mudar: (v: string) => void; enviar: (v: string) => void; cancelar: () => void; ocupado: boolean;
   bloqueio: string | null; exemplo: string; grande?: boolean; campo: RefObject<HTMLTextAreaElement | null>;
-  modo: ReactNode; descricaoDoModo: string;
+  modo: ReactNode; descricaoDoModo: string; resumo: string; ajustesAbertos: boolean; alternarAjustes: () => void;
+  botaoContexto: RefObject<HTMLButtonElement | null>; painelAjustes: ReactNode; entrar: boolean; verificando: boolean;
+  aoComoAcesso: () => void; alerta: string | null;
 }) {
   // o campo cresce com o texto, até um limite (depois rola)
   useEffect(() => {
     const c = campo.current;
     if (!c) return;
     c.style.height = 'auto';
-    c.style.height = `${Math.min(c.scrollHeight + 2, grande ? 280 : 220)}px`;
+    c.style.height = `${Math.min(c.scrollHeight + 2, grande ? 320 : 240)}px`;
   }, [valor, grande, campo]);
   const restantes = MAX_PERGUNTA - valor.length;
   return (
-    <form className={`ia-compositor${grande ? ' grande' : !valor && !ocupado ? ' compacto' : ''}`} onSubmit={(e) => { e.preventDefault(); enviar(valor); }}>
-      <label htmlFor="ia-pergunta" className="sr-only">{t('Sua pergunta', 'Your question')}</label>
-      <textarea
-        id="ia-pergunta"
-        ref={campo}
-        value={valor}
-        maxLength={MAX_PERGUNTA}
-        rows={grande ? 3 : 2}
-        placeholder={exemplo}
-        aria-describedby="ia-dica"
-        onChange={(e) => mudar(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-            e.preventDefault();
-            if (!ocupado) enviar(valor);
-          } else if (e.key === 'Escape' && ocupado) {
-            e.preventDefault();
-            cancelar();
-          }
-        }}
-      />
-      <div className="ia-compositor-rodape">
-        {modo}
-        {ocupado
-          ? <button type="button" className="botao ia-cancelar" onClick={cancelar}>{t('Cancelar', 'Cancel')}</button>
-          : <button type="submit" className="botao ia-enviar" disabled={!!bloqueio || !valor.trim()} aria-describedby={bloqueio ? 'ia-bloqueio' : undefined}>{t('Perguntar', 'Ask')}</button>}
-      </div>
+    <div className="ia-compositor-bloco">
+      <form className={`ia-compositor${grande ? ' grande' : ''}`} onSubmit={(e) => { e.preventDefault(); enviar(valor); }}>
+        <label htmlFor="ia-pergunta" className="sr-only">{t('Sua pergunta', 'Your question')}</label>
+        <textarea
+          id="ia-pergunta"
+          ref={campo}
+          value={valor}
+          maxLength={MAX_PERGUNTA}
+          rows={grande ? 3 : 1}
+          placeholder={exemplo}
+          aria-describedby="ia-dica"
+          onChange={(e) => mudar(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              if (!ocupado) enviar(valor);
+            } else if (e.key === 'Escape' && ocupado) {
+              e.preventDefault();
+              cancelar();
+            }
+          }}
+        />
+        <div className="ia-compositor-barra">
+          {modo}
+          <button ref={botaoContexto} type="button" className="ia-contexto-botao" aria-expanded={ajustesAbertos} aria-controls="ia-ajustes" onClick={alternarAjustes}
+            title={t('Bases, território e ano usados quando a pergunta não os disser', 'Datasets, territory and year used when the question does not state them')}>
+            <Icone nome="ajustes" tamanho={15} />
+            <span className="sr-only">{t('Contexto: ', 'Context: ')}</span>
+            <span className="ia-contexto-resumo">{resumo}</span>
+          </button>
+          <span className="ia-compositor-espaco" />
+          {ocupado
+            ? <button type="button" className="ia-parar" onClick={cancelar}><Icone nome="parar" tamanho={15} /> {t('Cancelar', 'Cancel')}</button>
+            : entrar
+              ? <a className="ia-entrar-botao" href={urlEntrar()}><Icone nome="entrar" tamanho={16} /> {t('Entrar para perguntar', 'Sign in to ask')}</a>
+              : (
+                <button type="submit" className="ia-enviar" disabled={!!bloqueio || verificando || !valor.trim()}
+                  aria-label={t('Enviar pergunta', 'Send question')} title={t('Enviar pergunta (Enter)', 'Send question (Enter)')}
+                  aria-describedby={bloqueio ? 'ia-bloqueio' : undefined}>
+                  <Icone nome="enviar" />
+                </button>
+              )}
+        </div>
+      </form>
+      {painelAjustes}
       <p id="ia-dica" className="ia-dica">
         <span id="ia-modo-desc">{descricaoDoModo}</span>
         {' · '}
-        {ocupado ? t('Esc ou o botão Cancelar interrompem a análise', 'Esc or the Cancel button stop the analysis') : t('Enter envia · Shift+Enter quebra a linha', 'Enter sends · Shift+Enter adds a line')}
+        {ocupado ? t('Esc ou Cancelar interrompem a análise', 'Esc or Cancel stop the analysis')
+          : verificando ? t('verificando o acesso…', 'checking access…')
+            : t('Enter envia · Shift+Enter quebra a linha', 'Enter sends · Shift+Enter adds a line')}
+        {alerta && <> · <span className="ia-alerta">{alerta}</span></>}
         {restantes < 300 && <> · <span className={restantes < 50 ? 'ia-alerta' : undefined}>{t(`${contar(restantes, 'caractere restante', 'caracteres restantes')}`, `${contar(restantes, 'character left', 'characters left')}`)}</span></>}
       </p>
+      {entrar && (
+        <p className="ia-dica ia-dica-entrar">
+          {t('Você pode escrever agora: a pergunta e o contexto ficam guardados enquanto você entra com seu e-mail.',
+            'You can write now: the question and the context are kept while you sign in with your email.')}{' '}
+          <button type="button" className="ia-link" onClick={aoComoAcesso}>{t('Como funciona o acesso?', 'How does access work?')}</button>
+        </p>
+      )}
       {bloqueio && <p id="ia-bloqueio" className="ia-bloqueio" role="status">{bloqueio}</p>}
-    </form>
+    </div>
   );
 }
 
-const SUGESTOES_A_VISTA = 3;
-
-function Sugestoes({ lista, aoEscolher, mostrarTema }: { lista: Sugestao[]; aoEscolher: (s: string) => void; mostrarTema: boolean }) {
-  const [mais, setMais] = useState(false);
+/** Três sugestões leves na tela inicial: o título curto no botão, a pergunta completa vai para o campo. */
+function Sugestoes({ lista, aoEscolher }: { lista: Sugestao[]; aoEscolher: (s: Sugestao) => void }) {
   if (!lista.length) return null;
   return (
-    <section className="ia-sugestoes" aria-labelledby="ia-sugestoes-titulo">
-      <h3 id="ia-sugestoes-titulo" className="ia-secao">{t('Exemplos', 'Examples')}</h3>
-      <ul id="ia-sugestoes-lista">
-        {(mais ? lista : lista.slice(0, SUGESTOES_A_VISTA)).map((s) => (
-          <li key={s.texto}>
-            <button type="button" className="ia-sugestao" onClick={() => aoEscolher(s.texto)} title={s.texto}>
-              {mostrarTema && <span className="ia-sugestao-cat">{s.tema}</span>}
-              <span className="ia-sugestao-titulo">{s.titulo}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
-      <p className="ia-sugestoes-rodape">
-        {lista.length > SUGESTOES_A_VISTA && (
-          <button type="button" className="ia-ajustar" aria-expanded={mais} aria-controls="ia-sugestoes-lista" onClick={() => setMais(!mais)}>
-            {mais ? t('Menos exemplos', 'Fewer examples') : t('Mais exemplos', 'More examples')}
-          </button>
-        )}
-        <span className="ia-nota">{t('O exemplo preenche o campo com a pergunta completa: revise antes de enviar.', 'An example fills the box with the full question: review it before sending.')}</span>
-      </p>
-    </section>
+    <ul className="ia-sugestoes" aria-label={t('Sugestões para começar', 'Suggestions to get started')}>
+      {lista.slice(0, 3).map((s) => (
+        <li key={s.texto}>
+          <button type="button" className="ia-sugestao" onClick={() => aoEscolher(s)} title={s.texto}>{s.titulo}</button>
+        </li>
+      ))}
+    </ul>
   );
 }
 
-/** Pé da tela inicial: a orientação para conferir à vista; cobertura, funcionamento e privacidade recolhidos. */
-function Complementos({ estado, paineis, cobertura }: { estado: EstadoIa | null | undefined; paineis: Painel[]; cobertura: Cobertura }) {
-  const linhas = descreverCobertura(paineis, cobertura);
+/** "Explorar exemplos": todos os exemplos, por tema (as perguntas entre bases por último). */
+function Exemplos({ lista, aoEscolher }: { lista: Sugestao[]; aoEscolher: (s: Sugestao) => void }) {
+  const grupos = new Map<string, Sugestao[]>();
+  for (const s of [...lista.filter((x) => x.paineis.length === 1), ...lista.filter((x) => x.paineis.length > 1)]) {
+    grupos.set(s.tema, [...(grupos.get(s.tema) ?? []), s]);
+  }
   return (
-    <footer className="ia-complementos">
-      <p className="ia-conferir">{t('Respostas geradas por IA podem conter erros: confira as consultas e as ressalvas de cada resposta antes de usar os números.',
-        'AI-generated answers may contain errors: check the queries and the caveats of each answer before using the numbers.')}</p>
-      {linhas.length > 0 && (
-        <details className="ia-detalhes">
-          <summary>{t('Dados disponíveis', 'Available data')}</summary>
-          <ul>{linhas.map((l) => <li key={l}>{l}</li>)}</ul>
-        </details>
-      )}
-      <details className="ia-detalhes">
-        <summary>{t('Como funciona', 'How it works')}</summary>
+    <>
+      <p className="ia-nota ia-exemplos-intro">{t('O exemplo preenche o campo com a pergunta completa, no contexto escolhido: revise antes de enviar.',
+        'An example fills the box with the full question, in the chosen context: review it before sending.')}</p>
+      {[...grupos].map(([tema, itens]) => (
+        <section key={tema} className="ia-exemplos-grupo" aria-label={tema}>
+          <h3>{tema}</h3>
+          <ul>
+            {itens.map((s) => (
+              <li key={s.texto}>
+                <button type="button" className="ia-exemplo" onClick={() => aoEscolher(s)}>
+                  <span className="ia-exemplo-titulo">{s.titulo}</span>
+                  <span className="ia-exemplo-texto">{s.texto}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+    </>
+  );
+}
+
+export type SecaoAjuda = 'dados' | 'como' | 'acesso' | 'privacidade' | 'conferencia';
+
+/** Ajuda da IA: dados disponíveis, funcionamento, acesso, privacidade e conferência, em seções; abre na pedida. */
+function Ajuda({ secao, paineis, cobertura, estado, conta }: {
+  secao: SecaoAjuda | null; paineis: Painel[]; cobertura: Cobertura; estado: EstadoIa | null | undefined; conta: string | null;
+}) {
+  useEffect(() => {
+    if (!secao) return;
+    const h = document.getElementById(`ia-ajuda-${secao}`);
+    h?.scrollIntoView({ block: 'start' });
+    h?.focus({ preventScroll: true });
+  }, [secao]);
+  const linhas = descreverCobertura(PAINEIS, cobertura);
+  return (
+    <div className="ia-ajuda">
+      <nav className="ia-ajuda-indice" aria-label={t('Seções da ajuda', 'Help sections')}>
+        <a href="#ia-ajuda-dados">{t('Dados disponíveis', 'Available data')}</a>
+        <a href="#ia-ajuda-como">{t('Como funciona', 'How it works')}</a>
+        <a href="#ia-ajuda-acesso">{t('Acesso', 'Access')}</a>
+        <a href="#ia-ajuda-privacidade">{t('Privacidade', 'Privacy')}</a>
+        <a href="#ia-ajuda-conferencia">{t('Conferência', 'Checking')}</a>
+      </nav>
+      <section aria-labelledby="ia-ajuda-dados">
+        <h3 id="ia-ajuda-dados" tabIndex={-1}>{t('Dados disponíveis', 'Available data')}</h3>
+        {linhas.length ? <ul>{linhas.map((l) => <li key={l}>{l}</li>)}</ul> : <p>{t('Carregando a cobertura das bases…', 'Loading the dataset coverage…')}</p>}
+      </section>
+      <section aria-labelledby="ia-ajuda-como">
+        <h3 id="ia-ajuda-como" tabIndex={-1}>{t('Como funciona', 'How it works')}</h3>
         <p>{descricao(paineis)}</p>
-        <p>{t('Tema, território e ano do contexto valem quando a pergunta não os disser; a pergunta sempre tem prioridade. Cada resposta mostra o recorte que as consultas usaram de fato.',
-          'The topic, territory and year in the context apply when the question does not state them; the question always takes priority. Each answer shows the scope its queries actually used.')}</p>
-        <p>{t('Na resposta rápida vem o essencial; na análise para pesquisa, tabelas completas, metodologia e fontes. As duas mostram as consultas (SQL) para conferência.',
-          'The quick answer brings the essentials; the research analysis adds complete tables, methodology and sources. Both show the queries (SQL) for checking.')}</p>
-        <p>
-          {t('As respostas são geradas pelo Claude, da Anthropic. Para a Anthropic vão só a pergunta, o contexto da página e os resultados resumidos das consultas, nunca os arquivos.',
-            'Answers are generated by Claude, by Anthropic. Only the question, the page context and the summarized query results go to Anthropic, never the files.')}
-          {paineis.includes('trabalho') && ` ${t('Na RAIS, a unidade é o vínculo, não a pessoa.', 'In RAIS, the unit is the job, not the person.')}`}
-          {paineis.includes('saude') && ` ${t('Na saúde, as taxas são calculadas diretamente, pelo município de residência e sem correção de subnotificação.', 'In health, rates are computed directly, by municipality of residence and without under-reporting correction.')}`}
-        </p>
-      </details>
-      {estado && <Conta estado={estado} />}
-    </footer>
-  );
-}
-
-function Rodape({ estado, paineis, conta }: { estado: EstadoIa | null | undefined; paineis: Painel[]; conta: boolean }) {
-  return (
-    <footer className="ia-rodape-info">
-      <p>
-        {t('Respostas geradas por IA (Claude, da Anthropic) podem conter erros: confira as consultas antes de usar os números. Para a Anthropic vão só a pergunta, o contexto da página e os resultados resumidos das consultas, nunca os arquivos.',
-          'AI-generated answers (Claude, by Anthropic) may contain errors: check the queries before using the numbers. Only the question, the page context and the summarized query results go to Anthropic, never the files.')}
-        {paineis.includes('trabalho') && ` ${t('Na RAIS, a unidade é o vínculo, não a pessoa.', 'In RAIS, the unit is the job, not the person.')}`}
-        {paineis.includes('saude') && ` ${t('Na saúde, as taxas são calculadas diretamente, pelo município de residência e sem correção de subnotificação.', 'In health, rates are computed directly, by municipality of residence and without under-reporting correction.')}`}
-      </p>
-      {conta && estado && <Conta estado={estado} />}
-    </footer>
+        <p>{t('Bases, território e ano do contexto valem quando a pergunta não os disser; a pergunta sempre tem prioridade. Cada resposta mostra o recorte que as consultas usaram de fato.',
+          'The datasets, territory and year in the context apply when the question does not state them; the question always takes priority. Each answer shows the scope its queries actually used.')}</p>
+        <p>{t('Na resposta rápida vem o essencial; na análise para pesquisa, tabelas completas, metodologia e fontes. As duas mostram as consultas (SQL) para conferência e podem ser exportadas em PDF, Excel ou JSON.',
+          'The quick answer brings the essentials; the research analysis adds complete tables, methodology and sources. Both show the queries (SQL) for checking and can be exported as PDF, Excel or JSON.')}</p>
+      </section>
+      <section aria-labelledby="ia-ajuda-acesso">
+        <h3 id="ia-ajuda-acesso" tabIndex={-1}>{t('Acesso', 'Access')}</h3>
+        <p>{t('O acesso é restrito a e-mails autorizados pelo LAPAM. Não há senha: você entra com um código enviado ao seu e-mail.',
+          'Access is restricted to emails authorized by LAPAM. There is no password: you sign in with a code sent to your email.')}</p>
+        <ol className="ia-entrar-passos">
+          <li><strong>{t('E-mail', 'Email')}</strong>{t('Clique em “Entrar para perguntar” e digite seu e-mail na tela de login (em inglês, do Cloudflare Access, o serviço que protege o acesso).',
+            'Click “Sign in to ask” and type your email on the login screen (from Cloudflare Access, the service that protects access).')}</li>
+          <li><strong>{t('Código', 'Code')}</strong>{t('Clique em “Send login code” e abra o e-mail com o código de 6 dígitos. Se não chegar, veja o spam.',
+            'Click “Send login code” and open the email with the 6-digit code. If it does not arrive, check your spam folder.')}</li>
+          <li><strong>{t('Pronto', 'Done')}</strong>{t('Digite o código: você volta para esta página com a pergunta, o contexto e o idioma, e pode revisar antes de enviar.',
+            'Enter the code: you come back to this page with your question, context and language, and can review before sending.')}</li>
+        </ol>
+        <p>{t('O código não chegou em alguns minutos? O e-mail pode não estar autorizado: peça a inclusão ao LAPAM. Cada conta tem um limite diário de perguntas.',
+          'No code after a few minutes? The email may not be authorized: ask LAPAM to add it. Each account has a daily question limit.')}</p>
+        {estado && <Conta estado={estado} />}
+      </section>
+      <section aria-labelledby="ia-ajuda-privacidade">
+        <h3 id="ia-ajuda-privacidade" tabIndex={-1}>{t('Privacidade e armazenamento', 'Privacy and storage')}</h3>
+        <p>{t('As respostas são geradas pelo Claude, da Anthropic. Para a Anthropic vão só a pergunta, o contexto da página e os resultados resumidos das consultas, nunca os arquivos; as consultas rodam aqui no seu navegador.',
+          'Answers are generated by Claude, by Anthropic. Only the question, the page context and the summarized query results go to Anthropic, never the files; the queries run here in your browser.')}</p>
+        <p>{conta
+          ? t(`As conversas ficam na sua conta (${conta}), no servidor do LAPAM, e abrem em qualquer computador em que você entrar com este e-mail. Cada pessoa só vê as próprias conversas, mas quem administra o servidor do LAPAM tem acesso a elas. Excluir apaga do servidor de vez.`,
+            `Conversations are kept in your account (${conta}), on the LAPAM server, and open on any computer where you sign in with this email. Each person only sees their own conversations, but LAPAM server administrators can access them. Deleting erases them from the server for good.`)
+          : t('Sem login, as conversas ficam só neste navegador: limpar os dados de navegação apaga o histórico (exporte em JSON as importantes). Com login, elas ficam na sua conta.',
+            'Without signing in, conversations are kept only in this browser: clearing browsing data erases the history (export the important ones as JSON). When signed in, they are kept in your account.')}</p>
+      </section>
+      <section aria-labelledby="ia-ajuda-conferencia">
+        <h3 id="ia-ajuda-conferencia" tabIndex={-1}>{t('Limitações e conferência', 'Limitations and checking')}</h3>
+        <p>{t('Respostas geradas por IA podem conter erros. Antes de usar um número, confira a consulta (SQL) e as ressalvas da resposta; os números principais trazem a marca da conferência automática com a consulta.',
+          'AI-generated answers may contain errors. Before using a number, check the query (SQL) and the caveats of the answer; key numbers carry the mark of the automatic check against the query.')}</p>
+        <ul>
+          <li>{t('Na RAIS, a unidade é o vínculo, não a pessoa.', 'In RAIS, the unit is the job, not the person.')}</li>
+          <li>{t('Na saúde, as taxas são calculadas diretamente, pelo município de residência e sem correção de subnotificação.', 'In health, rates are computed directly, by municipality of residence and without under-reporting correction.')}</li>
+          <li>{t('Nas finanças, os valores são os declarados pelos entes ao SICONFI; anos sem declaração ficam sem dado.', 'In public finances, values are those reported by governments to SICONFI; years without a filing have no data.')}</li>
+        </ul>
+      </section>
+    </div>
   );
 }
 
@@ -1635,6 +1705,9 @@ export function Ia() {
   const [falha, setFalha] = useState<{ mensagem: string; pergunta: string; entrar?: boolean } | null>(null);
   const [status, setStatus] = useState('');
   const [ajustes, setAjustes] = useState(false);
+  const [exemplos, setExemplos] = useState(false);
+  const [ajuda, setAjuda] = useState<SecaoAjuda | 'inicio' | null>(null);
+  const botaoContexto = useRef<HTMLButtonElement>(null);
   const [apendice, setApendice] = useState(false);
   const campo = useRef<HTMLTextAreaElement>(null);
 
@@ -1648,6 +1721,8 @@ export function Ia() {
   // a conversa na tela e se a página continua montada: uma pergunta que segue depois de sair da página (ou de trocar
   // de conversa) grava a resposta no histórico, mas não mexe na tela
   const idNaTela = useRef<string | null>(null);
+  // trava síncrona contra envio duplo (dois cliques ou Enter antes de o estado "rodando" chegar à tela)
+  const enviando = useRef(false);
   const montada = useRef(true);
   useEffect(() => {
     montada.current = true;
@@ -1664,6 +1739,7 @@ export function Ia() {
     setRodando(null);
     setProgresso(null);
     setFalha(null);
+    enviando.current = false;
   };
 
   // ?conversa=<id> abre a conversa guardada, sem rodar consultas nem chamar a IA; ?nova= começa outra (a anterior
@@ -1790,6 +1866,21 @@ export function Ia() {
     return { fontes: p.fontes, bases: p.bases, notas: p.notas.map(guardarNota), codigos: p.codigos };
   };
 
+  // longe do fim (a pessoa subiu para ler): oferece voltar à última pergunta
+  const [longeDoFim, setLongeDoFim] = useState(false);
+  const temConversa = mensagens.length > 0;
+  useEffect(() => {
+    if (!temConversa) return;
+    const medir = () => setLongeDoFim(document.documentElement.scrollHeight - (scrollY + innerHeight) > 700);
+    medir();
+    addEventListener('scroll', medir, { passive: true });
+    addEventListener('resize', medir);
+    return () => {
+      removeEventListener('scroll', medir);
+      removeEventListener('resize', medir);
+    };
+  }, [temConversa]);
+
   // nova pergunta: leva a página até ela (a margem do topo fixo está no CSS)
   const qtd = metas.length;
   useEffect(() => {
@@ -1828,7 +1919,8 @@ export function Ia() {
 
   async function enviar(bruta: string) {
     const pergunta = bruta.trim();
-    if (!pergunta || rodando || bloqueio || refazendo) return;
+    if (!pergunta || rodando || enviando.current || bloqueio || refazendo) return;
+    enviando.current = true;
     const antes = { mensagens, metas };
     // a primeira pergunta cria a conversa: identificador e endereço (?conversa=) desde já
     const base: Cabecalho = aberta ?? {
@@ -1910,6 +2002,7 @@ export function Ia() {
     } finally {
       historico.marcar(id, false);
       if (naTela()) {
+        enviando.current = false;
         setRodando(null);
         setProgresso(null);
       }
@@ -1923,13 +2016,6 @@ export function Ia() {
     setMensagens((m) => semUltimaPergunta(m));
     setMetas((ms) => ms.slice(0, -1));
     usarTexto(pergunta);
-  };
-  // a conversa anterior fica no histórico; uma pergunta dela ainda rodando continua e é gravada quando terminar
-  const novaConversa = () => {
-    const b = new URLSearchParams(busca);
-    b.delete('conversa');
-    b.set('nova', String(Date.now()));
-    setBusca(b);
   };
   const abrirConversa = (id: string) => setBusca(new URLSearchParams({ conversa: id }));
   const conversaAtual = (): Conversa | null => (aberta ? { ...aberta, mensagens, metas, resultados } : null);
@@ -2018,57 +2104,59 @@ export function Ia() {
   const ultimoContexto = metas.at(-1)?.contexto;
   const contextoMudou = conversa && !rodando && !!ultimoContexto && !mesmoContexto(ultimoContexto, contexto);
   const exemplo = conversa ? t('Pergunte mais sobre isso…', 'Ask a follow-up…') : exemploPergunta(contexto.paineis, territorio, cobertura);
+  const temAjustes = paineis.length !== PAINEIS.length || !!busca.get('uf') || !!busca.get('ente') || !!ano;
+  const limparAjustes = () => {
+    const b = new URLSearchParams(busca);
+    for (const k of ['uf', 'ente', 'ano']) b.delete(k);
+    if (!conversa && !rodando) b.delete('paineis');
+    setBusca(b, { replace: true });
+  };
+  const concluirAjustes = () => {
+    setAjustes(false);
+    botaoContexto.current?.focus();
+  };
   const painelAjustes = ajustes && (
     <Ajustes paineis={paineis} alternarPainel={alternarPainel} travarPaineis={conversa || !!rodando} anos={anos} ano={ano}
-      rotulo={(a) => rotuloDoAno(a, cobertura, contexto.paineis)}
-      definirAno={definirAno} />
+      rotulo={(a) => rotuloDoAno(a, cobertura, contexto.paineis)} definirAno={definirAno}
+      temAjustes={temAjustes} limpar={limparAjustes} concluir={concluirAjustes} />
   );
-
-  const acesso = (
-    <>
-      {falhaEstado && (estadoNegado ? (
-        <section className="cartao ia-entrar ia-entrar-negado" role="alert" aria-labelledby="ia-negado-titulo">
-          <div>
-            <h3 id="ia-negado-titulo">{t('Este e-mail não tem acesso à IA', 'This email does not have access to the AI')}</h3>
-            <p className="desc">{falhaEstado.charAt(0).toUpperCase() + falhaEstado.slice(1)}</p>
-          </div>
-          <div className="ia-entrar-acoes">
-            <a className="botao" href="/cdn-cgi/access/logout">{t('Sair e entrar com outro e-mail', 'Sign out and use another email')}</a>
-            <button type="button" className="botao-leve" onClick={carregar}>{t('Tentar de novo', 'Try again')}</button>
-          </div>
-        </section>
-      ) : (
-        <p className="erro" role="alert">{falhaEstado} <button type="button" className="botao-leve" onClick={carregar}>{t('Tentar de novo', 'Try again')}</button></p>
-      ))}
-      {estado === null && (
-        <section className="ia-entrar" aria-label={t('Acesso', 'Access')}>
-          <div className="ia-entrar-linha">
-            <p className="ia-entrar-texto">{t('Entre com seu e-mail para perguntar.', 'Sign in with your email to ask.')}</p>
-            <a className="botao" href={urlEntrar()}>{t('Entrar com e-mail', 'Sign in with email')}</a>
-          </div>
-          <details className="ia-entrar-como">
-            <summary>{t('Como funciona o acesso?', 'How does access work?')}</summary>
-            <p>{t('O acesso é restrito a e-mails autorizados pelo LAPAM. Não há senha: você entra com um código enviado ao seu e-mail.',
-              'Access is restricted to emails authorized by LAPAM. There is no password: you sign in with a code sent to your email.')}</p>
-            <ol className="ia-entrar-passos">
-              <li><strong>{t('E-mail', 'Email')}</strong>{t('Clique em “Entrar com e-mail” e digite seu e-mail na tela de login (em inglês, do Cloudflare Access, o serviço que protege o acesso).',
-                'Click “Sign in with email” and type your email on the login screen (from Cloudflare Access, the service that protects access).')}</li>
-              <li><strong>{t('Código', 'Code')}</strong>{t('Clique em “Send login code” e abra o e-mail com o código de 6 dígitos. Se não chegar, veja o spam.',
-                'Click “Send login code” and open the email with the 6-digit code. If it does not arrive, check your spam folder.')}</li>
-              <li><strong>{t('Pronto', 'Done')}</strong>{t('Digite o código: você volta para esta página, com o mesmo contexto e idioma, e suas conversas ficam guardadas na sua conta.',
-                'Enter the code: you come back to this page, with the same context and language, and your conversations are saved to your account.')}</li>
-            </ol>
-            <p className="ia-nota">{t('O código não chegou em alguns minutos? O e-mail pode não estar autorizado: peça a inclusão ao LAPAM.',
-              'No code after a few minutes? The email may not be authorized: ask LAPAM to add it.')}</p>
-          </details>
-        </section>
-      )}
-    </>
-  );
+  // um exemplo de outra base, antes da 1ª pergunta, acrescenta a base ao contexto (depois as bases ficam fixas)
+  const escolherExemplo = (s: Sugestao) => {
+    if (!conversa && !rodando && !s.paineis.every((x) => paineis.includes(x))) {
+      const novos = PAINEIS.filter((x) => paineis.includes(x) || s.paineis.includes(x));
+      const b = new URLSearchParams(busca);
+      if (novos.length === PAINEIS.length) b.delete('paineis');
+      else b.set('paineis', novos.join(','));
+      setBusca(b, { replace: true });
+    }
+    setExemplos(false);
+    usarTexto(s.texto);
+  };
+  const listaExemplos = sugestoes(conversa ? paineis : PAINEIS, territorio, cobertura, ano)
+    .filter((s) => !conversa || s.paineis.every((x) => paineis.includes(x)));
+  // acesso: e-mail sem autorização ou falha ao verificar (o caso sem login fica no próprio compositor)
+  const acesso = falhaEstado && (estadoNegado ? (
+    <section className="ia-entrar-negado" role="alert" aria-labelledby="ia-negado-titulo">
+      <p><strong id="ia-negado-titulo">{t('Este e-mail não tem acesso à IA.', 'This email does not have access to the AI.')}</strong>{' '}
+        {falhaEstado.charAt(0).toUpperCase() + falhaEstado.slice(1)}.</p>
+      <p className="ia-entrar-acoes">
+        <a className="ia-botao-primario" href="/cdn-cgi/access/logout">{t('Sair e entrar com outro e-mail', 'Sign out and use another email')}</a>
+        <button type="button" className="ia-botao-leve" onClick={carregar}>{t('Tentar de novo', 'Try again')}</button>
+      </p>
+    </section>
+  ) : (
+    <p className="erro" role="alert">{falhaEstado} <button type="button" className="ia-botao-leve" onClick={carregar}>{t('Tentar de novo', 'Try again')}</button></p>
+  ));
+  const poucas = estado && estado.restantes > 0 && estado.restantes <= 5
+    ? t(`restam ${contar(estado.restantes, 'pergunta', 'perguntas')} hoje`, `${contar(estado.restantes, 'question', 'questions')} left today`) : null;
   const compositor = (
-    <Compositor valor={texto} mudar={setTexto} enviar={enviar} cancelar={cancelar} ocupado={!!rodando} bloqueio={bloqueio}
+    <Compositor valor={texto} mudar={setTexto} enviar={enviar} cancelar={cancelar} ocupado={!!rodando}
+      bloqueio={estado === null || (estado === undefined && !falhaEstado) ? null : bloqueio}
       exemplo={exemplo} grande={!conversa} campo={campo}
-      modo={<SeletorModo modo={modo} definir={definirModo} travado={!!rodando} />} descricaoDoModo={descricaoModo(modo)} />
+      modo={<SeletorModo modo={modo} definir={definirModo} travado={!!rodando} />} descricaoDoModo={descricaoModo(modo)}
+      resumo={resumoContexto(contexto)} ajustesAbertos={ajustes} alternarAjustes={() => setAjustes(!ajustes)} botaoContexto={botaoContexto}
+      painelAjustes={painelAjustes} entrar={estado === null} verificando={estado === undefined && !falhaEstado}
+      aoComoAcesso={() => setAjuda('acesso')} alerta={poucas} />
   );
   const aviso = falha && (
     <div className="ia-falha" role="alert">
@@ -2122,8 +2210,33 @@ export function Ia() {
     </section>
   );
 
+  const salva = aberta ? h.resumos.find((r) => r.id === aberta.id) : undefined;
+  const situacaoSalva = !aberta ? '' : !salva
+    ? t('Ainda não salva', 'Not saved yet')
+    : salva.pendente
+      ? t('Salva neste navegador; ainda não enviada à conta', 'Saved in this browser; not yet sent to the account')
+      : h.conta && salva.conta
+        ? t(`Salva na sua conta · ${dataHora(salva.atualizadaEm)}`, `Saved in your account · ${dataHora(salva.atualizadaEm)}`)
+        : t(`Salva neste navegador · ${dataHora(salva.atualizadaEm)}`, `Saved in this browser · ${dataHora(salva.atualizadaEm)}`);
+  const conferir = (
+    <p className="ia-conferir">
+      {t('Respostas geradas por IA podem conter erros: confira as consultas e as ressalvas antes de usar os números.',
+        'AI-generated answers may contain errors: check the queries and caveats before using the numbers.')}
+    </p>
+  );
+  const dialogos = (
+    <>
+      <Dialogo aberto={exemplos} aoFechar={() => setExemplos(false)} titulo={t('Explorar exemplos', 'Explore examples')}>
+        <Exemplos lista={listaExemplos} aoEscolher={escolherExemplo} />
+      </Dialogo>
+      <Dialogo aberto={ajuda !== null} aoFechar={() => setAjuda(null)} titulo={t('Ajuda', 'Help')}>
+        <Ajuda secao={ajuda === 'inicio' ? null : ajuda} paineis={contexto.paineis} cobertura={cobertura} estado={estado} conta={h.conta} />
+      </Dialogo>
+    </>
+  );
+
   return (
-    <div className="ia">
+    <div className={`ia${conversa ? ' em-conversa' : ''}`}>
       <p className="sr-only" role="status" aria-live="polite">{status}</p>
       {abrindo && !conversa ? (
         <p className="vazio" role="status">{t('Abrindo a conversa…', 'Opening the conversation…')}</p>
@@ -2146,36 +2259,23 @@ export function Ia() {
           {avisoHistorico}
           <h2 id="ia-titulo" className="ia-titulo">{t('O que você quer analisar?', 'What would you like to analyse?')}</h2>
           <p className="ia-descricao">{subtitulo(contexto.paineis)}</p>
-          <BarraContexto rotulo={t('Contexto', 'Context')} contexto={contexto} aberto={ajustes} alternar={() => setAjustes(!ajustes)} nota />
-          {painelAjustes}
           {acesso}
           {compositor}
           {aviso}
-          <Sugestoes lista={sugestoes(contexto.paineis, territorio, cobertura, ano)} aoEscolher={usarTexto} mostrarTema={contexto.paineis.length > 1} />
-          <Complementos estado={estado} paineis={contexto.paineis} cobertura={cobertura} />
+          <Sugestoes lista={sugestoes(contexto.paineis, territorio, cobertura, ano)} aoEscolher={escolherExemplo} />
+          <p className="ia-links">
+            <button type="button" className="ia-link" onClick={() => setExemplos(true)}><Icone nome="ideia" tamanho={15} /> {t('Explorar exemplos', 'Explore examples')}</button>
+            <button type="button" className="ia-link" onClick={() => setAjuda('dados')}><Icone nome="dados" tamanho={15} /> {t('Dados disponíveis', 'Available data')}</button>
+            <button type="button" className="ia-link" onClick={() => setAjuda('inicio')}><Icone nome="ajuda" tamanho={15} /> {t('Ajuda', 'Help')}</button>
+          </p>
+          {conferir}
         </section>
       ) : (
         <>
           <header className="ia-cabeca">
             <div className="ia-identificacao">
-              <h2 className="titulo-pagina">{aberta?.titulo ?? t('Pergunte aos dados', 'Ask the data')}</h2>
-              {aberta && (
-                <p className="ia-nota ia-id">
-                  {t('Conversa', 'Conversation')} <code>{aberta.id}</code> · {aberta.conta
-                    ? t(`criada em ${dataHora(aberta.criadaEm)}, salva na sua conta em ${dataHora(aberta.atualizadaEm)}`, `created on ${dataHora(aberta.criadaEm)}, saved in your account on ${dataHora(aberta.atualizadaEm)}`)
-                    : t(`criada em ${dataHora(aberta.criadaEm)}, salva neste navegador em ${dataHora(aberta.atualizadaEm)}`, `created on ${dataHora(aberta.criadaEm)}, saved in this browser on ${dataHora(aberta.atualizadaEm)}`)}{' '}
-                  <button type="button" className="botao-leve" onClick={() => void copiarEndereco()}>{copiouEndereco ? t('Endereço copiado ✓', 'Address copied ✓') : t('Copiar endereço', 'Copy address')}</button>
-                  <br />
-                  {aberta.conta
-                    ? t(`O endereço abre esta conversa em qualquer computador em que você entrar com ${aberta.conta}. Só você tem acesso a ela: não serve para compartilhar (para isso, exporte em JSON, PDF ou Excel).`,
-                      `The address opens this conversation on any computer where you sign in with ${aberta.conta}. Only you can access it: it cannot be shared (for that, export it as JSON, PDF or Excel).`)
-                    : h.conta
-                      ? t('Esta conversa está só neste navegador. Ela vai para a sua conta na próxima pergunta ou pelo botão “Levar para a minha conta”, no histórico.',
-                        'This conversation is only in this browser. It goes to your account with the next question or with the “Move to my account” button in the history.')
-                      : t('O endereço reabre esta conversa só neste navegador. Entre com seu e-mail para guardá-la na sua conta e abri-la em outro computador.',
-                        'The address reopens this conversation only in this browser. Sign in with your email to keep it in your account and open it on another computer.')}
-                </p>
-              )}
+              <h2 className="ia-conversa-titulo">{aberta?.titulo ?? t('Pergunte aos dados', 'Ask the data')}</h2>
+              {aberta && <p className="ia-nota ia-salva">{situacaoSalva}</p>}
               {aberta?.origem.tipo === 'versao' && (
                 <p className="ia-nota">
                   {t(`Nova versão de “${aberta.origem.titulo}”, com as consultas refeitas nos dados de ${dataHora(aberta.origem.dados)}.`,
@@ -2183,40 +2283,65 @@ export function Ia() {
                   <a href={`/ia?conversa=${encodeURIComponent(aberta.origem.de)}`} onClick={abrir(aberta.origem.de)}>{t('Abrir a original', 'Open the original')}</a>
                 </p>
               )}
-              {estado && <Conta estado={estado} />}
             </div>
             <div className="ia-cabeca-acoes">
-              <div className="ia-exportar" role="group" aria-label={t('Exportar a conversa', 'Export the conversation')}>
-                <button type="button" className="botao-leve" disabled={!!rodando || !estado}
-                  onClick={() => imprimirPdf(lista, metas, prontas, resultados, { email: estado?.email ?? '', paineis: contexto.paineis, apendice, geradoEm: (versoes.length ? versoes : [meta.geradoEm]).join('; ') })}
-                  title={t('Abre a impressão do navegador; escolha "Salvar como PDF"', 'Opens the browser print dialog; choose "Save as PDF"')}>
-                  {t('Exportar PDF', 'Export PDF')}
-                </button>
-                <button type="button" className="botao-leve" disabled={!!rodando} onClick={() => void baixarExcel(lista, metas, prontas, resultados, contexto.paineis, apendice, cobertura, meta.geradoEm)}
-                  title={t('Resumo da conversa e uma aba por tabela, com números e metadados', 'Conversation summary and one sheet per table, with numbers and metadata')}>
-                  {t('Exportar Excel', 'Export Excel')}
-                </button>
-                <button type="button" className="botao-leve" disabled={!aberta} onClick={exportarJson}
-                  title={t('Conversa completa (perguntas, respostas, SQL, resultados e contexto), para backup ou para importar em outro computador', 'Full conversation (questions, answers, SQL, results and context), for backup or to import on another computer')}>
-                  {t('Exportar conversa (JSON)', 'Export conversation (JSON)')}
-                </button>
-                <label className="caixa ia-apendice">
-                  <input type="checkbox" checked={apendice} onChange={(e) => setApendice(e.target.checked)} />
-                  {' '}{t('incluir apêndice de reprodução', 'include reproduction appendix')}
-                </label>
-              </div>
-              <button type="button" className="botao-leve" onClick={novaConversa}>{t('Nova conversa', 'New conversation')}</button>
+              <Popover rotulo={<><Icone nome="baixar" tamanho={16} /> {t('Exportar', 'Export')}</>} conteudo={(fechar) => (
+                <div className="ia-exportar" role="group" aria-label={t('Exportar a conversa', 'Export the conversation')}>
+                  <button type="button" className="ia-menu-item" disabled={!!rodando || !estado}
+                    onClick={() => {
+                      imprimirPdf(lista, metas, prontas, resultados, { email: estado?.email ?? '', paineis: contexto.paineis, apendice, geradoEm: (versoes.length ? versoes : [meta.geradoEm]).join('; ') });
+                      fechar();
+                    }}
+                    title={t('Abre a impressão do navegador; escolha "Salvar como PDF"', 'Opens the browser print dialog; choose "Save as PDF"')}>
+                    {t('PDF', 'PDF')}<span className="ia-nota"> · {t('pela impressão do navegador', 'via the browser print dialog')}</span>
+                  </button>
+                  <button type="button" className="ia-menu-item" disabled={!!rodando}
+                    onClick={() => {
+                      void baixarExcel(lista, metas, prontas, resultados, contexto.paineis, apendice, cobertura, meta.geradoEm);
+                      fechar();
+                    }}>
+                    Excel<span className="ia-nota"> · {t('resumo e uma aba por tabela', 'summary and one sheet per table')}</span>
+                  </button>
+                  <button type="button" className="ia-menu-item" disabled={!aberta}
+                    onClick={() => {
+                      exportarJson();
+                      fechar();
+                    }}>
+                    JSON<span className="ia-nota"> · {t('conversa completa, para backup ou importar', 'full conversation, for backup or import')}</span>
+                  </button>
+                  <label className="caixa ia-apendice">
+                    <input type="checkbox" checked={apendice} onChange={(e) => setApendice(e.target.checked)} />
+                    {' '}{t('incluir apêndice de reprodução', 'include reproduction appendix')}
+                  </label>
+                  <p className="ia-nota">
+                    {t('Cada resposta sai no modo em que foi feita.', 'Each answer is exported in the mode it was made.')}
+                    {apendice && ` ${t('O apêndice traz o SQL e o histórico de todas as consultas, inclusive as sem resultado e as refeitas.', 'The appendix adds the SQL and history of all queries, including empty and redone ones.')}`}
+                  </p>
+                </div>
+              )} />
+              <Popover rotulo={<><Icone nome="info" tamanho={16} /> {t('Detalhes', 'Details')}</>} conteudo={() => (
+                <div className="ia-detalhes-conversa">
+                  {aberta && (
+                    <>
+                      <p>{t('Conversa', 'Conversation')} <code>{aberta.id}</code></p>
+                      <p>{t(`Criada em ${dataHora(aberta.criadaEm)}.`, `Created on ${dataHora(aberta.criadaEm)}.`)} {situacaoSalva}.</p>
+                      <p>{aberta.conta
+                        ? t(`O endereço abre esta conversa em qualquer computador em que você entrar com ${aberta.conta}. Só você tem acesso a ela: para compartilhar, exporte.`,
+                          `The address opens this conversation on any computer where you sign in with ${aberta.conta}. Only you can access it: to share it, export it.`)
+                        : h.conta
+                          ? t('Esta conversa está só neste navegador; ela vai para a sua conta na próxima pergunta ou pelo histórico.',
+                            'This conversation is only in this browser; it goes to your account with the next question or from the history.')
+                          : t('O endereço reabre esta conversa só neste navegador. Entre com seu e-mail para guardá-la na sua conta.',
+                            'The address reopens this conversation only in this browser. Sign in with your email to keep it in your account.')}</p>
+                      <button type="button" className="ia-botao-leve" onClick={() => void copiarEndereco()}>
+                        <Icone nome="copiar" tamanho={14} /> {copiouEndereco ? t('Endereço copiado ✓', 'Address copied ✓') : t('Copiar endereço', 'Copy address')}
+                      </button>
+                    </>
+                  )}
+                  {estado && <Conta estado={estado} />}
+                </div>
+              )} />
             </div>
-            <p className="ia-nota ia-exportar-nota">
-              {t('Cada resposta sai no modo em que foi feita: a resposta rápida com o essencial; a análise para pesquisa com recorte, tabelas completas, análise, metodologia e fontes.',
-                'Each answer is exported in the mode it was made: the quick answer with the essentials; the research analysis with scope, complete tables, analysis, methodology and sources.')}
-              {apendice && ` ${t('O apêndice de reprodução traz o SQL e o histórico de todas as consultas, inclusive as sem resultado e as refeitas.', 'The reproduction appendix adds the SQL and history of all queries, including empty and redone ones.')}`}
-              {` ${aberta?.conta
-                ? t('A conversa fica salva na sua conta, no servidor do LAPAM (quem administra o servidor tem acesso a ela), com uma cópia neste navegador; as perguntas à IA seguem o caminho de sempre (servidor do LAPAM e Anthropic).',
-                  'The conversation is saved in your account, on the LAPAM server (server administrators can access it), with a copy in this browser; questions to the AI follow the usual path (LAPAM server and Anthropic).')
-                : t('A conversa fica salva neste navegador; as perguntas à IA seguem o caminho de sempre (servidor do LAPAM e Anthropic). Limpar os dados de navegação apaga o histórico: exporte em JSON o que for importante.',
-                  'The conversation is saved in this browser; questions to the AI follow the usual path (LAPAM server and Anthropic). Clearing browsing data erases the history: export what matters as JSON.')}`}
-            </p>
           </header>
           {avisoHistorico}
           {avisoVersao}
@@ -2229,20 +2354,31 @@ export function Ia() {
             {aviso}
           </div>
           <div className={`ia-rodape${ajustes ? ' aberto' : ''}`}>
+            {longeDoFim && (
+              <button type="button" className="ia-recente" onClick={() => {
+                const reduzir = matchMedia('(prefers-reduced-motion: reduce)').matches;
+                document.getElementById(`ia-turno-${lista.length - 1}`)?.scrollIntoView({ block: 'start', behavior: reduzir ? 'auto' : 'smooth' });
+              }}>
+                <Icone nome="descer" tamanho={15} /> {rodando ? t('Acompanhar a resposta', 'Follow the answer') : t('Ir para a última pergunta', 'Go to the latest question')}
+              </button>
+            )}
             {contextoMudou && (
               <p className="ia-mudou" role="status">
-                {t(`As próximas respostas vão usar: ${descreverContexto(contexto)}. As respostas anteriores mantêm o recorte que usaram.`,
-                  `The next answers will use: ${descreverContexto(contexto)}. Previous answers keep the scope they used.`)}
+                {t(`As próximas respostas vão usar: ${descreverContexto(contexto, null, false)}. As respostas anteriores mantêm o recorte que usaram.`,
+                  `The next answers will use: ${descreverContexto(contexto, null, false)}. Previous answers keep the scope they used.`)}
               </p>
             )}
-            <BarraContexto rotulo={t('Próximas respostas', 'Next answers')} contexto={contexto} aberto={ajustes} alternar={() => setAjustes(!ajustes)} />
-            {painelAjustes}
             {acesso}
             {compositor}
+            <p className="ia-links ia-links-rodape">
+              <button type="button" className="ia-link" onClick={() => setExemplos(true)}><Icone nome="ideia" tamanho={14} /> {t('Exemplos', 'Examples')}</button>
+              <button type="button" className="ia-link" onClick={() => setAjuda('inicio')}><Icone nome="ajuda" tamanho={14} /> {t('Ajuda', 'Help')}</button>
+              <span className="ia-nota">{t('Respostas geradas por IA podem conter erros: confira as consultas.', 'AI-generated answers may contain errors: check the queries.')}</span>
+            </p>
           </div>
-          <Rodape estado={estado} paineis={contexto.paineis} conta={false} />
         </>
       )}
+      {dialogos}
     </div>
   );
 }

@@ -130,9 +130,9 @@ export function App() {
   return (
     <>
       <a className="pular" href="#conteudo">{t('Pular para o conteúdo', 'Skip to content')}</a>
-      <header className="topo">
+      <header className={`topo${area === 'ia' ? ' topo-ia' : ''}`}>
         <img className="logo" src="/logo_lapam.png" alt="LAPAM" />
-        <h1>{{
+        <h1 className={area === 'ia' ? 'sr-only' : undefined}>{{
           financas: `${t('Finanças municipais', 'Municipal finances')} · SICONFI`,
           trabalho: t('Mercado de trabalho · RAIS e CAGED', 'Labour market · RAIS and CAGED'),
           saude: t('Saúde · SIM e SINASC', 'Health · SIM and SINASC'),
@@ -148,7 +148,7 @@ export function App() {
         <AlternarIdioma />
         <AlternarTema />
       </header>
-      <div className="casca">
+      <div className={`casca${area === 'ia' ? ' casca-ia' : ''}`}>
         <nav className={`menu${area === 'ia' ? ' menu-ia' : ''}`} aria-label={t('Páginas', 'Pages')}>
           {({ financas: menu, trabalho: menuTrabalho, saude: menuSaude, ia: menuIa }[area])().map(([grupo, itens]) => (
             <div key={grupo} style={{ display: 'contents' }}>

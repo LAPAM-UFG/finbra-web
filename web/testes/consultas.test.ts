@@ -608,7 +608,7 @@ describe('IA: histórico, resposta estruturada e conferência', () => {
     assert.match(pa[2].texto, /Como o Pará se compara com o Brasil/);
     // dois painéis: um de cada e a pergunta entre painéis à vista (as três primeiras); o resto alternado
     const ambos = sugestoes(['financas', 'trabalho'], { tipo: 'brasil' }, cob, null);
-    assert.deepEqual(ambos.slice(0, 3).map((s) => s.tema), ['Mercado de trabalho', 'Finanças públicas', 'Entre painéis']);
+    assert.deepEqual(ambos.slice(0, 3).map((s) => s.tema), ['Mercado de trabalho', 'Finanças públicas', 'Entre bases']);
     assert.equal(ambos.length, 9);
     assert.ok(ambos.every((s) => s.titulo.length <= 40 && s.texto.endsWith('?')), JSON.stringify(ambos.map((s) => s.titulo)));
     assert.equal(sugestoes(['trabalho'], { tipo: 'brasil' }, { ...cob, rais: [] }, null).length, 0);

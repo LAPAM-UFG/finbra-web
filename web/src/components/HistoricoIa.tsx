@@ -4,6 +4,7 @@ import { baixarArquivo, nomeArquivo } from '../exportar';
 import { contar } from '../ia_formato';
 import { dataHora, exportarConversa, filtrarResumos, historico, useHistorico, type ResumoConversa } from '../ia_historico';
 import { t } from '../idioma';
+import { Icone } from './Icone';
 
 const CELULAR = '(max-width: 800px)';
 const RECOLHIDA = 'ia-historico-recolhido';
@@ -73,7 +74,7 @@ function MenuConversa({ titulo, acoes }: { titulo: string; acoes: [string, () =>
             setAberto(true);
           }
         }}>
-        <span aria-hidden="true">⋯</span>
+        <Icone nome="acoes" />
       </button>
       {aberto && (
         <ul role="menu" className="ia-historico-menu" aria-label={t(`Ações da conversa “${titulo}”`, `Actions for “${titulo}”`)}>
@@ -214,16 +215,15 @@ export function HistoricoIa() {
       <div className="ia-historico-barra">
         <button ref={alternador} type="button" className="ia-historico-alternar" aria-expanded={aberto} aria-controls="ia-historico-painel" onClick={alternar}
           title={celular ? undefined : aberto ? t('Recolher a lista de conversas', 'Collapse the conversation list') : t('Mostrar a lista de conversas', 'Show the conversation list')}>
-          {celular
-            ? <><span aria-hidden="true">☰ </span>{t('Conversas', 'Conversations')}{total}</>
-            : aberto
-              ? <><span aria-hidden="true">«</span> {t('Conversas', 'Conversations')}{total}<span className="sr-only">{t(': recolher', ': collapse')}</span></>
-              : <><span aria-hidden="true">☰</span><span className="sr-only">{t('Mostrar conversas', 'Show conversations')}</span></>}
+          <Icone nome="lateral" />
+          {celular || aberto
+            ? <span>{t('Conversas', 'Conversations')}{total}</span>
+            : <span className="sr-only">{t('Mostrar conversas', 'Show conversations')}</span>}
+          {!celular && aberto && <span className="sr-only">{t(': recolher', ': collapse')}</span>}
         </button>
-        <button type="button" className="botao ia-historico-nova" onClick={nova} title={!celular && !aberto ? t('Nova conversa', 'New conversation') : undefined}>
-          {!celular && !aberto
-            ? <><span aria-hidden="true">+</span><span className="sr-only">{t('Nova conversa', 'New conversation')}</span></>
-            : t('+ Nova conversa', '+ New conversation')}
+        <button type="button" className="ia-historico-nova" onClick={nova} title={t('Nova conversa', 'New conversation')}>
+          <Icone nome="mais" tamanho={16} />
+          {!celular && !aberto ? <span className="sr-only">{t('Nova conversa', 'New conversation')}</span> : <span>{t('Nova conversa', 'New conversation')}</span>}
         </button>
       </div>
       {celular && gaveta && <div className="ia-historico-fundo" aria-hidden="true" onClick={fecharGaveta} />}
@@ -232,12 +232,19 @@ export function HistoricoIa() {
         {celular && (
           <div className="ia-historico-topo">
             <h2>{t('Conversas', 'Conversations')}{total}</h2>
-            <button type="button" className="botao-leve" onClick={fecharGaveta}>{t('Fechar', 'Close')}</button>
+            <button type="button" className="ia-icone-botao" onClick={fecharGaveta} aria-label={t('Fechar a lista de conversas', 'Close the conversation list')} title={t('Fechar', 'Close')}>
+              <Icone nome="fechar" />
+            </button>
           </div>
         )}
-        {celular && <button type="button" className="botao ia-historico-nova" onClick={nova}>{t('+ Nova conversa', '+ New conversation')}</button>}
-        <input ref={campoBusca} type="search" className="ia-historico-busca" value={termo} onChange={(e) => setTermo(e.target.value)}
-          placeholder={t('Buscar nas conversas', 'Search conversations')} aria-label={t('Buscar no título, nas perguntas e nas conclusões', 'Search titles, questions and conclusions')} />
+        {celular && (
+          <button type="button" className="ia-historico-nova" onClick={nova}><Icone nome="mais" tamanho={16} /> {t('Nova conversa', 'New conversation')}</button>
+        )}
+        <div className="ia-historico-busca-caixa">
+          <Icone nome="busca" tamanho={15} />
+          <input ref={campoBusca} type="search" className="ia-historico-busca" value={termo} onChange={(e) => setTermo(e.target.value)}
+            placeholder={t('Buscar nas conversas', 'Search conversations')} aria-label={t('Buscar no título, nas perguntas e nas conclusões', 'Search titles, questions and conclusions')} />
+        </div>
         {h.erro && <p className="erro" role="alert">{h.erro}</p>}
         {h.semServidor && (
           <p className="ia-nota" role="status">{t(`Sem resposta do servidor (${h.semServidor}): a lista é a cópia deste navegador e o que for salvo segue para a conta quando a conexão voltar.`,
@@ -298,7 +305,15 @@ export function HistoricoIa() {
             ))}
           </ul>
         )}
-        <label className="botao-leve ia-historico-importar">
+        <div className="ia-historico-pe">
+        {h.conta ? (
+          <p className="ia-historico-conta">
+            <span className="ia-nota">{t('Conectado como', 'Signed in as')}</span>
+            <strong title={h.conta}>{h.conta}</strong>
+            <a href="/cdn-cgi/access/logout">{t('Sair', 'Sign out')}</a>
+          </p>
+        ) : h.verificado && <p className="ia-historico-conta-fora">{t('Sem login: as conversas ficam neste navegador.', 'Not signed in: conversations stay in this browser.')}</p>}
+        <label className="ia-historico-importar">
           {t('Importar conversa (JSON)', 'Import conversation (JSON)')}
           <input ref={arquivo} type="file" accept="application/json,.json" className="sr-only" onChange={(e) => void importar(e.target.files?.[0])} />
         </label>
@@ -313,6 +328,7 @@ export function HistoricoIa() {
                 'Without signing in, conversations are kept only in this browser: a conversation address does not open on another computer, and clearing browsing data erases the history (export the important ones as JSON). Sign in with your email to keep them in your account. Questions to the AI follow the usual path (LAPAM server and Anthropic).')}
           </p>
         </details>
+        </div>
       </div>
     </section>
   );

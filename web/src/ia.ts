@@ -229,8 +229,8 @@ export type Cobertura = {
   lrf?: { de: number; ate: number; parciais?: number[] } | null; bolsa?: { de: number; ate: number; mes: number } | null; inss?: number[];
   sim?: number[]; sinasc?: number[]; popSvs?: number[];
 };
-/** Sugestão: título curto no botão e a pergunta completa, que vai para o campo; tema = painel (ou "entre painéis"). */
-export type Sugestao = { titulo: string; tema: string; texto: string };
+/** Sugestão: título curto, a pergunta completa (que vai para o campo), o tema e as bases que a pergunta usa. */
+export type Sugestao = { titulo: string; tema: string; texto: string; paineis: Painel[] };
 
 /** Formas do território nas frases: "em Goiás" / "no Pará"; sujeito "o Pará"; "de Goiás" / "do Pará". */
 function formas(tr: Territorio) {
@@ -267,7 +267,7 @@ export function sugestoes(paineis: Painel[], tr: Territorio, c: Cobertura, ano: 
   const uf = tr.tipo === 'municipio' ? formas({ tipo: 'uf', uf: tr.uf, nome: nomeDaUf(tr.uf), cod: 0 }) : null;
   const tema = {
     trabalho: t('Mercado de trabalho', 'Labour market'), financas: t('Finanças públicas', 'Public finances'), saude: t('Saúde', 'Health'),
-    cruzamento: t('Entre painéis', 'Across dashboards'),
+    cruzamento: t('Entre bases', 'Across datasets'),
   };
   const grupos: Sugestao[][] = [];
   if (trabalho) {
@@ -292,7 +292,7 @@ export function sugestoes(paineis: Painel[], tr: Territorio, c: Cobertura, ano: 
       comparacao,
       { titulo: t('Empregos por setor e sexo', 'Jobs by sector and sex'),
         texto: t(`Como se distribuem os vínculos ativos ${f.em} em ${a} entre os grandes setores da economia e por sexo?`, `How are active jobs ${f.em} in ${a} distributed across broad economic sectors and by sex?`) },
-    ].map((x) => ({ ...x, tema: tema.trabalho })));
+    ].map((x) => ({ ...x, tema: tema.trabalho, paineis: ['trabalho'] as Painel[] })));
   }
   if (financas) {
     const a = ult(c.dca);
@@ -317,7 +317,7 @@ export function sugestoes(paineis: Painel[], tr: Territorio, c: Cobertura, ano: 
       comparacao,
       { titulo: t('Dependência de transferências', 'Reliance on transfers'),
         texto: t(`Quanto a receita corrente ${esc} depende de transferências, e como isso mudou desde ${a10}?`, `How much does the current revenue ${esc} depend on transfers, and how has that changed since ${a10}?`) },
-    ].map((x) => ({ ...x, tema: tema.financas })));
+    ].map((x) => ({ ...x, tema: tema.financas, paineis: ['financas'] as Painel[] })));
   }
   if (saude) {
     const a = ult(c.sim!);
@@ -345,7 +345,7 @@ export function sugestoes(paineis: Painel[], tr: Territorio, c: Cobertura, ano: 
       { titulo: t('Cesáreas e mães adolescentes', 'Caesarean births and teenage mothers'),
         texto: t(`Como mudaram as proporções de partos cesáreos e de mães adolescentes ${f.em} de ${a10} a ${a}?`,
           `How did the shares of caesarean births and adolescent mothers ${f.em} change from ${a10} to ${a}?`) },
-    ].map((x) => ({ ...x, tema: tema.saude })));
+    ].map((x) => ({ ...x, tema: tema.saude, paineis: ['saude'] as Painel[] })));
   }
   const cruzadas: Sugestao[] = [];
   if (financas && saude && !trabalho) {
@@ -355,7 +355,7 @@ export function sugestoes(paineis: Painel[], tr: Territorio, c: Cobertura, ano: 
       : tr.tipo === 'uf'
         ? t(`Nos municípios ${f.de}, qual a relação entre a despesa com saúde por habitante e a mortalidade infantil em ${a}?`, `In municipalities ${f.de}, how does health spending per inhabitant relate to infant mortality in ${a}?`)
         : t(`Como evoluíram juntas a despesa com saúde por habitante e a mortalidade infantil ${f.em} até ${a}?`, `How did health spending per inhabitant and infant mortality ${f.em} evolve together up to ${a}?`);
-    cruzadas.push({ titulo: t('Gasto em saúde e mortalidade infantil', 'Health spending and infant mortality'), tema: tema.cruzamento, texto });
+    cruzadas.push({ titulo: t('Gasto em saúde e mortalidade infantil', 'Health spending and infant mortality'), tema: tema.cruzamento, texto, paineis: ['financas', 'saude'] });
   }
   if (trabalho && financas) {
     const a = Math.min(ult(c.rais), ult(c.dca));
@@ -364,7 +364,7 @@ export function sugestoes(paineis: Painel[], tr: Territorio, c: Cobertura, ano: 
       : tr.tipo === 'uf'
         ? t(`Nos municípios ${f.de}, qual a relação entre a despesa com pessoal e os empregos formais na administração pública em ${a}?`, `In municipalities ${f.de}, how does personnel spending relate to formal public-administration jobs in ${a}?`)
         : t(`Como evoluíram juntos a despesa com pessoal e os empregos formais na administração pública ${f.em} até ${a}?`, `How did personnel spending and formal public-administration jobs ${f.em} evolve together up to ${a}?`);
-    cruzadas.push({ titulo: t('Gasto com pessoal e emprego público', 'Staff spending and public-sector jobs'), tema: tema.cruzamento, texto });
+    cruzadas.push({ titulo: t('Gasto com pessoal e emprego público', 'Staff spending and public-sector jobs'), tema: tema.cruzamento, texto, paineis: ['financas', 'trabalho'] });
   }
   // uma de cada painel, depois as entre painéis (com dois painéis, a cruzada é a terceira à vista), e o resto alternado
   const lista: Sugestao[] = [];
