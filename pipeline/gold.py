@@ -493,21 +493,27 @@ def fonte_trabalho(con):
 def fonte_lrf(con):
     """RREO e RGF (lrf.py): exercícios e entes com cada relatório; vazio se ainda não processados.
 
-    Só entram os exercícios com relatório de pelo menos 90% dos entes: uma extração parcial (amostra de
-    teste, carga interrompida) não é anunciada no manifesto, que é o que o site e a IA leem."""
+    Só entram os exercícios com relatório de pelo menos metade dos entes: uma extração parcial (amostra de
+    teste, carga interrompida) não é anunciada no manifesto, que é o que o site e a IA leem. Os exercícios
+    abaixo de 90% entram marcados como parciais: de 2015 a 2017 a extração é completa, mas um quarto dos
+    municípios não entregou o RREO/RGF pelo SICONFI, e o site avisa isso."""
     arquivo = GOLD / "lrf.parquet"
     if not arquivo.exists():
         return {}
     esperados = con.execute(f"SELECT count(*) FROM '{SILVER.as_posix()}/entes.parquet' WHERE esfera IN ('M', 'E', 'D')").fetchone()[0]
-    por_ano = con.execute(f"""SELECT exercicio, count(rreo_tipo)::INTEGER, count(rgf_tipo)::INTEGER
+    por_ano = con.execute(f"""SELECT exercicio, count(rreo_tipo)::INTEGER, count(rgf_tipo)::INTEGER,
+                                     count(*) FILTER (rreo_tipo IS NOT NULL OR rgf_tipo IS NOT NULL)::INTEGER
                               FROM '{arquivo.as_posix()}' GROUP BY 1
-                              HAVING count(*) FILTER (rreo_tipo IS NOT NULL OR rgf_tipo IS NOT NULL) >= 0.9 * {esperados}
+                              HAVING count(*) FILTER (rreo_tipo IS NOT NULL OR rgf_tipo IS NOT NULL) >= 0.5 * {esperados}
                               ORDER BY 1""").fetchall()
     if not por_ano:
         return {}
+    cobertura = {r[0]: round(r[3] / esperados, 3) for r in por_ano}
     return {"siconfi_lrf": {"anos": [por_ano[0][0], por_ano[-1][0]] if por_ano else None,
                             "exercicios": [r[0] for r in por_ano],
                             "entes": {str(r[0]): {"rreo": r[1], "rgf": r[2]} for r in por_ano},
+                            "cobertura": {str(a): c for a, c in cobertura.items()},
+                            "parciais": [a for a, c in cobertura.items() if c < 0.9],
                             "processado_em": _quando(arquivo),
                             "url": "https://apidatalake.tesouro.gov.br/docs/siconfi/"}}
 

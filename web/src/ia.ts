@@ -226,7 +226,7 @@ export function contextoParaModelo(c: ContextoIa, cobertura?: Cobertura | null):
 export type Cobertura = {
   rais: number[]; caged: { de: number; ate: number } | null; microdados: boolean; dca: number[];
   pib?: { de: number; ate: number; setorial_ate?: number } | null; siope?: number[]; siopeRemuneracao?: number[]; siops?: number[];
-  lrf?: { de: number; ate: number } | null; bolsa?: { de: number; ate: number; mes: number } | null; inss?: number[];
+  lrf?: { de: number; ate: number; parciais?: number[] } | null; bolsa?: { de: number; ate: number; mes: number } | null; inss?: number[];
   sim?: number[]; sinasc?: number[]; popSvs?: number[];
 };
 /** Sugestão: título curto no botão e a pergunta completa, que vai para o campo; tema = painel (ou "entre painéis"). */
@@ -445,6 +445,7 @@ export function descreverCobertura(paineis: Painel[], c: Cobertura): string[] {
   if (paineis.includes('financas')) {
     linhas.push(c.lrf
       ? t(`RREO e RGF (LRF) ${faixa(c.lrf.de, c.lrf.ate)}: RCL, pessoal, dívida e mínimos de saúde e educação`, `RREO and RGF (LRF) ${faixa(c.lrf.de, c.lrf.ate)}: net current revenue, personnel, debt and health and education minimums`)
+        + (c.lrf.parciais?.length ? t(` (${anosLista(c.lrf.parciais)}: cobertura parcial)`, ` (${anosLista(c.lrf.parciais)}: partial coverage)`) : '')
       : t('RREO e RGF (LRF): em preparação, ainda não consultáveis pela IA', 'RREO and RGF (LRF): in preparation, not yet available to the AI'));
   }
   if (paineis.includes('saude') && c.sim?.length) {

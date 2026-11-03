@@ -70,11 +70,27 @@ function AvisoAnos({ ano, anos }: { ano: number; anos: number[] }) {
   );
 }
 
+type FonteLrf = { exercicios?: number[]; parciais?: number[]; cobertura?: Record<string, number> };
+const faixaAnos = (anos: number[]) => (anos.length > 1 ? `${anos[0]}–${anos.at(-1)}` : String(anos[0]));
+
+/** Exercício com cobertura parcial (2015 a 2017): muitos entes não entregaram o RREO/RGF pelo SICONFI. */
+function AvisoCobertura({ ano, fonte }: { ano: number | undefined; fonte: FonteLrf | undefined }) {
+  const c = ano ? fonte?.cobertura?.[String(ano)] : undefined;
+  if (!ano || c == null || !fonte?.parciais?.includes(ano)) return null;
+  const p = Math.round(c * 100);
+  return (
+    <p className="aviso" role="note">
+      {t(`Cobertura parcial em ${ano}: só ${p}% dos entes têm RREO ou RGF na API do SICONFI (até 2017, muitos municípios não entregavam esses relatórios pelo SICONFI). Quem não entregou aparece sem dados, e os totais e medianas de ${ano} cobrem só quem entregou: compare com outros anos com cuidado.`,
+        `Partial coverage in ${ano}: only ${p}% of governments have an RREO or RGF in the SICONFI API (until 2017, many municipalities did not file these reports through SICONFI). Those that did not file show no data, and the ${ano} totals and medians cover only those that filed: compare with other years with care.`)}
+    </p>
+  );
+}
+
 export function LrfIndicadores() {
   const { meta } = useDados();
   const f = useFiltros();
   const [esfera, setEsfera] = useState<'M' | 'E'>('M');
-  const fonte = meta.fontes.siconfi_lrf as { exercicios?: number[] } | undefined;
+  const fonte = meta.fontes.siconfi_lrf as FonteLrf | undefined;
   const anosLrf = fonte?.exercicios ?? [];
 
   if (!fonte) {
@@ -100,7 +116,8 @@ export function LrfIndicadores() {
         </div>
       )}
       <AvisoAnos ano={f.ano} anos={anosLrf} />
-      {f.alvo ? <LrfEnte cod={f.alvo.cod_ibge} /> : <LrfGrupo esfera={f.uf ? 'M' : esfera} uf={f.uf ?? undefined} />}
+      <AvisoCobertura ano={f.ano} fonte={fonte} />
+      {f.alvo ? <LrfEnte cod={f.alvo.cod_ibge} /> : <LrfGrupo esfera={f.uf ? 'M' : esfera} uf={f.uf ?? undefined} parciais={fonte.parciais ?? []} />}
     </>
   );
 }
@@ -192,7 +209,7 @@ function LrfEnte({ cod }: { cod: number }) {
 
 type ColunaEntes = { campo: string; titulo: string; formato: (v: unknown) => string; valor: (r: Linha) => number | string | null };
 
-function LrfGrupo({ esfera, uf }: { esfera: 'M' | 'E'; uf?: string }) {
+function LrfGrupo({ esfera, uf, parciais }: { esfera: 'M' | 'E'; uf?: string; parciais: number[] }) {
   const f = useFiltros();
   const grupo = useApi<Linha[]>('lrf_grupo', { esfera, uf });
   const entes = useApi<Linha[]>('lrf_entes', { esfera, uf, ano: f.ano });
@@ -268,7 +285,11 @@ function LrfGrupo({ esfera, uf }: { esfera: 'M' | 'E'; uf?: string }) {
       )}
       {s.length > 0 && (
         <CartaoGrafico titulo={t('Evolução', 'Trends')}
-          desc={t('Pessoal: soma ÷ soma e mediana; saúde e educação: mediana dos percentuais declarados', 'Personnel: sum ÷ sum and median; health and education: median of reported percentages')}
+          desc={t('Pessoal: soma ÷ soma e mediana; saúde e educação: mediana dos percentuais declarados', 'Personnel: sum ÷ sum and median; health and education: median of reported percentages')
+            + (parciais.some((x) => anos.includes(x))
+              ? t(`. ${faixaAnos(parciais)}: cobertura parcial (só os entes que entregaram o relatório; veja "Entes com RGF" na tabela)`,
+                `. ${faixaAnos(parciais)}: partial coverage (only the governments that filed the report; see "Governments with RGF" in the table)`)
+              : '')}
           tabela={<TabelaSerie nome="lrf_grupo" anos={anos} colunas={[
             { titulo: t('Entes com RGF', 'Governments with RGF'), valores: s.map((r) => num(r.com_rgf)), formato: numero },
             { titulo: t('Pessoal ÷ RCL (agregado)', 'Personnel ÷ RCL (aggregate)'), valores: s.map((r) => num(r.pessoal_rcl)), formato: (v) => pct(v) },
@@ -358,7 +379,7 @@ const rotuloColuna = (c: string) => {
 export function LrfDemonstrativos() {
   const { meta } = useDados();
   const f = useFiltros();
-  const fonte = meta.fontes.siconfi_lrf as { exercicios?: number[] } | undefined;
+  const fonte = meta.fontes.siconfi_lrf as FonteLrf | undefined;
   const anosLrf = fonte?.exercicios ?? [];
   const ano = anosLrf.includes(f.ano) ? f.ano : anosLrf.at(-1);
   const ente = f.alvo?.cod_ibge;
@@ -397,6 +418,7 @@ export function LrfDemonstrativos() {
         <p className="aviso">{t('Escolha um município, estado ou o DF no filtro acima para ver os anexos completos.', 'Choose a municipality, state or the Federal District in the filter above to see the full annexes.')}</p>
       )}
       {fonte && f.alvo && ano !== f.ano && <AvisoAnos ano={f.ano} anos={anosLrf} />}
+      {fonte && f.alvo && <AvisoCobertura ano={ano} fonte={fonte} />}
       {fonte && f.alvo && ano && (
         <>
           <Estado carregando={anexos.carregando} erro={anexos.erro} tentarNovamente={anexos.recarregar}

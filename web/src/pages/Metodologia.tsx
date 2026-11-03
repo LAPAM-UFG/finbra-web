@@ -153,6 +153,13 @@ export function Qualidade() {
               {t('RREO do 6º bimestre e RGF do último quadrimestre ou semestre (Poder Executivo), inclusive as versões simplificadas, pela mesma API; os anexos de saúde e educação vêm do resumo do RREO (anexo 14), porque os anexos 8 e 12 não estão na API.',
                 '6th two-month RREO and last four- or six-month RGF (Executive branch), including the simplified versions, through the same API; health and education come from the RREO summary (annex 14), because annexes 8 and 12 are not in the API.')}{' '}
               {t('Exercícios', 'Years')} {(fontes.siconfi_lrf as { anos?: number[] }).anos?.join('–')} · {t('processado em', 'processed on')} {data(fontes.siconfi_lrf.processado_em)}.{' '}
+              {(() => {
+                const l = fontes.siconfi_lrf as { parciais?: number[]; cobertura?: Record<string, number> };
+                if (!l.parciais?.length) return null;
+                const lista = l.parciais.map((a) => `${a} (${Math.round((l.cobertura?.[String(a)] ?? 0) * 100)}%)`).join(', ');
+                return t(`Cobertura parcial em ${lista}: até 2017, muitos municípios não entregavam o RREO e o RGF pelo SICONFI, e a API não tem esses relatórios (de 2018 em diante, mais de 99% dos entes). Nesses anos, totais e medianas cobrem só quem entregou. `,
+                  `Partial coverage in ${lista}: until 2017, many municipalities did not file the RREO and RGF through SICONFI, and the API does not have those reports (from 2018 on, over 99% of governments). In those years, totals and medians cover only those that filed. `);
+              })()}
               {t('Todo mês são buscados os entes que ainda não tinham o relatório nos dois últimos exercícios.', 'Every month the governments still missing a report in the two latest years are fetched again.')}</li>
           )}
           {fontes.siope && (

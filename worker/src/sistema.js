@@ -158,7 +158,11 @@ export function contextoDosDados(m) {
       + 'O valor anual fica nulo quando o ano não tem os 12 meses ou tem meses de Auxílio Brasil (os arquivos não trazem o Benefício Extraordinário); o número de famílias existe.');
   }
   if (f.inss?.exercicios?.length) linhas.push(`INSS: exercícios ${f.inss.exercicios.join(', ')} (os demais ficam nulos).`);
-  if (f.siconfi_lrf?.anos) linhas.push(`Tabela lrf (RREO e RGF): exercícios ${f.siconfi_lrf.anos[0]} a ${f.siconfi_lrf.anos[1]}.`, '', LRF);
+  if (f.siconfi_lrf?.anos) {
+    const parciais = (f.siconfi_lrf.parciais ?? []).map((a) => `${a} (${Math.round((f.siconfi_lrf.cobertura?.[a] ?? 0) * 100)}% dos entes)`);
+    linhas.push(`Tabela lrf (RREO e RGF): exercícios ${f.siconfi_lrf.anos[0]} a ${f.siconfi_lrf.anos[1]}.`
+      + (parciais.length ? ` Cobertura parcial em ${parciais.join(', ')}: até 2017 muitos municípios não entregavam o RREO/RGF pelo SICONFI; nesses anos, somas, medianas e contagens cobrem só quem entregou. Ao comparar com anos posteriores, diga isso na conclusão e prefira razões (soma ÷ soma, medianas) a totais.` : ''), '', LRF);
+  }
   else linhas.push('Os indicadores da LRF (RREO e RGF: RCL, pessoal ÷ RCL, dívida, mínimos de saúde e educação) ainda estão em preparação e não podem ser consultados; se pedirem, diga isso em uma frase.');
   const es = educacaoSaude(f);
   if (es) linhas.push('', es);

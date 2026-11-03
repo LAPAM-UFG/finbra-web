@@ -106,7 +106,7 @@ function coberturaDe(meta: Meta, microdados: boolean): Cobertura {
     rais: anos(f.rais?.anos), caged: caged?.de && caged?.ate ? { de: caged.de, ate: caged.ate } : null, microdados, dca: meta.anos,
     pib: pib && { ...pib, setorial_ate: Number(f.ibge_pib?.setorial_ate) || undefined },
     siope: anos(f.siope?.anos), siopeRemuneracao: anos(f.siope?.remuneracao), siops: anos(f.siops?.anos),
-    lrf: par(f.siconfi_lrf?.anos), bolsa: bolsa && { ...bolsa, mes: Number(f.bolsa_familia?.ultimo_mes) || bolsa.ate * 100 + 12 },
+    lrf: par(f.siconfi_lrf?.anos) && { ...par(f.siconfi_lrf?.anos)!, parciais: anos(f.siconfi_lrf?.parciais) }, bolsa: bolsa && { ...bolsa, mes: Number(f.bolsa_familia?.ultimo_mes) || bolsa.ate * 100 + 12 },
     inss: anos(f.inss?.exercicios),
     sim: anos(f.sim?.anos), sinasc: anos(f.sinasc?.anos), popSvs: anos(f.populacao_svs?.anos),
   };
