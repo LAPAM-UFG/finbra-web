@@ -264,9 +264,11 @@ const textoModelo = (m?: MetaTurno) => {
   if (!m?.modelo) return nomeDoModelo(null);
   const u = m.uso;
   const n = (x: number) => x.toLocaleString(local());
+  // a API separa os tokens novos dos de cache (lidos e gravados): a entrada total é a soma das três partes
+  const entrada = u ? u.entrada + u.cache_lido + u.cache_escrito : 0;
   const uso = u?.chamadas
-    ? ` · ${t(`${contar(u.chamadas, 'chamada', 'chamadas')}, ${n(u.entrada)} tokens de entrada e ${n(u.saida)} de saída${u.cache_lido ? ` (${n(u.cache_lido)} lidos do cache)` : ''}`,
-      `${contar(u.chamadas, 'call', 'calls')}, ${n(u.entrada)} input and ${n(u.saida)} output tokens${u.cache_lido ? ` (${n(u.cache_lido)} read from cache)` : ''}`)}`
+    ? ` · ${t(`${contar(u.chamadas, 'chamada', 'chamadas')}, ${n(entrada)} tokens de entrada${u.cache_lido ? ` (${n(u.cache_lido)} lidos do cache)` : ''} e ${n(u.saida)} de saída`,
+      `${contar(u.chamadas, 'call', 'calls')}, ${n(entrada)} input tokens${u.cache_lido ? ` (${n(u.cache_lido)} read from cache)` : ''} and ${n(u.saida)} output tokens`)}`
     : '';
   return `${nomeDoModelo(m.modelo)} (${m.modelo})${uso}`;
 };
