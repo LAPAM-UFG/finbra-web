@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { basesAV, codigoConta, formatarPct } from '../src/calculos';
 import { consultaLivre, executar, sqlClassificacao, type Classificacao, tabelaDespesaFuncao, tabelasEducacaoSaude, tabelasIaTrabalho, usarMicrodadosNoTeste, usarMotorDeTeste } from '../src/dados';
 import {
-  anosPedidos, chamarIa, coberturaDaFonte, codigosDoSql, comPergunta, conferir, consultasDaConversa, contextoParaModelo, descreverCobertura, disponibilidadeNoAno, pedeTabelaMunicipal, dadosDoGrafico, executarConsulta, fontesConsultadas, lerModo, lerResposta,
+  anosPedidos, chamarIa, coberturaDaFonte, coberturaPorAno, lerEscolhaModelo, nomeDoModelo, periodosDiferem, codigosDoSql, comPergunta, conferir, consultasDaConversa, contextoParaModelo, descreverCobertura, disponibilidadeNoAno, pedeTabelaMunicipal, dadosDoGrafico, executarConsulta, fontesConsultadas, lerModo, lerResposta,
   lerRegressao, paraModelo, pedeTabela, perguntarIa, prepararResposta, recorteDe, revisarMetodo, revisarResposta, rotulosConsultas, semNominal, semUltimaPergunta, sugestoes, valorOficial,
   textoDaResposta, turnos, usarServidorIaNoTeste, validarGrafico, validarSql, type ConsultaFeita, type ContextoIa, type GraficoIa, type Mensagem, type Painel,
   type Bloco, type Cobertura, type Resultado,
@@ -3246,5 +3246,68 @@ describe('evolução das posições: convenções, URL e exportações', () => {
     quase(tab.linhas[0][col('Diferença do indicador em pontos percentuais')] as number, 5);
     quase(tab.linhas[0][col('Variação relativa')] as number, 12.5);
     assert.match(tab.colunas[col('Valor 2020')], /proporção de 0 a 1/);
+  });
+});
+
+describe('IA: cobertura por ano, modelo e período por fonte', () => {
+  const anos = (de: number, ate: number) => Array.from({ length: ate - de + 1 }, (_, i) => de + i);
+  const cob: Cobertura = {
+    rais: anos(2010, 2025), caged: { de: 202001, ate: 202606 }, microdados: false, dca: anos(2013, 2025), sim: anos(1996, 2024), sinasc: anos(1996, 2024),
+    popSvs: anos(2000, 2025), bolsa: { de: 2013, ate: 2026, mes: 202608 }, inss: [2023, 2024, 2025], siops: anos(2013, 2025),
+  };
+
+  test('o ano corrente lista cada fonte mensal com o seu último mês, do mesmo manifesto (não só o Novo CAGED)', () => {
+    const a = coberturaPorAno(cob, ['financas', 'trabalho', 'saude']);
+    const e = a.get(2026)!;
+    assert.equal(e.fechado, false);
+    assert.equal(e.parciais.length, 2);
+    assert.ok(e.parciais.some((x) => /Novo CAGED até/.test(x)), e.parciais.join('|'));
+    assert.ok(e.parciais.some((x) => /Bolsa Família até/.test(x)), e.parciais.join('|'));
+    // 2025 tem fontes fechadas: sem aviso de parcial
+    assert.equal(a.get(2025)!.fechado, true);
+    // só trabalho: 2026 vem só do Novo CAGED; só finanças: só do Bolsa Família; só saúde: nem aparece
+    assert.deepEqual(coberturaPorAno(cob, ['trabalho']).get(2026)!.parciais.length, 1);
+    assert.match(coberturaPorAno(cob, ['financas']).get(2026)!.parciais[0], /Bolsa Família/);
+    assert.equal(coberturaPorAno(cob, ['saude']).has(2026), false);
+  });
+
+  test('uma fonte mensal que chega a dezembro fecha o ano', () => {
+    const a = coberturaPorAno({ ...cob, caged: { de: 202001, ate: 202512 }, bolsa: { de: 2013, ate: 2025, mes: 202512 } }, ['financas', 'trabalho']);
+    assert.equal(a.has(2026), false);
+  });
+
+  test('modelo: Haiku por padrão, Sonnet só se for exatamente "sonnet"', () => {
+    assert.equal(lerEscolhaModelo(null), 'haiku');
+    assert.equal(lerEscolhaModelo(undefined), 'haiku');
+    assert.equal(lerEscolhaModelo('opus'), 'haiku');
+    assert.equal(lerEscolhaModelo('sonnet'), 'sonnet');
+    assert.equal(lerEscolhaModelo('haiku'), 'haiku');
+    assert.equal(nomeDoModelo('claude-haiku-5-5'), 'Haiku 5.5');
+    assert.equal(nomeDoModelo('claude-sonnet-5-5'), 'Sonnet 5.5');
+    assert.equal(nomeDoModelo('modelo-desconhecido'), 'modelo-desconhecido');
+    // conversas antigas, sem registro
+    assert.match(nomeDoModelo(undefined), /Modelo não registrado/);
+  });
+
+  test('exemplos entre bases avisam o ano comum quando as fontes terminam em anos diferentes', () => {
+    const todos = sugestoes(['financas', 'trabalho', 'saude'], { tipo: 'brasil' }, cob, null);
+    const pessoal = todos.find((s) => s.paineis.includes('trabalho') && s.paineis.includes('financas'))!;
+    // RAIS e DCA terminam ambos em 2025: sem aviso de ano; no Brasil, o recorte próprio (capitais) é dito
+    assert.match(pessoal.nota ?? '', /capitais/);
+    assert.doesNotMatch(pessoal.nota ?? '', /último ano comum/);
+    const saude = sugestoes(['financas', 'saude'], { tipo: 'brasil' }, cob, null).find((s) => s.paineis.length === 2)!;
+    // DCA até 2025, SIM até 2024: usa 2024 e diz de onde vem cada limite
+    assert.match(saude.texto, /em 2024\?/);
+    assert.match(saude.nota ?? '', /Usa 2024, o último ano comum às bases \(Finanças até 2025; Saúde até 2024\)/);
+    // dentro de um estado, sem o recorte "capitais", só a nota do ano
+    const go = sugestoes(['financas', 'saude'], { tipo: 'uf', uf: 'GO', nome: 'Goiás', cod: 52 }, cob, null).find((s) => s.paineis.length === 2)!;
+    assert.doesNotMatch(go.nota ?? '', /capitais/);
+  });
+
+  test('períodos por fonte só aparecem quando diferem', () => {
+    const base = { periodosPorFonte: [['Finanças', '2024'], ['Saúde', '2024']] } as never;
+    assert.equal(periodosDiferem(base), false);
+    assert.equal(periodosDiferem({ periodosPorFonte: [['Finanças', '2025'], ['Saúde', '2024']] } as never), true);
+    assert.equal(periodosDiferem({ periodosPorFonte: [['Finanças', '2025']] } as never), false);
   });
 });

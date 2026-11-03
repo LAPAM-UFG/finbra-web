@@ -30,12 +30,14 @@ import { podeConferir } from './conferencia.js';
 import { rotaConversas } from './conversas.js';
 import { instrucoes, paineisDoPedido } from './sistema_geral.js';
 
-// Modelo: IA_MODELO (variável do Worker ou worker/.dev.vars), entre os da lista; padrão Haiku, o mais barato
-// (cerca de 1/20 do Sonnet). O Sonnet segue melhor as regras dos painéis (ex.: descartar "exceto …" na busca de
-// códigos). Com Sonnet ou Opus dá para pedir o modelo reserva (betas ['server-side-fallback-2026-07-01'],
-// fallbacks: 'default'), que o Haiku não tem
-const MODELOS = ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5'];
-const modeloDe = (env) => (MODELOS.includes(env.IA_MODELO?.trim()) ? env.IA_MODELO.trim() : MODELOS[0]);
+// Modelo por pedido: a pessoa escolhe "haiku" (padrão, o mais barato: US$ 0,10 / 0,50 por milhão de tokens de
+// entrada / saída) ou "sonnet" (US$ 2 / 10, cerca de 20 vezes mais; segue melhor as regras dos painéis, ex.: descartar
+// "exceto …" na busca de códigos) em corpo.modelo. Os IDs ficam aqui, no servidor, e podem ser trocados sem mexer na
+// página por IA_MODELO_HAIKU / IA_MODELO_SONNET (variáveis do Worker ou worker/.dev.vars). Nunca há troca automática:
+// se o modelo escolhido falhar, a pergunta volta para a pessoa decidir.
+const ESCOLHAS = { haiku: 'claude-haiku-5-5', sonnet: 'claude-sonnet-5-5' };
+const PADRAO = 'haiku';
+const modelosDe = (env) => Object.fromEntries(Object.entries(ESCOLHAS).map(([k, id]) => [k, env[`IA_MODELO_${k.toUpperCase()}`]?.trim() || id]));
 const LIMITE_PERGUNTAS = 50;
 const LIMITE_CHAMADAS = 400;
 const MAX_RODADAS = 12; // chamadas ao modelo por pergunta
@@ -385,7 +387,7 @@ export async function rotaIa(request, env, url) {
   const chave = await chaveDeUso(email);
   if (url.pathname === '/api/ia/estado' && request.method === 'GET') {
     const uso = await lerUso(env, chave);
-    return resposta({ email, restantes: Math.max(0, LIMITE_PERGUNTAS - uso.perguntas), limite: LIMITE_PERGUNTAS, configurada: !!env.ANTHROPIC_API_KEY, modelo: modeloDe(env), pode_conferir: podeConferir(email, env) });
+    return resposta({ email, restantes: Math.max(0, LIMITE_PERGUNTAS - uso.perguntas), limite: LIMITE_PERGUNTAS, configurada: !!env.ANTHROPIC_API_KEY, modelo: modelosDe(env)[PADRAO], modelo_padrao: PADRAO, modelos: modelosDe(env), pode_conferir: podeConferir(email, env) });
   }
   if (url.pathname !== '/api/ia') return erro('não encontrado', 404);
   if (request.method !== 'POST') return erro('método não permitido', 405);
@@ -402,6 +404,9 @@ export async function rotaIa(request, env, url) {
   const mensagens = corpo?.mensagens;
   const problema = validar(mensagens);
   if (problema) return erro(problema, 400);
+  // sem escolha vale o padrão; qualquer outro valor é recusado (nunca vira outro modelo em silêncio)
+  const escolha = corpo.modelo ?? PADRAO;
+  if (typeof escolha !== 'string' || !Object.hasOwn(ESCOLHAS, escolha)) return erro('modelo inválido: use "haiku" ou "sonnet"', 400, 'modelo_invalido');
 
   const nova = ehPergunta(mensagens.at(-1));
   const uso = await lerUso(env, chave);
@@ -413,7 +418,7 @@ export async function rotaIa(request, env, url) {
   const paineis = paineisDoPedido(corpo.paineis);
   const local = url.hostname === 'localhost';
   const pedido = {
-    model: modeloDe(env),
+    model: modelosDe(env)[escolha],
     max_tokens: MAX_SAIDA,
     thinking: { type: 'adaptive' },
     // 'high': indicado no Haiku para seguir instruções à risca (as regras do painel); ainda custa pouco
@@ -457,7 +462,8 @@ export async function rotaIa(request, env, url) {
     }
   } catch (e) {
     if (e instanceof Anthropic.AuthenticationError) return erro('a chave da Anthropic gravada no Worker foi recusada (401): confira se é a chave ativa no console', 502);
-    if (e instanceof Anthropic.RateLimitError) return erro('a IA está sobrecarregada; tente de novo em instantes', 503);
+    if (e instanceof Anthropic.RateLimitError) return erro(`a IA está sobrecarregada (modelo ${escolha}); tente de novo em instantes ou escolha o outro modelo`, 503);
+    if (e instanceof Anthropic.NotFoundError || e instanceof Anthropic.PermissionDeniedError) return erro(`o modelo ${escolha} não está disponível para esta chave no momento; escolha o outro modelo ou tente mais tarde`, 502);
     if (e instanceof Anthropic.BadRequestError) return erro(`pedido recusado pela API: ${e.message}`, 400);
     if (e instanceof Anthropic.APIError) return erro(`falha na API da Anthropic (${e.status ?? 'sem status'})`, 502);
     throw e;
@@ -465,12 +471,19 @@ export async function rotaIa(request, env, url) {
 
   const atualizado = { perguntas: uso.perguntas + (nova ? 1 : 0), chamadas: uso.chamadas + 1 };
   await env.DADOS.put(chave, JSON.stringify(atualizado), { httpMetadata: { contentType: 'application/json' } });
-  console.log(JSON.stringify({ ia: { paineis, parada: msg.stop_reason, modelo: msg.model, uso: msg.usage } }));
+  console.log(JSON.stringify({ ia: { paineis, escolha, parada: msg.stop_reason, modelo: msg.model, uso: msg.usage } }));
 
   return resposta({
     conteudo: msg.content,
     parada: msg.stop_reason,
     recusa: msg.stop_reason === 'refusal' ? (msg.stop_details?.explanation ?? null) : undefined,
     restantes: Math.max(0, LIMITE_PERGUNTAS - atualizado.perguntas),
+    // o modelo que de fato respondeu e o consumo desta chamada: a página soma as chamadas de cada resposta
+    modelo: msg.model,
+    escolha,
+    uso: {
+      entrada: msg.usage?.input_tokens ?? 0, saida: msg.usage?.output_tokens ?? 0,
+      cache_lido: msg.usage?.cache_read_input_tokens ?? 0, cache_escrito: msg.usage?.cache_creation_input_tokens ?? 0,
+    },
   });
 }

@@ -37,8 +37,27 @@ export type { EspecTabela, TabelaAnalitica } from './ia_tabelas';
 export type Bloco = { type: string; id?: string; name?: string; input?: unknown; text?: string; [k: string]: unknown };
 export type Mensagem = { role: 'user' | 'assistant'; content: string | Bloco[] };
 /** pode_conferir: o e-mail pode pedir a conferência das respostas pelo especialista RAIS (ia_conferencia.ts). */
-export type EstadoIa = { email: string; restantes: number; limite: number; configurada: boolean; modelo?: string; pode_conferir?: boolean };
-export type RespostaIa = { conteudo: Bloco[]; parada: string; recusa?: string | null; restantes: number };
+/** Modelo escolhido para a próxima pergunta: Haiku (padrão, mais rápido e barato) ou Sonnet, só por escolha da pessoa. */
+export type EscolhaModelo = 'haiku' | 'sonnet';
+export const ESCOLHAS_MODELO: EscolhaModelo[] = ['haiku', 'sonnet'];
+export const MODELO_PADRAO: EscolhaModelo = 'haiku';
+export const lerEscolhaModelo = (v: unknown): EscolhaModelo => (v === 'sonnet' ? 'sonnet' : MODELO_PADRAO);
+/** Tokens e chamadas de uma resposta (todas as chamadas ao modelo da pergunta, somadas). */
+export type UsoIa = { chamadas: number; entrada: number; saida: number; cache_lido: number; cache_escrito: number };
+export type EstadoIa = {
+  email: string; restantes: number; limite: number; configurada: boolean; modelo?: string; pode_conferir?: boolean;
+  modelos?: Record<EscolhaModelo, string>; modelo_padrao?: EscolhaModelo;
+};
+export type RespostaIa = {
+  conteudo: Bloco[]; parada: string; recusa?: string | null; restantes: number;
+  modelo?: string; escolha?: EscolhaModelo; uso?: Partial<Omit<UsoIa, 'chamadas'>>;
+};
+/** "claude-haiku-5-5" → "Haiku 5.5"; sem registro (conversas antigas): "Modelo não registrado". */
+export function nomeDoModelo(id?: string | null): string {
+  if (!id) return t('Modelo não registrado', 'Model not recorded');
+  const m = /^claude-([a-z]+)-(\d+)-(\d+)$/.exec(id);
+  return m ? `${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}.${m[3]}` : id;
+}
 /** Resultado de uma consulta; bloqueada = a página recusou a consulta antes de rodá-la (SQL ou códigos). */
 /** verificacao: chave, junções e amostra conferidas pela página (ia_verificacao.ts), quando a consulta as pediu. */
 export type Resultado = { colunas: string[]; linhas: (string | number | boolean | null)[][]; total: number; verificacao?: VerificacaoFeita } | { erro: string; bloqueada?: boolean };
@@ -99,7 +118,7 @@ export async function estadoIa(): Promise<EstadoIa | null> {
 export type Painel = 'financas' | 'trabalho' | 'saude';
 export const PAINEIS: Painel[] = ['financas', 'trabalho', 'saude'];
 
-export async function chamarIa(mensagens: Mensagem[], idioma: string, paineis: Painel[] = PAINEIS, sinal?: AbortSignal): Promise<RespostaIa> {
+export async function chamarIa(mensagens: Mensagem[], idioma: string, paineis: Painel[] = PAINEIS, sinal?: AbortSignal, modelo: EscolhaModelo = MODELO_PADRAO): Promise<RespostaIa> {
   const contexto = paineis.includes('trabalho') ? await tabelasIaTrabalho() : undefined;
   // o manifesto só é usado pelo Worker local (wrangler dev), que não tem o do R2
   const manifesto = emLocalhost() && (paineis.includes('financas') || paineis.includes('saude')) ? await manifestoDados() : undefined;
@@ -108,7 +127,7 @@ export async function chamarIa(mensagens: Mensagem[], idioma: string, paineis: P
     redirect: 'manual',
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ idioma, mensagens, paineis, contexto, manifesto }),
+    body: JSON.stringify({ idioma, mensagens, paineis, contexto, manifesto, modelo }),
     signal: sinal,
   });
   // falha de rede antes de qualquer resposta (ex.: conexão reaproveitada que o servidor fechou enquanto as
@@ -230,7 +249,7 @@ export type Cobertura = {
   sim?: number[]; sinasc?: number[]; popSvs?: number[];
 };
 /** Sugestão: título curto, a pergunta completa (que vai para o campo), o tema e as bases que a pergunta usa. */
-export type Sugestao = { titulo: string; tema: string; texto: string; paineis: Painel[] };
+export type Sugestao = { titulo: string; tema: string; texto: string; paineis: Painel[]; nota?: string };
 
 /** Formas do território nas frases: "em Goiás" / "no Pará"; sujeito "o Pará"; "de Goiás" / "do Pará". */
 function formas(tr: Territorio) {
@@ -250,6 +269,20 @@ function escopoFinancas(tr: Territorio) {
   if (tr.tipo === 'df') return t('do Distrito Federal', 'of the Federal District');
   if (tr.tipo === 'municipio') return t(`de ${tr.nome} (${tr.uf})`, `of ${tr.nome} (${tr.uf})`);
   return t(`dos municípios ${formas(tr).de}`, `of municipalities ${formas(tr).de}`);
+}
+
+/**
+ * Aviso de um exemplo entre bases: o ano comum às fontes (o menor dos últimos anos) quando elas terminam em anos
+ * diferentes, e o recorte próprio da pergunta ("nas capitais") quando o contexto é o Brasil.
+ */
+function periodoComum(comum: number, finais: [string, number][], tr: Territorio): string | undefined {
+  const partes: string[] = [];
+  if (new Set(finais.map(([, a]) => a)).size > 1) {
+    partes.push(t(`Usa ${comum}, o último ano comum às bases (${finais.map(([n, a]) => `${n} até ${a}`).join('; ')}).`,
+      `Uses ${comum}, the latest year common to the datasets (${finais.map(([n, a]) => `${n} up to ${a}`).join('; ')}).`));
+  }
+  if (tr.tipo === 'brasil') partes.push(t('Recorte próprio da pergunta: as capitais dos estados.', 'Scope of the question itself: the state capitals.'));
+  return partes.length ? partes.join(' ') : undefined;
 }
 
 /**
@@ -350,21 +383,23 @@ export function sugestoes(paineis: Painel[], tr: Territorio, c: Cobertura, ano: 
   const cruzadas: Sugestao[] = [];
   if (financas && saude && !trabalho) {
     const a = Math.min(ult(c.dca), ult(c.sim!));
+    const nota = periodoComum(a, [[t('Finanças', 'Finance'), ult(c.dca)], [t('Saúde', 'Health'), ult(c.sim!)]], tr);
     const texto = tr.tipo === 'brasil'
       ? t(`Nas capitais, qual a relação entre a despesa com saúde por habitante e a mortalidade infantil em ${a}?`, `In state capitals, how does health spending per inhabitant relate to infant mortality in ${a}?`)
       : tr.tipo === 'uf'
         ? t(`Nos municípios ${f.de}, qual a relação entre a despesa com saúde por habitante e a mortalidade infantil em ${a}?`, `In municipalities ${f.de}, how does health spending per inhabitant relate to infant mortality in ${a}?`)
         : t(`Como evoluíram juntas a despesa com saúde por habitante e a mortalidade infantil ${f.em} até ${a}?`, `How did health spending per inhabitant and infant mortality ${f.em} evolve together up to ${a}?`);
-    cruzadas.push({ titulo: t('Gasto em saúde e mortalidade infantil', 'Health spending and infant mortality'), tema: tema.cruzamento, texto, paineis: ['financas', 'saude'] });
+    cruzadas.push({ titulo: t('Gasto em saúde e mortalidade infantil', 'Health spending and infant mortality'), tema: tema.cruzamento, texto, paineis: ['financas', 'saude'], nota });
   }
   if (trabalho && financas) {
     const a = Math.min(ult(c.rais), ult(c.dca));
+    const nota = periodoComum(a, [[t('Trabalho', 'Labour'), ult(c.rais)], [t('Finanças', 'Finance'), ult(c.dca)]], tr);
     const texto = tr.tipo === 'brasil'
       ? t(`Nas capitais, qual a relação entre a despesa com pessoal e os empregos formais na administração pública em ${a}?`, `In state capitals, how does personnel spending relate to formal public-administration jobs in ${a}?`)
       : tr.tipo === 'uf'
         ? t(`Nos municípios ${f.de}, qual a relação entre a despesa com pessoal e os empregos formais na administração pública em ${a}?`, `In municipalities ${f.de}, how does personnel spending relate to formal public-administration jobs in ${a}?`)
         : t(`Como evoluíram juntos a despesa com pessoal e os empregos formais na administração pública ${f.em} até ${a}?`, `How did personnel spending and formal public-administration jobs ${f.em} evolve together up to ${a}?`);
-    cruzadas.push({ titulo: t('Gasto com pessoal e emprego público', 'Staff spending and public-sector jobs'), tema: tema.cruzamento, texto, paineis: ['financas', 'trabalho'] });
+    cruzadas.push({ titulo: t('Gasto com pessoal e emprego público', 'Staff spending and public-sector jobs'), tema: tema.cruzamento, texto, paineis: ['financas', 'trabalho'], nota });
   }
   // uma de cada painel, depois as entre painéis (com dois painéis, a cruzada é a terceira à vista), e o resto alternado
   const lista: Sugestao[] = [];
@@ -393,6 +428,45 @@ export function exemploPergunta(paineis: Painel[], tr: Territorio, c: Cobertura)
       `E.g. How has revenue per person ${escopoFinancas(tr)} changed since ${desde(c.dca)}?`);
   }
   return t('Escreva sua pergunta…', 'Type your question…');
+}
+
+const faixaDe = (de: number, ate: number) => Array.from({ length: Math.max(0, ate - de + 1) }, (_, i) => de + i);
+
+/**
+ * Anos com dados nas bases marcadas, do mesmo manifesto que a ajuda e o catálogo: as fontes de ano fechado (RAIS,
+ * DCA, PIB, SIOPE, SIOPS, LRF, INSS, SIM, SINASC, população) e as mensais (Novo CAGED, Bolsa Família), que podem parar
+ * antes de dezembro. `fechado` diz se alguma fonte fechada tem o ano; `parciais`, até que mês vão as mensais.
+ */
+export function coberturaPorAno(c: Cobertura, paineis: Painel[]): Map<number, { fechado: boolean; parciais: string[] }> {
+  const anos = new Map<number, { fechado: boolean; parciais: string[] }>();
+  const ano = (a: number) => {
+    if (!anos.has(a)) anos.set(a, { fechado: false, parciais: [] });
+    return anos.get(a)!;
+  };
+  const fechadas = (xs: number[]) => xs.forEach((a) => { ano(a).fechado = true; });
+  const mensal = (nome: string, de: number, ate: number) => {
+    for (let a = Math.floor(de / 100); a <= Math.floor(ate / 100); a++) {
+      const e = ano(a);
+      // um ano que a fonte mensal cobre até dezembro conta como fechado
+      if (a < Math.floor(ate / 100) || ate % 100 === 12) e.fechado = true;
+      else e.parciais.push(t(`${nome} até ${rotuloCompetencia(ate)}`, `${nome} up to ${rotuloCompetencia(ate)}`));
+    }
+  };
+  if (paineis.includes('trabalho')) {
+    fechadas(c.rais);
+    if (c.caged) mensal('Novo CAGED', c.caged.de, c.caged.ate);
+  }
+  if (paineis.includes('financas')) {
+    fechadas(c.dca);
+    fechadas(c.siope ?? []);
+    fechadas(c.siops ?? []);
+    fechadas(c.inss ?? []);
+    if (c.pib) fechadas(faixaDe(c.pib.de, c.pib.ate));
+    if (c.lrf) fechadas(faixaDe(c.lrf.de, c.lrf.ate));
+    if (c.bolsa) mensal('Bolsa Família', c.bolsa.de * 100 + 1, c.bolsa.mes);
+  }
+  if (paineis.includes('saude')) fechadas([...(c.sim ?? []), ...(c.sinasc ?? []), ...(c.popSvs ?? [])]);
+  return anos;
 }
 
 /** O que cada painel marcado tem, em uma linha por fonte. */
@@ -833,6 +907,8 @@ export type RespostaPronta = {
   territorios: string[];
   /** Intervalo efetivamente consultado ("2015–2025", "set/2025–ago/2026 (últimos 12 meses)"). */
   periodo: string | null;
+  /** Período lido de cada fonte (fonte, período): mostra quando fontes de uma mesma resposta usaram anos diferentes. */
+  periodosPorFonte: [string, string][];
   /** Consultas citadas na resposta (destaques, gráficos e leituras). */
   usadas: Set<string>;
   /** As consultas da conversa pelo identificador (C1…), para conferir variáveis e estatísticas. */
@@ -1061,6 +1137,13 @@ export function prepararResposta(r: RespostaFinal, consultas: Map<string, Consul
   const alertas = unicas([...destaques.flatMap((d) => d.quebras), ...graficos.flatMap((g) => g.quebras), ...doPeriodo])
     .sort((a, b) => (a.quebra ?? 0) - (b.quebra ?? 0));
   const sqls = (doTurno.length ? doTurno : citadas).map((c) => c.sql);
+  const porFonte = new Map<string, Set<string>>();
+  for (const c of base.length ? base : citadas) {
+    const per = periodoDasConsultas([c]);
+    const rotulo = [per.anos && rotuloPeriodo(per.anos), per.meses && rotuloPeriodo(per.meses, o.ultimaCompetencia)].filter(Boolean).join(' · ');
+    if (!rotulo) continue;
+    for (const f of fontesConsultadas([c.sql])) porFonte.set(f, new Set([...(porFonte.get(f) ?? []), rotulo]));
+  }
   const faltantes = [...new Set(tabelas.filter((x) => x.espec.papel === 'principal').flatMap((x) => x.tabela?.faltantes ?? []))];
   return {
     r, destaques, tabelas, faltantes, graficos, leituras, alertas, hipoteses: hipotesesOmitidas ? '' : r.hipoteses, hipotesesOmitidas,
@@ -1071,6 +1154,7 @@ export function prepararResposta(r: RespostaFinal, consultas: Map<string, Consul
     bases: versaoDasBases(sqls, o.fontes),
     territorios: territoriosNasConsultas((base.length ? base : citadas).map((c) => c.sql), o.cadastro ?? null),
     periodo: [p.anos && rotuloPeriodo(p.anos), p.meses && rotuloPeriodo(p.meses, o.ultimaCompetencia)].filter(Boolean).join(' · ') || null,
+    periodosPorFonte: [...porFonte].map(([f, x]) => [f, [...x].join('; ')] as [string, string]),
     usadas,
     consultas,
   };
@@ -1297,6 +1381,7 @@ export function recorteDe(p: RespostaPronta): [string, string][] {
     [t('Território', 'Territory'), p.territorios.join('; ') || r.recorte.territorio],
     [t('Período solicitado', 'Requested period'), r.recorte.periodo_solicitado],
     [t('Período utilizado', 'Period used'), p.periodo ?? r.recorte.periodo],
+    [t('Período por fonte', 'Period by source'), periodosDiferem(p) ? textoPeriodosPorFonte(p) : ''],
     [t('Fontes', 'Sources'), p.fontes.join('; ')],
     [t('Bases', 'Datasets'), p.bases.join('; ')],
     [t('Unidade', 'Unit'), semNominal(r.recorte.unidade, p.tabelas.some((x) => x.espec.formato === 'reais') || p.destaques.some((x) => x.d.formato === 'reais') ? 'reais' : 'inteiro')],
@@ -1305,6 +1390,10 @@ export function recorteDe(p: RespostaPronta): [string, string][] {
     [t('Agrupamentos', 'Groupings'), r.recorte.agrupamentos],
   ] as [string, string][]).filter(([, v]) => v);
 }
+
+/** As fontes da resposta leram períodos diferentes (ex.: Finanças até 2024 e Saúde até 2023)? Só então vale mostrá-los à parte. */
+export const periodosDiferem = (p: RespostaPronta) => p.periodosPorFonte.length > 1 && new Set(p.periodosPorFonte.map(([, x]) => x)).size > 1;
+export const textoPeriodosPorFonte = (p: RespostaPronta) => p.periodosPorFonte.map(([f, x]) => `${f}: ${x}`).join(' · ');
 
 /** Aviso de pedido não atendido por inteiro (períodos pedidos sem dados), para a tela, o PDF e a cópia. */
 export const avisoFaltantes = (p: RespostaPronta) => (p.faltantes.length
@@ -1429,14 +1518,24 @@ export type Desfecho = 'resposta' | 'texto' | 'limite' | 'recusa' | 'longa';
  * cancela a qualquer momento (pedido em andamento e consulta no DuckDB), com um AbortError.
  * `resultados`: os das perguntas anteriores, para conferir destaques que citam consultas delas.
  */
-export async function perguntarIa(o: {
+export async function perguntarIa(o: ParametrosPergunta): Promise<ResultadoPergunta> {
+  const registro: RegistroModelo = { modelo: null, uso: { chamadas: 0, entrada: 0, saida: 0, cache_lido: 0, cache_escrito: 0 } };
+  const r = await conduzir(o, registro);
+  return { ...r, modelo: registro.modelo, uso: registro.uso };
+}
+
+type RegistroModelo = { modelo: string | null; uso: UsoIa };
+type ResultadoPergunta = { mensagens: Mensagem[]; desfecho: Desfecho; detalhe?: string | null; etapas: Etapa[]; modelo: string | null; uso: UsoIa };
+type ParametrosPergunta = {
   historico: Mensagem[]; pergunta: string; contexto: string; idioma: string; paineis: Painel[]; sinal: AbortSignal;
-  resultados?: Record<string, Resultado>; ultimaCompetencia?: number | null; modo?: Modo; cobertura?: Cobertura | null;
+  resultados?: Record<string, Resultado>; ultimaCompetencia?: number | null; modo?: Modo; cobertura?: Cobertura | null; modelo?: EscolhaModelo;
   aoAtualizar: (mensagens: Mensagem[]) => void;
   aoResultado: (id: string, r: Resultado) => void;
   aoProgresso?: (p: Progresso) => void;
   aoRestantes?: (n: number) => void;
-}): Promise<{ mensagens: Mensagem[]; desfecho: Desfecho; detalhe?: string | null; etapas: Etapa[] }> {
+};
+
+async function conduzir(o: ParametrosPergunta, registro: RegistroModelo): Promise<Omit<ResultadoPergunta, 'modelo' | 'uso'>> {
   let hist = comPergunta(o.historico, o.pergunta, o.contexto);
   const etapas: Etapa[] = [];
   const medir = async <T>(tipo: Etapa['tipo'], f: () => Promise<T>, rotulo?: string): Promise<T> => {
@@ -1453,8 +1552,12 @@ export async function perguntarIa(o: {
   for (let rodada = 0; rodada < MAX_RODADAS; rodada++) {
     if (o.sinal.aborted) throw cancelado();
     o.aoProgresso?.({ fase: 'modelo', rodada });
-    const r = await medir('modelo', () => chamarIa(hist, o.idioma, o.paineis, o.sinal));
+    const r = await medir('modelo', () => chamarIa(hist, o.idioma, o.paineis, o.sinal, o.modelo));
     o.aoRestantes?.(r.restantes);
+    // cada chamada diz o modelo que respondeu e o que gastou: a resposta registra o modelo e a soma das chamadas
+    registro.modelo = r.modelo ?? registro.modelo;
+    registro.uso.chamadas++;
+    for (const k of ['entrada', 'saida', 'cache_lido', 'cache_escrito'] as const) registro.uso[k] += r.uso?.[k] ?? 0;
     hist = [...hist, { role: 'assistant', content: r.conteudo }];
     o.aoAtualizar(hist);
     if (r.parada === 'refusal') return { mensagens: hist, desfecho: 'recusa', detalhe: r.recusa, etapas };

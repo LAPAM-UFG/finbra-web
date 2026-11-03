@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { t } from '../idioma';
 import { Icone } from './Icone';
 
@@ -58,8 +58,10 @@ export function Popover({ rotulo, rotuloAcessivel, conteudo, alinhar = 'fim', cl
  * Janela modal (exemplos, ajuda) com <dialog>: o foco fica dentro dela, Esc e o fundo fecham, e o foco volta ao
  * controle que a abriu (a menos que quem fechou o tenha levado a outro lugar, como o campo da pergunta).
  */
-export function Dialogo({ aberto, aoFechar, titulo, children, rodape }: {
+export function Dialogo({ aberto, aoFechar, titulo, children, rodape, retorno }: {
   aberto: boolean; aoFechar: () => void; titulo: string; children: ReactNode; rodape?: ReactNode;
+  /** controle que abriu a janela: recebe o foco ao fechá-la (cliques não focam botões no Safari) */
+  retorno?: RefObject<HTMLElement | null>;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const antes = useRef<HTMLElement | null>(null);
@@ -77,7 +79,7 @@ export function Dialogo({ aberto, aoFechar, titulo, children, rodape }: {
       onClose={() => {
         aoFechar();
         requestAnimationFrame(() => {
-          if (!document.activeElement || document.activeElement === document.body) antes.current?.focus();
+          if (!document.activeElement || document.activeElement === document.body) (retorno?.current ?? antes.current)?.focus();
         });
       }}
       onClick={(e) => {

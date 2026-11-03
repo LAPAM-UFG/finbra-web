@@ -275,7 +275,7 @@ figure.grafico { margin: 0; }
 .ia-entrar-passos { list-style: none; counter-reset: passo; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; }
 .ia-entrar-passos li { counter-increment: passo; position: relative; padding: 9px 12px 10px 42px; background: var(--superficie-2); border-radius: 8px; font-size: 13px; color: var(--tinta-2); }
 .ia-entrar-passos li::before {
-  content: counter(passo); position: absolute; left: 11px; top: 9px; width: 22px; height: 22px; border-radius: 50%;
+  content: counter(passo); content: counter(passo) / ""; position: absolute; left: 11px; top: 9px; width: 22px; height: 22px; border-radius: 50%;
   display: grid; place-items: center; background: var(--serie-1); color: #fff; font-size: 12px; font-weight: 600;
 }
 .ia-entrar-passos strong { display: block; color: var(--tinta); margin-bottom: 1px; }
@@ -749,7 +749,8 @@ details.evol-nota[open] > summary { margin-bottom: 6px; }
 .casca.casca-ia { background: var(--ia-fundo); color: var(--tinta); }
 .casca-ia main { padding: 24px 32px 0; font-size: 16px; }
 @media (min-width: 801px) {
-  .casca.casca-ia { grid-template-columns: 260px 1fr; }
+  /* a largura da lateral é ajustável (240–360 px) e nunca passa de 42% da janela, para o campo da pergunta continuar legível */
+  .casca.casca-ia { grid-template-columns: min(var(--ia-lateral-largura, 260px), 42vw) 1fr; }
   .casca-ia .menu.menu-ia {
     background: var(--ia-lateral); border-right: 1px solid var(--borda); padding: 12px;
     height: calc(100dvh - 56px); max-height: none; overflow: hidden; display: flex; flex-direction: column;
@@ -820,7 +821,10 @@ details.evol-nota[open] > summary { margin-bottom: 6px; }
 }
 .ia-contexto-botao:hover { background: var(--superficie-2); color: var(--tinta); }
 .ia-contexto-botao[aria-expanded='true'] { border-color: var(--ia-verde); color: var(--tinta); background: var(--ia-verde-suave); }
-.ia-contexto-resumo { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ia-contexto-resumo { display: flex; min-width: 0; overflow: hidden; white-space: nowrap; }
+.ia-ctx-parte { flex: 0 0 auto; white-space: pre; }
+/* no computador, só o território (a parte do meio) encurta: o ano automático nunca some */
+.ia-ctx-parte:nth-child(2) { flex: 0 1 auto; min-width: 2ch; overflow: hidden; text-overflow: ellipsis; }
 .ia-enviar {
   display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; border: 0; cursor: pointer;
   background: var(--ia-acao); color: #fff;
@@ -919,8 +923,9 @@ details.evol-nota[open] > summary { margin-bottom: 6px; }
 .ia-exemplo-titulo { font-weight: 600; font-size: 14px; }
 .ia-exemplo-texto { font-size: 13px; color: var(--tinta-2); }
 .ia-ajuda-indice { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; padding: 0 0 10px; border-bottom: 1px solid var(--borda); }
-.ia-ajuda-indice a { color: var(--ia-link); text-decoration: none; }
-.ia-ajuda-indice a:hover { text-decoration: underline; }
+.ia-ajuda-indice button { all: unset; cursor: pointer; color: var(--ia-link); font-size: 13px; border-radius: 4px; }
+.ia-ajuda-indice button:hover { text-decoration: underline; }
+.ia-ajuda-indice button:focus-visible { outline: 2px solid var(--ia-acao); outline-offset: 2px; }
 .ia-ajuda h3 { font-size: 15px; margin: 20px 0 6px; scroll-margin-top: 8px; }
 .ia-ajuda h3:focus { outline: none; }
 .ia-ajuda p, .ia-ajuda li { color: var(--tinta-2); line-height: 1.55; }
@@ -1007,3 +1012,53 @@ details.evol-nota[open] > summary { margin-bottom: 6px; }
 @media (max-height: 700px) and (min-width: 801px) {
   .casca-ia .ia-inicio { min-height: 0; justify-content: flex-start; }
 }
+
+
+/* rascunho: confirmação de troca, restauração, filtro e avisos dos exemplos */
+.ia-rascunho-citado { margin: 8px 0; padding: 8px 12px; border-left: 3px solid var(--borda); background: var(--superficie-2); border-radius: 0 8px 8px 0; font-size: 14px; color: var(--tinta-2); white-space: pre-wrap; max-height: 8em; overflow: auto; }
+.ia-restaurar { margin: 6px 4px 0; }
+.ia-exemplos-filtro { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; margin: 0 0 6px; font-size: 13px; color: var(--tinta-2); }
+.ia-exemplo-aviso { display: block; margin-top: 2px; font-size: 12px; color: var(--tinta-3); }
+
+@media (max-width: 800px) {
+  /* no celular o resumo quebra por informação, sem cortar nenhuma */
+  .ia-contexto-resumo { flex-wrap: wrap; overflow: visible; white-space: normal; }
+  .ia-ctx-parte:nth-child(2) { flex: 0 1 auto; overflow: visible; text-overflow: clip; white-space: pre-wrap; }
+  .ia-contexto-botao { height: auto; align-items: flex-start; padding-top: 6px; padding-bottom: 6px; text-align: left; }
+}
+
+/* seletor do modelo (Haiku por padrão): par do alternador de modo, na barra do campo */
+.ia-modelo-seletor { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 10px; background: var(--superficie-2); border-radius: 999px; font-size: 12.5px; color: var(--tinta-2); white-space: nowrap; }
+.ia-modelo-seletor select { appearance: none; border: 0; background: transparent; color: var(--tinta); font: inherit; font-weight: 600; padding: 4px 6px; border-radius: 999px; cursor: pointer; }
+.ia-modelo-seletor:has(select:focus-visible) { outline: 2px solid var(--serie-1); outline-offset: 1px; }
+.ia-modelo-seletor:has(select:disabled) { opacity: 0.7; }
+.ia-modelo-seletor select:disabled { cursor: default; }
+
+/* alça de largura da lateral (computador) */
+.ia-historico-alca { position: absolute; top: 0; bottom: 0; right: 0; width: 9px; cursor: col-resize; touch-action: none; z-index: 6; }
+.ia-historico-alca::after { content: ''; position: absolute; top: 0; bottom: 0; right: 0; width: 3px; background: transparent; transition: background 0.15s; }
+.ia-historico-alca:hover::after, .ia-historico-alca.arrastando::after { background: color-mix(in srgb, var(--ia-acao) 55%, transparent); }
+.ia-historico-alca:focus-visible { outline: none; }
+.ia-historico-alca:focus-visible::after { background: var(--ia-acao); }
+button.ia-historico-importar { all: unset; display: block; cursor: pointer; font-size: 12px; color: var(--ia-link); }
+button.ia-historico-importar:hover { text-decoration: underline; }
+button.ia-historico-importar:focus-visible { outline: 2px solid var(--ia-acao); outline-offset: 2px; }
+
+/* a barra do campo quebra pela largura do próprio campo (a lateral ajustável muda o espaço, não só a janela) */
+.ia-compositor-bloco { container-type: inline-size; container-name: compositor; }
+@container compositor (max-width: 640px) {
+  /* duas linhas: modo + enviar; depois modelo + contexto (o contexto ocupa o que sobra e quebra por informação) */
+  .ia-compositor-barra { flex-wrap: wrap; }
+  .ia-compositor-barra .ia-modos { order: 1; }
+  .ia-compositor-espaco { order: 2; flex: 1 1 0; }
+  .ia-compositor-barra > :is(.ia-enviar, .ia-entrar-botao, .ia-parar) { order: 3; }
+  .ia-compositor-barra .ia-modelo-seletor { order: 4; }
+  .ia-contexto-botao { order: 5; flex: 1 1 9rem; }
+}
+
+.ia-legenda-conferencia { margin: 4px 0 8px; font-size: 12px; }
+
+/* rodapé dos diálogos (confirmações): ações à direita, com respiro */
+.ia-dialogo-rodape { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding: 12px 20px 16px; border-top: 1px solid var(--borda); }
+/* a tela inicial usa a largura toda da coluna (820 px): a barra do campo comporta modo, modelo e contexto sem encurtar o território */
+.casca-ia .ia-inicio { max-width: 820px; }

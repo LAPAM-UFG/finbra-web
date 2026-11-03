@@ -4,10 +4,25 @@ import { baixarArquivo, nomeArquivo } from '../exportar';
 import { contar } from '../ia_formato';
 import { dataHora, exportarConversa, filtrarResumos, historico, useHistorico, type ResumoConversa } from '../ia_historico';
 import { t } from '../idioma';
+import { Dialogo } from './IaPaineis';
 import { Icone } from './Icone';
 
 const CELULAR = '(max-width: 800px)';
 const RECOLHIDA = 'ia-historico-recolhido';
+// largura da lateral no computador: 240 a 360 px (260 por padrão), guardada neste navegador
+const LARGURA = 'ia-historico-largura';
+const LARGURA_MIN = 240;
+const LARGURA_MAX = 360;
+const LARGURA_PADRAO = 260;
+const limitar = (n: number) => Math.min(LARGURA_MAX, Math.max(LARGURA_MIN, Math.round(n)));
+function lerLargura() {
+  try {
+    const n = Number(localStorage.getItem(LARGURA));
+    return n ? limitar(n) : LARGURA_PADRAO;
+  } catch {
+    return LARGURA_PADRAO;
+  }
+}
 
 function useCelular() {
   const [celular, setCelular] = useState(() => typeof matchMedia !== 'undefined' && matchMedia(CELULAR).matches);
@@ -18,6 +33,44 @@ function useCelular() {
     return () => m.removeEventListener('change', mudar);
   }, []);
   return celular;
+}
+
+/**
+ * Alça para ajustar a largura da lateral: arrastar com o mouse ou o dedo, setas (Shift: passo maior), Home e End para
+ * os limites, Enter ou duplo clique para voltar ao padrão. É um separador focável, com valor para os leitores de tela.
+ */
+function AlcaLargura({ largura, definir, restaurar }: { largura: number; definir: (n: number) => void; restaurar: () => void }) {
+  const [arrastando, setArrastando] = useState(false);
+  const mover = (e: { clientX: number; currentTarget: HTMLElement }) => {
+    const nav = e.currentTarget.closest('nav');
+    if (nav) definir(e.clientX - nav.getBoundingClientRect().left);
+  };
+  return (
+    <div role="separator" aria-orientation="vertical" tabIndex={0} className={`ia-historico-alca${arrastando ? ' arrastando' : ''}`}
+      aria-label={t('Largura da lista de conversas', 'Conversation list width')} aria-valuemin={LARGURA_MIN} aria-valuemax={LARGURA_MAX} aria-valuenow={largura}
+      aria-valuetext={`${largura} px`}
+      title={t('Arraste ou use as setas para ajustar a largura; Enter ou duplo clique restaura o padrão', 'Drag or use the arrow keys to adjust the width; Enter or double-click restores the default')}
+      onPointerDown={(e) => {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        setArrastando(true);
+      }}
+      onPointerMove={(e) => {
+        if (arrastando) mover(e);
+      }}
+      onPointerUp={() => setArrastando(false)}
+      onPointerCancel={() => setArrastando(false)}
+      onDoubleClick={restaurar}
+      onKeyDown={(e) => {
+        const passo = e.shiftKey ? 48 : 16;
+        if (e.key === 'ArrowRight' || e.key === 'ArrowUp') definir(largura + passo);
+        else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') definir(largura - passo);
+        else if (e.key === 'Home') definir(LARGURA_MIN);
+        else if (e.key === 'End') definir(LARGURA_MAX);
+        else if (e.key === 'Enter') restaurar();
+        else return;
+        e.preventDefault();
+      }} />
+  );
 }
 
 function lerRecolhida() {
@@ -108,6 +161,26 @@ export function HistoricoIa() {
   const [aviso, setAviso] = useState<string | null>(null);
   const celular = useCelular();
   const [recolhida, setRecolhida] = useState(lerRecolhida);
+  const [largura, setLargura] = useState(lerLargura);
+  const definirLargura = (n: number) => {
+    const v = limitar(n);
+    setLargura(v);
+    try {
+      if (v === LARGURA_PADRAO) localStorage.removeItem(LARGURA);
+      else localStorage.setItem(LARGURA, String(v));
+    } catch {
+      /* sem armazenamento: vale nesta visita */
+    }
+  };
+  const raiz = useRef<HTMLElement>(null);
+  // a largura vai para a grade da página (a variável é lida no CSS; no celular e recolhida ela não vale)
+  useEffect(() => {
+    const casca = raiz.current?.closest<HTMLElement>('.casca');
+    casca?.style.setProperty('--ia-lateral-largura', `${largura}px`);
+    return () => {
+      casca?.style.removeProperty('--ia-lateral-largura');
+    };
+  }, [largura]);
   const [gaveta, setGaveta] = useState(false);
   const aberto = celular ? gaveta : !recolhida;
   const alternador = useRef<HTMLButtonElement>(null);
@@ -154,8 +227,23 @@ export function HistoricoIa() {
     setGaveta(false);
     navegar({ pathname: '/ia', search: `?conversa=${encodeURIComponent(id)}` });
   };
+  // um rascunho não enviado numa conversa salva fica nela (a página o guarda ao trocar); sem conversa salva, não há
+  // onde guardá-lo e a confirmação vem antes de descartar
+  const [descartar, setDescartar] = useState(false);
+  const rascunho = () => {
+    try {
+      return (sessionStorage.getItem('ia-rascunho') ?? '').trim();
+    } catch {
+      return '';
+    }
+  };
   // a conversa aberta fica no histórico; a nova herda os filtros da página (painéis, ano, território)
-  const nova = () => {
+  const nova = (confirmada = false) => {
+    if (!confirmada && rascunho() && !(atual && h.resumos.some((r) => r.id === atual))) {
+      setDescartar(true);
+      return;
+    }
+    setDescartar(false);
     const b = new URLSearchParams();
     for (const k of ['paineis', 'ano', 'uf', 'ente']) if (busca.get(k)) b.set(k, busca.get(k)!);
     b.set('nova', String(Date.now()));
@@ -181,7 +269,7 @@ export function HistoricoIa() {
         `Delete the conversation “${r.titulo}” from this browser? This cannot be undone (except by importing an exported copy).`))) return;
     if (await historico.excluir(r.id)) {
       setAviso(t('Conversa excluída.', 'Conversation deleted.'));
-      if (r.id === atual) nova();
+      if (r.id === atual) nova(true);
     }
   };
   const levar = async () => {
@@ -211,7 +299,8 @@ export function HistoricoIa() {
 
   const total = h.resumos.length ? ` (${h.resumos.length})` : '';
   return (
-    <section className={`ia-historico${aberto ? ' aberto' : ' recolhido'}${celular ? ' celular' : ''}`} aria-label={t('Conversas', 'Conversations')}>
+    <section ref={raiz} className={`ia-historico${aberto ? ' aberto' : ' recolhido'}${celular ? ' celular' : ''}`} aria-label={t('Conversas', 'Conversations')}>
+      {!celular && aberto && <AlcaLargura largura={largura} definir={definirLargura} restaurar={() => definirLargura(LARGURA_PADRAO)} />}
       <div className="ia-historico-barra">
         <button ref={alternador} type="button" className="ia-historico-alternar" aria-expanded={aberto} aria-controls="ia-historico-painel" onClick={alternar}
           title={celular ? undefined : aberto ? t('Recolher a lista de conversas', 'Collapse the conversation list') : t('Mostrar a lista de conversas', 'Show the conversation list')}>
@@ -221,7 +310,7 @@ export function HistoricoIa() {
             : <span className="sr-only">{t('Mostrar conversas', 'Show conversations')}</span>}
           {!celular && aberto && <span className="sr-only">{t(': recolher', ': collapse')}</span>}
         </button>
-        <button type="button" className="ia-historico-nova" onClick={nova} title={t('Nova conversa', 'New conversation')}>
+        <button type="button" className="ia-historico-nova" onClick={() => nova()} title={t('Nova conversa', 'New conversation')}>
           <Icone nome="mais" tamanho={16} />
           {!celular && !aberto ? <span className="sr-only">{t('Nova conversa', 'New conversation')}</span> : <span>{t('Nova conversa', 'New conversation')}</span>}
         </button>
@@ -238,7 +327,7 @@ export function HistoricoIa() {
           </div>
         )}
         {celular && (
-          <button type="button" className="ia-historico-nova" onClick={nova}><Icone nome="mais" tamanho={16} /> {t('Nova conversa', 'New conversation')}</button>
+          <button type="button" className="ia-historico-nova" onClick={() => nova()}><Icone nome="mais" tamanho={16} /> {t('Nova conversa', 'New conversation')}</button>
         )}
         <div className="ia-historico-busca-caixa">
           <Icone nome="busca" tamanho={15} />
@@ -313,6 +402,11 @@ export function HistoricoIa() {
             <a href="/cdn-cgi/access/logout">{t('Sair', 'Sign out')}</a>
           </p>
         ) : h.verificado && <p className="ia-historico-conta-fora">{t('Sem login: as conversas ficam neste navegador.', 'Not signed in: conversations stay in this browser.')}</p>}
+        {!celular && largura !== LARGURA_PADRAO && (
+          <button type="button" className="ia-historico-importar" onClick={() => definirLargura(LARGURA_PADRAO)}>
+            {t(`Restaurar a largura padrão (${LARGURA_PADRAO} px)`, `Restore the default width (${LARGURA_PADRAO} px)`)}
+          </button>
+        )}
         <label className="ia-historico-importar">
           {t('Importar conversa (JSON)', 'Import conversation (JSON)')}
           <input ref={arquivo} type="file" accept="application/json,.json" className="sr-only" onChange={(e) => void importar(e.target.files?.[0])} />
@@ -330,6 +424,16 @@ export function HistoricoIa() {
         </details>
         </div>
       </div>
+      <Dialogo aberto={descartar} aoFechar={() => setDescartar(false)} titulo={t('Descartar o rascunho?', 'Discard the draft?')}
+        rodape={(
+          <>
+            <button type="button" className="ia-botao-leve" onClick={() => setDescartar(false)}>{t('Continuar editando', 'Keep editing')}</button>
+            <button type="button" className="ia-botao-primario" onClick={() => nova(true)}>{t('Descartar e começar', 'Discard and start')}</button>
+          </>
+        )}>
+        <p>{t('A pergunta escrita ainda não foi enviada e esta conversa não está no histórico, então o rascunho seria perdido ao começar outra.',
+          'The question you wrote has not been sent and this conversation is not in the history, so the draft would be lost when starting another.')}</p>
+      </Dialogo>
     </section>
   );
 }

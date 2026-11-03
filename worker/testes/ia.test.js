@@ -353,3 +353,99 @@ describe('conversas na conta', () => {
     assert.equal(limparResumo(resumo(), 'outro-id-qualquer'), null);
   });
 });
+
+describe('modelo por pedido (Haiku padrão, Sonnet por escolha)', () => {
+  // API da Anthropic simulada: devolve por streaming uma resposta de texto com o modelo pedido e guarda o corpo recebido
+  const sse = (modelo) => [
+    ['message_start', { type: 'message_start', message: { id: 'msg_1', type: 'message', role: 'assistant', model: modelo, content: [], stop_reason: null, stop_sequence: null,
+      usage: { input_tokens: 120, output_tokens: 1, cache_read_input_tokens: 30, cache_creation_input_tokens: 0 } } }],
+    ['content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }],
+    ['content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Dois.' } }],
+    ['content_block_stop', { type: 'content_block_stop', index: 0 }],
+    ['message_delta', { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 7 } }],
+    ['message_stop', { type: 'message_stop' }],
+  ].map(([e, d]) => `event: ${e}\ndata: ${JSON.stringify(d)}\n\n`).join('');
+  const r2 = () => {
+    const m = new Map();
+    return { get: async (k) => (m.has(k) ? { json: async () => JSON.parse(m.get(k)) } : null), put: async (k, v) => void m.set(k, String(v)), m };
+  };
+  const enviar = async (modelo, env = {}) => {
+    const chamadas = [];
+    const original = globalThis.fetch;
+    globalThis.fetch = async (_u, init) => {
+      const corpo = JSON.parse(init.body);
+      chamadas.push(corpo);
+      return new Response(sse(corpo.model), { status: 200, headers: { 'content-type': 'text/event-stream' } });
+    };
+    try {
+      const dados = env.DADOS ?? r2();
+      const url = new URL('https://localhost/api/ia');
+      const corpo = { idioma: 'pt', paineis: ['trabalho'], mensagens: [{ role: 'user', content: 'Quanto é 1+1?' }], ...(modelo === undefined ? {} : { modelo }) };
+      const r = await rotaIa(new Request(url, { method: 'POST', body: JSON.stringify(corpo) }),
+        { ANTHROPIC_API_KEY: 'chave-de-teste', IA_DEV_EMAIL: 'a@b.c', ...env, DADOS: dados }, url);
+      return { status: r.status, corpo: await r.json(), chamadas, dados };
+    } finally {
+      globalThis.fetch = original;
+    }
+  };
+
+  test('sem escolha, o servidor usa Haiku e devolve o modelo e o consumo', async () => {
+    const { status, corpo, chamadas } = await enviar(undefined);
+    assert.equal(status, 200);
+    assert.equal(chamadas.length, 1);
+    assert.equal(chamadas[0].model, 'claude-haiku-5-5');
+    assert.equal(corpo.modelo, 'claude-haiku-5-5');
+    assert.equal(corpo.escolha, 'haiku');
+    assert.deepEqual(corpo.uso, { entrada: 120, saida: 7, cache_lido: 30, cache_escrito: 0 });
+  });
+
+  test('"sonnet" explícito usa o ID do Sonnet; "haiku" explícito continua Haiku', async () => {
+    const s = await enviar('sonnet');
+    assert.equal(s.chamadas[0].model, 'claude-sonnet-5-5');
+    assert.equal(s.corpo.modelo, 'claude-sonnet-5-5');
+    assert.equal(s.corpo.escolha, 'sonnet');
+    const h = await enviar('haiku');
+    assert.equal(h.chamadas[0].model, 'claude-haiku-5-5');
+  });
+
+  test('o modelo não muda o formato do pedido: raciocínio adaptativo, esforço e ferramentas iguais', async () => {
+    const [h, s] = [await enviar('haiku'), await enviar('sonnet')];
+    for (const campo of ['thinking', 'output_config', 'max_tokens', 'tools', 'system', 'messages']) {
+      assert.deepEqual(s.chamadas[0][campo], h.chamadas[0][campo], campo);
+    }
+  });
+
+  test('valor inválido é recusado com 400 claro e nenhuma chamada à API', async () => {
+    for (const ruim of ['opus', 'claude-opus-5-5', 'HAIKU', '', 7, {}, ['sonnet']]) {
+      const { status, corpo, chamadas } = await enviar(ruim);
+      assert.equal(status, 400, JSON.stringify(ruim));
+      assert.equal(corpo.codigo, 'modelo_invalido');
+      assert.match(corpo.erro, /"haiku" ou "sonnet"/);
+      assert.equal(chamadas.length, 0);
+    }
+  });
+
+  test('os IDs são configuráveis no servidor (IA_MODELO_HAIKU / IA_MODELO_SONNET)', async () => {
+    const { chamadas } = await enviar('sonnet', { IA_MODELO_SONNET: ' claude-sonnet-5-6 ' });
+    assert.equal(chamadas[0].model, 'claude-sonnet-5-6');
+    const h = await enviar('haiku', { IA_MODELO_SONNET: 'claude-sonnet-5-6' });
+    assert.equal(h.chamadas[0].model, 'claude-haiku-5-5');
+  });
+
+  test('a cota diária conta igual para os dois modelos (perguntas e chamadas)', async () => {
+    const dados = r2();
+    await enviar('haiku', { DADOS: dados });
+    await enviar('sonnet', { DADOS: dados });
+    const [chave] = [...dados.m.keys()].filter((k) => k.startsWith('ia/uso/'));
+    assert.deepEqual(JSON.parse(dados.m.get(chave)), { perguntas: 2, chamadas: 2 });
+  });
+
+  test('o estado informa o padrão e os IDs configurados', async () => {
+    const url = new URL('https://localhost/api/ia/estado');
+    const r = await rotaIa(new Request(url), { DADOS: { get: async () => null }, IA_DEV_EMAIL: 'a@b.c', ANTHROPIC_API_KEY: 'x' }, url);
+    const corpo = await r.json();
+    assert.equal(corpo.modelo_padrao, 'haiku');
+    assert.equal(corpo.modelo, 'claude-haiku-5-5');
+    assert.deepEqual(corpo.modelos, { haiku: 'claude-haiku-5-5', sonnet: 'claude-sonnet-5-5' });
+  });
+});

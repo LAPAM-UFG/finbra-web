@@ -10,10 +10,10 @@ import { tabelasIaTrabalho } from '../dados';
 import { baixarArquivo, nomeArquivo, paraXlsxAbas, type Celula, type Planilha } from '../exportar';
 import { idioma, local, t } from '../idioma';
 import {
-  avisoFaltantes, consultasDaConversa, contextoParaModelo, descreverCobertura, descricaoModo, ErroAcesso, estadoIa, executarConsulta, exemploPergunta, foiCancelado,
-  fontesConsultadas, lerModo, LINHAS_TELA, MAX_PERGUNTA, mesmoContexto, MODOS, nomeDaUf, PAINEIS, perguntarIa, prepararResposta,
-  recorteDe, rotuloAno, rotuloModo, rotuloTerritorio, semUltimaPergunta, sugestoes, tabelaInteira, textoDaResposta, turnos, urlEntrar,
-  type Cobertura, type ConsultaFeita, type ContextoIa, type DadosGrafico, type DestaquePronto, type Etapa, type EstadoIa, type GraficoIa,
+  avisoFaltantes, coberturaPorAno, consultasDaConversa, contextoParaModelo, descreverCobertura, descricaoModo, ErroAcesso, estadoIa, executarConsulta, exemploPergunta, foiCancelado,
+  fontesConsultadas, lerEscolhaModelo, lerModo, LINHAS_TELA, MAX_PERGUNTA, mesmoContexto, MODELO_PADRAO, MODOS, nomeDaUf, nomeDoModelo, PAINEIS, perguntarIa, prepararResposta,
+  periodosDiferem, recorteDe, rotuloAno, rotuloModo, rotuloTerritorio, semUltimaPergunta, sugestoes, tabelaInteira, textoDaResposta, textoPeriodosPorFonte, turnos, urlEntrar,
+  type Cobertura, type ConsultaFeita, type ContextoIa, type EscolhaModelo, type DadosGrafico, type DestaquePronto, type Etapa, type EstadoIa, type GraficoIa,
   type GraficoPronto, type ItemTurno, type Mensagem, type Modo, type Painel, type Progresso, type RespostaPronta, type Resultado,
   type Sugestao, type TabelaPronta, type Territorio, type TurnoIa,
 } from '../ia';
@@ -93,6 +93,23 @@ function guardar(chave: string, valor: string | null, sessao = false) {
   }
 }
 
+// rascunhos por conversa (só nesta aba): sair de uma conversa com texto no campo o guarda nela, e ele volta ao reabri-la
+const RASCUNHOS = 'ia-rascunhos';
+function lerRascunhos(): Record<string, string> {
+  try {
+    const r = JSON.parse(lerGuardado(RASCUNHOS, true) ?? '{}');
+    return r && typeof r === 'object' ? r : {};
+  } catch {
+    return {};
+  }
+}
+function guardarRascunhoDe(id: string, texto: string) {
+  const r = lerRascunhos();
+  if (texto.trim()) r[id] = texto;
+  else delete r[id];
+  guardar(RASCUNHOS, Object.keys(r).length ? JSON.stringify(r) : null, true);
+}
+
 /** Cobertura de cada fonte, do manifesto dos dados (o mesmo catálogo que o Worker passa ao modelo). */
 function coberturaDe(meta: Meta, microdados: boolean): Cobertura {
   const f = meta.fontes as Record<string, Record<string, unknown> | undefined>;
@@ -114,12 +131,14 @@ function coberturaDe(meta: Meta, microdados: boolean): Cobertura {
   };
 }
 
-/** Ano do seletor: os que só têm o Novo CAGED (ex.: o ano corrente) dizem isso, com o último mês. */
+/**
+ * Ano do seletor: os que só têm fontes mensais incompletas (ex.: o ano corrente) dizem quais e até que mês, do mesmo
+ * manifesto da ajuda (antes só o Novo CAGED era citado, e o Bolsa Família do mesmo ano ficava de fora).
+ */
 function rotuloDoAno(a: number, c: Cobertura, paineis: Painel[]) {
-  const outras = (paineis.includes('trabalho') && c.rais.includes(a)) || (paineis.includes('financas') && c.dca.includes(a))
-    || (paineis.includes('saude') && !!c.sim?.includes(a));
-  if (outras || !c.caged || Math.floor(c.caged.ate / 100) !== a || c.caged.ate % 100 === 12) return String(a);
-  return t(`${a} (só Novo CAGED, até ${rotuloCompetencia(c.caged.ate)})`, `${a} (New CAGED only, up to ${rotuloCompetencia(c.caged.ate)})`);
+  const e = coberturaPorAno(c, paineis).get(a);
+  if (!e || e.fechado || !e.parciais.length) return String(a);
+  return t(`${a} (parcial: ${e.parciais.join('; ')})`, `${a} (partial: ${e.parciais.join('; ')})`);
 }
 
 /** Território dos filtros globais (?uf=, ?ente=): município, UF, DF ou nenhum (Brasil). */
@@ -237,6 +256,21 @@ const ROTULO_PAPEL = (): Record<TabelaPronta['espec']['papel'], string> => ({
 // ---------------- exportação da conversa inteira ----------------
 
 const LINHAS_PDF = 200;
+/**
+ * Modelo e consumo de uma resposta, para os detalhes e as exportações: "Haiku 5.5 (claude-haiku-5-5) · 3 chamadas,
+ * 41.200 tokens de entrada e 2.100 de saída". Sem registro (conversas antigas): "Modelo não registrado".
+ */
+const textoModelo = (m?: MetaTurno) => {
+  if (!m?.modelo) return nomeDoModelo(null);
+  const u = m.uso;
+  const n = (x: number) => x.toLocaleString(local());
+  const uso = u?.chamadas
+    ? ` · ${t(`${contar(u.chamadas, 'chamada', 'chamadas')}, ${n(u.entrada)} tokens de entrada e ${n(u.saida)} de saída${u.cache_lido ? ` (${n(u.cache_lido)} lidos do cache)` : ''}`,
+      `${contar(u.chamadas, 'call', 'calls')}, ${n(u.entrada)} input and ${n(u.saida)} output tokens${u.cache_lido ? ` (${n(u.cache_lido)} read from cache)` : ''}`)}`
+    : '';
+  return `${nomeDoModelo(m.modelo)} (${m.modelo})${uso}`;
+};
+
 const html = (s: unknown) => String(s ?? '').replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' })[c]!);
 const limiteCelula = (s: string) => s.slice(0, 32_000); // limite de uma célula do Excel
 const ROTULO_APENDICE = () => t('apêndice de reprodução (SQL e histórico das consultas)', 'reproduction appendix (SQL and query history)');
@@ -272,7 +306,7 @@ async function baixarExcel(lista: TurnoIa[], metas: MetaTurno[], prontas: (Respo
       [t('Exportado em', 'Exported on'), new Date().toISOString()],
       [t('Conteúdo', 'Contents'), apendice ? `${t('respostas e tabelas, com', 'answers and tables, with')} ${ROTULO_APENDICE()}` : t('respostas e tabelas', 'answers and tables')],
       [],
-      [t('Pergunta', 'Question'), t('Modo', 'Mode'), t('Contexto', 'Context'), t('Período utilizado', 'Period used'), t('Resposta', 'Answer'), t('Abas', 'Sheets')],
+      [t('Pergunta', 'Question'), t('Modo', 'Mode'), t('Contexto', 'Context'), t('Período utilizado', 'Period used'), t('Resposta', 'Answer'), t('Abas', 'Sheets'), t('Modelo', 'Model')],
     ],
   };
   const abas: Planilha[] = [];
@@ -288,6 +322,7 @@ async function baixarExcel(lista: TurnoIa[], metas: MetaTurno[], prontas: (Respo
       if (!tab) continue;
       n += 1;
       const e = tabelaExportavel(tab, [[t('Pergunta', 'Question'), turno.pergunta], [t('Dados processados em', 'Data processed on'), versaoDoTurno(metas[i], geradoEm).geradoEm],
+        [t('Modelo', 'Model'), textoModelo(metas[i])],
         ...(p ? recorteDe(p) : []), ...linhasGuardadas(tab, versaoDoTurno(metas[i], geradoEm))], cobertura);
       const nome = `${t('Tabela', 'Table')} ${n} ${tab.titulo}`;
       nomes.push(nome.slice(0, 31));
@@ -321,7 +356,7 @@ async function baixarExcel(lista: TurnoIa[], metas: MetaTurno[], prontas: (Respo
     }
     const resposta = p ? textoDaResposta(p) : turno.textoFinal ?? '';
     const modo = metas[i] ? rotuloModo(metas[i].contexto.modo) : '';
-    resumo.linhas.push([turno.pergunta, modo, metas[i] ? descreverContexto(metas[i].contexto, p?.periodo) : '', p?.periodo ?? '', limiteCelula(resposta), nomes.join('; ')]);
+    resumo.linhas.push([turno.pergunta, modo, metas[i] ? descreverContexto(metas[i].contexto, p?.periodo) : '', p?.periodo ?? '', limiteCelula(resposta), nomes.join('; '), textoModelo(metas[i])]);
   });
   const todas = apendice ? [resumo, ...abas, { nome: t('Histórico de execução', 'Execution history'), linhas: historico }] : [resumo, ...abas];
   baixarArquivo(`${nomeArquivo(t('pergunte_aos_dados', 'ask_the_data'))}.xlsx`, paraXlsxAbas(todas) as BlobPart,
@@ -486,7 +521,8 @@ function imprimirPdf(lista: TurnoIa[], metas: MetaTurno[], prontas: (RespostaPro
     const modo = metas[i]?.contexto.modo ?? 'rapida';
     const resposta = p ? respostaHtml(p, modo, n) : turno.textoFinal ? textoHtml(turno.textoFinal) : '';
     return `<section class="pergunta"><h2>${i + 1}. ${html(turno.pergunta)}</h2>`
-      + `<p class="nota">${html(rotuloModo(modo))}${metas[i] ? ` · ${html(descreverContexto(metas[i].contexto, p?.periodo, false))}` : ''}</p>${resposta}</section>`;
+      + `<p class="nota">${html(rotuloModo(modo))}${metas[i] ? ` · ${html(descreverContexto(metas[i].contexto, p?.periodo, false))}` : ''}</p>`
+      + `<p class="nota">${html(t('Modelo', 'Model'))}: ${html(textoModelo(metas[i]))}</p>${resposta}</section>`;
   }).join('');
   const anexo = o.apendice
     ? `<section class="apendice"><h1>${html(t('Apêndice de reprodução', 'Reproduction appendix'))}</h1>`
@@ -587,7 +623,7 @@ const resumoContexto = (c: ContextoIa) => [
   c.paineis.length === PAINEIS.length ? t('Todas as bases', 'All datasets') : c.paineis.map((p) => NOMES_CURTOS()[p]).join(' + '),
   rotuloTerritorio(c.territorio),
   c.ano ? t(`Ano ${c.ano}`, `Year ${c.ano}`) : t('Ano automático', 'Automatic year'),
-].join(' · ');
+];
 
 /** "modelo 41 s em 5 chamadas · consultas 9 s (1 reaproveitada) · revisão 0 s": onde foi o tempo da pergunta. */
 function tempoPorEtapa(etapas: Etapa[]): string {
@@ -620,6 +656,11 @@ function RecorteExecutado({ contexto, pronta }: { contexto: ContextoIa; pronta: 
         <li className="ia-chip" title={t('Território das consultas executadas', 'Territory of the executed queries')}>{territorio ?? daPagina}</li>
         <li className="ia-chip" title={t('Período dos resultados', 'Period of the results')}>{periodo ?? rotuloDoPeriodo(contexto, null)}</li>
       </ul>
+      {pronta && periodosDiferem(pronta) && (
+        <p className="ia-nota ia-periodos-fonte">
+          <strong>{t('Períodos diferentes por fonte: ', 'Different periods by source: ')}</strong>{textoPeriodosPorFonte(pronta)}.
+        </p>
+      )}
       {pronta && diferente && (
         <p className="ia-nota ia-contexto-pagina">
           {t(`Recorte lido das consultas executadas. Contexto da página quando a pergunta foi feita: ${daPagina}${contexto.ano ? `, ${contexto.ano}` : ''} (a pergunta especificou outro recorte).`,
@@ -699,6 +740,27 @@ function Ajustes({ paineis, alternarPainel, travarPaineis, anos, ano, definirAno
   );
 }
 
+/**
+ * Modelo da próxima pergunta, junto do campo: "Modelo · Haiku" (padrão, mais rápido e barato) ou Sonnet (segue melhor as
+ * regras, mas é mais lento e custa cerca de 20 vezes mais por token). Independe do modo de resposta (formato) e só
+ * troca por escolha da pessoa: se o modelo falhar, a pergunta volta ao campo e nada muda sozinho.
+ */
+function SeletorModelo({ escolha, definir, travado }: { escolha: EscolhaModelo; definir: (m: EscolhaModelo) => void; travado: boolean }) {
+  return (
+    <label className="ia-modelo-seletor" title={descricaoModelo(escolha)}>
+      <span>{t('Modelo', 'Model')} ·</span>
+      <select value={escolha} disabled={travado} onChange={(e) => definir(lerEscolhaModelo(e.target.value))} aria-describedby="ia-modelo-desc">
+        <option value="haiku">Haiku</option>
+        <option value="sonnet">Sonnet</option>
+      </select>
+    </label>
+  );
+}
+const descricaoModelo = (m: EscolhaModelo) => (m === 'sonnet'
+  ? t('Sonnet: segue melhor regras complexas, mas é mais lento e custa cerca de 20 vezes mais por token. Vale para o próximo envio.',
+    'Sonnet: follows complex rules better, but is slower and costs about 20 times more per token. Applies to the next send.')
+  : t('Haiku (padrão): mais rápido e barato. Vale para o próximo envio.', 'Haiku (default): faster and cheaper. Applies to the next send.'));
+
 /** Modo de resposta: alternância compacta no compositor; vale para as próximas perguntas e fica guardada. */
 function SeletorModo({ modo, definir, travado }: { modo: Modo; definir: (m: Modo) => void; travado: boolean }) {
   return (
@@ -719,13 +781,13 @@ function SeletorModo({ modo, definir, travado }: { modo: Modo; definir: (m: Modo
  * Sem login, o envio vira "Entrar para perguntar": a pergunta fica guardada (sessionStorage) e o contexto e o idioma
  * voltam com o login.
  */
-function Compositor({ valor, mudar, enviar, cancelar, ocupado, bloqueio, exemplo, grande, campo, modo, descricaoDoModo,
+function Compositor({ valor, mudar, enviar, cancelar, ocupado, bloqueio, exemplo, grande, campo, modo, descricaoDoModo, descricaoDoModelo, modeloAlterado, restaurarModelo,
   resumo, ajustesAbertos, alternarAjustes, botaoContexto, painelAjustes, entrar, verificando, aoComoAcesso, alerta }: {
   valor: string; mudar: (v: string) => void; enviar: (v: string) => void; cancelar: () => void; ocupado: boolean;
   bloqueio: string | null; exemplo: string; grande?: boolean; campo: RefObject<HTMLTextAreaElement | null>;
-  modo: ReactNode; descricaoDoModo: string; resumo: string; ajustesAbertos: boolean; alternarAjustes: () => void;
+  modo: ReactNode; descricaoDoModo: string; descricaoDoModelo: string; modeloAlterado: boolean; restaurarModelo: () => void; resumo: string[]; ajustesAbertos: boolean; alternarAjustes: () => void;
   botaoContexto: RefObject<HTMLButtonElement | null>; painelAjustes: ReactNode; entrar: boolean; verificando: boolean;
-  aoComoAcesso: () => void; alerta: string | null;
+  aoComoAcesso: (e: { currentTarget: HTMLElement }) => void; alerta: string | null;
 }) {
   // o campo cresce com o texto, até um limite (depois rola)
   useEffect(() => {
@@ -764,7 +826,10 @@ function Compositor({ valor, mudar, enviar, cancelar, ocupado, bloqueio, exemplo
             title={t('Bases, território e ano usados quando a pergunta não os disser', 'Datasets, territory and year used when the question does not state them')}>
             <Icone nome="ajustes" tamanho={15} />
             <span className="sr-only">{t('Contexto: ', 'Context: ')}</span>
-            <span className="ia-contexto-resumo">{resumo}</span>
+            {/* uma parte por informação: no celular quebram linha inteiras; no computador só o território encurta (com …) */}
+            <span className="ia-contexto-resumo" title={resumo.join(' · ')}>
+              {resumo.map((x, i) => <span key={i} className="ia-ctx-parte">{x}{i < resumo.length - 1 ? ' · ' : ''}</span>)}
+            </span>
           </button>
           <span className="ia-compositor-espaco" />
           {ocupado
@@ -783,6 +848,8 @@ function Compositor({ valor, mudar, enviar, cancelar, ocupado, bloqueio, exemplo
       {painelAjustes}
       <p id="ia-dica" className="ia-dica">
         <span id="ia-modo-desc">{descricaoDoModo}</span>
+        <span id="ia-modelo-desc" className="sr-only"> {descricaoDoModelo}</span>
+        {modeloAlterado && <> · <button type="button" className="ia-link" onClick={restaurarModelo}>{t('Voltar ao modelo padrão (Haiku)', 'Back to the default model (Haiku)')}</button></>}
         {' · '}
         {ocupado ? t('Esc ou Cancelar interrompem a análise', 'Esc or Cancel stop the analysis')
           : verificando ? t('verificando o acesso…', 'checking access…')
@@ -816,28 +883,68 @@ function Sugestoes({ lista, aoEscolher }: { lista: Sugestao[]; aoEscolher: (s: S
   );
 }
 
-/** "Explorar exemplos": todos os exemplos, por tema (as perguntas entre bases por último). */
-function Exemplos({ lista, aoEscolher }: { lista: Sugestao[]; aoEscolher: (s: Sugestao) => void }) {
+/** Anos citados na pergunta de um exemplo ("de 2014 a 2024"), para compará-los com o ano do contexto. */
+const anosDoTexto = (texto: string) => [...new Set((texto.match(/\b(?:19|20)\d{2}\b/g) ?? []).map(Number))];
+
+/**
+ * "Explorar exemplos": primeiro os das bases marcadas no contexto, por tema (as perguntas entre bases por último);
+ * "Ver todos" mostra o catálogo inteiro. Cada exemplo diz o que ele muda no contexto antes de preencher o campo.
+ */
+function Exemplos({ lista, selecionados, ano, aoEscolher, fixo }: {
+  lista: Sugestao[]; selecionados: Painel[]; ano: number | null; aoEscolher: (s: Sugestao) => void; fixo: boolean;
+}) {
+  const compativel = (s: Sugestao) => s.paineis.every((p) => selecionados.includes(p));
+  const compativeis = lista.filter(compativel);
+  const [todos, setTodos] = useState(false);
+  const outros = lista.length - compativeis.length;
+  const mostrarTodos = todos || !compativeis.length;
+  const ordem = (xs: Sugestao[]) => [...xs.filter((x) => x.paineis.length === 1), ...xs.filter((x) => x.paineis.length > 1)];
   const grupos = new Map<string, Sugestao[]>();
-  for (const s of [...lista.filter((x) => x.paineis.length === 1), ...lista.filter((x) => x.paineis.length > 1)]) {
+  for (const s of ordem(mostrarTodos ? [...compativeis, ...lista.filter((x) => !compativel(x))] : compativeis)) {
     grupos.set(s.tema, [...(grupos.get(s.tema) ?? []), s]);
   }
+  const avisos = (s: Sugestao) => {
+    const itens: string[] = [];
+    const novas = s.paineis.filter((p) => !selecionados.includes(p));
+    if (novas.length) itens.push(t(`Acrescenta ao contexto: ${novas.map((p) => NOMES_PAINEIS()[p]).join(' + ')}.`, `Adds to the context: ${novas.map((p) => NOMES_PAINEIS()[p]).join(' + ')}.`));
+    const anos = anosDoTexto(s.texto);
+    if (ano && anos.length && !anos.every((a) => a === ano)) {
+      itens.push(t(`Período da pergunta: ${anos.length > 1 ? `${anos[0]}–${anos.at(-1)}` : anos[0]}. O contexto tem ${ano}; vale o da pergunta.`,
+        `Period of the question: ${anos.length > 1 ? `${anos[0]}–${anos.at(-1)}` : anos[0]}. The context has ${ano}; the question's period applies.`));
+    }
+    if (s.nota) itens.push(s.nota);
+    return itens;
+  };
   return (
     <>
-      <p className="ia-nota ia-exemplos-intro">{t('O exemplo preenche o campo com a pergunta completa, no contexto escolhido: revise antes de enviar.',
-        'An example fills the box with the full question, in the chosen context: review it before sending.')}</p>
+      <p className="ia-nota ia-exemplos-intro">{t('O exemplo preenche o campo com a pergunta completa: revise antes de enviar. O que a pergunta diz (lugar, período) vale mais que o contexto.',
+        'An example fills the box with the full question: review it before sending. What the question says (place, period) takes priority over the context.')}</p>
+      {!fixo && outros > 0 && compativeis.length > 0 && (
+        <p className="ia-exemplos-filtro">
+          <span>{mostrarTodos
+            ? t('Mostrando todos os exemplos.', 'Showing all examples.')
+            : t(`Mostrando os das bases selecionadas (${selecionados.map((p) => NOMES_PAINEIS()[p]).join(' + ')}).`, `Showing those for the selected datasets (${selecionados.map((p) => NOMES_PAINEIS()[p]).join(' + ')}).`)}</span>
+          <button type="button" className="ia-link" onClick={() => setTodos(!todos)} aria-pressed={todos}>
+            {todos ? t('Ver só as bases selecionadas', 'Show selected datasets only') : t(`Ver todos (${lista.length})`, `See all (${lista.length})`)}
+          </button>
+        </p>
+      )}
       {[...grupos].map(([tema, itens]) => (
         <section key={tema} className="ia-exemplos-grupo" aria-label={tema}>
           <h3>{tema}</h3>
           <ul>
-            {itens.map((s) => (
-              <li key={s.texto}>
-                <button type="button" className="ia-exemplo" onClick={() => aoEscolher(s)}>
-                  <span className="ia-exemplo-titulo">{s.titulo}</span>
-                  <span className="ia-exemplo-texto">{s.texto}</span>
-                </button>
-              </li>
-            ))}
+            {itens.map((s) => {
+              const dicas = avisos(s);
+              return (
+                <li key={s.texto}>
+                  <button type="button" className="ia-exemplo" onClick={() => aoEscolher(s)}>
+                    <span className="ia-exemplo-titulo">{s.titulo}</span>
+                    <span className="ia-exemplo-texto">{s.texto}</span>
+                    {dicas.length > 0 && <span className="ia-exemplo-aviso">{dicas.join(' ')}</span>}
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         </section>
       ))}
@@ -847,25 +954,55 @@ function Exemplos({ lista, aoEscolher }: { lista: Sugestao[]; aoEscolher: (s: Su
 
 export type SecaoAjuda = 'dados' | 'como' | 'acesso' | 'privacidade' | 'conferencia';
 
+/** Os três passos para entrar (código por e-mail, sem senha); a numeração vem do CSS e não é lida duas vezes. */
+function PassosAcesso() {
+  return (
+    <ol className="ia-entrar-passos" role="list">
+      <li><strong>{t('E-mail', 'Email')}</strong>{t('Informe um e-mail autorizado pelo LAPAM na tela de login.', 'Enter an email authorized by LAPAM on the login screen.')}</li>
+      <li><strong>{t('Código', 'Code')}</strong>{t('Digite o código de 6 dígitos recebido por e-mail (veja o spam se não chegar).', 'Type the 6-digit code you receive by email (check spam if it does not arrive).')}</li>
+      <li><strong>{t('Revisar', 'Review')}</strong>{t('Você volta a esta página com a pergunta, o contexto e o idioma; revise e envie.', 'You return to this page with your question, context and language; review and send.')}</li>
+    </ol>
+  );
+}
+
+/** "Como funciona o acesso?": direto nas instruções de entrada, sem a ajuda inteira (que fica a um botão de distância). */
+function AjudaEntrar({ entrar, aoVerTudo }: { entrar: boolean; aoVerTudo: () => void }) {
+  return (
+    <div className="ia-ajuda">
+      <p>{t('Não há senha: o acesso é por um código enviado a um e-mail autorizado pelo LAPAM.', 'There is no password: access is by a code sent to an email authorized by LAPAM.')}</p>
+      <PassosAcesso />
+      <p className="ia-nota">{t('O código não chegou em alguns minutos? O e-mail pode não estar autorizado: peça a inclusão ao LAPAM. Cada conta tem um limite diário de perguntas.',
+        'No code after a few minutes? The email may not be authorized: ask LAPAM to add it. Each account has a daily question limit.')}</p>
+      <p className="ia-entrar-acoes">
+        {entrar && <a className="ia-botao-primario" href={urlEntrar()}>{t('Entrar para perguntar', 'Sign in to ask')}</a>}
+        <button type="button" className="ia-botao-leve" onClick={aoVerTudo}>{t('Ver toda a ajuda', 'See all help')}</button>
+      </p>
+    </div>
+  );
+}
+
+const irParaSecao = (secao: SecaoAjuda) => {
+  const h = document.getElementById(`ia-ajuda-${secao}`);
+  h?.scrollIntoView({ block: 'start' });
+  h?.focus({ preventScroll: true });
+};
+
 /** Ajuda da IA: dados disponíveis, funcionamento, acesso, privacidade e conferência, em seções; abre na pedida. */
 function Ajuda({ secao, paineis, cobertura, estado, conta }: {
   secao: SecaoAjuda | null; paineis: Painel[]; cobertura: Cobertura; estado: EstadoIa | null | undefined; conta: string | null;
 }) {
   useEffect(() => {
-    if (!secao) return;
-    const h = document.getElementById(`ia-ajuda-${secao}`);
-    h?.scrollIntoView({ block: 'start' });
-    h?.focus({ preventScroll: true });
+    if (secao) irParaSecao(secao);
   }, [secao]);
   const linhas = descreverCobertura(PAINEIS, cobertura);
   return (
     <div className="ia-ajuda">
+      {/* botões, não âncoras: navegar dentro da ajuda não deve deixar fragmentos (#…) nem entradas no histórico */}
       <nav className="ia-ajuda-indice" aria-label={t('Seções da ajuda', 'Help sections')}>
-        <a href="#ia-ajuda-dados">{t('Dados disponíveis', 'Available data')}</a>
-        <a href="#ia-ajuda-como">{t('Como funciona', 'How it works')}</a>
-        <a href="#ia-ajuda-acesso">{t('Acesso', 'Access')}</a>
-        <a href="#ia-ajuda-privacidade">{t('Privacidade', 'Privacy')}</a>
-        <a href="#ia-ajuda-conferencia">{t('Conferência', 'Checking')}</a>
+        {([['dados', t('Dados disponíveis', 'Available data')], ['como', t('Como funciona', 'How it works')], ['acesso', t('Acesso', 'Access')],
+          ['privacidade', t('Privacidade', 'Privacy')], ['conferencia', t('Conferência', 'Checking')]] as [SecaoAjuda, string][]).map(([id, nome]) => (
+          <button key={id} type="button" onClick={() => irParaSecao(id)}>{nome}</button>
+        ))}
       </nav>
       <section aria-labelledby="ia-ajuda-dados">
         <h3 id="ia-ajuda-dados" tabIndex={-1}>{t('Dados disponíveis', 'Available data')}</h3>
@@ -883,14 +1020,7 @@ function Ajuda({ secao, paineis, cobertura, estado, conta }: {
         <h3 id="ia-ajuda-acesso" tabIndex={-1}>{t('Acesso', 'Access')}</h3>
         <p>{t('O acesso é restrito a e-mails autorizados pelo LAPAM. Não há senha: você entra com um código enviado ao seu e-mail.',
           'Access is restricted to emails authorized by LAPAM. There is no password: you sign in with a code sent to your email.')}</p>
-        <ol className="ia-entrar-passos">
-          <li><strong>{t('E-mail', 'Email')}</strong>{t('Clique em “Entrar para perguntar” e digite seu e-mail na tela de login (em inglês, do Cloudflare Access, o serviço que protege o acesso).',
-            'Click “Sign in to ask” and type your email on the login screen (from Cloudflare Access, the service that protects access).')}</li>
-          <li><strong>{t('Código', 'Code')}</strong>{t('Clique em “Send login code” e abra o e-mail com o código de 6 dígitos. Se não chegar, veja o spam.',
-            'Click “Send login code” and open the email with the 6-digit code. If it does not arrive, check your spam folder.')}</li>
-          <li><strong>{t('Pronto', 'Done')}</strong>{t('Digite o código: você volta para esta página com a pergunta, o contexto e o idioma, e pode revisar antes de enviar.',
-            'Enter the code: you come back to this page with your question, context and language, and can review before sending.')}</li>
-        </ol>
+        <PassosAcesso />
         <p>{t('O código não chegou em alguns minutos? O e-mail pode não estar autorizado: peça a inclusão ao LAPAM. Cada conta tem um limite diário de perguntas.',
           'No code after a few minutes? The email may not be authorized: ask LAPAM to add it. Each account has a daily question limit.')}</p>
         {estado && <Conta estado={estado} />}
@@ -923,7 +1053,7 @@ function Conta({ estado }: { estado: EstadoIa }) {
   return (
     <p className="ia-conta">
       {estado.email} · {t(`${estado.restantes} de ${estado.limite} perguntas restantes hoje`, `${estado.restantes} of ${estado.limite} questions left today`)}
-      {estado.modelo && <> · {t('modelo', 'model')} {estado.modelo.replace(/^claude-/, '').replace(/-(\d+)-(\d+)$/, ' $1.$2')}</>}
+      {estado.modelo && <> · {t('modelo padrão', 'default model')} {nomeDoModelo(estado.modelo)}</>}
       {' · '}<a href="/cdn-cgi/access/logout">{t('Sair', 'Sign out')}</a>
     </p>
   );
@@ -1362,7 +1492,7 @@ function Recorte({ p }: { p: RespostaPronta }) {
  * Detalhes para reproduzir a análise: parâmetros da pergunta, versão das bases e, para cada consulta usada,
  * as tabelas de origem e o SQL. O histórico completo (consultas refeitas, revisões) fica em "Como chegamos aqui".
  */
-function Reproducao({ p, consultas, contexto }: { p: RespostaPronta; consultas: ItemConsulta[]; contexto?: ContextoIa }) {
+function Reproducao({ p, consultas, contexto, modelo }: { p: RespostaPronta; consultas: ItemConsulta[]; contexto?: ContextoIa; modelo?: string }) {
   const versao = useVersaoDados();
   return (
     <details className="ia-metodo">
@@ -1371,6 +1501,7 @@ function Reproducao({ p, consultas, contexto }: { p: RespostaPronta; consultas: 
         {contexto && <div><dt>{t('Parâmetros', 'Parameters')}</dt><dd>{descreverContexto(contexto, p.periodo)}</dd></div>}
         {p.bases.length > 0 && <div><dt>{t('Versão das bases', 'Dataset versions')}</dt><dd>{p.bases.join('; ')}</dd></div>}
         <div><dt>{t('Dados processados em', 'Data processed on')}</dt><dd>{versao.geradoEm}</dd></div>
+        {modelo && <div><dt>{t('Modelo', 'Model')}</dt><dd>{modelo}</dd></div>}
       </dl>
       {consultas.map((c) => (
         <div key={c.id} className="ia-bloco">
@@ -1384,8 +1515,8 @@ function Reproducao({ p, consultas, contexto }: { p: RespostaPronta; consultas: 
   );
 }
 
-function Resposta({ p, modo, pergunta, consultas, contexto, notasVistas }: {
-  p: RespostaPronta; modo: Modo; pergunta: string; consultas: ItemConsulta[]; contexto?: ContextoIa;
+function Resposta({ p, modo, pergunta, consultas, contexto, modelo, notasVistas }: {
+  p: RespostaPronta; modo: Modo; pergunta: string; consultas: ItemConsulta[]; contexto?: ContextoIa; modelo?: string;
   /** Notas já mostradas em respostas anteriores da conversa. */
   notasVistas?: Set<string>;
 }) {
@@ -1413,6 +1544,7 @@ function Resposta({ p, modo, pergunta, consultas, contexto, notasVistas }: {
       <p className="ia-nota">{t('Hipóteses omitidas: a pergunta não pede explicações (ficam no apêndice de reprodução da exportação).', 'Hypotheses left out: the question does not ask for explanations (they are in the export’s reproduction appendix).')}</p>
     );
   const destaques = p.destaques.length > 0 && (
+    <>
     <ul className="ia-destaques" aria-label={t('Números principais', 'Key numbers')}>
       {p.destaques.map((x, k) => {
         const [curto, longo] = TEXTO_CONFERENCIA(x.conferencia, x.d.consulta, x.origem, x.oficial);
@@ -1440,6 +1572,11 @@ function Resposta({ p, modo, pergunta, consultas, contexto, notasVistas }: {
         );
       })}
     </ul>
+    <p className="ia-nota ia-legenda-conferencia">
+      {t('O selo ✓ confere a transcrição: o número aparece no resultado da consulta SQL indicada (ou foi calculado a partir dele). Ele não valida o método do cálculo nem compara com uma fonte oficial externa; para isso, veja as ressalvas e os detalhes.',
+        'The ✓ mark checks the transcription: the number appears in the result of the indicated SQL query (or was computed from it). It does not validate the calculation method nor compare with an external official source; for that, see the caveats and the details.')}
+    </p>
+    </>
   );
   // numeração das tabelas montadas (as que não puderam ser montadas não contam)
   let numero = 0;
@@ -1462,9 +1599,9 @@ function Resposta({ p, modo, pergunta, consultas, contexto, notasVistas }: {
       {rapida ? (
         <>
           {destaques}
+          {ressalvas}
           {tabelas}
           {graficos}
-          {ressalvas}
           {fonte && <p className="ia-fonte">{t('Fonte', 'Source')}: {fonte}</p>}
           {(r.explicacao || blocoLeituras || blocoHipoteses || p.notas.length > 0 || r.metodologia || recorteDe(p).length > 0) && (
             <details className="ia-metodo">
@@ -1477,6 +1614,7 @@ function Resposta({ p, modo, pergunta, consultas, contexto, notasVistas }: {
               {r.metodologia && <section className="ia-bloco"><h4>{t('Metodologia', 'Methodology')}</h4><TextoRico texto={r.metodologia} /></section>}
             </details>
           )}
+          <Reproducao p={p} consultas={consultas} contexto={contexto} modelo={modelo} />
         </>
       ) : (
         <>
@@ -1509,7 +1647,7 @@ function Resposta({ p, modo, pergunta, consultas, contexto, notasVistas }: {
             <TextoRico texto={r.metodologia} />
             {p.fontes.length > 0 && <ul className="ia-notas">{p.fontes.map((f) => <li key={f}>{f}</li>)}</ul>}
             <NotasVerificadas notas={p.notas} vistas={notasVistas} />
-            <Reproducao p={p} consultas={consultas} contexto={contexto} />
+            <Reproducao p={p} consultas={consultas} contexto={contexto} modelo={modelo} />
           </section>
         </>
       )}
@@ -1588,7 +1726,7 @@ function Turno({ i, turno, pronta, meta, resultados, ativo, progresso, ultimo, p
       )}
       {ativo && meta && <Andamento progresso={progresso} inicio={meta.inicio} />}
       {pronta ? (
-        <Resposta p={pronta} modo={meta?.contexto.modo ?? 'rapida'} pergunta={turno.pergunta} contexto={meta?.contexto} notasVistas={notasVistas}
+        <Resposta p={pronta} modo={meta?.contexto.modo ?? 'rapida'} pergunta={turno.pergunta} contexto={meta?.contexto} modelo={textoModelo(meta)} notasVistas={notasVistas}
           consultas={consultasDoTurno(turno).filter((c) => pronta.usadas.has(c.rotulo))} />
       ) : turno.textoFinal ? (
         <div className="ia-resposta texto-livre">
@@ -1674,18 +1812,11 @@ export function Ia() {
     };
   }, []);
   const cobertura = useMemo(() => coberturaDe(meta, microdados), [meta, microdados]);
-  // anos do seletor: os da RAIS e da DCA e, no mercado de trabalho, os das competências do Novo CAGED (o ano corrente)
-  const anos = useMemo(() => {
-    const caged = chavePaineis.includes('trabalho') && cobertura.caged
-      ? Array.from({ length: Math.floor(cobertura.caged.ate / 100) - Math.floor(cobertura.caged.de / 100) + 1 }, (_, i) => Math.floor(cobertura.caged!.de / 100) + i)
-      : [];
-    return [...new Set([
-      ...(chavePaineis.includes('trabalho') ? cobertura.rais : []),
-      ...caged,
-      ...(chavePaineis.includes('financas') ? cobertura.dca : []),
-      ...(chavePaineis.includes('saude') ? cobertura.sim ?? [] : []),
-    ])].sort((a, b) => a - b);
-  }, [cobertura, chavePaineis]);
+  // anos do seletor: os de todas as fontes das bases marcadas (fechadas e mensais), do mesmo manifesto da ajuda
+  const anos = useMemo(
+    () => [...coberturaPorAno(cobertura, chavePaineis.split(',').filter(Boolean) as Painel[]).keys()].sort((a, b) => a - b),
+    [cobertura, chavePaineis],
+  );
   const anoUrl = Number(busca.get('ano'));
   const ano = anos.includes(anoUrl) ? anoUrl : null;
   const territorio = useMemo(() => territorioDe(f.alvo, f.uf, entes), [f.alvo, f.uf, entes]);
@@ -1706,10 +1837,19 @@ export function Ia() {
   const [status, setStatus] = useState('');
   const [ajustes, setAjustes] = useState(false);
   const [exemplos, setExemplos] = useState(false);
-  const [ajuda, setAjuda] = useState<SecaoAjuda | 'inicio' | null>(null);
+  const [ajuda, setAjuda] = useState<SecaoAjuda | 'inicio' | 'entrar' | null>(null);
   const botaoContexto = useRef<HTMLButtonElement>(null);
   const [apendice, setApendice] = useState(false);
   const campo = useRef<HTMLTextAreaElement>(null);
+  // trocar a pergunta por um exemplo com rascunho no campo pede confirmação; a substituída pode ser restaurada
+  // modelo da próxima pergunta: Haiku sem preferência salva; Sonnet só por escolha explícita (guardada neste navegador)
+  const [escolhaModelo, setEscolhaModelo] = useState<EscolhaModelo>(() => lerEscolhaModelo(lerGuardado('ia-modelo')));
+  const [substituir, setSubstituir] = useState<{ texto: string; aplicar?: () => void } | null>(null);
+  const [substituida, setSubstituida] = useState<string | null>(null);
+  const textoAtual = useRef(texto);
+  textoAtual.current = texto;
+  // controle que abriu uma janela (exemplos, ajuda): o foco volta a ele ao fechá-la, mesmo onde o clique não o focou
+  const origem = useRef<HTMLElement | null>(null);
 
   // conversa aberta (null = nova, ainda sem pergunta) e o histórico guardado neste navegador
   const h = useHistorico();
@@ -1751,16 +1891,24 @@ export function Ia() {
       // só diz que a anterior está no histórico quando ela foi salva de fato (está na lista)
       const anterior = idNaTela.current;
       const salva = !!anterior && h.resumos.some((r) => r.id === anterior);
+      // um rascunho não enviado fica na conversa de origem (volta quando ela for reaberta); sem conversa salva, a
+      // confirmação já foi pedida antes de chegar aqui
+      const rascunho = textoAtual.current;
+      const guardado = salva && !!rascunho.trim();
+      if (guardado) guardarRascunhoDe(anterior!, rascunho);
       mostrar(null);
       setNaoAchada(null);
       setTexto('');
+      setSubstituida(null);
       guardar('ia-conversa-aberta', null, true);
       const b = new URLSearchParams(busca);
       b.delete('nova');
       b.delete('conversa');
       setBusca(b, { replace: true });
       setStatus(salva
-        ? t('Nova conversa iniciada. A anterior está no histórico.', 'New conversation started. The previous one is in the history.')
+        ? (guardado
+          ? t('Nova conversa iniciada. A anterior está no histórico, com o seu rascunho.', 'New conversation started. The previous one is in the history, with your draft.')
+          : t('Nova conversa iniciada. A anterior está no histórico.', 'New conversation started. The previous one is in the history.'))
         : t('Nova conversa iniciada.', 'New conversation started.'));
       focarCampo();
       return;
@@ -1791,7 +1939,18 @@ export function Ia() {
         return;
       }
       setNaoAchada(null);
+      // trocar de conversa leva o rascunho junto para a de origem e traz o que estava guardado na que abre
+      const saindo = idNaTela.current;
+      if (saindo && saindo !== c.id && textoAtual.current.trim()) {
+        guardarRascunhoDe(saindo, textoAtual.current);
+        setTexto('');
+      }
       mostrar(c);
+      const rascunho = lerRascunhos()[c.id];
+      if (rascunho) {
+        setTexto(rascunho);
+        guardarRascunhoDe(c.id, '');
+      }
       guardar('ia-conversa-aberta', c.id, true);
       // o recorte da última pergunta volta para a página: o seguimento usa o mesmo contexto
       const ctx = c.metas.at(-1)?.contexto;
@@ -1901,6 +2060,34 @@ export function Ia() {
     setFalha(null);
     focarCampo();
   };
+  // exemplos e sugestões preenchem o campo, mas nunca por cima de um rascunho sem perguntar
+  const proporTexto = (novo: string, aplicar?: () => void) => {
+    const atual = textoAtual.current.trim();
+    if (atual && atual !== novo.trim()) {
+      setSubstituir({ texto: novo, aplicar });
+      return;
+    }
+    aplicar?.();
+    usarTexto(novo);
+  };
+  const confirmarSubstituicao = () => {
+    const s = substituir;
+    if (!s) return;
+    setSubstituir(null);
+    setExemplos(false);
+    setSubstituida(textoAtual.current);
+    s.aplicar?.();
+    usarTexto(s.texto);
+  };
+  const manterRascunho = () => {
+    setSubstituir(null);
+    setExemplos(false);
+    focarCampo();
+  };
+  const abrirVista = (abrir: () => void) => (e: { currentTarget: HTMLElement }) => {
+    origem.current = e.currentTarget;
+    abrir();
+  };
 
   const ocupadaFora = !!aberta && !rodando && h.emAndamento.includes(aberta.id);
   const bloqueio = ocupadaFora
@@ -1939,10 +2126,11 @@ export function Ia() {
     }
     const naTela = () => montada.current && idNaTela.current === id;
     const controle = new AbortController();
-    const inicio: MetaTurno = { contexto, inicio: Date.now(), dados: meta.geradoEm, ...(estado?.modelo ? { modelo: estado.modelo } : {}) };
+    const inicio: MetaTurno = { contexto, inicio: Date.now(), dados: meta.geradoEm, escolhaModelo };
     // resultados da conversa com os desta pergunta, para gravá-la mesmo que a página já não esteja nela
     const res: Record<string, Resultado> = { ...resultados };
     setTexto('');
+    setSubstituida(null);
     setFalha(null);
     setAjustes(false);
     setMetas([...metas, inicio]);
@@ -1953,7 +2141,7 @@ export function Ia() {
     try {
       const r = await perguntarIa({
         historico: mensagens, resultados, ultimaCompetencia, pergunta, contexto: contextoParaModelo(contexto, cobertura), idioma: idioma(),
-        paineis: contexto.paineis, sinal: controle.signal, modo: contexto.modo, cobertura,
+        paineis: contexto.paineis, sinal: controle.signal, modo: contexto.modo, cobertura, modelo: escolhaModelo,
         aoAtualizar: (m) => {
           if (naTela()) setMensagens(m);
         },
@@ -1966,7 +2154,11 @@ export function Ia() {
         },
         aoRestantes: (n) => setEstado((e) => (e ? { ...e, restantes: n } : e)),
       });
-      const feita: MetaTurno = { ...inicio, fim: Date.now(), desfecho: r.desfecho, detalhe: r.detalhe, etapas: r.etapas, registro: registroDoTurno(r.mensagens, res, pergunta) };
+      const feita: MetaTurno = {
+        ...inicio, fim: Date.now(), desfecho: r.desfecho, detalhe: r.detalhe, etapas: r.etapas, registro: registroDoTurno(r.mensagens, res, pergunta),
+        // o modelo que de fato respondeu (o ID devolvido pela API) e o consumo somado das chamadas desta resposta
+        ...(r.modelo ? { modelo: r.modelo } : {}), uso: r.uso,
+      };
       // com login, a conversa (inclusive uma que estava só neste navegador) é gravada na conta
       const conversa: Conversa = {
         ...base, conta: h.conta ?? base.conta, atualizadaEm: Date.now(), mensagens: r.mensagens, metas: [...antes.metas, feita], resultados: res,
@@ -2094,6 +2286,14 @@ export function Ia() {
     else b.delete('ano');
     setBusca(b, { replace: true });
   };
+  const definirModelo = (m: EscolhaModelo) => {
+    setEscolhaModelo(m);
+    guardar('ia-modelo', m);
+  };
+  const restaurarModelo = () => {
+    setEscolhaModelo(MODELO_PADRAO);
+    guardar('ia-modelo', null);
+  };
   const definirModo = (m: Modo) => {
     setModo(m);
     guardar('ia-modo', m);
@@ -2115,6 +2315,15 @@ export function Ia() {
     setAjustes(false);
     botaoContexto.current?.focus();
   };
+  // ao abrir o contexto, o foco vai ao primeiro filtro: o painel vem depois do botão de enviar na ordem do DOM, e o Tab
+  // do botão do contexto cairia no envio. Esc ou "Concluir" devolvem o foco ao botão.
+  useEffect(() => {
+    if (!ajustes) return;
+    const id = requestAnimationFrame(() => {
+      document.querySelector<HTMLElement>('#ia-ajustes input:not(:disabled), #ia-ajustes select')?.focus();
+    });
+    return () => cancelAnimationFrame(id);
+  }, [ajustes]);
   const painelAjustes = ajustes && (
     <Ajustes paineis={paineis} alternarPainel={alternarPainel} travarPaineis={conversa || !!rodando} anos={anos} ano={ano}
       rotulo={(a) => rotuloDoAno(a, cobertura, contexto.paineis)} definirAno={definirAno}
@@ -2122,15 +2331,16 @@ export function Ia() {
   );
   // um exemplo de outra base, antes da 1ª pergunta, acrescenta a base ao contexto (depois as bases ficam fixas)
   const escolherExemplo = (s: Sugestao) => {
-    if (!conversa && !rodando && !s.paineis.every((x) => paineis.includes(x))) {
-      const novos = PAINEIS.filter((x) => paineis.includes(x) || s.paineis.includes(x));
-      const b = new URLSearchParams(busca);
-      if (novos.length === PAINEIS.length) b.delete('paineis');
-      else b.set('paineis', novos.join(','));
-      setBusca(b, { replace: true });
-    }
-    setExemplos(false);
-    usarTexto(s.texto);
+    proporTexto(s.texto, () => {
+      if (!conversa && !rodando && !s.paineis.every((x) => paineis.includes(x))) {
+        const novos = PAINEIS.filter((x) => paineis.includes(x) || s.paineis.includes(x));
+        const b = new URLSearchParams(busca);
+        if (novos.length === PAINEIS.length) b.delete('paineis');
+        else b.set('paineis', novos.join(','));
+        setBusca(b, { replace: true });
+      }
+      setExemplos(false);
+    });
   };
   const listaExemplos = sugestoes(conversa ? paineis : PAINEIS, territorio, cobertura, ano)
     .filter((s) => !conversa || s.paineis.every((x) => paineis.includes(x)));
@@ -2153,10 +2363,17 @@ export function Ia() {
     <Compositor valor={texto} mudar={setTexto} enviar={enviar} cancelar={cancelar} ocupado={!!rodando}
       bloqueio={estado === null || (estado === undefined && !falhaEstado) ? null : bloqueio}
       exemplo={exemplo} grande={!conversa} campo={campo}
-      modo={<SeletorModo modo={modo} definir={definirModo} travado={!!rodando} />} descricaoDoModo={descricaoModo(modo)}
+      modo={<><SeletorModo modo={modo} definir={definirModo} travado={!!rodando} /><SeletorModelo escolha={escolhaModelo} definir={definirModelo} travado={!!rodando} /></>}
+      descricaoDoModo={descricaoModo(modo)} descricaoDoModelo={descricaoModelo(escolhaModelo)} modeloAlterado={escolhaModelo !== MODELO_PADRAO} restaurarModelo={restaurarModelo}
       resumo={resumoContexto(contexto)} ajustesAbertos={ajustes} alternarAjustes={() => setAjustes(!ajustes)} botaoContexto={botaoContexto}
       painelAjustes={painelAjustes} entrar={estado === null} verificando={estado === undefined && !falhaEstado}
-      aoComoAcesso={() => setAjuda('acesso')} alerta={poucas} />
+      aoComoAcesso={abrirVista(() => setAjuda('entrar'))} alerta={poucas} />
+  );
+  const restaurar = substituida !== null && (
+    <p className="ia-nota ia-restaurar" role="status">
+      {t('Pergunta anterior substituída.', 'Previous question replaced.')}{' '}
+      <button type="button" className="ia-link" onClick={() => { usarTexto(substituida); setSubstituida(null); }}>{t('Restaurar rascunho', 'Restore draft')}</button>
+    </p>
   );
   const aviso = falha && (
     <div className="ia-falha" role="alert">
@@ -2226,11 +2443,25 @@ export function Ia() {
   );
   const dialogos = (
     <>
-      <Dialogo aberto={exemplos} aoFechar={() => setExemplos(false)} titulo={t('Explorar exemplos', 'Explore examples')}>
-        <Exemplos lista={listaExemplos} aoEscolher={escolherExemplo} />
+      <Dialogo aberto={exemplos} aoFechar={() => setExemplos(false)} retorno={origem} titulo={t('Explorar exemplos', 'Explore examples')}>
+        <Exemplos lista={listaExemplos} selecionados={paineis} ano={ano} aoEscolher={escolherExemplo} fixo={conversa} />
       </Dialogo>
-      <Dialogo aberto={ajuda !== null} aoFechar={() => setAjuda(null)} titulo={t('Ajuda', 'Help')}>
-        <Ajuda secao={ajuda === 'inicio' ? null : ajuda} paineis={contexto.paineis} cobertura={cobertura} estado={estado} conta={h.conta} />
+      <Dialogo aberto={ajuda !== null} aoFechar={() => setAjuda(null)} retorno={origem}
+        titulo={ajuda === 'entrar' ? t('Como funciona o acesso', 'How access works') : t('Ajuda', 'Help')}>
+        {ajuda === 'entrar'
+          ? <AjudaEntrar entrar={estado === null} aoVerTudo={() => setAjuda('acesso')} />
+          : <Ajuda secao={ajuda === 'inicio' ? null : ajuda} paineis={contexto.paineis} cobertura={cobertura} estado={estado} conta={h.conta} />}
+      </Dialogo>
+      <Dialogo aberto={substituir !== null} aoFechar={() => setSubstituir(null)} titulo={t('Substituir a pergunta escrita?', 'Replace the question you wrote?')}
+        rodape={(
+          <>
+            <button type="button" className="ia-botao-leve" onClick={manterRascunho}>{t('Manter rascunho', 'Keep draft')}</button>
+            <button type="button" className="ia-botao-primario" onClick={confirmarSubstituicao}>{t('Substituir pergunta', 'Replace question')}</button>
+          </>
+        )}>
+        <p>{t('O campo já tem um rascunho. Escolha o que fazer com ele:', 'The box already has a draft. Choose what to do with it:')}</p>
+        <blockquote className="ia-rascunho-citado">{texto}</blockquote>
+        <p className="ia-nota">{t('Ao substituir, você ainda pode restaurar o rascunho logo abaixo do campo.', 'If you replace it, you can still restore the draft just below the box.')}</p>
       </Dialogo>
     </>
   );
@@ -2261,12 +2492,13 @@ export function Ia() {
           <p className="ia-descricao">{subtitulo(contexto.paineis)}</p>
           {acesso}
           {compositor}
+          {restaurar}
           {aviso}
           <Sugestoes lista={sugestoes(contexto.paineis, territorio, cobertura, ano)} aoEscolher={escolherExemplo} />
           <p className="ia-links">
-            <button type="button" className="ia-link" onClick={() => setExemplos(true)}><Icone nome="ideia" tamanho={15} /> {t('Explorar exemplos', 'Explore examples')}</button>
-            <button type="button" className="ia-link" onClick={() => setAjuda('dados')}><Icone nome="dados" tamanho={15} /> {t('Dados disponíveis', 'Available data')}</button>
-            <button type="button" className="ia-link" onClick={() => setAjuda('inicio')}><Icone nome="ajuda" tamanho={15} /> {t('Ajuda', 'Help')}</button>
+            <button type="button" className="ia-link" onClick={abrirVista(() => setExemplos(true))}><Icone nome="ideia" tamanho={15} /> {t('Explorar exemplos', 'Explore examples')}</button>
+            <button type="button" className="ia-link" onClick={abrirVista(() => setAjuda('dados'))}><Icone nome="dados" tamanho={15} /> {t('Dados disponíveis', 'Available data')}</button>
+            <button type="button" className="ia-link" onClick={abrirVista(() => setAjuda('inicio'))}><Icone nome="ajuda" tamanho={15} /> {t('Ajuda', 'Help')}</button>
           </p>
           {conferir}
         </section>
@@ -2349,7 +2581,7 @@ export function Ia() {
             {lista.map((turno, i) => (
               <Turno key={i} i={i} turno={turno} pronta={prontas[i]} meta={metas[i]} resultados={resultados} notasVistas={notasVistas[i]}
                 ativo={!!rodando && i === lista.length - 1} progresso={progresso} ultimo={i === lista.length - 1} paineis={contexto.paineis}
-                feitas={feitas} aoEditar={editarUltima} aoUsar={usarTexto} aoCopiar={copiar} aoPedirConferencia={conferencia(i)} />
+                feitas={feitas} aoEditar={editarUltima} aoUsar={(x) => proporTexto(x)} aoCopiar={copiar} aoPedirConferencia={conferencia(i)} />
             ))}
             {aviso}
           </div>
@@ -2370,9 +2602,10 @@ export function Ia() {
             )}
             {acesso}
             {compositor}
+            {restaurar}
             <p className="ia-links ia-links-rodape">
-              <button type="button" className="ia-link" onClick={() => setExemplos(true)}><Icone nome="ideia" tamanho={14} /> {t('Exemplos', 'Examples')}</button>
-              <button type="button" className="ia-link" onClick={() => setAjuda('inicio')}><Icone nome="ajuda" tamanho={14} /> {t('Ajuda', 'Help')}</button>
+              <button type="button" className="ia-link" onClick={abrirVista(() => setExemplos(true))}><Icone nome="ideia" tamanho={14} /> {t('Exemplos', 'Examples')}</button>
+              <button type="button" className="ia-link" onClick={abrirVista(() => setAjuda('inicio'))}><Icone nome="ajuda" tamanho={14} /> {t('Ajuda', 'Help')}</button>
               <span className="ia-nota">{t('Respostas geradas por IA podem conter erros: confira as consultas.', 'AI-generated answers may contain errors: check the queries.')}</span>
             </p>
           </div>

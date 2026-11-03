@@ -34,8 +34,12 @@ export type MetaTurno = {
   contexto: ContextoIa; inicio: number; fim?: number; desfecho?: Desfecho; detalhe?: string | null;
   /** Versão dos dados (manifesto.geradoEm) quando a pergunta foi feita. */
   dados?: string;
-  /** Modelo do Worker (IA_MODELO) quando a pergunta foi feita. */
+  /** Modelo que respondeu (o ID devolvido pela API); ausente nas conversas antigas ("Modelo não registrado"). */
   modelo?: string;
+  /** Escolha da pessoa para essa pergunta (haiku ou sonnet). */
+  escolhaModelo?: 'haiku' | 'sonnet';
+  /** Chamadas e tokens da resposta, somados (consumo para estimar o custo). */
+  uso?: { chamadas: number; entrada: number; saida: number; cache_lido: number; cache_escrito: number };
   /** Tempo de cada etapa (chamadas ao modelo, consultas, revisão), em ms: para medir antes de otimizar. */
   etapas?: Etapa[];
   registro?: RegistroTurno;
