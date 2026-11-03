@@ -13,6 +13,7 @@ o painel nunca publica linha a linha.
 Uso:
     py pipeline/saude_micro.py                       # converte o que falta, em paralelo
     py pipeline/saude_micro.py --sistemas SIM SINASC  # pastas do primeiro nível de --brutos
+    py pipeline/saude_micro.py --sistemas SIHSUS --filtro "200801_/Dados/RD"   # só as AIH reduzidas de 2008 em diante
     py pipeline/saude_micro.py --refazer
 """
 import argparse
@@ -88,6 +89,7 @@ def main():
     p.add_argument("--saida", default=os.environ.get("SAUDE_MICRO", "E:/finbra/micro/saude/dbc"))
     p.add_argument("--sistemas", nargs="*")
     p.add_argument("--processos", type=int, default=max(1, (os.cpu_count() or 2) - 2))
+    p.add_argument("--filtro", help="só os .dbc cujo caminho (relativo a --brutos, com /) contém este texto")
     p.add_argument("--refazer", action="store_true")
     a = p.parse_args()
     brutos, saida = Path(a.brutos), Path(a.saida)
@@ -96,6 +98,8 @@ def main():
     for pasta in pastas:
         for dbc in pasta.rglob("*"):
             if dbc.suffix.lower() != ".dbc":
+                continue
+            if a.filtro and a.filtro not in dbc.relative_to(brutos).as_posix():
                 continue
             alvo = (saida / dbc.relative_to(brutos)).with_suffix(".parquet")
             if a.refazer or not alvo.exists() or alvo.stat().st_mtime < dbc.stat().st_mtime:
