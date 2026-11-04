@@ -32,6 +32,9 @@ const G_CAUSAS = () => t('Causas de morte', 'Causes of death');
 
 const G_INT = () => t('Internações (SIH/SUS)', 'Hospital admissions (SIH/SUS)');
 const G_REDE = () => t('Rede de saúde (CNES)', 'Health network (CNES)');
+const G_AGRAVOS = () => t('Agravos notificados (SINAN)', 'Notifiable diseases (SINAN)');
+const RESSALVA_SINAN = () => t('Notificação depende da vigilância local: onde se notifica menos, aparece menos (subnotificação), e surtos fazem os números oscilar muito de um ano para outro. Pode diferir dos boletins do Ministério, que aplicam exclusões e atualizações próprias.',
+  'Notification depends on local surveillance: where less is reported, less appears (under-reporting), and outbreaks make numbers swing from year to year. It may differ from the Ministry’s bulletins, which apply their own exclusions and updates.');
 const RESSALVA_CNES = () => t('Conta o que está no município do estabelecimento (não o de residência de quem usa) e o retrato de dezembro; municípios com hospital regional têm valores altos por habitante porque atendem moradores de outros.',
   'Counts what is in the municipality of the facility (not the residence of its users) and the December snapshot; municipalities with a regional hospital have high per-capita values because they serve residents of others.');
 
@@ -206,6 +209,45 @@ export const INDICADORES: Indicador[] = [
     unidade: () => t('% dos leitos existentes', '% of existing beds'), numerador: 'cnes_leitos_sus', denominador: 'cnes_leitos', fator: 1, tipo: 'proporcao', minimo: 20,
     nota: () => t('Leitos SUS ÷ leitos existentes no município. Pode passar de 100% em municípios pequenos por inconsistência de cadastro (leitos SUS maiores que os existentes).', 'SUS beds ÷ existing beds in the municipality. It can exceed 100% in small municipalities because of registry inconsistencies (SUS beds greater than existing).'),
   },
+  // agravos de notificação (SINAN), arquivos finais, por município de residência e ano do arquivo
+  {
+    id: 'dengue_incidencia', grupo: G_AGRAVOS, nome: () => t('Dengue: casos prováveis', 'Dengue: probable cases'),
+    unidade: () => t('por 100 mil habitantes', 'per 100,000 inhabitants'), numerador: 'sinan_dengue_provaveis', denominador: 'populacao', fator: 100000, tipo: 'taxa', minimo: 5000,
+    nota: () => t(`Casos de dengue notificados e não descartados (os arquivos públicos do SINAN já excluem os descartados) ÷ população residente × 100.000. ${RESSALVA_SINAN()}`, `Dengue cases notified and not discarded (the public SINAN files already exclude discarded ones) ÷ resident population × 100,000. ${RESSALVA_SINAN()}`),
+  },
+  {
+    id: 'dengue_letalidade', grupo: G_AGRAVOS, nome: () => t('Dengue: letalidade entre os confirmados', 'Dengue: case fatality among confirmed'),
+    unidade: () => t('% dos casos confirmados', '% of confirmed cases'), numerador: 'sinan_dengue_obitos', denominador: 'sinan_dengue_confirmados', fator: 1, tipo: 'proporcao', minimo: 100,
+    nota: () => t(`Óbitos pelo agravo (evolução = óbito pelo agravo) entre os casos confirmados ÷ casos confirmados (classificação final dengue, com sinais de alarme ou grave; nos anos antigos, dengue clássica, com complicações, FHD ou SCD). ${RESSALVA_SINAN()}`,
+      `Deaths from the disease (outcome = death from the disease) among confirmed cases ÷ confirmed cases (final classification dengue, with warning signs or severe; in old years, classic dengue, with complications, DHF or DSS). ${RESSALVA_SINAN()}`),
+  },
+  {
+    id: 'dengue_graves', grupo: G_AGRAVOS, nome: () => t('Dengue: proporção de casos graves', 'Dengue: share of severe cases'),
+    unidade: () => t('% dos casos confirmados', '% of confirmed cases'), numerador: 'sinan_dengue_graves', denominador: 'sinan_dengue_confirmados', fator: 1, tipo: 'proporcao', minimo: 100,
+    nota: () => t(`Dengue grave (classificação 12, ou FHD e SCD nos anos antigos) ÷ casos confirmados. ${RESSALVA_SINAN()}`, `Severe dengue (classification 12, or DHF and DSS in old years) ÷ confirmed cases. ${RESSALVA_SINAN()}`),
+  },
+  {
+    id: 'chik_incidencia', grupo: G_AGRAVOS, nome: () => t('Chikungunya: casos confirmados', 'Chikungunya: confirmed cases'),
+    unidade: () => t('por 100 mil habitantes', 'per 100,000 inhabitants'), numerador: 'sinan_chik_confirmados', denominador: 'populacao', fator: 100000, tipo: 'taxa', minimo: 5000,
+    nota: () => t(`Casos de chikungunya com classificação final confirmada ÷ população residente × 100.000 (de 2014 em diante). ${RESSALVA_SINAN()}`, `Chikungunya cases with a confirmed final classification ÷ resident population × 100,000 (from 2014). ${RESSALVA_SINAN()}`),
+  },
+  {
+    id: 'tb_incidencia', grupo: G_AGRAVOS, nome: () => t('Tuberculose: casos novos', 'Tuberculosis: new cases'),
+    unidade: () => t('por 100 mil habitantes', 'per 100,000 inhabitants'), numerador: 'sinan_tb_casos_novos', denominador: 'populacao', fator: 100000, tipo: 'taxa', minimo: 5000,
+    nota: () => t(`Notificações com tipo de entrada "caso novo" (sem recidiva, reingresso após abandono, transferência nem diagnóstico pós-óbito) ÷ população residente × 100.000. Os arquivos finais do SINAN só vão até 2019; depois disso a tuberculose passou a outro sistema. ${RESSALVA_SINAN()}`,
+      `Notifications with entry type "new case" (no relapse, return after default, transfer or post-mortem diagnosis) ÷ resident population × 100,000. The final SINAN files only go to 2019; afterwards tuberculosis moved to another system. ${RESSALVA_SINAN()}`),
+  },
+  {
+    id: 'hans_deteccao', grupo: G_AGRAVOS, nome: () => t('Hanseníase: casos novos', 'Leprosy: new cases'),
+    unidade: () => t('por 100 mil habitantes', 'per 100,000 inhabitants'), numerador: 'sinan_hans_casos_novos', denominador: 'populacao', fator: 100000, tipo: 'taxa', minimo: 5000,
+    nota: () => t(`Notificações com modo de entrada "caso novo" ÷ população residente × 100.000 (taxa de detecção). ${RESSALVA_SINAN()}`, `Notifications with entry mode "new case" ÷ resident population × 100,000 (detection rate). ${RESSALVA_SINAN()}`),
+  },
+  {
+    id: 'violencia_notificada', grupo: G_AGRAVOS, nome: () => t('Violência interpessoal e autoprovocada notificada', 'Notified interpersonal and self-harm violence'),
+    unidade: () => t('por 100 mil habitantes', 'per 100,000 inhabitants'), numerador: 'sinan_viol_notificacoes', denominador: 'populacao', fator: 100000, tipo: 'taxa', minimo: 5000,
+    nota: () => t(`Notificações de violência (SINAN-VIVA) ÷ população residente × 100.000. Mede a notificação, não a ocorrência: municípios com mais serviços que notificam aparecem com mais violência, e a cobertura cresceu muito desde 2009. ${RESSALVA_SINAN()}`,
+      `Violence notifications (SINAN-VIVA) ÷ resident population × 100,000. It measures notification, not occurrence: municipalities with more reporting services appear to have more violence, and coverage grew a lot since 2009. ${RESSALVA_SINAN()}`),
+  },
 ];
 
 export const indicador = (id: string | null | undefined) => INDICADORES.find((i) => i.id === id) ?? INDICADORES[0];
@@ -238,13 +280,17 @@ export const nomeContagem = (c: string): string => ({
   pop_0_4: t('População de 0 a 4 anos', 'Population aged 0–4'),
   cnes_leitos: t('Leitos existentes', 'Existing beds'), cnes_leitos_sus: t('Leitos SUS', 'SUS beds'), cnes_medicos: t('Médicos', 'Physicians'),
   cnes_enfermeiros: t('Enfermeiros', 'Nurses'), cnes_estab: t('Estabelecimentos', 'Facilities'),
+  sinan_dengue_provaveis: t('Casos prováveis de dengue', 'Probable dengue cases'), sinan_dengue_confirmados: t('Casos confirmados de dengue', 'Confirmed dengue cases'),
+  sinan_dengue_graves: t('Casos graves de dengue', 'Severe dengue cases'), sinan_dengue_obitos: t('Óbitos por dengue (confirmados)', 'Dengue deaths (confirmed)'),
+  sinan_chik_confirmados: t('Casos confirmados de chikungunya', 'Confirmed chikungunya cases'), sinan_tb_casos_novos: t('Casos novos de tuberculose', 'New tuberculosis cases'),
+  sinan_hans_casos_novos: t('Casos novos de hanseníase', 'New leprosy cases'), sinan_viol_notificacoes: t('Notificações de violência', 'Violence notifications'),
 }[c] ?? c);
 
 export const formatar = (ind: Indicador, v: number | null | undefined) => (ind.tipo === 'proporcao' ? pct(v) : numero1(v));
 
 export const fonteSaude = () => t(
-  'SIM (Sistema de Informações sobre Mortalidade), SINASC (Sistema de Informações sobre Nascidos Vivos), SIH (Sistema de Informações Hospitalares do SUS) e CNES (Cadastro Nacional de Estabelecimentos de Saúde), Ministério da Saúde/DATASUS, microdados públicos por município de residência; população: estimativas da SVS/MS por município, sexo e idade (2000 em diante). Processamento: LAPAM/UFG.',
-  'SIM (Mortality Information System), SINASC (Live Birth Information System), SIH (SUS Hospital Information System) and CNES (National Registry of Health Facilities), Ministry of Health/DATASUS, public microdata by municipality of residence; population: SVS/MS estimates by municipality, sex and age (2000 onwards). Processing: LAPAM/UFG.',
+  'SIM (Sistema de Informações sobre Mortalidade), SINASC (Sistema de Informações sobre Nascidos Vivos), SIH (Sistema de Informações Hospitalares do SUS), CNES (Cadastro Nacional de Estabelecimentos de Saúde) e SINAN (agravos de notificação), Ministério da Saúde/DATASUS, microdados públicos por município de residência; população: estimativas da SVS/MS por município, sexo e idade (2000 em diante). Processamento: LAPAM/UFG.',
+  'SIM (Mortality Information System), SINASC (Live Birth Information System), SIH (SUS Hospital Information System), CNES (National Registry of Health Facilities) and SINAN (notifiable diseases), Ministry of Health/DATASUS, public microdata by municipality of residence; population: SVS/MS estimates by municipality, sex and age (2000 onwards). Processing: LAPAM/UFG.',
 );
 
 /** Capítulos da CID-10 (causa básica do óbito), na ordem das colunas cap01…cap22. */

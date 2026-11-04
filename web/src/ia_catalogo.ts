@@ -13,7 +13,7 @@ import type { Cobertura } from './ia';
 import type { TipoColuna } from './ia_formato';
 
 /** Fonte cujos anos (do manifesto) dão a cobertura temporal da coluna. */
-export type ChaveCobertura = 'dca' | 'pib' | 'rais' | 'sim' | 'sinasc' | 'sih' | 'cnes';
+export type ChaveCobertura = 'dca' | 'pib' | 'rais' | 'sim' | 'sinasc' | 'sih' | 'cnes' | 'sinan';
 
 export type Coluna = {
   tipo: TipoColuna;
@@ -47,6 +47,8 @@ const sih = (x: Omit<Coluna, 'fonte' | 'tipo'> & { tipo?: TipoColuna }): Coluna 
 const CAP_SIH = ['infecciosas e parasitárias (A00–B99)', 'neoplasias (C00–D48)', 'sangue e imunidade (D50–D89)', 'endócrinas, nutricionais e metabólicas (E00–E90)', 'transtornos mentais (F00–F99)', 'sistema nervoso (G00–G99)', 'olho (H00–H59)', 'ouvido (H60–H95)', 'aparelho circulatório (I00–I99)', 'aparelho respiratório (J00–J99)', 'aparelho digestivo (K00–K93)', 'pele (L00–L99)', 'osteomuscular (M00–M99)', 'geniturinário (N00–N99)', 'gravidez, parto e puerpério (O00–O99)', 'afecções perinatais (P00–P96)', 'malformações congênitas (Q00–Q99)', 'mal definidas (R00–R99)', 'lesões e envenenamentos (S00–T98)', 'causas externas (V01–Y98)', 'fatores que influenciam o estado de saúde (Z00–Z99)', 'códigos especiais (U00–U99)'];
 const CNES_F = 'Ministério da Saúde/DATASUS: CNES (retrato de dezembro; município do estabelecimento)';
 const cnes = (x: Omit<Coluna, 'fonte' | 'tipo'>): Coluna => ({ tipo: 'contagem', fonte: CNES_F, tabelas: ['saude_municipios'], cobertura: 'cnes', territorio: 'municípios onde fica o estabelecimento', ressalva: 'retrato de dezembro; conta o que está no município (não o de residência de quem usa), então polos regionais têm valores altos por habitante', ...x });
+const SINAN_F = 'Ministério da Saúde/DATASUS: SINAN (agravos de notificação, arquivos finais, por município de residência)';
+const sinan = (x: Omit<Coluna, 'fonte' | 'tipo'>): Coluna => ({ tipo: 'contagem', fonte: SINAN_F, tabelas: ['saude_municipios'], cobertura: 'sinan', territorio: 'municípios de residência', ressalva: 'depende da vigilância local (subnotificação) e oscila com surtos; pode diferir dos boletins do Ministério', ...x });
 const FUNCOES = 'função de governo 04 (Portaria MOG 42/1999)';
 
 const TERR_DCA = 'municípios e estados (com o DF) que entregaram a DCA do exercício';
@@ -101,6 +103,15 @@ export const COLUNAS: Record<string, Coluna> = {
   cnes_medicos_vinculos: cnes({ rotulo: 'vínculos de médicos', definicao: 'número de vínculos de médicos com estabelecimentos do município (a mesma pessoa conta uma vez por estabelecimento e por CBO)', ressalva: 'é vínculo, não pessoa; retrato de dezembro' }),
   cnes_enfermeiros: cnes({ rotulo: 'enfermeiros', definicao: 'pessoas (CNS) com vínculo de enfermeiro (CBO 2235), cada uma uma só vez no ano, no município do vínculo de maior carga horária', ressalva: 'de 2007 em diante; retrato de dezembro' }),
   cnes_dentistas: cnes({ rotulo: 'cirurgiões-dentistas', definicao: 'pessoas (CNS) com vínculo de cirurgião-dentista (CBO 2232), cada uma uma só vez no ano, no município do vínculo de maior carga horária', ressalva: 'de 2007 em diante; retrato de dezembro' }),
+  sinan_dengue_provaveis: sinan({ rotulo: 'casos prováveis de dengue', definicao: 'casos de dengue notificados e não descartados (os arquivos públicos já excluem os descartados), pelo ano do arquivo', cobertura: '2000 em diante' }),
+  sinan_dengue_confirmados: sinan({ rotulo: 'casos confirmados de dengue', definicao: 'casos com classificação final dengue (10), com sinais de alarme (11) ou grave (12); nos anos antigos, dengue clássica, com complicações, FHD e SCD (1 a 4)', cobertura: '2000 em diante' }),
+  sinan_dengue_graves: sinan({ rotulo: 'casos graves de dengue', definicao: 'casos com classificação dengue grave (12), ou FHD e SCD (3 e 4) nos anos antigos', cobertura: '2000 em diante' }),
+  sinan_dengue_obitos: sinan({ rotulo: 'óbitos por dengue (confirmados)', definicao: 'casos confirmados cuja evolução é óbito pelo agravo (EVOLUCAO = 2)', ressalva: 'pode diferir da contagem oficial de óbitos, que passa por investigação e atualização posteriores', cobertura: '2000 em diante' }),
+  sinan_chik_notificacoes: sinan({ rotulo: 'notificações de chikungunya', definicao: 'notificações de chikungunya, inclusive as descartadas', cobertura: '2014 em diante' }),
+  sinan_chik_confirmados: sinan({ rotulo: 'casos confirmados de chikungunya', definicao: 'notificações com classificação final confirmada (13)', cobertura: '2014 em diante' }),
+  sinan_tb_casos_novos: sinan({ rotulo: 'casos novos de tuberculose', definicao: 'notificações com tipo de entrada caso novo (TRATAMENTO = 1), sem recidiva, reingresso, transferência nem pós-óbito', ressalva: 'os arquivos finais do SINAN só vão até 2019; fica 2 a 4% acima dos boletins, que aplicam exclusões extras', cobertura: '2001 a 2019' }),
+  sinan_hans_casos_novos: sinan({ rotulo: 'casos novos de hanseníase', definicao: 'notificações com modo de entrada caso novo (MODOENTR = 1)', ressalva: 'fica 2 a 4% acima dos boletins, que aplicam exclusões extras', cobertura: '2001 a 2023' }),
+  sinan_viol_notificacoes: sinan({ rotulo: 'notificações de violência', definicao: 'notificações de violência interpessoal e autoprovocada (SINAN-VIVA)', ressalva: 'mede a notificação, não a ocorrência; a cobertura cresceu muito desde 2009', cobertura: '2009 a 2024' }),
   nascidos: { tipo: 'contagem', rotulo: 'nascidos vivos', definicao: 'nascidos vivos de mães residentes no município', fonte: SINASC, tabelas: ['saude_municipios'], cobertura: 'sinasc', territorio: 'municípios de residência da mãe' },
   populacao_ibge: {
     tipo: 'contagem', rotulo: 'população do IBGE (habitantes)',
@@ -176,6 +187,7 @@ export function coberturaDaColuna(c: Coluna, cob?: Cobertura | null): string {
   if (c.cobertura === 'sinasc') return intervalo(cob?.sinasc);
   if (c.cobertura === 'sih') return intervalo(cob?.sih);
   if (c.cobertura === 'cnes') return intervalo(cob?.cnes);
+  if (c.cobertura === 'sinan') return intervalo(cob?.sinan);
   return c.cobertura ?? '';
 }
 

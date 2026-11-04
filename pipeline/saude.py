@@ -34,6 +34,11 @@ gold/saude/cnes.parquet        ano × município do estabelecimento: retrato de 
                                cada município e superconta nos totais). Os arquivos de profissionais trazem nome e CPF: só as
                                contagens por município saem do HD; entra em municipios.parquet (colunas cnes_*)
 
+gold/saude/sinan.parquet       ano × município de residência: agravos de notificação do SINAN (arquivos finais, ano do arquivo):
+                               dengue (casos prováveis, confirmados, graves e óbitos), chikungunya (notificações e
+                               confirmados), tuberculose (casos novos, até 2019 nestes arquivos), hanseníase (casos novos)
+                               e violência interpessoal/autoprovocada (notificações); entra em municipios.parquet (sinan_*)
+
 Uso:
     py pipeline/saude.py
 """
@@ -319,6 +324,67 @@ def cnes(con, micro: Path):
         FROM cnes WHERE ano IN (2006, 2015, 2019, 2025) GROUP BY 1 ORDER BY 1""").fetchall())
 
 
+# agravos do SINAN (arquivos finais DATASUS, um por agravo e ano): coluna e regra de cada medida
+SINAN_AGRAVOS = {
+    "DENG": ("dengue", 2000), "CHIK": ("chikungunya", 2014), "TUBE": ("tuberculose", 2001), "HANS": ("hanseníase", 2001), "VIOL": ("violência", 2009),
+}
+# dengue: os arquivos públicos já trazem só os casos não descartados (casos prováveis). Confirmados: dengue clássica, com complicações,
+# FHD e SCD (1 a 4, anos antigos) e dengue, com sinais de alarme e grave (10 a 12). Graves: FHD, SCD e dengue grave (3, 4, 12).
+# Óbito: EVOLUCAO = 2 (óbito pelo agravo) entre os confirmados. Chikungunya: 13 = confirmado (os arquivos trazem também os descartados).
+# Tuberculose: TRATAMENTO = 1 (caso novo, sem recidiva, reingresso, transferência nem pós-óbito). Hanseníase: MODOENTR = 1 (caso novo).
+SINAN_CONF_DENGUE = "('1', '2', '3', '4', '10', '11', '12')"
+
+
+def sinan(con, micro: Path):
+    """SINAN: agravos selecionados por município de residência (ID_MN_RESI) e ano do arquivo."""
+    base = micro / "SINAN" / "DADOS" / "FINAIS"
+
+    def ler(cod, extra=""):
+        return f"""SELECT 2000 + TRY_CAST(regexp_extract(filename, '{cod}BR(\\d{{2}})\\.parquet$', 1) AS INTEGER) AS ano,
+                   TRY_CAST(left(ID_MN_RESI, 6) AS INTEGER) AS municipio {extra}
+            FROM read_parquet('{base}/{cod}BR*.parquet', filename = true, union_by_name = true)"""
+
+    conf = SINAN_CONF_DENGUE
+    con.execute(f"""
+        CREATE OR REPLACE TABLE sinan AS
+        WITH deng AS (
+            SELECT ano, municipio, count(*) AS sinan_dengue_provaveis,
+                   count(*) FILTER (WHERE CLASSI_FIN IN {conf}) AS sinan_dengue_confirmados,
+                   count(*) FILTER (WHERE CLASSI_FIN IN ('3', '4', '12')) AS sinan_dengue_graves,
+                   count(*) FILTER (WHERE CLASSI_FIN IN {conf} AND EVOLUCAO = '2') AS sinan_dengue_obitos
+            FROM ({ler('DENG', ', CLASSI_FIN, EVOLUCAO')}) GROUP BY ano, municipio),
+        chik AS (
+            SELECT ano, municipio, count(*) AS sinan_chik_notificacoes, count(*) FILTER (WHERE CLASSI_FIN = '13') AS sinan_chik_confirmados
+            FROM ({ler('CHIK', ', CLASSI_FIN')}) GROUP BY ano, municipio),
+        tube AS (
+            SELECT ano, municipio, count(*) FILTER (WHERE TRATAMENTO = '1') AS sinan_tb_casos_novos
+            FROM ({ler('TUBE', ', TRATAMENTO')}) GROUP BY ano, municipio),
+        hans AS (
+            SELECT ano, municipio, count(*) FILTER (WHERE MODOENTR = '1') AS sinan_hans_casos_novos
+            FROM ({ler('HANS', ', MODOENTR')}) GROUP BY ano, municipio),
+        viol AS (
+            SELECT ano, municipio, count(*) AS sinan_viol_notificacoes FROM ({ler('VIOL')}) GROUP BY ano, municipio),
+        chaves AS (SELECT ano, municipio FROM deng UNION SELECT ano, municipio FROM chik UNION SELECT ano, municipio FROM tube
+                   UNION SELECT ano, municipio FROM hans UNION SELECT ano, municipio FROM viol),
+        j AS (
+            SELECT k.ano, k.municipio, k.municipio // 10000 AS uf, d.* EXCLUDE (ano, municipio), c.* EXCLUDE (ano, municipio),
+                   t.* EXCLUDE (ano, municipio), h.* EXCLUDE (ano, municipio), v.* EXCLUDE (ano, municipio)
+            FROM chaves k LEFT JOIN deng d USING (ano, municipio) LEFT JOIN chik c USING (ano, municipio) LEFT JOIN tube t USING (ano, municipio)
+                 LEFT JOIN hans h USING (ano, municipio) LEFT JOIN viol v USING (ano, municipio)
+            WHERE k.municipio IS NOT NULL AND k.ano BETWEEN 2000 AND 2025)
+        -- agravo ausente do ano (arquivo inexistente ou sem a coluna) fica nulo, nunca zero: sem nenhum registro no país, não há dado
+        SELECT ano, municipio, uf,
+               {', '.join(f"CASE WHEN sum({c}) OVER (PARTITION BY ano) > 0 THEN {c} END AS {c}" for c in SINAN_COLUNAS)}
+        FROM j ORDER BY ano, municipio""")
+    con.execute(f"COPY sinan TO '{GOLD_S / 'sinan.parquet'}' (FORMAT parquet, COMPRESSION zstd)")
+    print("sinan:", con.sql("""SELECT ano, sum(sinan_dengue_provaveis), sum(sinan_dengue_confirmados), sum(sinan_dengue_obitos), sum(sinan_tb_casos_novos),
+        sum(sinan_hans_casos_novos), sum(sinan_viol_notificacoes) FROM sinan WHERE ano IN (2009, 2015, 2019, 2023, 2024) GROUP BY 1 ORDER BY 1""").fetchall())
+
+
+SINAN_COLUNAS = ["sinan_dengue_provaveis", "sinan_dengue_confirmados", "sinan_dengue_graves", "sinan_dengue_obitos",
+                 "sinan_chik_notificacoes", "sinan_chik_confirmados", "sinan_tb_casos_novos", "sinan_hans_casos_novos", "sinan_viol_notificacoes"]
+
+
 def municipios(con):
     """Uma linha por ano e município de residência com população, óbitos, óbitos fetais e nascimentos."""
     s = SILVER.as_posix()
@@ -330,7 +396,7 @@ def municipios(con):
              chaves AS (SELECT ano, municipio FROM pop UNION SELECT ano, municipio FROM obitos
                         UNION SELECT ano, municipio FROM nascimentos UNION SELECT ano, municipio FROM obitos_fetais
                         UNION SELECT ano, municipio FROM internacoes UNION SELECT ano, municipio FROM internacoes_atend
-                        UNION SELECT ano, municipio FROM cnes)
+                        UNION SELECT ano, municipio FROM cnes UNION SELECT ano, municipio FROM sinan)
         SELECT k.ano, m.cod_ibge, k.municipio, coalesce(m.nome, 'Município ignorado') AS nome,
                coalesce(m.uf, e.uf) AS uf,
                p.* EXCLUDE (ano, municipio),
@@ -339,7 +405,8 @@ def municipios(con):
                n.* EXCLUDE (ano, municipio, uf),
                h.* EXCLUDE (ano, municipio, uf),
                a.* EXCLUDE (ano, municipio, uf),
-               c.* EXCLUDE (ano, municipio, uf)
+               c.* EXCLUDE (ano, municipio, uf),
+               z.* EXCLUDE (ano, municipio, uf)
         FROM chaves k
         LEFT JOIN muni m ON m.municipio = k.municipio
         LEFT JOIN estados e ON e.cod = k.municipio // 10000
@@ -350,6 +417,7 @@ def municipios(con):
         LEFT JOIN internacoes h ON h.ano = k.ano AND h.municipio = k.municipio
         LEFT JOIN internacoes_atend a ON a.ano = k.ano AND a.municipio = k.municipio
         LEFT JOIN cnes c ON c.ano = k.ano AND c.municipio = k.municipio
+        LEFT JOIN sinan z ON z.ano = k.ano AND z.municipio = k.municipio
         WHERE k.municipio IS NOT NULL
         ORDER BY k.ano, k.municipio""")
     con.execute(f"COPY municipios TO '{GOLD_S / 'municipios.parquet'}' (FORMAT parquet, COMPRESSION zstd)")
@@ -368,9 +436,17 @@ def fonte_saude(con) -> dict:
     colunas = {r[0] for r in con.execute(f"DESCRIBE SELECT * FROM '{a}'").fetchall()}
     sih = {"sih": {"anos": anos("int_total"), "processado_em": quando, "url": "https://datasus.saude.gov.br/transferencia-de-arquivos/"}} if "int_total" in colunas else {}
     cnes_f = {"cnes": {"anos": anos("cnes_estab"), "processado_em": quando, "url": "https://datasus.saude.gov.br/transferencia-de-arquivos/"}} if "cnes_estab" in colunas else {}
+    sinan_f = {}
+    if "sinan_dengue_provaveis" in colunas:
+        # anos de cada agravo (as coberturas diferem: dengue 2000+, chikungunya 2014+, tuberculose até 2019, violência 2009+)
+        agravos = {nome: anos(col) for nome, col in (("dengue", "sinan_dengue_provaveis"), ("chikungunya", "sinan_chik_notificacoes"), ("tuberculose", "sinan_tb_casos_novos"),
+                                                     ("hanseniase", "sinan_hans_casos_novos"), ("violencia", "sinan_viol_notificacoes"))}
+        sinan_f = {"sinan": {"anos": sorted({a for v in agravos.values() for a in v}), "agravos": {k: [v[0], v[-1]] for k, v in agravos.items() if v},
+                             "processado_em": quando, "url": "https://datasus.saude.gov.br/transferencia-de-arquivos/"}}
     return {
         **sih,
         **cnes_f,
+        **sinan_f,
         "sim": {"anos": anos("obitos"), "processado_em": quando, "url": "https://datasus.saude.gov.br/transferencia-de-arquivos/"},
         "sinasc": {"anos": anos("nascidos"), "processado_em": quando, "url": "https://datasus.saude.gov.br/transferencia-de-arquivos/"},
         "populacao_svs": {"anos": anos("populacao"), "processado_em": quando,
@@ -400,6 +476,7 @@ def main():
     nascimentos(con, Path(a.micro))
     internacoes(con, Path(a.micro))
     cnes(con, Path(a.micro))
+    sinan(con, Path(a.micro))
     municipios(con)
     atualizar_manifesto(con)
     # conferência: mortalidade infantil do Brasil (por mil nascidos vivos)

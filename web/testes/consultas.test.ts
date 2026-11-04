@@ -2508,6 +2508,30 @@ describe('saúde (SIM, SINASC e população da SVS/MS)', () => {
     assert.deepEqual(m.fontes.cnes.anos, anos);
   });
 
+  test('SINAN: invariantes dos agravos e coberturas (fora da cobertura, nulo e nunca zero)', { skip: semSaude }, async () => {
+    const serie = await rota<L[]>('saude_serie');
+    const com = serie.filter((r) => Number(r.sinan_dengue_provaveis) > 0);
+    if (!com.length) return; // dados ainda sem o SINAN
+    for (const r of com) {
+      const ano = r.ano;
+      assert.ok(Number(r.sinan_dengue_confirmados) <= Number(r.sinan_dengue_provaveis), `confirmados ≤ prováveis em ${ano}`);
+      assert.ok(Number(r.sinan_dengue_graves) <= Number(r.sinan_dengue_provaveis), `graves ≤ prováveis em ${ano}`);
+      assert.ok(Number(r.sinan_dengue_obitos) <= Number(r.sinan_dengue_confirmados), `óbitos ≤ confirmados em ${ano}`);
+    }
+    const por = (ano: number) => serie.find((r) => r.ano === ano)!;
+    // cada agravo só existe na sua cobertura: fora dela é nulo (a tuberculose acaba em 2019; a chikungunya começa em 2014)
+    assert.equal(por(2024).sinan_tb_casos_novos, null, 'tuberculose sem dado depois de 2019');
+    assert.equal(por(2012).sinan_chik_notificacoes, null, 'chikungunya sem dado antes de 2014');
+    assert.ok(Number(por(2019).sinan_tb_casos_novos) > 0 && Number(por(2019).sinan_chik_notificacoes) > 0);
+    // incidência como razão das somas
+    const r = por(2019);
+    quase(calcular(indicador('dengue_incidencia'), r)!, (100000 * Number(r.sinan_dengue_provaveis)) / Number(r.populacao));
+    quase(calcular(indicador('dengue_letalidade'), r)!, Number(r.sinan_dengue_obitos) / Number(r.sinan_dengue_confirmados));
+    const m = JSON.parse(await readFile(`${DATA}/gold/manifesto.json`, 'utf8'));
+    assert.equal(m.fontes.sinan.agravos.tuberculose[1], 2019);
+    assert.equal(m.fontes.sinan.agravos.chikungunya[0], 2014);
+  });
+
   test('UF soma os municípios e os registros de município ignorado; o ranking só tem municípios do cadastro', { skip: semSaude }, async () => {
     const go = (await rota<L[]>('saude_serie', { uf: 'GO' })).find((r) => r.ano === 2023)!;
     const muns = await rota<L[]>('saude_municipios', { uf: 'GO', ano: 2023 });

@@ -213,6 +213,7 @@ export function disponibilidadeNoAno(ano: number, paineis: Painel[], c: Cobertur
     if (c.sinasc?.length) marcar('SINASC', c.sinasc.includes(ano), faixa(c.sinasc));
     if (c.sih?.length) marcar('SIH', c.sih.includes(ano), faixa(c.sih));
     if (c.cnes?.length) marcar('CNES', c.cnes.includes(ano), faixa(c.cnes));
+    if (c.sinan?.length) marcar('SINAN', c.sinan.includes(ano), faixa(c.sinan));
     if (c.popSvs?.length) marcar('população da SVS/MS', c.popSvs.includes(ano), faixa(c.popSvs));
   }
   return [tem.length ? `com dados nesse ano: ${tem.join('; ')}` : 'nenhuma fonte tem dados nesse ano', nao.length ? `sem dados nesse ano: ${nao.join('; ')}` : '']
@@ -248,7 +249,7 @@ export type Cobertura = {
   rais: number[]; caged: { de: number; ate: number } | null; microdados: boolean; dca: number[];
   pib?: { de: number; ate: number; setorial_ate?: number } | null; siope?: number[]; siopeRemuneracao?: number[]; siops?: number[];
   lrf?: { de: number; ate: number; parciais?: number[] } | null; bolsa?: { de: number; ate: number; mes: number } | null; inss?: number[];
-  sim?: number[]; sinasc?: number[]; sih?: number[]; cnes?: number[]; popSvs?: number[];
+  sim?: number[]; sinasc?: number[]; sih?: number[]; cnes?: number[]; sinan?: number[]; popSvs?: number[];
 };
 /** Sugestão: título curto, a pergunta completa (que vai para o campo), o tema e as bases que a pergunta usa. */
 export type Sugestao = { titulo: string; tema: string; texto: string; paineis: Painel[]; nota?: string };
@@ -467,7 +468,7 @@ export function coberturaPorAno(c: Cobertura, paineis: Painel[]): Map<number, { 
     if (c.lrf) fechadas(faixaDe(c.lrf.de, c.lrf.ate));
     if (c.bolsa) mensal('Bolsa Família', c.bolsa.de * 100 + 1, c.bolsa.mes);
   }
-  if (paineis.includes('saude')) fechadas([...(c.sim ?? []), ...(c.sinasc ?? []), ...(c.sih ?? []), ...(c.cnes ?? []), ...(c.popSvs ?? [])]);
+  if (paineis.includes('saude')) fechadas([...(c.sim ?? []), ...(c.sinasc ?? []), ...(c.sih ?? []), ...(c.cnes ?? []), ...(c.sinan ?? []), ...(c.popSvs ?? [])]);
   return anos;
 }
 
@@ -539,6 +540,10 @@ export function descreverCobertura(paineis: Painel[], c: Cobertura): string[] {
   if (paineis.includes('saude') && c.cnes?.length) {
     linhas.push(t(`CNES ${faixa(c.cnes[0], c.cnes.at(-1)!)}: estabelecimentos, leitos (existentes e SUS, por tipo) e profissionais (médicos, enfermeiros, dentistas) por município do estabelecimento, no retrato de dezembro de cada ano`,
       `CNES ${faixa(c.cnes[0], c.cnes.at(-1)!)}: facilities, beds (existing and SUS, by type) and staff (physicians, nurses, dentists) by municipality of the facility, in the December snapshot of each year`));
+  }
+  if (paineis.includes('saude') && c.sinan?.length) {
+    linhas.push(t(`SINAN ${faixa(c.sinan[0], c.sinan.at(-1)!)}: dengue (casos prováveis, confirmados, graves e óbitos), chikungunya, tuberculose (casos novos, só até 2019), hanseníase (casos novos) e violência notificada, por município de residência; cada agravo tem a sua cobertura`,
+      `SINAN ${faixa(c.sinan[0], c.sinan.at(-1)!)}: dengue (probable, confirmed, severe cases and deaths), chikungunya, tuberculosis (new cases, only to 2019), leprosy (new cases) and notified violence, by municipality of residence; each disease has its own coverage`));
   }
   if (paineis.includes('saude') && c.popSvs?.length) {
     linhas.push(t(`População da SVS/MS ${faixa(c.popSvs[0], c.popSvs.at(-1)!)}: estimativas por município, sexo e idade, denominador das taxas de saúde`,
@@ -781,6 +786,8 @@ const FONTES_TABELAS: [RegExp | ((sql: string) => boolean), () => string][] = [
     () => t('Ministério da Saúde/DATASUS: SIM (óbitos por município de residência)', 'Ministry of Health/DATASUS: SIM (deaths by municipality of residence)')],
   [(s) => /\bsaude_municipios\b/.test(s) && /\b(nascidos|baixo_peso|peso_informado|prematuros|gestacao_informada|cesareos|parto_informado|consultas_\w+|sem_consulta|maes_\w+|idade_mae_informada)\b/.test(s),
     () => t('Ministério da Saúde/DATASUS: SINASC (nascidos vivos por município de residência da mãe)', 'Ministry of Health/DATASUS: SINASC (live births by mother’s municipality of residence)')],
+  [(s) => /\bsaude_municipios\b/.test(s) && /\bsinan_\w+\b/.test(s),
+    () => t('Ministério da Saúde/DATASUS: SINAN (agravos de notificação por município de residência)', 'Ministry of Health/DATASUS: SINAN (notifiable diseases by municipality of residence)')],
   [(s) => /\bsaude_municipios\b/.test(s) && /\bcnes_\w+\b/.test(s),
     () => t('Ministério da Saúde/DATASUS: CNES (estabelecimentos, leitos e profissionais por município do estabelecimento)', 'Ministry of Health/DATASUS: CNES (facilities, beds and staff by municipality of the facility)')],
   [(s) => /\bsaude_municipios\b/.test(s) && /\bint_\w+\b/.test(s),
@@ -996,6 +1003,7 @@ export function coberturaDaFonte(sql: string, c?: Cobertura | null): CoberturaFo
   const s = sql.toLowerCase();
   if (/\btrab_caged/.test(s)) return c.caged ? { nome: 'Novo CAGED', meses: c.caged } : null;
   if (/\brais_(uf|mun|vinculos)\b|\btrab_(municipios|setores|setores_uf|grandes_setores)\b/.test(s)) return { nome: 'RAIS', anos: c.rais };
+  if (/\bsaude_municipios\b/.test(s) && /\bsinan_\w+\b/.test(s) && c.sinan?.length) return { nome: 'SINAN', anos: c.sinan };
   if (/\bsaude_municipios\b/.test(s) && /\bcnes_\w+\b/.test(s) && c.cnes?.length) return { nome: 'CNES', anos: c.cnes };
   if (/\bsaude_municipios\b/.test(s) && /\bint_\w+\b/.test(s) && c.sih?.length) return { nome: 'SIH', anos: c.sih };
   if (/\bsaude_municipios\b/.test(s)) return c.sim?.length ? { nome: 'SIM/SINASC', anos: c.sim } : null;
