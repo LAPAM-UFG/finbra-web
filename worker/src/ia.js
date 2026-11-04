@@ -146,7 +146,7 @@ export const FERRAMENTAS = [
     description:
       'Acha um município ou uma UF pelo nome (sem diferenciar acentos) e devolve os códigos em cada formato das tabelas: '
       + 'cod_ibge de 7 dígitos, municipio de 6 dígitos da RAIS, sigla e código da UF. Use antes de consultar um lugar '
-      + 'citado na pergunta que não seja o do contexto da página; nunca procure códigos com LIKE ou por parte do código. '
+      + 'citado na pergunta (a página não traz território); nunca procure códigos com LIKE ou por parte do código. '
       + 'Com nomes repetidos em mais de uma UF, devolve todos.',
     strict: false,
     input_schema: {

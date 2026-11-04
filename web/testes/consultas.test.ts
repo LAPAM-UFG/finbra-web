@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { basesAV, codigoConta, formatarPct } from '../src/calculos';
 import { consultaLivre, executar, sqlClassificacao, type Classificacao, tabelaDespesaFuncao, tabelasEducacaoSaude, tabelasIaTrabalho, usarMicrodadosNoTeste, usarMotorDeTeste } from '../src/dados';
 import {
-  anosPedidos, chamarIa, coberturaDaFonte, coberturaPorAno, lerEscolhaModelo, nomeDoModelo, periodosDiferem, codigosDoSql, comPergunta, conferir, consultasDaConversa, contextoParaModelo, descreverCobertura, disponibilidadeNoAno, pedeTabelaMunicipal, dadosDoGrafico, executarConsulta, fontesConsultadas, lerModo, lerResposta,
+  anosPedidos, PAINEIS, chamarIa, coberturaDaFonte, coberturaPorAno, lerEscolhaModelo, nomeDoModelo, periodosDiferem, codigosDoSql, comPergunta, conferir, consultasDaConversa, contextoParaModelo, descreverCobertura, disponibilidadeNoAno, pedeTabelaMunicipal, dadosDoGrafico, executarConsulta, fontesConsultadas, lerModo, lerResposta,
   lerRegressao, paraModelo, pedeTabela, perguntarIa, prepararResposta, recorteDe, revisarMetodo, revisarResposta, rotulosConsultas, semNominal, semUltimaPergunta, sugestoes, valorOficial,
   textoDaResposta, turnos, usarServidorIaNoTeste, validarGrafico, validarSql, type ConsultaFeita, type ContextoIa, type GraficoIa, type Mensagem, type Painel,
   type Bloco, type Cobertura, type Resultado,
@@ -2530,6 +2530,19 @@ describe('saúde (SIM, SINASC e população da SVS/MS)', () => {
     const m = JSON.parse(await readFile(`${DATA}/gold/manifesto.json`, 'utf8'));
     assert.equal(m.fontes.sinan.agravos.tuberculose[1], 2019);
     assert.equal(m.fontes.sinan.agravos.chikungunya[0], 2014);
+  });
+
+  test('IA sem filtros manuais: o contexto aberto não traz território, ano nem bases e diz como tirar o recorte da pergunta', () => {
+    const aberto = contextoParaModelo({ paineis: PAINEIS, territorio: { tipo: 'brasil' }, ano: null, modo: 'rapida' });
+    assert.doesNotMatch(aberto, /Território selecionado|Ano de referência/);
+    assert.match(aberto, /todas as fontes estão disponíveis/);
+    assert.match(aberto, /localizar/);
+    assert.match(aberto, /rápida/);
+    assert.ok(aberto.length < 1500, 'cabe no limite de contexto do Worker');
+    // conversa de antes da revisão, com território e ano escolhidos na página, continua legível
+    const antigo = contextoParaModelo({ paineis: ['saude'], territorio: { tipo: 'uf', uf: 'PR', nome: 'Paraná', cod: 41 }, ano: 2024, modo: 'pesquisa' });
+    assert.match(antigo, /Paraná/);
+    assert.match(antigo, /2024/);
   });
 
   test('SISCAN, Painel de Oncologia e RESP: invariantes, coberturas (fora delas nulo) e indicadores como razão das somas', { skip: semSaude }, async () => {

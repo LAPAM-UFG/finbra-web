@@ -12,7 +12,7 @@
  * confere os códigos de território (conferirCodigos); lugares citados pelo nome passam pela ferramenta
  * "localizar", que usa o cadastro de entes.
  */
-import { consultaLivre, manifestoDados, tabelaDespesaFuncao, tabelaLrf, tabelasEducacaoSaude, tabelasIaTrabalho, tabelasSaude } from './dados';
+import { consultaLivre, contextoTrabalhoIa, manifestoDados, tabelaDespesaFuncao, tabelaLrf, tabelasEducacaoSaude, tabelasIaTrabalho, tabelasSaude } from './dados';
 import { t } from './idioma';
 import {
   competenciasNoTexto, formatarValor, periodoDasConsultas, periodoDe, registrarColunas, rotuloCompetencia, rotuloPeriodo, sqlSemTextos, tiposDoResultado,
@@ -119,7 +119,7 @@ export type Painel = 'financas' | 'trabalho' | 'saude';
 export const PAINEIS: Painel[] = ['financas', 'trabalho', 'saude'];
 
 export async function chamarIa(mensagens: Mensagem[], idioma: string, paineis: Painel[] = PAINEIS, sinal?: AbortSignal, modelo: EscolhaModelo = MODELO_PADRAO): Promise<RespostaIa> {
-  const contexto = paineis.includes('trabalho') ? await tabelasIaTrabalho() : undefined;
+  const contexto = paineis.includes('trabalho') ? await contextoTrabalhoIa() : undefined;
   // o manifesto só é usado pelo Worker local (wrangler dev), que não tem o do R2
   const manifesto = emLocalhost() && (paineis.includes('financas') || paineis.includes('saude')) ? await manifestoDados() : undefined;
   const enviar = () => fetch(`${servidor}/api/ia`, {
@@ -224,6 +224,16 @@ export function disponibilidadeNoAno(ano: number, paineis: Painel[], c: Cobertur
 }
 
 export function contextoParaModelo(c: ContextoIa, cobertura?: Cobertura | null): string {
+  // sem bases, território nem ano escolhidos na página: a pergunta diz o recorte e todas as fontes estão elegíveis
+  if (!c.ano && c.territorio.tipo === 'brasil' && c.paineis.length === PAINEIS.length) {
+    return [
+      'Contexto desta pergunta (não há bases, território nem ano escolhidos na página; todas as fontes estão disponíveis):',
+      '- Tire da própria pergunta o lugar, o período e as fontes. O que a pergunta atual disser prevalece sobre o recorte das anteriores: só um seguimento claro (ex.: "e em 2023?") herda o que continua relevante, e uma pergunta de outro tema pode mudar de fonte e de território.',
+      '- Lugar citado pelo nome: use localizar para obter os códigos. Sem lugar, use o Brasil só se a agregação nacional fizer sentido, e diga isso; se a ambiguidade mudar o resultado (município homônimo, estoque ou saldo), peça um esclarecimento curto.',
+      '- Sem período: use o mais recente compatível com o indicador (em cruzamentos, um período comum) e diga qual; ano completo e acumulado parcial são coisas diferentes.',
+      `- Modo de resposta: ${c.modo === 'pesquisa' ? 'pesquisa (análise para pesquisa)' : 'rápida (resposta rápida)'}.`,
+    ].join('\n');
+  }
   const tr = c.territorio;
   const territorio = tr.tipo === 'brasil'
     ? 'nenhum. Não presuma um território: se a pergunta não indicar um, responda para o Brasil e diga isso; se ela depender de um lugar que não foi dito (ex.: "meu município"), peça esse esclarecimento.'
@@ -1741,7 +1751,8 @@ export async function executarConsulta(entrada: unknown, paineis: Painel[] = PAI
       if (codigos) return { erro: codigos, bloqueada: true };
     }
     const todas = [e.sql, ...extras].join('\n');
-    if (paineis.includes('trabalho')) await tabelasIaTrabalho();
+    // as tabelas do trabalho (trab_*, rais_*) só são preparadas quando alguma consulta as lê
+    if (paineis.includes('trabalho') && /\b(trab_\w+|rais_\w+)/i.test(todas)) await tabelasIaTrabalho();
     // a tabela da LRF só é baixada quando alguma consulta a usa; as do SIOPE e do SIOPS, idem
     if (paineis.includes('financas') && /\blrf\b/i.test(todas)) await tabelaLrf();
     if (paineis.includes('financas') && /\bsiop[es]_/i.test(todas)) await tabelasEducacaoSaude();

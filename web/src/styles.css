@@ -1062,3 +1062,7 @@ button.ia-historico-importar:focus-visible { outline: 2px solid var(--ia-acao); 
 .ia-dialogo-rodape { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding: 12px 20px 16px; border-top: 1px solid var(--borda); }
 /* a tela inicial usa a largura toda da coluna (820 px): a barra do campo comporta modo, modelo e contexto sem encurtar o território */
 .casca-ia .ia-inicio { max-width: 820px; }
+
+/* /ia sem filtros manuais: dica curta junto do campo e aviso de link antigo com recorte */
+.ia-dica-escrita { margin: 0 0 6px; font-size: 0.9rem; color: var(--texto-suave, #5b6770); }
+.ia-recorte-link { margin: 10px 0; }

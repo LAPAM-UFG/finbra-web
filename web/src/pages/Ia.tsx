@@ -1,17 +1,17 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import type { Ente, Meta } from '../api';
+import type { Meta } from '../api';
 import { BotoesExportar } from '../components/Exportar';
 import { Icone } from '../components/Icone';
 import { Dialogo, Popover } from '../components/IaPaineis';
 import { barrasAgrupadas, Grafico, graficoSvg, linhas, type Marca } from '../components/Grafico';
-import { BuscaEnte, UFS, useDados, useFiltros } from '../contexto';
-import { tabelasIaTrabalho } from '../dados';
+import { useDados } from '../contexto';
+import { contextoTrabalhoIa } from '../dados';
 import { baixarArquivo, nomeArquivo, paraXlsxAbas, type Celula, type Planilha } from '../exportar';
 import { idioma, local, t } from '../idioma';
 import {
-  avisoFaltantes, coberturaPorAno, consultasDaConversa, contextoParaModelo, descreverCobertura, descricaoModo, ErroAcesso, estadoIa, executarConsulta, exemploPergunta, foiCancelado,
-  fontesConsultadas, lerEscolhaModelo, lerModo, LINHAS_TELA, MAX_PERGUNTA, mesmoContexto, MODELO_PADRAO, MODOS, nomeDaUf, nomeDoModelo, PAINEIS, perguntarIa, prepararResposta,
+  avisoFaltantes, consultasDaConversa, contextoParaModelo, descreverCobertura, descricaoModo, ErroAcesso, estadoIa, executarConsulta, exemploPergunta, foiCancelado,
+  fontesConsultadas, lerEscolhaModelo, lerModo, LINHAS_TELA, MAX_PERGUNTA, MODELO_PADRAO, MODOS, nomeDaUf, nomeDoModelo, PAINEIS, perguntarIa, prepararResposta,
   periodosDiferem, recorteDe, rotuloAno, rotuloModo, rotuloTerritorio, semUltimaPergunta, sugestoes, tabelaInteira, textoDaResposta, textoPeriodosPorFonte, turnos, urlEntrar,
   type Cobertura, type ConsultaFeita, type ContextoIa, type EscolhaModelo, type DadosGrafico, type DestaquePronto, type Etapa, type EstadoIa, type GraficoIa,
   type GraficoPronto, type ItemTurno, type Mensagem, type Modo, type Painel, type Progresso, type RespostaPronta, type Resultado,
@@ -58,20 +58,17 @@ function useVersaoDados(): VersaoDados {
   return useContext(VersaoDaResposta) ?? { geradoEm: meta.geradoEm, atual: true };
 }
 
-/** Filtros da página com o recorte de uma pergunta (painéis, ano, território): o seguimento usa o mesmo contexto. */
+/** Endereço da conversa aberta: o tema de origem das conversas antigas só ordena exemplos; território e ano não voltam como filtro. */
 function paramsDoContexto(atual: URLSearchParams, c: ContextoIa, id: string) {
   const b = new URLSearchParams(atual);
   b.set('conversa', id);
   b.delete('nova');
-  if (c.paineis.length === PAINEIS.length) b.delete('paineis');
-  else b.set('paineis', c.paineis.join(','));
-  if (c.ano) b.set('ano', String(c.ano));
-  else b.delete('ano');
+  // o recorte de conversas antigas ficou nas respostas já salvas; o seguimento não herda filtros ocultos
+  b.delete('ano');
   b.delete('uf');
   b.delete('ente');
-  if (c.territorio.tipo === 'uf') b.set('uf', c.territorio.uf);
-  else if (c.territorio.tipo === 'municipio') b.set('ente', String(c.territorio.cod));
-  else if (c.territorio.tipo === 'df') b.set('uf', 'DF');
+  if (c.paineis.length === PAINEIS.length) b.delete('paineis');
+  else b.set('paineis', c.paineis.join(','));
   return b;
 }
 
@@ -131,25 +128,19 @@ function coberturaDe(meta: Meta, microdados: boolean): Cobertura {
   };
 }
 
-/**
- * Ano do seletor: os que só têm fontes mensais incompletas (ex.: o ano corrente) dizem quais e até que mês, do mesmo
- * manifesto da ajuda (antes só o Novo CAGED era citado, e o Bolsa Família do mesmo ano ficava de fora).
- */
-function rotuloDoAno(a: number, c: Cobertura, paineis: Painel[]) {
-  const e = coberturaPorAno(c, paineis).get(a);
-  if (!e || e.fechado || !e.parciais.length) return String(a);
-  return t(`${a} (parcial: ${e.parciais.join('; ')})`, `${a} (partial: ${e.parciais.join('; ')})`);
-}
+/** Sem território nem ano escolhidos na página: o recorte vem da pergunta e as consultas dizem o que foi usado. */
+const TERRITORIO_ABERTO: Territorio = { tipo: 'brasil' };
 
-/** Território dos filtros globais (?uf=, ?ente=): município, UF, DF ou nenhum (Brasil). */
-function territorioDe(alvo: Ente | null, uf: string | null, entes: Ente[]): Territorio {
-  if (alvo?.esfera === 'D' || (!alvo && uf === 'DF')) return { tipo: 'df' };
-  if (alvo?.esfera === 'M') return { tipo: 'municipio', uf: alvo.uf, nome: alvo.nome, cod: alvo.cod_ibge };
-  const sigla = alvo?.esfera === 'E' ? alvo.uf : uf;
-  if (!sigla) return { tipo: 'brasil' };
-  const estado = alvo?.esfera === 'E' ? alvo : entes.find((e) => e.esfera === 'E' && e.uf === sigla);
-  return { tipo: 'uf', uf: sigla, nome: estado?.nome ?? nomeDaUf(sigla), cod: estado?.cod_ibge ?? 0 };
-}
+/** Nome curto de uma fonte: "Ministério da Saúde/DATASUS: SIM (óbitos…)" → "SIM". */
+const nomeCurtoFonte = (f: string) => f.replace(/^[^:(]+:\s*/, '').replace(/\s*\(.*$/, '').trim() || f;
+/** O contexto de antes desta revisão trazia bases, território e ano escolhidos na página; o de agora é sempre aberto. */
+const contextoAberto = (c: ContextoIa) => !c.ano && c.territorio.tipo === 'brasil' && c.paineis.length === PAINEIS.length;
+/** "Paraná · 2024 · SIM e SINASC": território, período e fontes das consultas que rodaram, não o que a página tinha. */
+const territorioEfetivo = (p: RespostaPronta) => (p.territorios.length ? p.territorios.join('; ') : p.r.recorte?.territorio || (p.fontes.length ? t('Brasil', 'Brazil') : null));
+const recorteEfetivo = (p?: RespostaPronta | null) => (p
+  ? [territorioEfetivo(p), p.periodo,
+    p.fontes.length ? [...new Set(p.fontes.map(nomeCurtoFonte))].join(t(' e ', ' and ')) : null].filter(Boolean).join(' · ')
+  : '');
 
 /** Temas dos painéis marcados, no subtítulo ("finanças, emprego e saúde"). */
 const TEMAS = (): Record<Painel, string> => ({
@@ -183,8 +174,11 @@ const fonteIa = (paineis: Painel[]) => t(
 );
 /** Rótulo do período: o consultado (depois da resposta) ou o ano de referência da página. */
 const rotuloDoPeriodo = (c: ContextoIa, periodo?: string | null) => (periodo ? t(`Período consultado: ${periodo}`, `Period queried: ${periodo}`) : rotuloAno(c.ano));
-const descreverContexto = (c: ContextoIa, periodo?: string | null, comModo = true) =>
-  [c.paineis.map((p) => NOMES_PAINEIS()[p]).join(' + '), rotuloTerritorio(c.territorio), rotuloDoPeriodo(c, periodo), ...(comModo ? [rotuloModo(c.modo)] : [])].join(' · ');
+const descreverContexto = (c: ContextoIa, periodo?: string | null, comModo = true, pronta?: RespostaPronta | null) =>
+  [contextoAberto(c)
+    ? recorteEfetivo(pronta) || t('recorte conforme a pergunta', 'scope as asked')
+    : [c.paineis.map((p) => NOMES_PAINEIS()[p]).join(' + '), rotuloTerritorio(c.territorio), rotuloDoPeriodo(c, periodo)].join(' · '),
+  ...(comModo ? [rotuloModo(c.modo)] : [])].join(' · ');
 
 const consultasDoTurno = (turno: TurnoIa) => turno.itens.filter((i): i is ItemConsulta => i.tipo === 'consulta');
 /** Pergunta sem acentos, maiúsculas, pontuação e UF entre parênteses: para não sugerir de novo o que já foi perguntado. */
@@ -358,7 +352,7 @@ async function baixarExcel(lista: TurnoIa[], metas: MetaTurno[], prontas: (Respo
     }
     const resposta = p ? textoDaResposta(p) : turno.textoFinal ?? '';
     const modo = metas[i] ? rotuloModo(metas[i].contexto.modo) : '';
-    resumo.linhas.push([turno.pergunta, modo, metas[i] ? descreverContexto(metas[i].contexto, p?.periodo) : '', p?.periodo ?? '', limiteCelula(resposta), nomes.join('; '), textoModelo(metas[i])]);
+    resumo.linhas.push([turno.pergunta, modo, metas[i] ? descreverContexto(metas[i].contexto, p?.periodo, true, p) : '', p?.periodo ?? '', limiteCelula(resposta), nomes.join('; '), textoModelo(metas[i])]);
   });
   const todas = apendice ? [resumo, ...abas, { nome: t('Histórico de execução', 'Execution history'), linhas: historico }] : [resumo, ...abas];
   baixarArquivo(`${nomeArquivo(t('pergunte_aos_dados', 'ask_the_data'))}.xlsx`, paraXlsxAbas(todas) as BlobPart,
@@ -523,7 +517,7 @@ function imprimirPdf(lista: TurnoIa[], metas: MetaTurno[], prontas: (RespostaPro
     const modo = metas[i]?.contexto.modo ?? 'rapida';
     const resposta = p ? respostaHtml(p, modo, n) : turno.textoFinal ? textoHtml(turno.textoFinal) : '';
     return `<section class="pergunta"><h2>${i + 1}. ${html(turno.pergunta)}</h2>`
-      + `<p class="nota">${html(rotuloModo(modo))}${metas[i] ? ` · ${html(descreverContexto(metas[i].contexto, p?.periodo, false))}` : ''}</p>`
+      + `<p class="nota">${html(rotuloModo(modo))}${metas[i] ? ` · ${html(descreverContexto(metas[i].contexto, p?.periodo, false, p))}` : ''}</p>`
       + `<p class="nota">${html(t('Modelo', 'Model'))}: ${html(textoModelo(metas[i]))}</p>${resposta}</section>`;
   }).join('');
   const anexo = o.apendice
@@ -616,17 +610,6 @@ function TextoRico({ texto }: { texto: string }) {
   );
 }
 
-/** Nomes curtos das bases, no resumo do contexto. */
-const NOMES_CURTOS = (): Record<Painel, string> => ({
-  financas: t('Finanças', 'Finances'), trabalho: t('Trabalho', 'Labour'), saude: t('Saúde', 'Health'),
-});
-/** "Todas as bases · Brasil · Ano automático": o contexto em uma linha, no botão que abre os ajustes. */
-const resumoContexto = (c: ContextoIa) => [
-  c.paineis.length === PAINEIS.length ? t('Todas as bases', 'All datasets') : c.paineis.map((p) => NOMES_CURTOS()[p]).join(' + '),
-  rotuloTerritorio(c.territorio),
-  c.ano ? t(`Ano ${c.ano}`, `Year ${c.ano}`) : t('Ano automático', 'Automatic year'),
-];
-
 /** "modelo 41 s em 5 chamadas · consultas 9 s (1 reaproveitada) · revisão 0 s": onde foi o tempo da pergunta. */
 function tempoPorEtapa(etapas: Etapa[]): string {
   const s = (ms: number) => `${Math.round(ms / 1000)} s`;
@@ -643,101 +626,35 @@ function tempoPorEtapa(etapas: Etapa[]): string {
 }
 
 /**
- * Cabeçalho de cada resposta: o recorte que as consultas executaram de fato (território lido dos códigos no SQL,
- * período dos resultados, fontes lidas) e, à parte, o contexto da página quando ele não foi o usado.
+ * Cabeçalho de cada resposta: o recorte que as consultas executaram de fato (território lido dos códigos no SQL, período dos
+ * resultados e fontes lidas), sem nada herdado da página. Conversas de antes da revisão, que guardaram bases, território e ano
+ * escolhidos na página, mostram também esse contexto.
  */
 function RecorteExecutado({ contexto, pronta }: { contexto: ContextoIa; pronta: RespostaPronta | null }) {
-  const territorio = pronta?.territorios.length ? pronta.territorios.join('; ') : null;
+  const legado = !contextoAberto(contexto);
+  const territorio = pronta ? territorioEfetivo(pronta) : null;
   const periodo = pronta?.periodo ?? null;
-  const daPagina = rotuloTerritorio(contexto.territorio);
-  const diferente = (territorio && territorio !== daPagina) || (periodo && contexto.ano && !periodo.includes(String(contexto.ano)));
+  const fontes = pronta?.fontes.length ? [...new Set(pronta.fontes.map(nomeCurtoFonte))].join(t(' e ', ' and ')) : null;
+  if (!legado && !fontes && !territorio && !periodo) return null;
   return (
     <div className="ia-recorte-executado">
       <ul className="ia-chips pequenos" aria-label={t('Recorte executado nesta resposta', 'Scope executed in this answer')}>
-        <li className="ia-chip" title={t('Painéis consultados', 'Dashboards queried')}>{contexto.paineis.map((p) => NOMES_PAINEIS()[p]).join(' + ')}</li>
-        <li className="ia-chip" title={t('Território das consultas executadas', 'Territory of the executed queries')}>{territorio ?? daPagina}</li>
-        <li className="ia-chip" title={t('Período dos resultados', 'Period of the results')}>{periodo ?? rotuloDoPeriodo(contexto, null)}</li>
+        {territorio && <li className="ia-chip" title={t('Território das consultas executadas', 'Territory of the executed queries')}>{territorio}</li>}
+        {periodo && <li className="ia-chip" title={t('Período dos resultados', 'Period of the results')}>{periodo}</li>}
+        {fontes && <li className="ia-chip" title={t('Fontes consultadas', 'Sources queried')}>{fontes}</li>}
+        {legado && !pronta && <li className="ia-chip">{contexto.paineis.map((p) => NOMES_PAINEIS()[p]).join(' + ')}</li>}
       </ul>
       {pronta && periodosDiferem(pronta) && (
         <p className="ia-nota ia-periodos-fonte">
           <strong>{t('Períodos diferentes por fonte: ', 'Different periods by source: ')}</strong>{textoPeriodosPorFonte(pronta)}.
         </p>
       )}
-      {pronta && diferente && (
+      {pronta && legado && (
         <p className="ia-nota ia-contexto-pagina">
-          {t(`Recorte lido das consultas executadas. Contexto da página quando a pergunta foi feita: ${daPagina}${contexto.ano ? `, ${contexto.ano}` : ''} (a pergunta especificou outro recorte).`,
-            `Scope read from the executed queries. Page context when the question was asked: ${daPagina}${contexto.ano ? `, ${contexto.ano}` : ''} (the question specified another scope).`)}
+          {t(`Recorte lido das consultas executadas. Esta conversa foi feita com filtros da página: ${descreverContexto(contexto, null, false)}.`,
+            `Scope read from the executed queries. This conversation was made with page filters: ${descreverContexto(contexto, null, false)}.`)}
         </p>
       )}
-    </div>
-  );
-}
-
-function Ajustes({ paineis, alternarPainel, travarPaineis, anos, ano, definirAno, rotulo, temAjustes, limpar, concluir }: {
-  paineis: Painel[]; alternarPainel: (p: Painel) => void; travarPaineis: boolean;
-  anos: number[]; ano: number | null; definirAno: (a: number | null) => void; rotulo: (a: number) => string;
-  temAjustes: boolean; limpar: () => void; concluir: () => void;
-}) {
-  const { entes } = useDados();
-  const f = useFiltros();
-  return (
-    <div id="ia-ajustes" className="ia-ajustes" role="group" aria-label={t('Contexto da pergunta', 'Question context')}
-      onKeyDown={(e) => {
-        // Esc fecha o painel (o Esc da lista de municípios só fecha a lista)
-        if (e.key === 'Escape' && !e.defaultPrevented && !(e.target as HTMLElement).closest('[aria-expanded="true"]')) {
-          e.preventDefault();
-          concluir();
-        }
-      }}>
-      <p className="ia-ajustes-intro">{t('Opcional. Bases, território e ano valem quando a pergunta não os disser; o que a pergunta disser prevalece.',
-        'Optional. Datasets, territory and year apply when the question does not state them; what the question says takes priority.')}</p>
-      <fieldset className="ia-grupo">
-        <legend>{t('Bases consultadas', 'Datasets queried')}</legend>
-        <div className="ia-linha">
-          {PAINEIS.map((p) => (
-            <label key={p} className="caixa">
-              <input type="checkbox" checked={paineis.includes(p)} disabled={travarPaineis || (paineis.length === 1 && paineis.includes(p))}
-                onChange={() => alternarPainel(p)} /> {NOMES_PAINEIS()[p]}
-            </label>
-          ))}
-        </div>
-        {travarPaineis && (
-          <p className="ia-nota">{t('Para mudar as bases, comece uma nova conversa: cada base traz tabelas e regras próprias.',
-            'To change the datasets, start a new conversation: each dataset brings its own tables and rules.')}</p>
-        )}
-      </fieldset>
-      <fieldset className="ia-grupo">
-        <legend>{t('Território', 'Territory')}</legend>
-        <div className="filtros">
-          <div className="campo">
-            <label htmlFor="ia-uf">{t('UF', 'State')}</label>
-            <select id="ia-uf" value={f.uf ?? ''} onChange={(e) => f.definir({ uf: e.target.value || null, ente: null })}>
-              <option value="">{t('Nenhuma (Brasil)', 'None (Brazil)')}</option>
-              {UFS.map((u) => <option key={u} value={u}>{`${u} · ${nomeDaUf(u)}`}</option>)}
-            </select>
-          </div>
-          <BuscaEnte entes={entes} uf={f.uf} atual={f.ente} rotulo={t('Município ou estado', 'Municipality or state')}
-            aoEscolher={(e) => f.definir({ ente: e?.cod_ibge ?? null, uf: e?.uf ?? f.uf })} />
-        </div>
-        <p className="ia-nota">{t('Vale quando a pergunta não disser o lugar. Sem território, a IA responde para o Brasil e avisa. É o mesmo filtro dos painéis.',
-          'Used when the question does not name a place. With no territory, the AI answers for Brazil and says so. It is the same filter as the dashboards.')}</p>
-      </fieldset>
-      <fieldset className="ia-grupo">
-        <legend>{t('Ano', 'Year')}</legend>
-        <div className="campo">
-          <label htmlFor="ia-ano" className="sr-only">{t('Ano', 'Year')}</label>
-          <select id="ia-ano" value={ano ?? ''} onChange={(e) => definirAno(e.target.value ? Number(e.target.value) : null)} aria-describedby="ia-ano-nota">
-            <option value="">{t('Automático', 'Automatic')}</option>
-            {[...anos].reverse().map((a) => <option key={a} value={a}>{rotulo(a)}</option>)}
-          </select>
-        </div>
-        <p id="ia-ano-nota" className="ia-nota">{t('Automático: vale o ano que a pergunta citar; se ela não citar nenhum, a IA usa o mais recente disponível em cada fonte. Um ano escolhido aqui vale só para as perguntas que não disserem o ano.',
-          'Automatic: the year named in the question is used; if it names none, the AI uses the latest year available in each source. A year chosen here applies only to questions that do not name a year.')}</p>
-      </fieldset>
-      <div className="ia-ajustes-acoes">
-        {temAjustes && <button type="button" className="ia-botao-leve" onClick={limpar}>{t('Limpar ajustes', 'Clear settings')}</button>}
-        <button type="button" className="ia-botao-primario" onClick={concluir}>{t('Concluir', 'Done')}</button>
-      </div>
     </div>
   );
 }
@@ -779,16 +696,16 @@ function SeletorModo({ modo, definir, travado }: { modo: Modo; definir: (m: Modo
 }
 
 /**
- * O compositor: campo da pergunta e, na faixa de baixo, o modo, o resumo do contexto (abre os ajustes) e o envio.
- * Sem login, o envio vira "Entrar para perguntar": a pergunta fica guardada (sessionStorage) e o contexto e o idioma
- * voltam com o login.
+ * O compositor: campo da pergunta e, na faixa de baixo, o modo, o modelo e o envio.
+ * Sem login, o envio vira "Entrar para perguntar": a pergunta fica guardada (sessionStorage) e o idioma
+ * volta com o login.
  */
 function Compositor({ valor, mudar, enviar, cancelar, ocupado, bloqueio, exemplo, grande, campo, modo, descricaoDoModo, descricaoDoModelo, modeloAlterado, restaurarModelo,
-  resumo, ajustesAbertos, alternarAjustes, botaoContexto, painelAjustes, entrar, verificando, aoComoAcesso, alerta }: {
+  entrar, verificando, aoComoAcesso, alerta }: {
   valor: string; mudar: (v: string) => void; enviar: (v: string) => void; cancelar: () => void; ocupado: boolean;
   bloqueio: string | null; exemplo: string; grande?: boolean; campo: RefObject<HTMLTextAreaElement | null>;
-  modo: ReactNode; descricaoDoModo: string; descricaoDoModelo: string; modeloAlterado: boolean; restaurarModelo: () => void; resumo: string[]; ajustesAbertos: boolean; alternarAjustes: () => void;
-  botaoContexto: RefObject<HTMLButtonElement | null>; painelAjustes: ReactNode; entrar: boolean; verificando: boolean;
+  modo: ReactNode; descricaoDoModo: string; descricaoDoModelo: string; modeloAlterado: boolean; restaurarModelo: () => void;
+  entrar: boolean; verificando: boolean;
   aoComoAcesso: (e: { currentTarget: HTMLElement }) => void; alerta: string | null;
 }) {
   // o campo cresce com o texto, até um limite (depois rola)
@@ -801,6 +718,8 @@ function Compositor({ valor, mudar, enviar, cancelar, ocupado, bloqueio, exemplo
   const restantes = MAX_PERGUNTA - valor.length;
   return (
     <div className="ia-compositor-bloco">
+      <p id="ia-dica-escrita" className="ia-dica-escrita">{t('Escreva o que quer saber. Você pode indicar o lugar e o período na própria pergunta.',
+        'Write what you want to know. You can name the place and the period in the question itself.')}</p>
       <form className={`ia-compositor${grande ? ' grande' : ''}`} onSubmit={(e) => { e.preventDefault(); enviar(valor); }}>
         <label htmlFor="ia-pergunta" className="sr-only">{t('Sua pergunta', 'Your question')}</label>
         <textarea
@@ -810,7 +729,7 @@ function Compositor({ valor, mudar, enviar, cancelar, ocupado, bloqueio, exemplo
           maxLength={MAX_PERGUNTA}
           rows={grande ? 3 : 1}
           placeholder={exemplo}
-          aria-describedby="ia-dica"
+          aria-describedby="ia-dica-escrita ia-dica"
           onChange={(e) => mudar(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -824,15 +743,6 @@ function Compositor({ valor, mudar, enviar, cancelar, ocupado, bloqueio, exemplo
         />
         <div className="ia-compositor-barra">
           {modo}
-          <button ref={botaoContexto} type="button" className="ia-contexto-botao" aria-expanded={ajustesAbertos} aria-controls="ia-ajustes" onClick={alternarAjustes}
-            title={t('Bases, território e ano usados quando a pergunta não os disser', 'Datasets, territory and year used when the question does not state them')}>
-            <Icone nome="ajustes" tamanho={15} />
-            <span className="sr-only">{t('Contexto: ', 'Context: ')}</span>
-            {/* uma parte por informação: no celular quebram linha inteiras; no computador só o território encurta (com …) */}
-            <span className="ia-contexto-resumo" title={resumo.join(' · ')}>
-              {resumo.map((x, i) => <span key={i} className="ia-ctx-parte">{x}{i < resumo.length - 1 ? ' · ' : ''}</span>)}
-            </span>
-          </button>
           <span className="ia-compositor-espaco" />
           {ocupado
             ? <button type="button" className="ia-parar" onClick={cancelar}><Icone nome="parar" tamanho={15} /> {t('Cancelar', 'Cancel')}</button>
@@ -847,7 +757,6 @@ function Compositor({ valor, mudar, enviar, cancelar, ocupado, bloqueio, exemplo
               )}
         </div>
       </form>
-      {painelAjustes}
       <p id="ia-dica" className="ia-dica">
         <span id="ia-modo-desc">{descricaoDoModo}</span>
         <span id="ia-modelo-desc" className="sr-only"> {descricaoDoModelo}</span>
@@ -861,7 +770,7 @@ function Compositor({ valor, mudar, enviar, cancelar, ocupado, bloqueio, exemplo
       </p>
       {entrar && (
         <p className="ia-dica ia-dica-entrar">
-          {t('Você pode escrever agora: a pergunta e o contexto ficam guardados enquanto você entra com seu e-mail.',
+          {t('Você pode escrever agora: a pergunta fica guardada enquanto você entra com seu e-mail.',
             'You can write now: the question and the context are kept while you sign in with your email.')}{' '}
           <button type="button" className="ia-link" onClick={aoComoAcesso}>{t('Como funciona o acesso?', 'How does access work?')}</button>
         </p>
@@ -885,15 +794,12 @@ function Sugestoes({ lista, aoEscolher }: { lista: Sugestao[]; aoEscolher: (s: S
   );
 }
 
-/** Anos citados na pergunta de um exemplo ("de 2014 a 2024"), para compará-los com o ano do contexto. */
-const anosDoTexto = (texto: string) => [...new Set((texto.match(/\b(?:19|20)\d{2}\b/g) ?? []).map(Number))];
-
 /**
- * "Explorar exemplos": primeiro os das bases marcadas no contexto, por tema (as perguntas entre bases por último);
- * "Ver todos" mostra o catálogo inteiro. Cada exemplo diz o que ele muda no contexto antes de preencher o campo.
+ * "Explorar exemplos": primeiro os do tema de onde se veio (?paineis=), por tema (as perguntas entre bases por último);
+ * "Ver todos" mostra o catálogo inteiro. A origem só ordena: nenhum exemplo restringe as fontes da pergunta.
  */
-function Exemplos({ lista, selecionados, ano, aoEscolher, fixo }: {
-  lista: Sugestao[]; selecionados: Painel[]; ano: number | null; aoEscolher: (s: Sugestao) => void; fixo: boolean;
+function Exemplos({ lista, selecionados, aoEscolher, fixo }: {
+  lista: Sugestao[]; selecionados: Painel[]; aoEscolher: (s: Sugestao) => void; fixo: boolean;
 }) {
   const compativel = (s: Sugestao) => s.paineis.every((p) => selecionados.includes(p));
   const compativeis = lista.filter(compativel);
@@ -907,27 +813,20 @@ function Exemplos({ lista, selecionados, ano, aoEscolher, fixo }: {
   }
   const avisos = (s: Sugestao) => {
     const itens: string[] = [];
-    const novas = s.paineis.filter((p) => !selecionados.includes(p));
-    if (novas.length) itens.push(t(`Acrescenta ao contexto: ${novas.map((p) => NOMES_PAINEIS()[p]).join(' + ')}.`, `Adds to the context: ${novas.map((p) => NOMES_PAINEIS()[p]).join(' + ')}.`));
-    const anos = anosDoTexto(s.texto);
-    if (ano && anos.length && !anos.every((a) => a === ano)) {
-      itens.push(t(`Período da pergunta: ${anos.length > 1 ? `${anos[0]}–${anos.at(-1)}` : anos[0]}. O contexto tem ${ano}; vale o da pergunta.`,
-        `Period of the question: ${anos.length > 1 ? `${anos[0]}–${anos.at(-1)}` : anos[0]}. The context has ${ano}; the question's period applies.`));
-    }
     if (s.nota) itens.push(s.nota);
     return itens;
   };
   return (
     <>
-      <p className="ia-nota ia-exemplos-intro">{t('O exemplo preenche o campo com a pergunta completa: revise antes de enviar. O que a pergunta diz (lugar, período) vale mais que o contexto.',
-        'An example fills the box with the full question: review it before sending. What the question says (place, period) takes priority over the context.')}</p>
+      <p className="ia-nota ia-exemplos-intro">{t('O exemplo preenche o campo com a pergunta completa: revise antes de enviar. Lugar e período vão na própria pergunta.',
+        'An example fills the box with the full question: review it before sending. Place and period go in the question itself.')}</p>
       {!fixo && outros > 0 && compativeis.length > 0 && (
         <p className="ia-exemplos-filtro">
           <span>{mostrarTodos
             ? t('Mostrando todos os exemplos.', 'Showing all examples.')
-            : t(`Mostrando os das bases selecionadas (${selecionados.map((p) => NOMES_PAINEIS()[p]).join(' + ')}).`, `Showing those for the selected datasets (${selecionados.map((p) => NOMES_PAINEIS()[p]).join(' + ')}).`)}</span>
+            : t(`Mostrando primeiro os de ${selecionados.map((p) => NOMES_PAINEIS()[p]).join(' + ')}, de onde você veio. Qualquer pergunta pode usar todas as bases.`, `Showing first those for ${selecionados.map((p) => NOMES_PAINEIS()[p]).join(' + ')}, where you came from. Any question can use all the datasets.`)}</span>
           <button type="button" className="ia-link" onClick={() => setTodos(!todos)} aria-pressed={todos}>
-            {todos ? t('Ver só as bases selecionadas', 'Show selected datasets only') : t(`Ver todos (${lista.length})`, `See all (${lista.length})`)}
+            {todos ? t('Ver só os de onde vim', 'Show only those from where I came') : t(`Ver todos (${lista.length})`, `See all (${lista.length})`)}
           </button>
         </p>
       )}
@@ -962,7 +861,7 @@ function PassosAcesso() {
     <ol className="ia-entrar-passos" role="list">
       <li><strong>{t('E-mail', 'Email')}</strong>{t('Informe um e-mail autorizado pelo LAPAM na tela de login.', 'Enter an email authorized by LAPAM on the login screen.')}</li>
       <li><strong>{t('Código', 'Code')}</strong>{t('Digite o código de 6 dígitos recebido por e-mail (veja o spam se não chegar).', 'Type the 6-digit code you receive by email (check spam if it does not arrive).')}</li>
-      <li><strong>{t('Revisar', 'Review')}</strong>{t('Você volta a esta página com a pergunta, o contexto e o idioma; revise e envie.', 'You return to this page with your question, context and language; review and send.')}</li>
+      <li><strong>{t('Revisar', 'Review')}</strong>{t('Você volta a esta página com a pergunta e o idioma; revise e envie.', 'You return to this page with your question and language; review and send.')}</li>
     </ol>
   );
 }
@@ -1013,8 +912,8 @@ function Ajuda({ secao, paineis, cobertura, estado, conta }: {
       <section aria-labelledby="ia-ajuda-como">
         <h3 id="ia-ajuda-como" tabIndex={-1}>{t('Como funciona', 'How it works')}</h3>
         <p>{descricao(paineis)}</p>
-        <p>{t('Bases, território e ano do contexto valem quando a pergunta não os disser; a pergunta sempre tem prioridade. Cada resposta mostra o recorte que as consultas usaram de fato.',
-          'The datasets, territory and year in the context apply when the question does not state them; the question always takes priority. Each answer shows the scope its queries actually used.')}</p>
+        <p>{t('Não é preciso escolher bases, território nem ano: escreva a pergunta e indique o lugar e o período nela. A IA escolhe sozinha as fontes que servem (inclusive de áreas diferentes, quando a pergunta cruza dados) e, se faltar o período, usa o mais recente compatível e avisa qual. Cada resposta mostra o território, o período e as fontes que as consultas usaram de fato.',
+          'There is no need to choose datasets, territory or year: write the question and name the place and period in it. The AI picks the sources that fit on its own (even from different areas, when the question crosses data) and, if the period is missing, uses the latest compatible one and says which. Each answer shows the territory, period and sources its queries actually used.')}</p>
         <p>{t('Na resposta rápida vem o essencial; na análise para pesquisa, tabelas completas, metodologia e fontes. As duas mostram as consultas (SQL) para conferência e podem ser exportadas em PDF, Excel ou JSON.',
           'The quick answer brings the essentials; the research analysis adds complete tables, methodology and sources. Both show the queries (SQL) for checking and can be exported as PDF, Excel or JSON.')}</p>
       </section>
@@ -1029,8 +928,8 @@ function Ajuda({ secao, paineis, cobertura, estado, conta }: {
       </section>
       <section aria-labelledby="ia-ajuda-privacidade">
         <h3 id="ia-ajuda-privacidade" tabIndex={-1}>{t('Privacidade e armazenamento', 'Privacy and storage')}</h3>
-        <p>{t('As respostas são geradas pelo Claude, da Anthropic. Para a Anthropic vão só a pergunta, o contexto da página e os resultados resumidos das consultas, nunca os arquivos; as consultas rodam aqui no seu navegador.',
-          'Answers are generated by Claude, by Anthropic. Only the question, the page context and the summarized query results go to Anthropic, never the files; the queries run here in your browser.')}</p>
+        <p>{t('As respostas são geradas pelo Claude, da Anthropic. Para a Anthropic vão só a pergunta, o modo de resposta e os resultados resumidos das consultas, nunca os arquivos; as consultas rodam aqui no seu navegador.',
+          'Answers are generated by Claude, by Anthropic. Only the question, the answer mode and the summarized query results go to Anthropic, never the files; the queries run here in your browser.')}</p>
         <p>{conta
           ? t(`As conversas ficam na sua conta (${conta}), no servidor do LAPAM, e abrem em qualquer computador em que você entrar com este e-mail. Cada pessoa só vê as próprias conversas, mas quem administra o servidor do LAPAM tem acesso a elas. Excluir apaga do servidor de vez.`,
             `Conversations are kept in your account (${conta}), on the LAPAM server, and open on any computer where you sign in with this email. Each person only sees their own conversations, but LAPAM server administrators can access them. Deleting erases them from the server for good.`)
@@ -1500,7 +1399,7 @@ function Reproducao({ p, consultas, contexto, modelo }: { p: RespostaPronta; con
     <details className="ia-metodo">
       <summary>{t('Detalhes para reprodução: parâmetros, bases e consultas SQL', 'Reproduction details: parameters, datasets and SQL queries')}</summary>
       <dl className="ia-ficha">
-        {contexto && <div><dt>{t('Parâmetros', 'Parameters')}</dt><dd>{descreverContexto(contexto, p.periodo)}</dd></div>}
+        {contexto && <div><dt>{t('Parâmetros', 'Parameters')}</dt><dd>{descreverContexto(contexto, p.periodo, true, p)}</dd></div>}
         {p.bases.length > 0 && <div><dt>{t('Versão das bases', 'Dataset versions')}</dt><dd>{p.bases.join('; ')}</dd></div>}
         <div><dt>{t('Dados processados em', 'Data processed on')}</dt><dd>{versao.geradoEm}</dd></div>
         {modelo && <div><dt>{t('Modelo', 'Model')}</dt><dd>{modelo}</dd></div>}
@@ -1781,25 +1680,26 @@ function Turno({ i, turno, pronta, meta, resultados, ativo, progresso, ultimo, p
 // ---------------- página ----------------
 
 /**
- * Aba geral "Pergunte aos dados" (/ia): uma IA para todos os painéis. Os marcados entram na conversa
- * (?paineis=financas,trabalho; nenhum = todos); território e ano vêm dos filtros globais (?uf=, ?ente=,
- * ?ano=) e acompanham cada pergunta, com o estilo de resposta escolhido.
+ * Aba geral "Pergunte aos dados" (/ia): uma IA para todas as bases. A pessoa escreve a pergunta e a própria pergunta diz
+ * lugar e período; a IA escolhe as fontes. ?paineis= (links dos painéis) só indica o tema de onde se veio, para ordenar os
+ * exemplos: nunca restringe fontes nem aplica território ou ano. ?uf=, ?ente= e ?ano= de links antigos aparecem num aviso
+ * visível, com uma ação para escrevê-los no campo.
  */
 export function Ia() {
   const { meta, entes } = useDados();
-  const f = useFiltros();
   const [busca, setBusca] = useSearchParams();
   const pedidos = (busca.get('paineis') ?? '').split(',');
   const marcados = PAINEIS.filter((p) => pedidos.includes(p));
-  const paineis = marcados.length ? marcados : PAINEIS;
+  // tema de origem: só ordena exemplos e o texto de exemplo do campo; as fontes elegíveis são sempre todas
+  const dica = marcados.length ? marcados : PAINEIS;
+  const paineis = PAINEIS;
   const chavePaineis = paineis.join(',');
 
   // microdados de fato disponíveis (o navegador confere ao preparar as tabelas da IA, o que já adianta a 1ª pergunta)
   const [microdados, setMicrodados] = useState(false);
   useEffect(() => {
-    if (!chavePaineis.includes('trabalho')) return;
     let vivo = true;
-    tabelasIaTrabalho().then((c) => vivo && setMicrodados(c.microdados), () => undefined);
+    contextoTrabalhoIa().then((c) => vivo && setMicrodados(c.microdados), () => undefined);
     return () => {
       vivo = false;
     };
@@ -1814,14 +1714,8 @@ export function Ia() {
     };
   }, []);
   const cobertura = useMemo(() => coberturaDe(meta, microdados), [meta, microdados]);
-  // anos do seletor: os de todas as fontes das bases marcadas (fechadas e mensais), do mesmo manifesto da ajuda
-  const anos = useMemo(
-    () => [...coberturaPorAno(cobertura, chavePaineis.split(',').filter(Boolean) as Painel[]).keys()].sort((a, b) => a - b),
-    [cobertura, chavePaineis],
-  );
-  const anoUrl = Number(busca.get('ano'));
-  const ano = anos.includes(anoUrl) ? anoUrl : null;
-  const territorio = useMemo(() => territorioDe(f.alvo, f.uf, entes), [f.alvo, f.uf, entes]);
+  const territorio = TERRITORIO_ABERTO;
+  const ano: number | null = null;
   // modo guardado no navegador (o antigo "estilo técnico" vira análise para pesquisa)
   const [modo, setModo] = useState<Modo>(() => lerModo(lerGuardado('ia-modo') ?? lerGuardado('ia-estilo')));
   const contexto = useMemo<ContextoIa>(() => ({ paineis: chavePaineis.split(',') as Painel[], territorio, ano, modo }), [chavePaineis, territorio, ano, modo]);
@@ -1837,10 +1731,8 @@ export function Ia() {
   const [progresso, setProgresso] = useState<Progresso | null>(null);
   const [falha, setFalha] = useState<{ mensagem: string; pergunta: string; entrar?: boolean } | null>(null);
   const [status, setStatus] = useState('');
-  const [ajustes, setAjustes] = useState(false);
   const [exemplos, setExemplos] = useState(false);
   const [ajuda, setAjuda] = useState<SecaoAjuda | 'inicio' | 'entrar' | null>(null);
-  const botaoContexto = useRef<HTMLButtonElement>(null);
   const [apendice, setApendice] = useState(false);
   const campo = useRef<HTMLTextAreaElement>(null);
   // trocar a pergunta por um exemplo com rascunho no campo pede confirmação; a substituída pode ser restaurada
@@ -2134,7 +2026,6 @@ export function Ia() {
     setTexto('');
     setSubstituida(null);
     setFalha(null);
-    setAjustes(false);
     setMetas([...metas, inicio]);
     setRodando(controle);
     setStatus(t('Analisando a pergunta…', 'Analysing the question…'));
@@ -2274,20 +2165,6 @@ export function Ia() {
       return false;
     }
   };
-  const alternarPainel = (p: Painel) => {
-    const novos = paineis.includes(p) ? paineis.filter((x) => x !== p) : PAINEIS.filter((x) => x === p || paineis.includes(x));
-    if (!novos.length) return; // pelo menos um painel
-    const b = new URLSearchParams(busca);
-    if (novos.length === PAINEIS.length) b.delete('paineis');
-    else b.set('paineis', novos.join(','));
-    setBusca(b, { replace: true });
-  };
-  const definirAno = (a: number | null) => {
-    const b = new URLSearchParams(busca);
-    if (a) b.set('ano', String(a));
-    else b.delete('ano');
-    setBusca(b, { replace: true });
-  };
   const definirModelo = (m: EscolhaModelo) => {
     setEscolhaModelo(m);
     guardar('ia-modelo', m);
@@ -2303,49 +2180,42 @@ export function Ia() {
   };
 
   const conversa = lista.length > 0;
-  const ultimoContexto = metas.at(-1)?.contexto;
-  const contextoMudou = conversa && !rodando && !!ultimoContexto && !mesmoContexto(ultimoContexto, contexto);
-  const exemplo = conversa ? t('Pergunte mais sobre isso…', 'Ask a follow-up…') : exemploPergunta(contexto.paineis, territorio, cobertura);
-  const temAjustes = paineis.length !== PAINEIS.length || !!busca.get('uf') || !!busca.get('ente') || !!ano;
-  const limparAjustes = () => {
+  const exemplo = conversa ? t('Pergunte mais sobre isso…', 'Ask a follow-up…') : exemploPergunta(dica, territorio, cobertura);
+  // exemplos do tema de origem primeiro; nenhum fica de fora
+  const doTema = (x: Sugestao) => x.paineis.every((p) => dica.includes(p));
+  const ordenarPorTema = (xs: Sugestao[]) => (dica.length === PAINEIS.length ? xs : [...xs.filter(doTema), ...xs.filter((x) => !doTema(x))]);
+  const escolherExemplo = (s: Sugestao) => {
+    proporTexto(s.texto, () => setExemplos(false));
+  };
+  const listaExemplos = ordenarPorTema(sugestoes(PAINEIS, territorio, cobertura, ano));
+  // link antigo com território ou ano (?uf=, ?ente=, ?ano=): mostrado e oferecido como texto, nunca aplicado em silêncio
+  const entePedido = Number(busca.get('ente')) || 0;
+  const ufPedida = (busca.get('uf') ?? '').toUpperCase();
+  const anoPedido = Number(busca.get('ano')) || 0;
+  const lugarPedido = (() => {
+    const e = entePedido ? entes.find((x) => x.cod_ibge === entePedido) : undefined;
+    if (e) return e.esfera === 'M' ? `${e.nome} (${e.uf})` : e.nome;
+    return ufPedida && ufPedida.length === 2 ? (ufPedida === 'DF' ? t('Distrito Federal', 'Federal District') : nomeDaUf(ufPedida)) : '';
+  })();
+  const recorteDoLink = !conversa && !abrindo && (lugarPedido || anoPedido) ? { lugar: lugarPedido, ano: anoPedido } : null;
+  const limparRecorteDoLink = () => {
     const b = new URLSearchParams(busca);
     for (const k of ['uf', 'ente', 'ano']) b.delete(k);
-    if (!conversa && !rodando) b.delete('paineis');
     setBusca(b, { replace: true });
   };
-  const concluirAjustes = () => {
-    setAjustes(false);
-    botaoContexto.current?.focus();
+  const usarRecorteDoLink = () => {
+    if (!recorteDoLink) return;
+    const partes = [recorteDoLink.lugar && t(`em ${recorteDoLink.lugar}`, `in ${recorteDoLink.lugar}`), recorteDoLink.ano && t(`em ${recorteDoLink.ano}`, `in ${recorteDoLink.ano}`)].filter(Boolean);
+    proporTexto(`${partes.join(', ')}: `, limparRecorteDoLink);
   };
-  // ao abrir o contexto, o foco vai ao primeiro filtro: o painel vem depois do botão de enviar na ordem do DOM, e o Tab
-  // do botão do contexto cairia no envio. Esc ou "Concluir" devolvem o foco ao botão.
-  useEffect(() => {
-    if (!ajustes) return;
-    const id = requestAnimationFrame(() => {
-      document.querySelector<HTMLElement>('#ia-ajustes input:not(:disabled), #ia-ajustes select')?.focus();
-    });
-    return () => cancelAnimationFrame(id);
-  }, [ajustes]);
-  const painelAjustes = ajustes && (
-    <Ajustes paineis={paineis} alternarPainel={alternarPainel} travarPaineis={conversa || !!rodando} anos={anos} ano={ano}
-      rotulo={(a) => rotuloDoAno(a, cobertura, contexto.paineis)} definirAno={definirAno}
-      temAjustes={temAjustes} limpar={limparAjustes} concluir={concluirAjustes} />
+  const avisoRecorteDoLink = recorteDoLink && (
+    <p className="ia-nota ia-recorte-link" role="note">
+      {t(`Este link trouxe um recorte: ${[recorteDoLink.lugar, recorteDoLink.ano || ''].filter(Boolean).join(' · ')}. Ele não é aplicado sozinho: escreva-o na pergunta se quiser.`,
+        `This link brought a scope: ${[recorteDoLink.lugar, recorteDoLink.ano || ''].filter(Boolean).join(' · ')}. It is not applied on its own: write it in the question if you want it.`)}{' '}
+      <button type="button" className="ia-link" onClick={usarRecorteDoLink}>{t('Escrever no campo', 'Write it in the box')}</button>{' '}
+      <button type="button" className="ia-link" onClick={limparRecorteDoLink}>{t('Ignorar', 'Dismiss')}</button>
+    </p>
   );
-  // um exemplo de outra base, antes da 1ª pergunta, acrescenta a base ao contexto (depois as bases ficam fixas)
-  const escolherExemplo = (s: Sugestao) => {
-    proporTexto(s.texto, () => {
-      if (!conversa && !rodando && !s.paineis.every((x) => paineis.includes(x))) {
-        const novos = PAINEIS.filter((x) => paineis.includes(x) || s.paineis.includes(x));
-        const b = new URLSearchParams(busca);
-        if (novos.length === PAINEIS.length) b.delete('paineis');
-        else b.set('paineis', novos.join(','));
-        setBusca(b, { replace: true });
-      }
-      setExemplos(false);
-    });
-  };
-  const listaExemplos = sugestoes(conversa ? paineis : PAINEIS, territorio, cobertura, ano)
-    .filter((s) => !conversa || s.paineis.every((x) => paineis.includes(x)));
   // acesso: e-mail sem autorização ou falha ao verificar (o caso sem login fica no próprio compositor)
   const acesso = falhaEstado && (estadoNegado ? (
     <section className="ia-entrar-negado" role="alert" aria-labelledby="ia-negado-titulo">
@@ -2367,8 +2237,7 @@ export function Ia() {
       exemplo={exemplo} grande={!conversa} campo={campo}
       modo={<><SeletorModo modo={modo} definir={definirModo} travado={!!rodando} /><SeletorModelo escolha={escolhaModelo} definir={definirModelo} travado={!!rodando} /></>}
       descricaoDoModo={descricaoModo(modo)} descricaoDoModelo={descricaoModelo(escolhaModelo)} modeloAlterado={escolhaModelo !== MODELO_PADRAO} restaurarModelo={restaurarModelo}
-      resumo={resumoContexto(contexto)} ajustesAbertos={ajustes} alternarAjustes={() => setAjustes(!ajustes)} botaoContexto={botaoContexto}
-      painelAjustes={painelAjustes} entrar={estado === null} verificando={estado === undefined && !falhaEstado}
+      entrar={estado === null} verificando={estado === undefined && !falhaEstado}
       aoComoAcesso={abrirVista(() => setAjuda('entrar'))} alerta={poucas} />
   );
   const restaurar = substituida !== null && (
@@ -2381,7 +2250,7 @@ export function Ia() {
     <div className="ia-falha" role="alert">
       <p><strong>{t('Não foi possível concluir a pergunta.', 'The question could not be completed.')}</strong> {falha.mensagem}</p>
       <p className="ia-nota">{falha.entrar
-        ? t('A pergunta voltou para o campo de texto e fica guardada, com o território, o ano e os painéis, enquanto você entra de novo.', 'The question is back in the text box and is kept, with the territory, year and dashboards, while you sign in again.')
+        ? t('A pergunta voltou para o campo de texto e fica guardada enquanto você entra de novo.', 'The question is back in the text box and is kept while you sign in again.')
         : t('A pergunta voltou para o campo de texto; nada foi perdido.', 'The question is back in the text box; nothing was lost.')}</p>
       {falha.entrar
         ? <a className="botao" href={urlEntrar()}>{t('Entrar de novo', 'Sign in again')}</a>
@@ -2446,7 +2315,7 @@ export function Ia() {
   const dialogos = (
     <>
       <Dialogo aberto={exemplos} aoFechar={() => setExemplos(false)} retorno={origem} titulo={t('Explorar exemplos', 'Explore examples')}>
-        <Exemplos lista={listaExemplos} selecionados={paineis} ano={ano} aoEscolher={escolherExemplo} fixo={conversa} />
+        <Exemplos lista={listaExemplos} selecionados={dica} aoEscolher={escolherExemplo} fixo={conversa} />
       </Dialogo>
       <Dialogo aberto={ajuda !== null} aoFechar={() => setAjuda(null)} retorno={origem}
         titulo={ajuda === 'entrar' ? t('Como funciona o acesso', 'How access works') : t('Ajuda', 'Help')}>
@@ -2496,7 +2365,8 @@ export function Ia() {
           {compositor}
           {restaurar}
           {aviso}
-          <Sugestoes lista={sugestoes(contexto.paineis, territorio, cobertura, ano)} aoEscolher={escolherExemplo} />
+          {avisoRecorteDoLink}
+          <Sugestoes lista={listaExemplos} aoEscolher={escolherExemplo} />
           <p className="ia-links">
             <button type="button" className="ia-link" onClick={abrirVista(() => setExemplos(true))}><Icone nome="ideia" tamanho={15} /> {t('Explorar exemplos', 'Explore examples')}</button>
             <button type="button" className="ia-link" onClick={abrirVista(() => setAjuda('dados'))}><Icone nome="dados" tamanho={15} /> {t('Dados disponíveis', 'Available data')}</button>
@@ -2587,7 +2457,7 @@ export function Ia() {
             ))}
             {aviso}
           </div>
-          <div className={`ia-rodape${ajustes ? ' aberto' : ''}`}>
+          <div className="ia-rodape">
             {longeDoFim && (
               <button type="button" className="ia-recente" onClick={() => {
                 const reduzir = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -2595,12 +2465,6 @@ export function Ia() {
               }}>
                 <Icone nome="descer" tamanho={15} /> {rodando ? t('Acompanhar a resposta', 'Follow the answer') : t('Ir para a última pergunta', 'Go to the latest question')}
               </button>
-            )}
-            {contextoMudou && (
-              <p className="ia-mudou" role="status">
-                {t(`As próximas respostas vão usar: ${descreverContexto(contexto, null, false)}. As respostas anteriores mantêm o recorte que usaram.`,
-                  `The next answers will use: ${descreverContexto(contexto, null, false)}. Previous answers keep the scope they used.`)}
-              </p>
             )}
             {acesso}
             {compositor}

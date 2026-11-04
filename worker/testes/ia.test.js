@@ -161,6 +161,15 @@ describe('instruções', () => {
     assert.match(contextoDosDados({ ...base, fontes: { siope: { anos: [2024], remuneracao: [202412] } } }), /siope_remuneracao[\s\S]*Meses: 12\/2024/);
   });
 
+  test('instruções com todas as bases: as três seções, regras de escolha de fonte e nenhuma menção a território da página', () => {
+    const todas = instrucoes(paineisDoPedido(undefined), { manifesto: {}, contextoTrabalho: {} })[0].text;
+    for (const nome of ['finanças públicas', 'mercado de trabalho', 'saúde']) assert.match(todas, new RegExp(nome));
+    assert.doesNotMatch(todas, /Contexto da página|território selecionado|territ[óo]rio do contexto/i);
+    assert.match(todas, /Não há bases, território nem ano escolhidos na página/);
+    assert.match(todas, /Período ausente/);
+    assert.match(todas, /fora da cobertura/i);
+  });
+
   test('painéis desconhecidos são ignorados; nenhum válido = todos', () => {
     assert.deepEqual(paineisDoPedido(['trabalho', 'x']), ['trabalho']);
     assert.deepEqual(paineisDoPedido([]), ['financas', 'trabalho', 'saude']);

@@ -1842,6 +1842,26 @@ export type ContextoTrabalho = {
  * ano e, no computador local, os microdados por ano e UF, com a lista do indice.json). Devolve o contexto.
  */
 let iaTrabalho: Promise<ContextoTrabalho> | null = null;
+let iaTrabalhoPronto: ContextoTrabalho | null = null;
+
+/**
+ * O contexto do trabalho (anos da RAIS, microdados, CAGED) só com o manifesto, sem criar as tabelas nem as visões: serve ao
+ * prompt e à cobertura de qualquer pergunta. As tabelas só são preparadas (tabelasIaTrabalho) quando uma consulta as usa.
+ * Depois de preparadas, vale o contexto conferido (inclusive o índice dos microdados).
+ */
+export async function contextoTrabalhoIa(): Promise<ContextoTrabalho> {
+  if (iaTrabalhoPronto) return iaTrabalhoPronto;
+  const { manifesto } = await iniciar();
+  const f = (manifesto.fontes ?? {}) as Record<string, Record<string, unknown>>;
+  const microAnos = ((f.rais_micro?.anos as number[] | undefined) ?? []).filter(Number.isInteger);
+  const rais = f.rais as { anos?: number[] } | undefined;
+  const caged = f.caged as { de?: number; ate?: number } | undefined;
+  return {
+    rais_anos: rais?.anos ?? [], micro_anos: microAnos, caged_de: caged?.de ?? null, caged_ate: caged?.ate ?? null,
+    base_ipca: manifesto.base_ipca, microdados: temMicro() && microAnos.length > 0,
+  };
+}
+
 export function tabelasIaTrabalho() {
   iaTrabalho ??= (async () => {
     const { con, manifesto } = await iniciar();
@@ -1889,10 +1909,10 @@ export function tabelasIaTrabalho() {
     }
     const rais = f.rais as { anos?: number[] } | undefined;
     const caged = f.caged as { de?: number; ate?: number } | undefined;
-    return {
+    return (iaTrabalhoPronto = {
       rais_anos: rais?.anos ?? [], micro_anos: microAnos, caged_de: caged?.de ?? null, caged_ate: caged?.ate ?? null,
       base_ipca: manifesto.base_ipca, microdados,
-    };
+    });
   })();
   iaTrabalho.catch(() => (iaTrabalho = null));
   return iaTrabalho;

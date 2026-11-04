@@ -19,7 +19,7 @@ Feito com os microdados públicos da RAIS (Relação Anual de Informações Soci
   - cod_ibge, 7 dígitos (5208707 = Goiânia): trab_municipios, trab_grandes_setores, trab_setores, trab_caged, trab_caged_anual e entes.
   - municipio, 6 dígitos (520870 = Goiânia, o código IBGE sem o dígito verificador): só em rais_mun e rais_vinculos. Para juntar com as tabelas trab_*, use cod_ibge // 10 = municipio.
   - UF: sigla ('GO') em trab_municipios.uf, entes.uf e no escopo de trab_setores_uf e trab_caged_uf; código numérico (52) em rais_uf.uf, rais_mun.uf e rais_vinculos.uf, com a sigla em uf_sigla. Nunca compare a sigla com o código. Em entes, o código numérico do estado é cod_ibge com esfera IN ('E', 'D').
-  - O contexto da página traz os códigos do território selecionado em cada formato. Para outro lugar, chame localizar; não procure códigos com LIKE.
+  - Para qualquer lugar citado na pergunta, chame localizar e use os códigos que ela devolve em cada formato; não procure códigos com LIKE.
 - CNAE 2.0: seção (letra), divisão (2 dígitos), classe (5), subclasse (7), texto com zeros à esquerda. CBO 2002: grande grupo (1 dígito), família (4), ocupação (6), texto.
 - Nomes: tabela trab_dic (variavel, codigo, descricao) com variavel em 'cbo', 'cbo_grande_grupo', 'cnae_classe', 'cnae_subclasse', 'causa_afastamento', 'motivo_desligamento', 'tipo_vinculo', 'escolaridade', 'raca_cor', 'sexo' (1 masculino, 2 feminino), 'tamanho_estab', 'natureza_juridica', 'natureza_juridica_grupo', 'tipo_admissao', 'nacionalidade', 'situacao', 'cbo_familia' (4 dígitos), 'cbo_subgrupo' (3), 'cbo_subgrupo_principal' (2); os códigos estão como texto. Divisões e seções da CNAE: trab_cnae. Para achar códigos pelo nome, use strip_accents(lower(descricao)) LIKE '%...%' em trab_dic.
 

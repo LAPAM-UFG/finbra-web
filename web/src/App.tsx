@@ -122,8 +122,9 @@ export function App() {
   if (area === 'trabalho') for (const k of PARAMS_TRABALHO) if (atuais.get(k)) dentro.set(k, atuais.get(k)!);
   const busca = filtros.toString() ? `?${filtros}` : '';
   const buscaArea = dentro.toString() ? `?${dentro}` : '';
-  // a aba da IA abre com o painel da área de onde se veio (dá para marcar os outros nos ajustes, antes da 1ª pergunta)
-  const filtrosIa = new URLSearchParams(area === 'ia' ? atuais : filtros);
+  // a aba da IA abre com o tema da área de onde se veio (só ordena os exemplos): território e ano dos filtros do painel não
+  // vão junto, porque a pergunta diz o recorte e a IA escolhe as fontes
+  const filtrosIa = new URLSearchParams(area === 'ia' ? atuais : undefined);
   if (area !== 'ia') filtrosIa.set('paineis', area);
   const buscaIa = `?${filtrosIa}`;
 
