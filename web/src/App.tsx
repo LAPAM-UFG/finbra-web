@@ -135,7 +135,7 @@ export function App() {
         <h1 className={area === 'ia' ? 'sr-only' : undefined}>{{
           financas: `${t('Finanças municipais', 'Municipal finances')} · SICONFI`,
           trabalho: t('Mercado de trabalho · RAIS e CAGED', 'Labour market · RAIS and CAGED'),
-          saude: t('Saúde · SIM, SINASC e SIH', 'Health · SIM, SINASC and SIH'),
+          saude: t('Saúde · SIM, SINASC, SIH e CNES', 'Health · SIM, SINASC, SIH and CNES'),
           ia: t('Pergunte aos dados · LAPAM/UFG', 'Ask the data · LAPAM/UFG'),
         }[area]}</h1>
         <nav className="areas" aria-label={t('Áreas', 'Areas')}>

@@ -13,7 +13,7 @@ import type { Cobertura } from './ia';
 import type { TipoColuna } from './ia_formato';
 
 /** Fonte cujos anos (do manifesto) dão a cobertura temporal da coluna. */
-export type ChaveCobertura = 'dca' | 'pib' | 'rais' | 'sim' | 'sinasc' | 'sih';
+export type ChaveCobertura = 'dca' | 'pib' | 'rais' | 'sim' | 'sinasc' | 'sih' | 'cnes';
 
 export type Coluna = {
   tipo: TipoColuna;
@@ -45,6 +45,8 @@ const SIH = 'Ministério da Saúde/DATASUS: SIH (internações hospitalares paga
 const RESSALVA_SIH = 'só internações pagas pelo SUS (não inclui a saúde suplementar nem a privada); por ano de competência da AIH';
 const sih = (x: Omit<Coluna, 'fonte' | 'tipo'> & { tipo?: TipoColuna }): Coluna => ({ tipo: 'contagem', fonte: SIH, tabelas: ['saude_municipios'], cobertura: 'sih', territorio: 'municípios de residência', ressalva: RESSALVA_SIH, ...x });
 const CAP_SIH = ['infecciosas e parasitárias (A00–B99)', 'neoplasias (C00–D48)', 'sangue e imunidade (D50–D89)', 'endócrinas, nutricionais e metabólicas (E00–E90)', 'transtornos mentais (F00–F99)', 'sistema nervoso (G00–G99)', 'olho (H00–H59)', 'ouvido (H60–H95)', 'aparelho circulatório (I00–I99)', 'aparelho respiratório (J00–J99)', 'aparelho digestivo (K00–K93)', 'pele (L00–L99)', 'osteomuscular (M00–M99)', 'geniturinário (N00–N99)', 'gravidez, parto e puerpério (O00–O99)', 'afecções perinatais (P00–P96)', 'malformações congênitas (Q00–Q99)', 'mal definidas (R00–R99)', 'lesões e envenenamentos (S00–T98)', 'causas externas (V01–Y98)', 'fatores que influenciam o estado de saúde (Z00–Z99)', 'códigos especiais (U00–U99)'];
+const CNES_F = 'Ministério da Saúde/DATASUS: CNES (retrato de dezembro; município do estabelecimento)';
+const cnes = (x: Omit<Coluna, 'fonte' | 'tipo'>): Coluna => ({ tipo: 'contagem', fonte: CNES_F, tabelas: ['saude_municipios'], cobertura: 'cnes', territorio: 'municípios onde fica o estabelecimento', ressalva: 'retrato de dezembro; conta o que está no município (não o de residência de quem usa), então polos regionais têm valores altos por habitante', ...x });
 const FUNCOES = 'função de governo 04 (Portaria MOG 42/1999)';
 
 const TERR_DCA = 'municípios e estados (com o DF) que entregaram a DCA do exercício';
@@ -84,6 +86,21 @@ export const COLUNAS: Record<string, Coluna> = {
   int_atendidas_de_fora: sih({ rotulo: 'internações atendidas de residentes de outros municípios', definicao: 'internações em hospitais do município de pessoas residentes em outro município', territorio: 'municípios onde fica o hospital' }),
   int_atendidas_valor_real: sih({ tipo: 'reais', rotulo: 'valor pago nas internações atendidas (R$ de 2025)', definicao: 'valor das AIH atendidas por hospitais do município, em reais de 2025 pelo IPCA médio do ano', territorio: 'municípios onde fica o hospital' }),
   ...Object.fromEntries(CAP_SIH.map((nome, i) => [`int_cap${String(i + 1).padStart(2, '0')}`, sih({ rotulo: `internações: ${nome}`, definicao: `internações cujo diagnóstico principal é do capítulo ${nome} da CID-10`, classificacao: 'CID-10, diagnóstico principal' })])),
+  cnes_estab: cnes({ rotulo: 'estabelecimentos de saúde', definicao: 'estabelecimentos distintos cadastrados no CNES no município (qualquer tipo, com ou sem vínculo SUS)' }),
+  cnes_estab_sus: cnes({ rotulo: 'estabelecimentos com vínculo SUS', definicao: 'estabelecimentos do CNES com vínculo ao SUS (VINC_SUS = 1)' }),
+  cnes_hospitais: cnes({ rotulo: 'hospitais', definicao: 'estabelecimentos do tipo hospital geral (05) ou hospital especializado (07) na tabela de tipos do CNES' }),
+  cnes_ubs: cnes({ rotulo: 'postos de saúde e unidades básicas', definicao: 'estabelecimentos do tipo posto de saúde (01) ou centro de saúde/unidade básica (02)', ressalva: 'não inclui as unidades de saúde da família cadastradas em outros tipos; retrato de dezembro' }),
+  cnes_leitos: cnes({ rotulo: 'leitos existentes', definicao: 'soma dos leitos existentes (QT_EXIST) nos estabelecimentos do município, SUS e não SUS' }),
+  cnes_leitos_sus: cnes({ rotulo: 'leitos SUS', definicao: 'leitos disponíveis ao SUS (QT_SUS)', ressalva: 'pode superar os existentes em municípios pequenos por inconsistência de cadastro; retrato de dezembro' }),
+  cnes_leitos_nao_sus: cnes({ rotulo: 'leitos não SUS', definicao: 'leitos não disponíveis ao SUS (QT_NSUS)' }),
+  ...Object.fromEntries([['cirurgicos', 'cirúrgicos'], ['clinicos', 'clínicos'], ['complementares', 'complementares (inclui UTI e unidades intermediárias)'], ['obstetricos', 'obstétricos'],
+    ['pediatricos', 'pediátricos'], ['outras', 'de outras especialidades'], ['hospital_dia', 'de hospital-dia']].map(([k, nome]) => [`cnes_leitos_${k}`, cnes({ rotulo: `leitos ${nome}`, definicao: `leitos existentes ${nome} (tipo de leito do CNES)` })])),
+  cnes_medicos: cnes({ rotulo: 'médicos', definicao: 'pessoas (CNS) com vínculo de médico (CBO 225 e 2231), cada uma uma só vez no ano, no município do vínculo de maior carga horária (empate: menor código)', ressalva: 'quem atua em mais de um município aparece só no principal, então a soma por UF e Brasil são pessoas distintas; de 2007 em diante; retrato de dezembro' }),
+  cnes_medicos_no_municipio: cnes({ rotulo: 'médicos que atuam no município', definicao: 'pessoas (CNS) com vínculo de médico em estabelecimento do município, contadas uma vez em cada município onde atuam', ressalva: 'a mesma pessoa conta em cada município: não some por UF nem Brasil (superconta; para totais use cnes_medicos); de 2007 em diante' }),
+  cnes_medicos_sus: cnes({ rotulo: 'médicos com vínculo SUS', definicao: 'médicos (CNS distintos) com vínculo SUS (PROF_SUS = 1) em estabelecimento do município' }),
+  cnes_medicos_vinculos: cnes({ rotulo: 'vínculos de médicos', definicao: 'número de vínculos de médicos com estabelecimentos do município (a mesma pessoa conta uma vez por estabelecimento e por CBO)', ressalva: 'é vínculo, não pessoa; retrato de dezembro' }),
+  cnes_enfermeiros: cnes({ rotulo: 'enfermeiros', definicao: 'pessoas (CNS) com vínculo de enfermeiro (CBO 2235), cada uma uma só vez no ano, no município do vínculo de maior carga horária', ressalva: 'de 2007 em diante; retrato de dezembro' }),
+  cnes_dentistas: cnes({ rotulo: 'cirurgiões-dentistas', definicao: 'pessoas (CNS) com vínculo de cirurgião-dentista (CBO 2232), cada uma uma só vez no ano, no município do vínculo de maior carga horária', ressalva: 'de 2007 em diante; retrato de dezembro' }),
   nascidos: { tipo: 'contagem', rotulo: 'nascidos vivos', definicao: 'nascidos vivos de mães residentes no município', fonte: SINASC, tabelas: ['saude_municipios'], cobertura: 'sinasc', territorio: 'municípios de residência da mãe' },
   populacao_ibge: {
     tipo: 'contagem', rotulo: 'população do IBGE (habitantes)',
@@ -158,6 +175,7 @@ export function coberturaDaColuna(c: Coluna, cob?: Cobertura | null): string {
   if (c.cobertura === 'sim') return intervalo(cob?.sim);
   if (c.cobertura === 'sinasc') return intervalo(cob?.sinasc);
   if (c.cobertura === 'sih') return intervalo(cob?.sih);
+  if (c.cobertura === 'cnes') return intervalo(cob?.cnes);
   return c.cobertura ?? '';
 }
 

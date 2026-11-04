@@ -5,7 +5,7 @@
  */
 export const SAUDE = `# Painel de saúde
 
-Feito com os microdados públicos do SIM (Sistema de Informações sobre Mortalidade), do SINASC (Sistema de Informações sobre Nascidos Vivos) e do SIH (Sistema de Informações Hospitalares do SUS), do Ministério da Saúde/DATASUS, e com as estimativas de população da SVS/MS. Os registros vêm somados por ano e município de residência: não há registros individuais.
+Feito com os microdados públicos do SIM (Sistema de Informações sobre Mortalidade), do SINASC (Sistema de Informações sobre Nascidos Vivos), do SIH (Sistema de Informações Hospitalares do SUS) e do CNES (Cadastro Nacional de Estabelecimentos de Saúde), do Ministério da Saúde/DATASUS, e com as estimativas de população da SVS/MS. Os registros vêm somados por ano e município de residência: não há registros individuais.
 
 ## Tabela do painel de saúde
 
@@ -21,6 +21,10 @@ saude_municipios — uma linha por ano e município de residência
     int_total (internações); int_fora (feitas em hospital de outro município); int_dias (soma dos dias de permanência); int_obitos (com saída por óbito); int_menores_5 e int_60_mais (por idade); int_valor (valor pago, R$ correntes do ano) e int_valor_real (R$ de 2025 pelo IPCA médio do ano: use este para comparar anos; NULL em 2008 e 2009, antes do IPCA da base)
     int_cap01 a int_cap22: internações por capítulo da CID-10 do diagnóstico principal (os mesmos 22 capítulos de cap01–cap22 dos óbitos, mas aqui com o 19, lesões e envenenamentos S00–T98, e o 21, Z00–Z99, que são frequentes em internação)
   Pelo município do hospital (onde o atendimento foi feito, não onde a pessoa mora): int_atendidas (internações atendidas por hospitais do município), int_atendidas_de_fora (as de residentes de outros municípios) e int_atendidas_valor_real. Uma linha de saude_municipios tem os dois pontos de vista; não os misture numa mesma razão sem dizer qual é qual.
+  Rede de saúde (CNES, retrato de dezembro de cada ano, pelo município ONDE FICA o estabelecimento, não o de residência de quem usa):
+    cnes_estab (estabelecimentos), cnes_estab_sus (com vínculo SUS), cnes_hospitais (hospital geral ou especializado), cnes_ubs (posto de saúde e centro de saúde/unidade básica)
+    leitos: cnes_leitos (existentes), cnes_leitos_sus, cnes_leitos_nao_sus e por tipo (cnes_leitos_cirurgicos, _clinicos, _complementares [inclui UTI e unidades intermediárias], _obstetricos, _pediatricos, _outras, _hospital_dia)
+    profissionais, de 2007 em diante (em 2006 NULL: a CBO ainda não era a de 2002): cnes_medicos (pessoas distintas por CNS com vínculo de médico, CBO 225 e 2231, cada uma uma só vez no ano, no município do vínculo de maior carga horária: a soma por UF e Brasil são pessoas distintas), cnes_medicos_sus, cnes_enfermeiros (CBO 2235) e cnes_dentistas (CBO 2232), do mesmo modo; cnes_medicos_no_municipio (quem atua em cada município: a mesma pessoa conta em vários, NÃO some por UF ou Brasil) e cnes_medicos_vinculos (vínculos, não pessoas)
   obitos_fetais: óbitos fetais (DOFET), que não entram em obitos
   Nascidos vivos (SINASC, pelo município de residência da mãe): nascidos
     baixo_peso (menos de 2.500 g) e peso_informado; prematuros (menos de 37 semanas) e gestacao_informada; cesareos e parto_informado; consultas_7_mais (7 ou mais consultas de pré-natal), sem_consulta e consultas_informadas; maes_10_19, maes_35_mais e idade_mae_informada
@@ -37,6 +41,7 @@ Em qualquer agregado (UF, Brasil, grupo de municípios, vários anos), a taxa é
 - Mortalidade prematura por doenças crônicas = dcnt_30_69 ÷ pop_30_69 × 100.000 (por 100 mil habitantes de 30 a 69 anos).
 - Proporções em % (0–100): mal definidas = mal_definidas ÷ obitos; baixo peso = baixo_peso ÷ peso_informado; prematuridade = prematuros ÷ gestacao_informada; cesáreas = cesareos ÷ parto_informado; 7 ou mais consultas = consultas_7_mais ÷ consultas_informadas; mães adolescentes = maes_10_19 ÷ idade_mae_informada.
 - Participação de uma causa nos óbitos = causa ÷ obitos × 100 (% dos óbitos).
+- Rede de saúde: leitos por mil habitantes = cnes_leitos ÷ populacao × 1.000 (SUS: cnes_leitos_sus); médicos e enfermeiros por mil habitantes = cnes_medicos (ou cnes_enfermeiros) ÷ populacao × 1.000; estabelecimentos por 10 mil habitantes = cnes_estab ÷ populacao × 10.000; participação do SUS nos leitos = cnes_leitos_sus ÷ cnes_leitos × 100.
 - Internações por mil habitantes = int_total ÷ populacao × 1.000; de idosos = int_60_mais ÷ pop_60_mais × 1.000; de menores de 5 = int_menores_5 ÷ pop_0_4 × 1.000.
 - Internações fora do município (%) = int_fora ÷ int_total × 100; mortalidade hospitalar (%) = int_obitos ÷ int_total × 100; permanência média (dias) = int_dias ÷ int_total; valor médio por internação (R$ de 2025) = int_valor_real ÷ int_total; valor por habitante = int_valor_real ÷ populacao.
 Em consultar, declare as taxas com unidade "razao" e rótulo com a base (ex.: "Mortalidade infantil (por mil nascidos vivos)"); proporções e participações em "percentual"; contagens em "contagem"; populacao em "habitantes".
@@ -56,6 +61,7 @@ Em consultar, declare as taxas com unidade "razao" e rótulo com a base (ex.: "M
 11. SIH só tem o SUS: internações da saúde suplementar (planos) e privadas não aparecem. Taxas de internação medem uso do SUS hospitalar, não necessidade de saúde; lugares com mais cobertura de plano privado aparecem com menos internações. Não use a taxa para dizer que um lugar é "mais saudável" ou "menos saudável".
 12. Ano do SIH é o da competência de processamento da AIH, não o da internação ou da alta; as de longa permanência (tipo 5) ficam de fora para não contar a mesma internação duas vezes. Valores em reais: compare anos com int_valor_real (R$ de 2025), nunca com int_valor; o valor é o da tabela de procedimentos do SUS, não o custo do hospital.
 13. Internações fora do município: municípios pequenos que dependem de um polo regional têm proporção alta, o que não é falha de gestão por si só; a mortalidade hospitalar depende da gravidade e do perfil do hospital e não mede qualidade. Hospitais de referência aparecem com muitas int_atendidas_de_fora: use o ponto de vista do hospital só quando a pergunta for sobre quem recebe pacientes.
+15. CNES: a capacidade é do município do estabelecimento, enquanto a população é a de residência: municípios com hospital regional têm leitos, médicos e estabelecimentos por habitante altos porque atendem moradores de outros. Diga isso ao comparar municípios ou ao falar de "déficit". É retrato de dezembro, não média do ano; médicos e enfermeiros são pessoas (CNS), cada uma uma só vez no município do vínculo de maior carga horária: quem atende em vários municípios aparece só no principal, o que subestima municípios pequenos que dependem de profissionais itinerantes (para ver quem atua no município, cnes_medicos_no_municipio, sem somar por UF ou Brasil). Nos anos 2008 a 2012 uns 8 a 10% dos registros não têm CNS e a contagem de pessoas fica um pouco subestimada. Leitos SUS podem superar os existentes em municípios pequenos por inconsistência de cadastro. Não existe parâmetro único de "leitos ideais" nos dados: não invente um.
 14. Números pequenos: nos rankings de internações use o mesmo mínimo do painel (taxas por mil habitantes: 5.000 habitantes; proporções e médias: 500 internações; por idade: 1.000 habitantes na faixa).`;
 
 const inteiros = (v) => (Array.isArray(v) ? v.filter((x) => Number.isInteger(x) && x > 1900 && x < 2100) : []);
@@ -68,10 +74,12 @@ export function contextoSaude(manifesto) {
   const sinasc = inteiros(f.sinasc?.anos);
   const pop = inteiros(f.populacao_svs?.anos);
   const sih = inteiros(f.sih?.anos);
+  const cnes = inteiros(f.cnes?.anos);
   return [
     '# Dados disponíveis: saúde',
     sim.length ? `SIM (óbitos, inclusive fetais): ${intervalo(sim)}.` : 'SIM indisponível.',
     sinasc.length ? `SINASC (nascidos vivos): ${intervalo(sinasc)}.` : 'SINASC indisponível.',
+    cnes.length ? `CNES (estabelecimentos, leitos e profissionais, retrato de dezembro): ${intervalo(cnes)}.` : 'CNES (rede de saúde) indisponível: não há colunas cnes_* nesta versão dos dados.',
     sih.length ? `SIH (internações do SUS, por ano de competência): ${intervalo(sih)}.` : 'SIH (internações) indisponível: não há colunas int_* nesta versão dos dados.',
     pop.length ? `População da SVS/MS: ${intervalo(pop)} (taxas por habitante só a partir de ${pop[0]}).` : 'População indisponível: sem taxas por habitante.',
   ].join('\n');

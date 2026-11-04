@@ -2477,6 +2477,37 @@ describe('saúde (SIM, SINASC e população da SVS/MS)', () => {
     assert.deepEqual(m.fontes.sih.anos, anos);
   });
 
+  test('CNES: invariantes da rede de saúde (leitos, estabelecimentos e profissionais)', { skip: semSaude }, async () => {
+    const serie = await rota<L[]>('saude_serie');
+    const cn = serie.filter((r) => Number(r.cnes_estab) > 0);
+    if (!cn.length) return; // dados ainda sem o CNES
+    const anos = cn.map((r) => Number(r.ano));
+    assert.deepEqual(anos, Array.from({ length: anos.length }, (_, i) => anos[0] + i), 'anos seguidos, sem lacuna');
+    const tipos = ['cirurgicos', 'clinicos', 'complementares', 'obstetricos', 'pediatricos', 'outras', 'hospital_dia'];
+    for (const r of cn) {
+      const ano = Number(r.ano);
+      // o cadastro de origem não garante QT_SUS + QT_NSUS = QT_EXIST em todos os registros: tolera diferença abaixo de 0,1%
+      assert.ok(Math.abs(Number(r.cnes_leitos_sus) + Number(r.cnes_leitos_nao_sus) - Number(r.cnes_leitos)) <= 0.001 * Number(r.cnes_leitos), `SUS + não SUS ≈ existentes em ${ano}`);
+      assert.equal(tipos.reduce((a, k) => a + Number(r[`cnes_leitos_${k}`] ?? 0), 0), Number(r.cnes_leitos), `os tipos de leito somam o total em ${ano}`);
+      assert.ok(Number(r.cnes_estab_sus) <= Number(r.cnes_estab) && Number(r.cnes_hospitais) + Number(r.cnes_ubs) <= Number(r.cnes_estab), `grupos de estabelecimento dentro do total em ${ano}`);
+      if (ano < 2007) {
+        // em 2006 a CBO ainda não é a de 2002: sem profissionais (nulo, nunca zero)
+        assert.ok(r.cnes_medicos === null && r.cnes_enfermeiros === null, `sem profissionais em ${ano}`);
+      } else {
+        assert.ok(Number(r.cnes_medicos_sus) <= Number(r.cnes_medicos), `médicos SUS dentro do total em ${ano}`);
+        // a mesma pessoa pode atuar em vários municípios: a contagem por município nunca é menor que a de pessoas distintas,
+        // e os vínculos nunca são menos que as pessoas por município
+        assert.ok(Number(r.cnes_medicos_no_municipio) >= Number(r.cnes_medicos) && Number(r.cnes_medicos_vinculos) >= Number(r.cnes_medicos_no_municipio), `pessoas ≤ por município ≤ vínculos em ${ano}`);
+      }
+    }
+    // indicadores como razão das somas
+    const r = cn.at(-1)!;
+    quase(calcular(indicador('medicos_mil'), r)!, (1000 * Number(r.cnes_medicos)) / Number(r.populacao));
+    quase(calcular(indicador('leitos_sus_proporcao'), r)!, Number(r.cnes_leitos_sus) / Number(r.cnes_leitos));
+    const m = JSON.parse(await readFile(`${DATA}/gold/manifesto.json`, 'utf8'));
+    assert.deepEqual(m.fontes.cnes.anos, anos);
+  });
+
   test('UF soma os municípios e os registros de município ignorado; o ranking só tem municípios do cadastro', { skip: semSaude }, async () => {
     const go = (await rota<L[]>('saude_serie', { uf: 'GO' })).find((r) => r.ano === 2023)!;
     const muns = await rota<L[]>('saude_municipios', { uf: 'GO', ano: 2023 });

@@ -14,10 +14,12 @@ Uso:
     py pipeline/saude_micro.py                       # converte o que falta, em paralelo
     py pipeline/saude_micro.py --sistemas SIM SINASC  # pastas do primeiro nível de --brutos
     py pipeline/saude_micro.py --sistemas SIHSUS --filtro "200801_/Dados/RD"   # só as AIH reduzidas de 2008 em diante
+    py pipeline/saude_micro.py --sistemas CNES --regex "/(ST|LT|PF)/(ST|LT|PF)[A-Z]{2}(0[6-9]|1[0-9]|2[0-5])12[.]dbc$"   # retrato de dezembro
     py pipeline/saude_micro.py --refazer
 """
 import argparse
 import os
+import re
 import struct
 import tempfile
 import time
@@ -90,6 +92,7 @@ def main():
     p.add_argument("--sistemas", nargs="*")
     p.add_argument("--processos", type=int, default=max(1, (os.cpu_count() or 2) - 2))
     p.add_argument("--filtro", help="só os .dbc cujo caminho (relativo a --brutos, com /) contém este texto")
+    p.add_argument("--regex", help="só os .dbc cujo caminho (relativo a --brutos, com /) casa com esta expressão regular (re.search)")
     p.add_argument("--refazer", action="store_true")
     a = p.parse_args()
     brutos, saida = Path(a.brutos), Path(a.saida)
@@ -100,6 +103,8 @@ def main():
             if dbc.suffix.lower() != ".dbc":
                 continue
             if a.filtro and a.filtro not in dbc.relative_to(brutos).as_posix():
+                continue
+            if a.regex and not re.search(a.regex, dbc.relative_to(brutos).as_posix()):
                 continue
             alvo = (saida / dbc.relative_to(brutos)).with_suffix(".parquet")
             if a.refazer or not alvo.exists() or alvo.stat().st_mtime < dbc.stat().st_mtime:

@@ -31,6 +31,9 @@ const G_NASC = () => t('Nascimentos', 'Births');
 const G_CAUSAS = () => t('Causas de morte', 'Causes of death');
 
 const G_INT = () => t('Internações (SIH/SUS)', 'Hospital admissions (SIH/SUS)');
+const G_REDE = () => t('Rede de saúde (CNES)', 'Health network (CNES)');
+const RESSALVA_CNES = () => t('Conta o que está no município do estabelecimento (não o de residência de quem usa) e o retrato de dezembro; municípios com hospital regional têm valores altos por habitante porque atendem moradores de outros.',
+  'Counts what is in the municipality of the facility (not the residence of its users) and the December snapshot; municipalities with a regional hospital have high per-capita values because they serve residents of others.');
 
 export const INDICADORES: Indicador[] = [
   {
@@ -171,6 +174,38 @@ export const INDICADORES: Indicador[] = [
     nota: () => t('Valor total das AIH pagas pelo SUS aos residentes ÷ população residente, em reais de 2025 (de 2010 em diante). Reflete o que o SUS pagou, não o gasto da prefeitura.',
       'Total value of AIH paid by SUS for residents ÷ resident population, in 2025 reais (from 2010 onward). It reflects what SUS paid, not municipal spending.'),
   },
+  // rede de saúde (CNES): retrato de dezembro, pelo município do estabelecimento
+  {
+    id: 'leitos_mil', grupo: G_REDE, nome: () => t('Leitos hospitalares existentes', 'Existing hospital beds'),
+    unidade: () => t('por mil habitantes', 'per 1,000 inhabitants'), numerador: 'cnes_leitos', denominador: 'populacao', fator: 1000, tipo: 'taxa', minimo: 5000,
+    nota: () => t(`Leitos existentes (SUS e não SUS) nos estabelecimentos do município ÷ população residente × 1.000. ${RESSALVA_CNES()}`, `Existing beds (SUS and non-SUS) in the municipality’s facilities ÷ resident population × 1,000. ${RESSALVA_CNES()}`),
+  },
+  {
+    id: 'leitos_sus_mil', grupo: G_REDE, nome: () => t('Leitos SUS', 'SUS beds'),
+    unidade: () => t('por mil habitantes', 'per 1,000 inhabitants'), numerador: 'cnes_leitos_sus', denominador: 'populacao', fator: 1000, tipo: 'taxa', minimo: 5000,
+    nota: () => t(`Leitos disponíveis ao SUS ÷ população residente × 1.000. ${RESSALVA_CNES()}`, `Beds available to SUS ÷ resident population × 1,000. ${RESSALVA_CNES()}`),
+  },
+  {
+    id: 'medicos_mil', grupo: G_REDE, nome: () => t('Médicos', 'Physicians'),
+    unidade: () => t('por mil habitantes', 'per 1,000 inhabitants'), numerador: 'cnes_medicos', denominador: 'populacao', fator: 1000, tipo: 'taxa', minimo: 5000,
+    nota: () => t(`Médicos (CBO 225 e 2231), cada pessoa (CNS) contada uma só vez no ano, no município do seu vínculo de maior carga horária, ÷ população residente × 1.000. Assim UF e Brasil somam pessoas distintas. Médicos que atendem em mais de um município aparecem só no principal; de 2007 em diante (em 2006 a CBO ainda não era a de 2002). ${RESSALVA_CNES()}`,
+      `Physicians (CBO 225 and 2231), each person (CNS) counted once a year, in the municipality of their link with the most weekly hours, ÷ resident population × 1,000. So states and Brazil add up distinct people. Physicians who work in more than one municipality appear only in the main one; from 2007 on (in 2006 the CBO was not yet the 2002 one). ${RESSALVA_CNES()}`),
+  },
+  {
+    id: 'enfermeiros_mil', grupo: G_REDE, nome: () => t('Enfermeiros', 'Nurses'),
+    unidade: () => t('por mil habitantes', 'per 1,000 inhabitants'), numerador: 'cnes_enfermeiros', denominador: 'populacao', fator: 1000, tipo: 'taxa', minimo: 5000,
+    nota: () => t(`Enfermeiros (CBO 2235), cada pessoa (CNS) uma só vez no ano, no município do vínculo de maior carga horária, ÷ população residente × 1.000. De 2007 em diante. ${RESSALVA_CNES()}`, `Nurses (CBO 2235), each person (CNS) once a year, in the municipality of their link with the most weekly hours, ÷ resident population × 1,000. From 2007 on. ${RESSALVA_CNES()}`),
+  },
+  {
+    id: 'estabelecimentos_10mil', grupo: G_REDE, nome: () => t('Estabelecimentos de saúde', 'Health facilities'),
+    unidade: () => t('por 10 mil habitantes', 'per 10,000 inhabitants'), numerador: 'cnes_estab', denominador: 'populacao', fator: 10000, tipo: 'taxa', minimo: 5000,
+    nota: () => t(`Estabelecimentos cadastrados no CNES (de qualquer tipo, com ou sem vínculo SUS) ÷ população residente × 10.000. ${RESSALVA_CNES()}`, `Facilities registered in CNES (of any type, with or without SUS link) ÷ resident population × 10,000. ${RESSALVA_CNES()}`),
+  },
+  {
+    id: 'leitos_sus_proporcao', grupo: G_REDE, nome: () => t('Participação do SUS nos leitos', 'SUS share of beds'),
+    unidade: () => t('% dos leitos existentes', '% of existing beds'), numerador: 'cnes_leitos_sus', denominador: 'cnes_leitos', fator: 1, tipo: 'proporcao', minimo: 20,
+    nota: () => t('Leitos SUS ÷ leitos existentes no município. Pode passar de 100% em municípios pequenos por inconsistência de cadastro (leitos SUS maiores que os existentes).', 'SUS beds ÷ existing beds in the municipality. It can exceed 100% in small municipalities because of registry inconsistencies (SUS beds greater than existing).'),
+  },
 ];
 
 export const indicador = (id: string | null | undefined) => INDICADORES.find((i) => i.id === id) ?? INDICADORES[0];
@@ -201,13 +236,15 @@ export const nomeContagem = (c: string): string => ({
   int_60_mais: t('Internações de 60 anos ou mais', 'Admissions aged 60+'), int_menores_5: t('Internações de menores de 5', 'Admissions under 5'),
   int_valor_real: t('Valor pago (R$ de 2025)', 'Amount paid (R$ of 2025)'), pop_60_mais: t('População de 60 anos ou mais', 'Population aged 60+'),
   pop_0_4: t('População de 0 a 4 anos', 'Population aged 0–4'),
+  cnes_leitos: t('Leitos existentes', 'Existing beds'), cnes_leitos_sus: t('Leitos SUS', 'SUS beds'), cnes_medicos: t('Médicos', 'Physicians'),
+  cnes_enfermeiros: t('Enfermeiros', 'Nurses'), cnes_estab: t('Estabelecimentos', 'Facilities'),
 }[c] ?? c);
 
 export const formatar = (ind: Indicador, v: number | null | undefined) => (ind.tipo === 'proporcao' ? pct(v) : numero1(v));
 
 export const fonteSaude = () => t(
-  'SIM (Sistema de Informações sobre Mortalidade), SINASC (Sistema de Informações sobre Nascidos Vivos) e SIH (Sistema de Informações Hospitalares do SUS), Ministério da Saúde/DATASUS, microdados públicos por município de residência; população: estimativas da SVS/MS por município, sexo e idade (2000 em diante). Processamento: LAPAM/UFG.',
-  'SIM (Mortality Information System), SINASC (Live Birth Information System) and SIH (SUS Hospital Information System), Ministry of Health/DATASUS, public microdata by municipality of residence; population: SVS/MS estimates by municipality, sex and age (2000 onwards). Processing: LAPAM/UFG.',
+  'SIM (Sistema de Informações sobre Mortalidade), SINASC (Sistema de Informações sobre Nascidos Vivos), SIH (Sistema de Informações Hospitalares do SUS) e CNES (Cadastro Nacional de Estabelecimentos de Saúde), Ministério da Saúde/DATASUS, microdados públicos por município de residência; população: estimativas da SVS/MS por município, sexo e idade (2000 em diante). Processamento: LAPAM/UFG.',
+  'SIM (Mortality Information System), SINASC (Live Birth Information System), SIH (SUS Hospital Information System) and CNES (National Registry of Health Facilities), Ministry of Health/DATASUS, public microdata by municipality of residence; population: SVS/MS estimates by municipality, sex and age (2000 onwards). Processing: LAPAM/UFG.',
 );
 
 /** Capítulos da CID-10 (causa básica do óbito), na ordem das colunas cap01…cap22. */

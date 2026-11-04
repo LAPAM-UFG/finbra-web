@@ -99,7 +99,7 @@ export function SaudeVisaoGeral() {
   return (
     <>
       <h2 className="titulo-pagina">{t('Saúde: visão geral', 'Health: overview')}</h2>
-      <p className="subtitulo">{rotulo} · {ano} · {t('nascimentos, óbitos e internações por residência', 'births, deaths and admissions by residence')} <Dica rotulo={t('Fonte', 'Source')}>{fonteSaude()}</Dica></p>
+      <p className="subtitulo">{rotulo} · {ano} · {t('nascimentos, óbitos, internações e rede de saúde', 'births, deaths, admissions and health network')} <Dica rotulo={t('Fonte', 'Source')}>{fonteSaude()}</Dica></p>
       <BarraFiltros />
       <AvisoAno ano={ano} />
       <Estado carregando={serie.carregando} erro={serie.erro} tentarNovamente={serie.recarregar}
@@ -130,6 +130,17 @@ export function SaudeVisaoGeral() {
                 <KpiIndicador ind={indicador('internacoes_fora')} r={a} />
                 <KpiIndicador ind={indicador('mortalidade_hospitalar')} r={a} />
                 <KpiIndicador ind={indicador('valor_por_internacao')} r={a} />
+              </div>
+            </>
+          )}
+          {num(a.cnes_estab) !== null && (
+            <>
+              <p className="nota-base"><strong>{t('Rede de saúde (CNES)', 'Health network (CNES)')}</strong> · {t('retrato de dezembro, pelo município do estabelecimento', 'December snapshot, by municipality of the facility')}</p>
+              <div className="kpis kpis-4">
+                <KpiIndicador ind={indicador('leitos_mil')} r={a} />
+                <KpiIndicador ind={indicador('leitos_sus_mil')} r={a} />
+                <KpiIndicador ind={indicador('medicos_mil')} r={a} />
+                <KpiIndicador ind={indicador('estabelecimentos_10mil')} r={a} />
               </div>
             </>
           )}
@@ -439,6 +450,8 @@ export function SaudeMetodologia() {
           <li><strong>SINASC</strong> ({faixa('sinasc')}): {t('declarações de nascido vivo, pelo município de residência da mãe; os nascidos de mães residentes no exterior ficam de fora.', 'live birth certificates, by the mother’s municipality of residence; births to mothers living abroad are left out.')}</li>
           <li><strong>SIH</strong> ({faixa('sih')}): {t('Sistema de Informações Hospitalares do SUS, AIH reduzida (tipo 1 aprovadas e pagas; as de longa permanência, tipo 5, são continuação e não contam), por município de residência do paciente e por ano de competência da AIH. Só o SUS: não inclui a saúde suplementar nem a privada. O valor é o da tabela do SUS, em reais de 2025 pelo IPCA médio do ano (de 2010 em diante, o primeiro ano do IPCA da base).',
             'SUS Hospital Information System, reduced AIH (approved and paid type 1; long-stay type 5 are continuations and do not count), by the patient’s municipality of residence and AIH competence year. SUS only: it excludes supplementary and private care. The value is the SUS table value, in 2025 reais using the average-year IPCA (from 2010, the first IPCA year in the data).')}</li>
+          <li><strong>CNES</strong> ({faixa('cnes')}): {t('Cadastro Nacional de Estabelecimentos de Saúde, retrato de dezembro de cada ano (arquivos ST, LT e PF): estabelecimentos, leitos por tipo e profissionais (médicos, enfermeiros e dentistas, de 2007 em diante). A contagem é do município onde fica o estabelecimento, não o de residência de quem o usa; cada profissional é contado uma só vez no ano, no município do vínculo de maior carga horária, para que UF e Brasil somem pessoas distintas. Os arquivos de profissionais trazem nome e CPF; só as contagens por município são publicadas.',
+            'National Registry of Health Facilities, December snapshot of each year (ST, LT and PF files): facilities, beds by type and staff (physicians, nurses and dentists, from 2007 on). Counts are by the municipality where the facility is, not the residence of its users; each professional is counted once a year, in the municipality of their link with the most weekly hours, so states and Brazil add up distinct people. The staff files carry names and CPF; only municipal counts are published.')}</li>
           <li><strong>{t('População', 'Population')}</strong> ({faixa('populacao_svs')}): {t('estimativas da SVS/MS por município, sexo e idade simples, as mesmas do TABNET para as taxas de saúde.', 'SVS/MS estimates by municipality, sex and single year of age, the same used by TABNET for health rates.')}</li>
         </ul>
         <h3>{t('Como as taxas são calculadas', 'How rates are calculated')}</h3>
@@ -459,6 +472,8 @@ export function SaudeMetodologia() {
           <li>{t('Prematuridade: em 2011 o SINASC mudou o cálculo da idade gestacional e o indicador subiu de patamar.', 'Preterm births: in 2011 SINASC changed how gestational age is computed, and the indicator rose.')}</li>
           <li>{t('O ano mais recente pode ser preliminar no DATASUS e mudar após a investigação dos óbitos.', 'The latest year may be preliminary at DATASUS and change after death investigations.')}</li>
           <li>{t('Taxas por habitante não são padronizadas por idade.', 'Rates per inhabitant are not age-standardised.')}</li>
+          <li>{t('Rede (CNES): leitos, médicos e estabelecimentos por habitante comparam o que há no município com a população que mora nele; municípios com hospital regional têm valores altos porque atendem moradores de outros, e municípios pequenos que dependem de profissionais itinerantes ficam subestimados (o profissional entra só no município do vínculo principal). É retrato de dezembro, não média do ano, e não há parâmetro único de "leitos ideais" nos dados.',
+            'Network (CNES): beds, physicians and facilities per inhabitant compare what is in the municipality with the people who live in it; municipalities with a regional hospital have high values because they serve residents of others, and small municipalities that rely on itinerant professionals are understated (a professional counts only in the municipality of their main link). It is a December snapshot, not a yearly average, and there is no single "ideal beds" benchmark in the data.')}</li>
           <li>{t('Internações (SIH): medem o uso do SUS hospitalar, não a necessidade de saúde; quem tem plano privado aparece menos. A proporção de internações fora do município reflete a rede regional (municípios pequenos próximos de polos têm valores altos sem que isso seja falha de gestão), e a mortalidade hospitalar depende da gravidade e do perfil do hospital: não mede qualidade. Em 2008 e 2009 não há valor em reais de 2025 (o IPCA da base começa em 2010).',
             'Admissions (SIH): they measure use of SUS hospitals, not health need; people with private insurance appear less. The share of admissions outside the municipality reflects the regional network (small municipalities near hubs have high values without any management failure), and in-hospital mortality depends on severity and hospital profile: it does not measure quality. There is no 2025-reais value for 2008 and 2009 (the IPCA in the data starts in 2010).')}</li>
           <li>{t('Rankings: só municípios do cadastro (residência), com o denominador mínimo escolhido; empates com a mesma posição (1, 2, 2, 4). O ranking anual e a evolução das posições usam a mesma classificação; na evolução, o universo pode ser o de cada ano ou constante (os mesmos municípios em todo o período). A taxa de cada município é a dele (numerador ÷ denominador), nunca a média de outras taxas.',

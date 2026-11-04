@@ -27,6 +27,13 @@ gold/saude/internacoes_atend.parquet  ano × município do hospital: internaçõ
                                municípios (quem recebe pacientes)
                                Ambas entram em municipios.parquet (colunas int_*)
 
+gold/saude/cnes.parquet        ano × município do estabelecimento: retrato de dezembro do CNES (2006–2025) com estabelecimentos
+                               (total, com vínculo SUS, hospitais e unidades básicas), leitos (existentes, SUS e por tipo)
+                               e profissionais (médicos, enfermeiros e dentistas, de 2007 em diante, cada pessoa uma só vez no
+                               município do vínculo de maior carga horária; cnes_medicos_no_municipio conta quem atua em
+                               cada município e superconta nos totais). Os arquivos de profissionais trazem nome e CPF: só as
+                               contagens por município saem do HD; entra em municipios.parquet (colunas cnes_*)
+
 Uso:
     py pipeline/saude.py
 """
@@ -239,6 +246,79 @@ def internacoes(con, micro: Path):
     con.execute("DROP TABLE sih")
 
 
+CNES_ANOS = (2006, 2025)
+
+
+def cnes(con, micro: Path):
+    """CNES, retrato de dezembro: estabelecimentos (ST), leitos (LT) e profissionais (PF) por município do estabelecimento."""
+    base = micro / "CNES" / "200508_" / "Dados"
+    de, ate = CNES_ANOS
+
+    def ler(tipo, colunas):
+        # o ano vem do nome do arquivo (AAMM; só dezembro foi convertido): STGO2412 -> 2024
+        return f"""SELECT 2000 + TRY_CAST(regexp_extract(filename, '{tipo}[A-Z]{{2}}(\\d{{2}})12\\.parquet$', 1) AS INTEGER) AS ano,
+                   TRY_CAST(left(CODUFMUN, 6) AS INTEGER) AS municipio, {colunas}
+            FROM read_parquet('{base / tipo}/{tipo}*12.parquet', filename = true, union_by_name = true)"""
+
+    # estabelecimentos: TP_UNID pela tabela oficial do CNES (01 posto, 02 centro de saúde/UBS, 05 hospital geral, 07 hospital
+    # especializado); VINC_SUS = 1: atende pelo SUS
+    st = ler("ST", "CNES, TP_UNID, VINC_SUS")
+    lt = ler("LT", "TP_LEITO, TRY_CAST(QT_EXIST AS INTEGER) AS exist, TRY_CAST(QT_SUS AS INTEGER) AS sus, TRY_CAST(QT_NSUS AS INTEGER) AS nsus")
+    pf = ler("PF", "CBO, CNS_PROF, PROF_SUS, HORAOUTR, HORAHOSP, HORA_AMB")
+    con.execute(f"""
+        CREATE OR REPLACE TABLE cnes AS
+        WITH est AS (
+            SELECT ano, municipio, count(DISTINCT CNES) AS cnes_estab,
+                   count(DISTINCT CNES) FILTER (WHERE VINC_SUS = '1') AS cnes_estab_sus,
+                   count(DISTINCT CNES) FILTER (WHERE TP_UNID IN ('05', '07')) AS cnes_hospitais,
+                   count(DISTINCT CNES) FILTER (WHERE TP_UNID IN ('01', '02')) AS cnes_ubs
+            FROM ({st}) GROUP BY ano, municipio),
+        lei AS (
+            SELECT ano, municipio, sum(exist) AS cnes_leitos, sum(sus) AS cnes_leitos_sus, sum(nsus) AS cnes_leitos_nao_sus,
+                   sum(exist) FILTER (WHERE TP_LEITO = '1') AS cnes_leitos_cirurgicos, sum(exist) FILTER (WHERE TP_LEITO = '2') AS cnes_leitos_clinicos,
+                   sum(exist) FILTER (WHERE TP_LEITO = '3') AS cnes_leitos_complementares, sum(exist) FILTER (WHERE TP_LEITO = '4') AS cnes_leitos_obstetricos,
+                   sum(exist) FILTER (WHERE TP_LEITO = '5') AS cnes_leitos_pediatricos, sum(exist) FILTER (WHERE TP_LEITO = '6') AS cnes_leitos_outras,
+                   sum(exist) FILTER (WHERE TP_LEITO = '7') AS cnes_leitos_hospital_dia
+            FROM ({lt}) GROUP BY ano, municipio),
+        -- profissionais: médicos (CBO 225 e 2231), enfermeiros (2235) e dentistas (2232). Só de 2007 em diante: em 2006 o campo
+        -- CBO ainda não segue a CBO 2002 (nenhum médico é reconhecido). Uma linha de PF é um vínculo com um estabelecimento.
+        vin AS (
+            SELECT ano, municipio, CNS_PROF, PROF_SUS,
+                   coalesce(TRY_CAST(HORAOUTR AS INTEGER), 0) + coalesce(TRY_CAST(HORAHOSP AS INTEGER), 0) + coalesce(TRY_CAST(HORA_AMB AS INTEGER), 0) AS horas,
+                   CASE WHEN CBO LIKE '225%' OR CBO LIKE '2231%' THEN 'm' WHEN CBO LIKE '2235%' THEN 'e' WHEN CBO LIKE '2232%' THEN 'd' END AS grupo
+            FROM ({pf}) WHERE ano >= 2007),
+        -- pessoa × município (CNS): a mesma pessoa pode atuar em mais de um município
+        pessoa AS (
+            SELECT ano, municipio, grupo, CNS_PROF, sum(horas) AS horas, max(PROF_SUS) AS sus
+            FROM vin WHERE grupo IS NOT NULL AND CNS_PROF IS NOT NULL GROUP BY ALL),
+        -- cada pessoa uma só vez no ano: no município do vínculo de maior carga horária (empate: menor código). Assim as somas
+        -- por UF e Brasil são pessoas distintas, sem contar duas vezes quem atua em mais de um município
+        princ AS (
+            SELECT * EXCLUDE (n) FROM (
+                SELECT *, row_number() OVER (PARTITION BY ano, grupo, CNS_PROF ORDER BY horas DESC, municipio) AS n FROM pessoa) WHERE n = 1),
+        pro AS (
+            SELECT ano, municipio,
+                   count(*) FILTER (WHERE grupo = 'm') AS cnes_medicos,
+                   count(*) FILTER (WHERE grupo = 'm' AND sus = '1') AS cnes_medicos_sus,
+                   count(*) FILTER (WHERE grupo = 'e') AS cnes_enfermeiros,
+                   count(*) FILTER (WHERE grupo = 'd') AS cnes_dentistas
+            FROM princ GROUP BY ano, municipio),
+        -- a contagem "por município" (quem atua nele, onde quer que more ou tenha o vínculo principal) e os vínculos
+        pro_mun AS (SELECT ano, municipio, count(*) FILTER (WHERE grupo = 'm') AS cnes_medicos_no_municipio FROM pessoa GROUP BY ano, municipio),
+        vinc AS (SELECT ano, municipio, count(*) FILTER (WHERE grupo = 'm') AS cnes_medicos_vinculos FROM vin GROUP BY ano, municipio),
+        chaves AS (SELECT ano, municipio FROM est UNION SELECT ano, municipio FROM lei UNION SELECT ano, municipio FROM pro
+                   UNION SELECT ano, municipio FROM pro_mun UNION SELECT ano, municipio FROM vinc)
+        SELECT k.ano, k.municipio, k.municipio // 10000 AS uf,
+               e.* EXCLUDE (ano, municipio), l.* EXCLUDE (ano, municipio), p.* EXCLUDE (ano, municipio),
+               m.* EXCLUDE (ano, municipio), v.* EXCLUDE (ano, municipio)
+        FROM chaves k LEFT JOIN est e USING (ano, municipio) LEFT JOIN lei l USING (ano, municipio) LEFT JOIN pro p USING (ano, municipio)
+             LEFT JOIN pro_mun m USING (ano, municipio) LEFT JOIN vinc v USING (ano, municipio)
+        WHERE k.ano BETWEEN {de} AND {ate} AND k.municipio IS NOT NULL ORDER BY 1, 2""")
+    con.execute(f"COPY cnes TO '{GOLD_S / 'cnes.parquet'}' (FORMAT parquet, COMPRESSION zstd)")
+    print("cnes:", con.sql("""SELECT ano, sum(cnes_estab), sum(cnes_leitos), sum(cnes_leitos_sus), sum(cnes_medicos), sum(cnes_enfermeiros)
+        FROM cnes WHERE ano IN (2006, 2015, 2019, 2025) GROUP BY 1 ORDER BY 1""").fetchall())
+
+
 def municipios(con):
     """Uma linha por ano e município de residência com população, óbitos, óbitos fetais e nascimentos."""
     s = SILVER.as_posix()
@@ -249,7 +329,8 @@ def municipios(con):
              pop AS (SELECT * EXCLUDE (cod_ibge, uf) FROM populacao),
              chaves AS (SELECT ano, municipio FROM pop UNION SELECT ano, municipio FROM obitos
                         UNION SELECT ano, municipio FROM nascimentos UNION SELECT ano, municipio FROM obitos_fetais
-                        UNION SELECT ano, municipio FROM internacoes UNION SELECT ano, municipio FROM internacoes_atend)
+                        UNION SELECT ano, municipio FROM internacoes UNION SELECT ano, municipio FROM internacoes_atend
+                        UNION SELECT ano, municipio FROM cnes)
         SELECT k.ano, m.cod_ibge, k.municipio, coalesce(m.nome, 'Município ignorado') AS nome,
                coalesce(m.uf, e.uf) AS uf,
                p.* EXCLUDE (ano, municipio),
@@ -257,7 +338,8 @@ def municipios(con):
                f.obitos_fetais,
                n.* EXCLUDE (ano, municipio, uf),
                h.* EXCLUDE (ano, municipio, uf),
-               a.* EXCLUDE (ano, municipio, uf)
+               a.* EXCLUDE (ano, municipio, uf),
+               c.* EXCLUDE (ano, municipio, uf)
         FROM chaves k
         LEFT JOIN muni m ON m.municipio = k.municipio
         LEFT JOIN estados e ON e.cod = k.municipio // 10000
@@ -267,6 +349,7 @@ def municipios(con):
         LEFT JOIN nascimentos n ON n.ano = k.ano AND n.municipio = k.municipio
         LEFT JOIN internacoes h ON h.ano = k.ano AND h.municipio = k.municipio
         LEFT JOIN internacoes_atend a ON a.ano = k.ano AND a.municipio = k.municipio
+        LEFT JOIN cnes c ON c.ano = k.ano AND c.municipio = k.municipio
         WHERE k.municipio IS NOT NULL
         ORDER BY k.ano, k.municipio""")
     con.execute(f"COPY municipios TO '{GOLD_S / 'municipios.parquet'}' (FORMAT parquet, COMPRESSION zstd)")
@@ -284,8 +367,10 @@ def fonte_saude(con) -> dict:
     quando = datetime.fromtimestamp(arq.stat().st_mtime, timezone.utc).isoformat(timespec="seconds")
     colunas = {r[0] for r in con.execute(f"DESCRIBE SELECT * FROM '{a}'").fetchall()}
     sih = {"sih": {"anos": anos("int_total"), "processado_em": quando, "url": "https://datasus.saude.gov.br/transferencia-de-arquivos/"}} if "int_total" in colunas else {}
+    cnes_f = {"cnes": {"anos": anos("cnes_estab"), "processado_em": quando, "url": "https://datasus.saude.gov.br/transferencia-de-arquivos/"}} if "cnes_estab" in colunas else {}
     return {
         **sih,
+        **cnes_f,
         "sim": {"anos": anos("obitos"), "processado_em": quando, "url": "https://datasus.saude.gov.br/transferencia-de-arquivos/"},
         "sinasc": {"anos": anos("nascidos"), "processado_em": quando, "url": "https://datasus.saude.gov.br/transferencia-de-arquivos/"},
         "populacao_svs": {"anos": anos("populacao"), "processado_em": quando,
@@ -314,6 +399,7 @@ def main():
     obitos(con, Path(a.micro))
     nascimentos(con, Path(a.micro))
     internacoes(con, Path(a.micro))
+    cnes(con, Path(a.micro))
     municipios(con)
     atualizar_manifesto(con)
     # conferência: mortalidade infantil do Brasil (por mil nascidos vivos)
