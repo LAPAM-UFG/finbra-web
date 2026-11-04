@@ -37,11 +37,11 @@ export type { EspecTabela, TabelaAnalitica } from './ia_tabelas';
 export type Bloco = { type: string; id?: string; name?: string; input?: unknown; text?: string; [k: string]: unknown };
 export type Mensagem = { role: 'user' | 'assistant'; content: string | Bloco[] };
 /** pode_conferir: o e-mail pode pedir a conferência das respostas pelo especialista RAIS (ia_conferencia.ts). */
-/** Modelo escolhido para a próxima pergunta: Haiku (padrão, mais rápido e barato) ou Sonnet, só por escolha da pessoa. */
-export type EscolhaModelo = 'haiku' | 'sonnet';
-export const ESCOLHAS_MODELO: EscolhaModelo[] = ['haiku', 'sonnet'];
+/** Modelo do site: só o Haiku (o Sonnet foi retirado por custo; qualquer preferência antiga volta ao Haiku). */
+export type EscolhaModelo = 'haiku';
+export const ESCOLHAS_MODELO: EscolhaModelo[] = ['haiku'];
 export const MODELO_PADRAO: EscolhaModelo = 'haiku';
-export const lerEscolhaModelo = (v: unknown): EscolhaModelo => (v === 'sonnet' ? 'sonnet' : MODELO_PADRAO);
+export const lerEscolhaModelo = (_v: unknown): EscolhaModelo => MODELO_PADRAO;
 /** Tokens e chamadas de uma resposta (todas as chamadas ao modelo da pergunta, somadas). */
 export type UsoIa = { chamadas: number; entrada: number; saida: number; cache_lido: number; cache_escrito: number };
 export type EstadoIa = {

@@ -334,10 +334,9 @@ Campo de perguntas em linguagem natural, só para e-mails autorizados.
    tabelas longas, fontes por extenso, sem identificadores internos), opcionalmente com o **apêndice de
    reprodução** (SQL e histórico de todas as consultas).
 
-O modelo é escolhido a cada pergunta no seletor "Modelo · Haiku" junto ao campo (`modelo` no corpo do pedido):
-`haiku` é o padrão (o mais rápido e barato) e `sonnet` só vale por escolha explícita, guardada neste navegador;
-qualquer outro valor é recusado com 400. Os IDs ficam no servidor (`ESCOLHAS` em `worker/src/ia.js`) e podem ser
-trocados sem mexer na página por `IA_MODELO_HAIKU` e `IA_MODELO_SONNET` (variáveis do Worker ou
+O site usa só o Haiku (o Sonnet foi retirado por custo; não há seletor de modelo). `modelo` no corpo do pedido
+só aceita `haiku` (o padrão); qualquer outro valor é recusado com 400. O ID fica no servidor (`ESCOLHAS` em
+`worker/src/ia.js`) e pode ser trocado sem mexer na página por `IA_MODELO_HAIKU` (variável do Worker ou
 `worker/.dev.vars`). Não há troca automática de modelo: se o escolhido falhar, a pergunta volta ao campo e a
 pessoa decide. Cada chamada devolve o modelo que respondeu e os tokens (`modelo`, `uso`); a resposta guarda o
 modelo efetivo e a soma das chamadas (detalhes, JSON, Excel e PDF), e as conversas antigas mostram "Modelo não

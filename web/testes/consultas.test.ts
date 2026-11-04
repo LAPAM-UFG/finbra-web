@@ -3410,11 +3410,11 @@ describe('IA: cobertura por ano, modelo e período por fonte', () => {
     assert.equal(a.has(2026), false);
   });
 
-  test('modelo: Haiku por padrão, Sonnet só se for exatamente "sonnet"', () => {
+  test('modelo: só Haiku; qualquer preferência antiga (inclusive "sonnet") volta ao Haiku', () => {
     assert.equal(lerEscolhaModelo(null), 'haiku');
     assert.equal(lerEscolhaModelo(undefined), 'haiku');
     assert.equal(lerEscolhaModelo('opus'), 'haiku');
-    assert.equal(lerEscolhaModelo('sonnet'), 'sonnet');
+    assert.equal(lerEscolhaModelo('sonnet'), 'haiku');
     assert.equal(lerEscolhaModelo('haiku'), 'haiku');
     assert.equal(nomeDoModelo('claude-haiku-5-5'), 'Haiku 5.5');
     assert.equal(nomeDoModelo('claude-sonnet-5-5'), 'Sonnet 5.5');

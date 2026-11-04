@@ -363,7 +363,7 @@ describe('conversas na conta', () => {
   });
 });
 
-describe('modelo por pedido (Haiku padrão, Sonnet por escolha)', () => {
+describe('modelo por pedido (só Haiku no site)', () => {
   // API da Anthropic simulada: devolve por streaming uma resposta de texto com o modelo pedido e guarda o corpo recebido
   const sse = (modelo) => [
     ['message_start', { type: 'message_start', message: { id: 'msg_1', type: 'message', role: 'assistant', model: modelo, content: [], stop_reason: null, stop_sequence: null,
@@ -408,53 +408,44 @@ describe('modelo por pedido (Haiku padrão, Sonnet por escolha)', () => {
     assert.deepEqual(corpo.uso, { entrada: 120, saida: 7, cache_lido: 30, cache_escrito: 0 });
   });
 
-  test('"sonnet" explícito usa o ID do Sonnet; "haiku" explícito continua Haiku', async () => {
-    const s = await enviar('sonnet');
-    assert.equal(s.chamadas[0].model, 'claude-sonnet-5-5');
-    assert.equal(s.corpo.modelo, 'claude-sonnet-5-5');
-    assert.equal(s.corpo.escolha, 'sonnet');
+  test('"haiku" explícito usa o Haiku; "sonnet" foi retirado do site e é recusado', async () => {
     const h = await enviar('haiku');
     assert.equal(h.chamadas[0].model, 'claude-haiku-5-5');
-  });
-
-  test('o modelo não muda o formato do pedido: raciocínio adaptativo, esforço e ferramentas iguais', async () => {
-    const [h, s] = [await enviar('haiku'), await enviar('sonnet')];
-    for (const campo of ['thinking', 'output_config', 'max_tokens', 'tools', 'system', 'messages']) {
-      assert.deepEqual(s.chamadas[0][campo], h.chamadas[0][campo], campo);
-    }
+    const s = await enviar('sonnet');
+    assert.equal(s.status, 400);
+    assert.equal(s.corpo.codigo, 'modelo_invalido');
+    assert.equal(s.chamadas.length, 0);
   });
 
   test('valor inválido é recusado com 400 claro e nenhuma chamada à API', async () => {
-    for (const ruim of ['opus', 'claude-opus-5-5', 'HAIKU', '', 7, {}, ['sonnet']]) {
+    for (const ruim of ['sonnet', 'opus', 'claude-opus-5-5', 'HAIKU', '', 7, {}, ['haiku']]) {
       const { status, corpo, chamadas } = await enviar(ruim);
       assert.equal(status, 400, JSON.stringify(ruim));
       assert.equal(corpo.codigo, 'modelo_invalido');
-      assert.match(corpo.erro, /"haiku" ou "sonnet"/);
+      assert.match(corpo.erro, /use "haiku"/);
       assert.equal(chamadas.length, 0);
     }
   });
 
-  test('os IDs são configuráveis no servidor (IA_MODELO_HAIKU / IA_MODELO_SONNET)', async () => {
-    const { chamadas } = await enviar('sonnet', { IA_MODELO_SONNET: ' claude-sonnet-5-6 ' });
-    assert.equal(chamadas[0].model, 'claude-sonnet-5-6');
-    const h = await enviar('haiku', { IA_MODELO_SONNET: 'claude-sonnet-5-6' });
-    assert.equal(h.chamadas[0].model, 'claude-haiku-5-5');
+  test('o ID é configurável no servidor (IA_MODELO_HAIKU)', async () => {
+    const { chamadas } = await enviar('haiku', { IA_MODELO_HAIKU: ' claude-haiku-5-6 ' });
+    assert.equal(chamadas[0].model, 'claude-haiku-5-6');
   });
 
-  test('a cota diária conta igual para os dois modelos (perguntas e chamadas)', async () => {
+  test('a cota diária conta perguntas e chamadas', async () => {
     const dados = r2();
     await enviar('haiku', { DADOS: dados });
-    await enviar('sonnet', { DADOS: dados });
+    await enviar(undefined, { DADOS: dados });
     const [chave] = [...dados.m.keys()].filter((k) => k.startsWith('ia/uso/'));
     assert.deepEqual(JSON.parse(dados.m.get(chave)), { perguntas: 2, chamadas: 2 });
   });
 
-  test('o estado informa o padrão e os IDs configurados', async () => {
+  test('o estado informa o padrão e o ID configurado', async () => {
     const url = new URL('https://localhost/api/ia/estado');
     const r = await rotaIa(new Request(url), { DADOS: { get: async () => null }, IA_DEV_EMAIL: 'a@b.c', ANTHROPIC_API_KEY: 'x' }, url);
     const corpo = await r.json();
     assert.equal(corpo.modelo_padrao, 'haiku');
     assert.equal(corpo.modelo, 'claude-haiku-5-5');
-    assert.deepEqual(corpo.modelos, { haiku: 'claude-haiku-5-5', sonnet: 'claude-sonnet-5-5' });
+    assert.deepEqual(corpo.modelos, { haiku: 'claude-haiku-5-5' });
   });
 });

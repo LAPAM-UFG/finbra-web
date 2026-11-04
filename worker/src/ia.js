@@ -30,12 +30,11 @@ import { podeConferir } from './conferencia.js';
 import { rotaConversas } from './conversas.js';
 import { instrucoes, paineisDoPedido } from './sistema_geral.js';
 
-// Modelo por pedido: a pessoa escolhe "haiku" (padrão, o mais barato: US$ 0,10 / 0,50 por milhão de tokens de
-// entrada / saída) ou "sonnet" (US$ 2 / 10, cerca de 20 vezes mais; segue melhor as regras dos painéis, ex.: descartar
-// "exceto …" na busca de códigos) em corpo.modelo. Os IDs ficam aqui, no servidor, e podem ser trocados sem mexer na
-// página por IA_MODELO_HAIKU / IA_MODELO_SONNET (variáveis do Worker ou worker/.dev.vars). Nunca há troca automática:
-// se o modelo escolhido falhar, a pergunta volta para a pessoa decidir.
-const ESCOLHAS = { haiku: 'claude-haiku-5-5', sonnet: 'claude-sonnet-5-5' };
+// Modelo do site: só "haiku" (o mais barato: US$ 0,10 / 0,50 por milhão de tokens de entrada / saída). O Sonnet
+// (cerca de 20 vezes mais caro) foi retirado do site por custo; corpo.modelo ainda é aceito, mas só com "haiku". O ID
+// fica aqui, no servidor, e pode ser trocado sem mexer na página por IA_MODELO_HAIKU (variável do Worker ou
+// worker/.dev.vars). Nunca há troca automática: se o modelo falhar, a pergunta volta para a pessoa decidir.
+const ESCOLHAS = { haiku: 'claude-haiku-5-5' };
 const PADRAO = 'haiku';
 const modelosDe = (env) => Object.fromEntries(Object.entries(ESCOLHAS).map(([k, id]) => [k, env[`IA_MODELO_${k.toUpperCase()}`]?.trim() || id]));
 const LIMITE_PERGUNTAS = 50;
@@ -406,7 +405,7 @@ export async function rotaIa(request, env, url) {
   if (problema) return erro(problema, 400);
   // sem escolha vale o padrão; qualquer outro valor é recusado (nunca vira outro modelo em silêncio)
   const escolha = corpo.modelo ?? PADRAO;
-  if (typeof escolha !== 'string' || !Object.hasOwn(ESCOLHAS, escolha)) return erro('modelo inválido: use "haiku" ou "sonnet"', 400, 'modelo_invalido');
+  if (typeof escolha !== 'string' || !Object.hasOwn(ESCOLHAS, escolha)) return erro('modelo inválido: use "haiku"', 400, 'modelo_invalido');
 
   const nova = ehPergunta(mensagens.at(-1));
   const uso = await lerUso(env, chave);

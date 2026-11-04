@@ -659,26 +659,7 @@ function RecorteExecutado({ contexto, pronta }: { contexto: ContextoIa; pronta: 
   );
 }
 
-/**
- * Modelo da próxima pergunta, junto do campo: "Modelo · Haiku" (padrão, mais rápido e barato) ou Sonnet (segue melhor as
- * regras, mas é mais lento e custa cerca de 20 vezes mais por token). Independe do modo de resposta (formato) e só
- * troca por escolha da pessoa: se o modelo falhar, a pergunta volta ao campo e nada muda sozinho.
- */
-function SeletorModelo({ escolha, definir, travado }: { escolha: EscolhaModelo; definir: (m: EscolhaModelo) => void; travado: boolean }) {
-  return (
-    <label className="ia-modelo-seletor" title={descricaoModelo(escolha)}>
-      <span>{t('Modelo', 'Model')} ·</span>
-      <select value={escolha} disabled={travado} onChange={(e) => definir(lerEscolhaModelo(e.target.value))} aria-describedby="ia-modelo-desc">
-        <option value="haiku">Haiku</option>
-        <option value="sonnet">Sonnet</option>
-      </select>
-    </label>
-  );
-}
-const descricaoModelo = (m: EscolhaModelo) => (m === 'sonnet'
-  ? t('Sonnet: segue melhor regras complexas, mas é mais lento e custa cerca de 20 vezes mais por token. Vale para o próximo envio.',
-    'Sonnet: follows complex rules better, but is slower and costs about 20 times more per token. Applies to the next send.')
-  : t('Haiku (padrão): mais rápido e barato. Vale para o próximo envio.', 'Haiku (default): faster and cheaper. Applies to the next send.'));
+const descricaoModelo = (_m: EscolhaModelo) => t('Haiku: o modelo do site (rápido e barato).', 'Haiku: the site model (fast and cheap).');
 
 /** Modo de resposta: alternância compacta no compositor; vale para as próximas perguntas e fica guardada. */
 function SeletorModo({ modo, definir, travado }: { modo: Modo; definir: (m: Modo) => void; travado: boolean }) {
@@ -2165,10 +2146,6 @@ export function Ia() {
       return false;
     }
   };
-  const definirModelo = (m: EscolhaModelo) => {
-    setEscolhaModelo(m);
-    guardar('ia-modelo', m);
-  };
   const restaurarModelo = () => {
     setEscolhaModelo(MODELO_PADRAO);
     guardar('ia-modelo', null);
@@ -2235,7 +2212,7 @@ export function Ia() {
     <Compositor valor={texto} mudar={setTexto} enviar={enviar} cancelar={cancelar} ocupado={!!rodando}
       bloqueio={estado === null || (estado === undefined && !falhaEstado) ? null : bloqueio}
       exemplo={exemplo} grande={!conversa} campo={campo}
-      modo={<><SeletorModo modo={modo} definir={definirModo} travado={!!rodando} /><SeletorModelo escolha={escolhaModelo} definir={definirModelo} travado={!!rodando} /></>}
+      modo={<SeletorModo modo={modo} definir={definirModo} travado={!!rodando} />}
       descricaoDoModo={descricaoModo(modo)} descricaoDoModelo={descricaoModelo(escolhaModelo)} modeloAlterado={escolhaModelo !== MODELO_PADRAO} restaurarModelo={restaurarModelo}
       entrar={estado === null} verificando={estado === undefined && !falhaEstado}
       aoComoAcesso={abrirVista(() => setAjuda('entrar'))} alerta={poucas} />
