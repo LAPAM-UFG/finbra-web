@@ -36,8 +36,7 @@ PASTAS = {
     "CNES": ["CNES/200508_/Dados", "CNES/200508_/Auxiliar"],
     "SINAN": ["SINAN/DADOS/FINAIS", "SINAN/DADOS/PRELIM", "SINAN/AUXILIAR", "SINAN/DOCS"],
     "CIHA": ["CIHA/201101_/Dados", "CIHA/201101_/Auxiliar"],
-    "SISCAN": ["SISCAN/SISCAN", "SISCAN/SISCOLO4/Dados", "SISCAN/SISMAMA/Dados", "SISCAN"],
-    "SISPRENATAL": ["SISPRENATAL/201201_/Dados"],
+    "SISCAN": ["SISCAN/SISCAN", "SISCAN"],
     "ONCOLOGIA": ["painel_oncologia/Dados"],
     "RESP": ["RESP"],
     # população para as taxas: estimativas da SVS/MS por município, sexo e faixa etária, censos e projeções
