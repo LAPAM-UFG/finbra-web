@@ -7,6 +7,7 @@ import { Demonstrativos } from './pages/Demonstrativos';
 import { DespesasEvolucao, DespesasNaturezaEvolucao, DespesasNaturezaVisaoGeral, DespesasVisaoGeral } from './pages/Despesas';
 import { Fpm, FpmFaixas } from './pages/Fpm';
 import { Ia } from './pages/Ia';
+import { MunicEvolucao, MunicMetodologia, MunicTerritorio, MunicVisaoGeral } from './pages/Munic';
 import { LrfDemonstrativos, LrfIndicadores } from './pages/Lrf';
 import { Deflatores, Qualidade } from './pages/Metodologia';
 import { Rankings } from './pages/Rankings';
@@ -54,13 +55,20 @@ const menuSaude = (): [string, [string, string][]][] => [
   [t('Metodologia', 'Methodology'), [['/datasus/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
 ];
 
+/** Área de gestão pública (MUNIC e ESTADIC, do IBGE), em /munic. */
+const menuMunic = (): [string, [string, string][]][] => [
+  [t('Gestão pública', 'Public management'), [['/munic', t('Visão geral', 'Overview')], ['/munic/evolucao', t('Evolução entre edições', 'Change across editions')],
+    ['/munic/territorio', t('Ficha do município ou estado', 'Municipality or state profile')]]],
+  [t('Metodologia', 'Methodology'), [['/munic/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
+];
+
 /** Aba geral da IA (/ia), que consulta os painéis marcados na página. */
 // a aba da IA tem uma página só: a lateral fica para o histórico de conversas (o nome já está no topo e nas abas)
 const menuIa = (): [string, [string, string][]][] => [];
 
-type Area = 'financas' | 'trabalho' | 'saude' | 'ia';
+type Area = 'financas' | 'trabalho' | 'saude' | 'munic' | 'ia';
 const areaDe = (pathname: string): Area => (pathname === '/ia' ? 'ia' : pathname.startsWith('/trabalho') ? 'trabalho'
-  : pathname.startsWith('/datasus') ? 'saude' : 'financas');
+  : pathname.startsWith('/datasus') ? 'saude' : pathname.startsWith('/munic') ? 'munic' : 'financas');
 
 function lerTema(): string | null {
   try {
@@ -116,7 +124,8 @@ export function App() {
   // só os filtros globais acompanham a navegação; as escolhas de cada página (anexo, indicador do ranking…) ficam nela
   const atuais = new URLSearchParams(search);
   const filtros = new URLSearchParams();
-  for (const k of ['ano', 'uf', 'ente']) if (atuais.get(k)) filtros.set(k, atuais.get(k)!);
+  // o painel da MUNIC tem escolhas próprias (ano é a edição): nada dele vai para os outros painéis, nem o contrário
+  for (const k of ['ano', 'uf', 'ente']) if (area !== 'munic' && atuais.get(k)) filtros.set(k, atuais.get(k)!);
   // dentro da área de trabalho o recorte (ocupação, atividade, perfil, agrupamentos) segue entre as páginas
   const dentro = new URLSearchParams(filtros);
   if (area === 'trabalho') for (const k of PARAMS_TRABALHO) if (atuais.get(k)) dentro.set(k, atuais.get(k)!);
@@ -125,7 +134,7 @@ export function App() {
   // a aba da IA abre com o tema da área de onde se veio (só ordena os exemplos): território e ano dos filtros do painel não
   // vão junto, porque a pergunta diz o recorte e a IA escolhe as fontes
   const filtrosIa = new URLSearchParams(area === 'ia' ? atuais : undefined);
-  if (area !== 'ia') filtrosIa.set('paineis', area);
+  if (area !== 'ia' && area !== 'munic') filtrosIa.set('paineis', area);
   const buscaIa = `?${filtrosIa}`;
 
   return (
@@ -137,6 +146,7 @@ export function App() {
           financas: `${t('Finanças municipais', 'Municipal finances')} · SICONFI`,
           trabalho: t('Mercado de trabalho · RAIS e CAGED', 'Labour market · RAIS and CAGED'),
           saude: t('Saúde · DATASUS', 'Health · DATASUS'),
+          munic: t('Gestão pública · MUNIC e ESTADIC', 'Public management · MUNIC and ESTADIC'),
           ia: t('Pergunte aos dados · LAPAM/UFG', 'Ask the data · LAPAM/UFG'),
         }[area]}</h1>
         <nav className="areas" aria-label={t('Áreas', 'Areas')}>
@@ -144,6 +154,7 @@ export function App() {
           <NavLink to={{ pathname: '/receitas', search: busca }} className={area === 'financas' ? 'ativo' : ''}>{t('Finanças públicas', 'Public finances')}</NavLink>
           <NavLink to={{ pathname: '/trabalho', search: busca }} className={area === 'trabalho' ? 'ativo' : ''}>{t('Mercado de trabalho', 'Labour market')}</NavLink>
           <NavLink to={{ pathname: '/datasus', search: busca }} className={area === 'saude' ? 'ativo' : ''}>{t('Saúde', 'Health')}</NavLink>
+          <NavLink to={{ pathname: '/munic', search: '' }} className={area === 'munic' ? 'ativo' : ''}>{t('Gestão pública', 'Public management')}</NavLink>
         </nav>
         <span className="espaco" />
         <AlternarIdioma />
@@ -151,11 +162,11 @@ export function App() {
       </header>
       <div className={`casca${area === 'ia' ? ' casca-ia' : ''}`}>
         <nav className={`menu${area === 'ia' ? ' menu-ia' : ''}`} aria-label={t('Páginas', 'Pages')}>
-          {({ financas: menu, trabalho: menuTrabalho, saude: menuSaude, ia: menuIa }[area])().map(([grupo, itens]) => (
+          {({ financas: menu, trabalho: menuTrabalho, saude: menuSaude, munic: menuMunic, ia: menuIa }[area])().map(([grupo, itens]) => (
             <div key={grupo} style={{ display: 'contents' }}>
               <h4>{grupo}</h4>
               {itens.map(([para, rotulo]) => (
-                <NavLink key={para} to={{ pathname: para, search: area === 'ia' ? buscaIa : buscaArea }} end className={({ isActive }) => (isActive ? 'ativo' : '')}>
+                <NavLink key={para} to={{ pathname: para, search: area === 'ia' ? buscaIa : area === 'munic' ? '' : buscaArea }} end className={({ isActive }) => (isActive ? 'ativo' : '')}>
                   {rotulo}
                 </NavLink>
               ))}
@@ -197,6 +208,10 @@ export function App() {
               <Route path="/datasus/evolucao" element={<SaudeEvolucao />} />
               <Route path="/datasus/rankings" element={<SaudeRankings />} />
               <Route path="/datasus/metodologia" element={<SaudeMetodologia />} />
+              <Route path="/munic" element={<MunicVisaoGeral />} />
+              <Route path="/munic/evolucao" element={<MunicEvolucao />} />
+              <Route path="/munic/territorio" element={<MunicTerritorio />} />
+              <Route path="/munic/metodologia" element={<MunicMetodologia />} />
               <Route path="/deflatores" element={<Deflatores />} />
               <Route path="/qualidade" element={<Qualidade />} />
               <Route path="*" element={<p className="vazio">{t('Página não encontrada.', 'Page not found.')}</p>} />

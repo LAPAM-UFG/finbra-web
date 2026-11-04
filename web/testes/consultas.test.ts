@@ -3445,3 +3445,113 @@ describe('IA: cobertura por ano, modelo e período por fonte', () => {
     assert.equal(periodosDiferem({ periodosPorFonte: [['Finanças', '2025']] } as never), false);
   });
 });
+
+describe('MUNIC e ESTADIC (IBGE)', () => {
+  const semMunic = !existsSync(`${DATA}/gold/munic/respostas.parquet`);
+  const D = (q: Record<string, string | number>) => rota<L[]>('munic_distribuicao', q);
+  const nCorte = (linhas: L[], corte: string, valido = true) => linhas.filter((r) => r.corte === corte && !!r.valida === valido).reduce((s, r) => s + Number(r.n), 0);
+
+  test('edições: a MUNIC tem 17 edições com base por município; a ESTADIC, 10', { skip: semMunic }, async () => {
+    const anos = (r: L[]) => [...new Set(r.map((x) => Number(x.ano)))];
+    const m = anos(await rota<L[]>('munic_temas', { pesquisa: 'munic' }));
+    assert.deepEqual(m, [2004, 2005, 2006, 2008, 2009, 2011, 2012, 2013, 2014, 2015, 2017, 2018, 2019, 2020, 2021, 2023, 2024]);
+    const e = anos(await rota<L[]>('munic_temas', { pesquisa: 'estadic' }));
+    assert.equal(e.length, 10);
+    assert.ok(!e.includes(2015) && !e.includes(2022));
+  });
+
+  test('território: os municípios de cada edição (5.560 em 2004, 5.565 até 2012, 5.570 depois) e as 27 UFs na ESTADIC', { skip: semMunic }, async () => {
+    for (const [ano, n] of [[2004, 5560], [2009, 5565], [2013, 5570], [2017, 5570], [2024, 5570]] as const) {
+      const t = await rota<L[]>('munic_territorios', { pesquisa: 'munic', ano });
+      assert.equal(t.length, n, `MUNIC ${ano}`);
+      assert.ok(t.every((r) => r.nome && r.uf), `MUNIC ${ano}: município sem nome ou UF`);
+    }
+    assert.equal((await rota<L[]>('munic_territorios', { pesquisa: 'estadic', ano: 2024 })).length, 27);
+    // a UF vem do código: Goiânia é de GO; Fernando de Noronha, de PE
+    const go = await rota<L[]>('munic_territorios', { pesquisa: 'munic', ano: 2024, uf: 'GO' });
+    assert.equal(go.length, 246);
+    assert.ok(go.some((r) => r.cod === 5208707 && r.nome === 'Goiânia'));
+    const noronha = (await rota<L[]>('munic_territorios', { pesquisa: 'munic', ano: 2024, uf: 'PE' })).find((r) => r.cod === 2605459);
+    assert.equal(noronha?.nome, 'Fernando de Noronha');
+  });
+
+  test('distribuição: as UFs somam o Brasil, em respostas válidas e nas descartadas; a faixa de porte também', { skip: semMunic }, async () => {
+    for (const ano of [2009, 2019, 2024]) {
+      const perguntas = await rota<L[]>('munic_perguntas', { pesquisa: 'munic', ano });
+      const cat = perguntas.filter((p) => p.tipo === 'categorica').slice(0, 25);
+      assert.ok(cat.length > 0);
+      for (const p of cat) {
+        const d = await D({ pesquisa: 'munic', ano, var: String(p.var) });
+        assert.equal(nCorte(d, 'uf'), nCorte(d, 'brasil'), `${ano} ${p.var}: válidas`);
+        assert.equal(nCorte(d, 'uf', false), nCorte(d, 'brasil', false), `${ano} ${p.var}: descartadas`);
+        assert.equal(nCorte(d, 'brasil'), p.n_validas, `${ano} ${p.var}: catálogo × agregado`);
+        const faixa = nCorte(d, 'faixa');
+        assert.ok(faixa <= nCorte(d, 'brasil') && faixa >= nCorte(d, 'brasil') - 1, `${ano} ${p.var}: faixas (só Noronha pode ficar sem faixa)`);
+      }
+      for (const p of perguntas.filter((x) => x.tipo === 'numerica').slice(0, 10)) {
+        const d = await D({ pesquisa: 'munic', ano, var: String(p.var) });
+        const soma = (c: string) => d.filter((r) => r.corte === c && r.valor_txt === null).reduce((s, r) => s + Number(r.soma ?? 0), 0);
+        quase(soma('uf'), soma('brasil'));
+      }
+    }
+  });
+
+  test('"Não aplicável", "Recusa" e "-" ficam fora das respostas válidas; o catálogo não passa do universo da edição', { skip: semMunic }, async () => {
+    const perguntas = await rota<L[]>('munic_perguntas', { pesquisa: 'munic', ano: 2021 });
+    let achou = 0;
+    for (const p of perguntas.filter((x) => x.tipo === 'categorica').slice(0, 120)) {
+      const d = await D({ pesquisa: 'munic', ano: 2021, var: String(p.var) });
+      for (const r of d.filter((x) => x.corte === 'brasil')) {
+        if (/^(n[aã]o aplic|recusa|n[aã]o informou|-+$)/i.test(String(r.valor_txt ?? ''))) {
+          assert.equal(!!r.valida, false, `${p.var} ${r.valor_txt}`);
+          achou += 1;
+        }
+      }
+      assert.ok(Number(p.n_respostas) <= Number(p.n_territorios), String(p.var));
+    }
+    assert.ok(achou > 0, 'nenhuma resposta descartada encontrada');
+  });
+
+  test('privacidade: sem a aba do prefeito, sem nome, e-mail, telefone ou perfil do titular do órgão', { skip: semMunic }, async () => {
+    const pessoal = /\bnome\b|e-?mail|telefone|endere[cç]o|\bsite\b|perfil d[oa]s? (gestor|titular|dirigente|secret|respons|prefeit)|(sexo|idade|cor ou ra[çc]a|escolaridade|forma[cç][aã]o)\s+d[oa](\(a\))?s?\s+(\(a\)\s*)?(gestor|titular|dirigente|secret|respons|prefeit)/i;
+    for (const pesquisa of ['munic', 'estadic']) {
+      const temas = await rota<L[]>('munic_temas', { pesquisa });
+      assert.ok(!temas.some((r) => /prefeit|estrutura pol/i.test(String(r.aba))), `${pesquisa}: aba de pessoa`);
+      for (const ano of [...new Set(temas.map((r) => Number(r.ano)))]) {
+        const perguntas = await rota<L[]>('munic_perguntas', { pesquisa, ano });
+        assert.deepEqual(perguntas.filter((p) => pessoal.test(String(p.rotulo))).map((p) => `${ano} ${p.var} ${p.rotulo}`), [], `${pesquisa} ${ano}`);
+      }
+    }
+  });
+
+  test('ficha: uma resposta por pergunta, e o Sim do município aparece na distribuição da UF', { skip: semMunic }, async () => {
+    const ficha = await rota<L[]>('munic_ficha', { pesquisa: 'munic', ano: 2024, cod: 5208707 });
+    assert.ok(ficha.length > 500 && ficha.length < 1300);
+    assert.equal(new Set(ficha.map((r) => r.var)).size, ficha.length, 'uma resposta por pergunta');
+    const exemplo = ficha.filter((r) => r.tipo === 'categorica' && r.valida && r.valor_txt === 'Sim').slice(0, 8);
+    assert.ok(exemplo.length > 0);
+    for (const r of exemplo) {
+      const d = await D({ pesquisa: 'munic', ano: 2024, var: String(r.var) });
+      const go = d.find((x) => x.corte === 'uf' && x.grupo === 'GO' && x.valor_txt === 'Sim');
+      assert.ok(go && Number(go.n) >= 1, `${r.var}: GO deveria ter ao menos um Sim`);
+    }
+    assert.ok((await rota<L[]>('munic_ficha', { pesquisa: 'estadic', ano: 2024, cod: 52 })).length > 100);
+  });
+
+  test('evolução: perguntas ligadas entre edições vêm em ordem de ano, com código e enunciado de cada edição', { skip: semMunic }, async () => {
+    const grupos = await rota<L[]>('munic_busca', { pesquisa: 'munic', q: 'plano diretor' });
+    assert.ok(grupos.length > 0);
+    assert.ok(grupos.every((g) => Number(g.edicoes) >= 2));
+    const serie = await rota<L[]>('munic_evolucao', { pesquisa: 'munic', grupo: String(grupos[0].grupo) });
+    const anos = serie.map((r) => Number(r.ano));
+    assert.deepEqual(anos, [...anos].sort((a, b) => a - b));
+    assert.ok(new Set(anos).size >= 2);
+    for (const r of serie.slice(0, 6)) {
+      const p = (await rota<L[]>('munic_perguntas', { pesquisa: 'munic', ano: Number(r.ano) })).find((x) => x.var === r.var);
+      assert.ok(p, `${r.ano} ${r.var}`);
+    }
+    // a busca ignora acentos e caixa
+    assert.ok((await rota<L[]>('munic_busca', { pesquisa: 'munic', q: 'saude' })).length > 0, 'sem acento acha "saúde"');
+    assert.equal((await rota<L[]>('munic_busca', { pesquisa: 'munic', q: 'PLANO DIRETOR' })).length, grupos.length);
+  });
+});

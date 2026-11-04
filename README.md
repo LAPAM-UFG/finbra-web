@@ -204,6 +204,20 @@ Painel próprio em `/datasus` (o `/saude` das finanças é o SIOPS). Microdados 
 | Totais do painel | `pipeline/saude.py`: `gold/saude/municipios.parquet` (ano × município de residência: população, óbitos por idade, causa e capítulo da CID-10, óbitos fetais e nascidos vivos com peso, gestação, parto, pré-natal e idade da mãe), mais as tabelas de cada fonte; atualiza `sim`, `sinasc` e `populacao_svs` no manifesto |
 | Duplicações evitadas | SIM e SINASC usam os arquivos de cada UF: o do Brasil (DOBR, DNBR) repete os mesmos registros, e DNEX são mães residentes no exterior |
 
+### Gestão pública (MUNIC e ESTADIC, do IBGE)
+
+Painel próprio em `/munic`, sem nenhum filtro dos outros painéis (o `ano` ali é a edição). Pesquisas do IBGE respondidas pelas
+prefeituras (MUNIC, 17 edições com base por município: 2004–2024, sem 2003, 2007, 2010, 2016 e 2022) e pelos governos
+estaduais (ESTADIC, 10 edições: 2012–2024). Só o bloco de recursos humanos se repete em todas as edições; os demais temas rodam.
+
+| | |
+|---|---|
+| Download | `E:/finbra/brutos/munic` (de `ftp.ibge.gov.br/Perfil_Municipios/`) e `E:/finbra/brutos/estadic` (de `ftp.ibge.gov.br/Perfil_Estados/`): planilhas largas, `.xls` até 2017 e `.xlsx` depois. As tabelas de 2001 e 2002 não têm base por município e não são lidas |
+| Processamento | `pipeline/munic.py` (com `pipeline/leitor_planilha.py`; precisa do `xlrd` para os `.xls`): `gold/munic/respostas.parquet` (pesquisa, edição, território, variável, resposta; só o que foi respondido), `catalogo.parquet` (enunciado completo de cada pergunta, do dicionário de cada edição), `agregados.parquet` (Brasil, UF e faixa de porte), `territorio.parquet` e `comparaveis.parquet` (perguntas de mesmo enunciado em edições diferentes, agrupamento automático) |
+| Fica de fora | a aba do prefeito e a estrutura política, nome, e-mail, telefone e endereço, o perfil (sexo, idade, cor ou raça, escolaridade) do titular de cada órgão e as perguntas de texto livre |
+| Respostas sem valor | "Não aplicável", "Não informou", "Recusa" e "-" ficam na base com `valida = false` e fora da base dos percentuais; célula vazia não vira linha (nunca zero) |
+| Faixa de porte | uma regra só em todas as edições: a população da edição (SVS/MS do ano mais próximo, ou a que a própria base traz nas recentes) nas faixas do IBGE |
+
 ## Publicação do site
 
 Workflow **Publicar site** (`.github/workflows/publicar-site.yml`): a cada push na `main` que altere

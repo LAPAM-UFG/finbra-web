@@ -1085,6 +1085,109 @@ const rotasSaude: Record<string, (q: Params) => Promise<unknown>> = {
   },
 };
 
+// ---------------- MUNIC e ESTADIC (IBGE): gestão pública dos municípios e dos estados ----------------
+
+/**
+ * catalogo, territorio e comparaveis (pequenos) ficam em memória; agregados e respostas, ordenados por pesquisa, edição e
+ * pergunta, são lidos por Range (cada consulta pede uma pergunta ou um território). pipeline/munic.py.
+ */
+let municCarregada: Promise<void> | null = null;
+export function tabelasMunic() {
+  municCarregada ??= (async () => {
+    const { con } = await iniciar();
+    for (const nome of ['catalogo', 'territorio', 'comparaveis']) {
+      await db.registerFileBuffer(`munic_${nome}.parquet`, await baixar(`gold/munic/${nome}.parquet`));
+      await con.query(`CREATE TABLE munic_${nome} AS SELECT * FROM read_parquet('munic_${nome}.parquet')`);
+    }
+  })();
+  municCarregada.catch(() => (municCarregada = null));
+  return municCarregada;
+}
+
+const pesquisaMunic = (q: Params) => (q.pesquisa === 'estadic' ? 'estadic' : 'munic');
+const SEM_ACENTO = (col: string) => `strip_accents(lower(${col}))`;
+
+const rotasMunic: Record<string, (q: Params) => Promise<unknown>> = {
+  /** Temas (abas) de cada edição da pesquisa, com o número de perguntas publicadas. */
+  async munic_temas(q) {
+    await tabelasMunic();
+    return consultar(
+      `SELECT ano, aba, count(*)::INTEGER AS perguntas, max(n_territorios)::INTEGER AS territorios
+       FROM munic_catalogo WHERE pesquisa = $pesquisa GROUP BY ano, aba ORDER BY ano, aba`,
+      { pesquisa: pesquisaMunic(q) },
+    );
+  },
+
+  /** Perguntas de um tema numa edição: enunciado completo, tipo e quantos territórios responderam. */
+  async munic_perguntas(q) {
+    await tabelasMunic();
+    return consultar(
+      `SELECT var, aba, tema, subtema, rotulo, tipo, n_respostas::INTEGER AS n_respostas, n_validas::INTEGER AS n_validas, n_territorios::INTEGER AS n_territorios
+       FROM munic_catalogo WHERE pesquisa = $pesquisa AND ano = $ano::INTEGER AND ($aba = '' OR aba = $aba)`,
+      { pesquisa: pesquisaMunic(q), ano: inteiro(q.ano), aba: q.aba ? String(q.aba) : '' },
+    );
+  },
+
+  /** Agregados de uma pergunta: Brasil, cada UF e cada faixa de porte, por resposta (categorias ou soma e média). */
+  async munic_distribuicao(q) {
+    await tabelasMunic();
+    return consultar(
+      `SELECT corte, grupo, valor_txt, valida, n::INTEGER AS n, soma, media
+       FROM read_parquet(${arq('gold/munic/agregados.parquet')})
+       WHERE pesquisa = $pesquisa AND ano = $ano::INTEGER AND var = $var`,
+      { pesquisa: pesquisaMunic(q), ano: inteiro(q.ano), var: String(q.var ?? '') },
+    );
+  },
+
+  /** Perguntas com o mesmo enunciado em mais de uma edição, achadas por um trecho do enunciado. */
+  async munic_busca(q) {
+    await tabelasMunic();
+    const termo = String(q.q ?? '').trim();
+    return consultar(
+      `SELECT grupo, any_value(rotulo) AS rotulo, any_value(tipo) AS tipo, count(DISTINCT ano)::INTEGER AS edicoes,
+              min(ano)::INTEGER AS de, max(ano)::INTEGER AS ate
+       FROM munic_comparaveis WHERE pesquisa = $pesquisa AND ($termo = '' OR ${SEM_ACENTO('rotulo')} LIKE '%' || strip_accents(lower($termo)) || '%')
+       GROUP BY grupo ORDER BY edicoes DESC, rotulo LIMIT 60`,
+      { pesquisa: pesquisaMunic(q), termo },
+    );
+  },
+
+  /** Série de uma pergunta comparável: uma linha por edição e resposta (Brasil), com a pergunta de cada edição. */
+  async munic_evolucao(q) {
+    await tabelasMunic();
+    return consultar(
+      `SELECT g.ano, g.var, g.rotulo, g.tipo, a.valor_txt, a.valida, a.n::INTEGER AS n, a.soma, a.media
+       FROM munic_comparaveis g
+       JOIN read_parquet(${arq('gold/munic/agregados.parquet')}) a
+         ON a.pesquisa = g.pesquisa AND a.ano = g.ano AND a.var = g.var AND a.corte = 'brasil'
+       WHERE g.pesquisa = $pesquisa AND g.grupo = $grupo ORDER BY g.ano`,
+      { pesquisa: pesquisaMunic(q), grupo: String(q.grupo ?? '') },
+    );
+  },
+
+  /** Municípios (ou UFs) com respostas numa edição. */
+  async munic_territorios(q) {
+    await tabelasMunic();
+    return consultar(
+      `SELECT cod, nome, uf, faixa, populacao FROM munic_territorio WHERE pesquisa = $pesquisa AND ano = $ano::INTEGER
+       AND ($uf = '' OR uf = $uf) ORDER BY nome`,
+      { pesquisa: pesquisaMunic(q), ano: inteiro(q.ano), uf: UFS.has(String(q.uf)) ? String(q.uf) : '' },
+    );
+  },
+
+  /** Todas as respostas de um município (ou UF) numa edição, com o enunciado de cada pergunta. */
+  async munic_ficha(q) {
+    await tabelasMunic();
+    return consultar(
+      `SELECT c.aba, c.subtema, c.rotulo, c.tipo, c.var, r.valor_txt, r.valor_num, r.valida
+       FROM read_parquet(${arq('gold/munic/respostas.parquet')}) r
+       JOIN munic_catalogo c ON c.pesquisa = r.pesquisa AND c.ano = r.ano AND c.var = r.var
+       WHERE r.pesquisa = $pesquisa AND r.ano = $ano::INTEGER AND r.cod = $cod::INTEGER`,
+      { pesquisa: pesquisaMunic(q), ano: inteiro(q.ano), cod: inteiro(q.cod) },
+    );
+  },
+};
+
 // ---------------- classificação dos municípios (rankings anuais e evolução das posições) ----------------
 
 /**
@@ -1991,7 +2094,7 @@ export async function consultaLivre(sql: string, limite: number, sinal?: AbortSi
 }
 
 export async function executar(caminho: string, params: Params): Promise<unknown> {
-  const rota = rotas[caminho] ?? rotasLrf[caminho] ?? rotasSaudeEducacao[caminho] ?? rotasTrabalho[caminho] ?? rotasConsulta[caminho] ?? rotasSaude[caminho]
+  const rota = rotas[caminho] ?? rotasLrf[caminho] ?? rotasSaudeEducacao[caminho] ?? rotasTrabalho[caminho] ?? rotasConsulta[caminho] ?? rotasSaude[caminho] ?? rotasMunic[caminho]
     ?? rotasPosicoes[caminho];
   if (!rota) throw new Error(`rota desconhecida: ${caminho}`);
   return rota(params);
