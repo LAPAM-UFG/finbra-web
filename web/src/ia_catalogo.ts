@@ -13,7 +13,7 @@ import type { Cobertura } from './ia';
 import type { TipoColuna } from './ia_formato';
 
 /** Fonte cujos anos (do manifesto) dão a cobertura temporal da coluna. */
-export type ChaveCobertura = 'dca' | 'pib' | 'rais' | 'sim' | 'sinasc';
+export type ChaveCobertura = 'dca' | 'pib' | 'rais' | 'sim' | 'sinasc' | 'sih';
 
 export type Coluna = {
   tipo: TipoColuna;
@@ -41,6 +41,10 @@ const REG = 'LAPAM/UFG: regressão calculada pela página';
 const SIM = 'Ministério da Saúde/DATASUS: SIM (óbitos por município de residência, causa básica pela CID-10)';
 const SINASC = 'Ministério da Saúde/DATASUS: SINASC (nascidos vivos por município de residência da mãe)';
 const sim = (x: Omit<Coluna, 'fonte' | 'tipo'>): Coluna => ({ tipo: 'contagem', fonte: SIM, tabelas: ['saude_municipios'], cobertura: 'sim', territorio: 'municípios de residência', ...x });
+const SIH = 'Ministério da Saúde/DATASUS: SIH (internações hospitalares pagas pelo SUS, AIH tipo 1, por município de residência)';
+const RESSALVA_SIH = 'só internações pagas pelo SUS (não inclui a saúde suplementar nem a privada); por ano de competência da AIH';
+const sih = (x: Omit<Coluna, 'fonte' | 'tipo'> & { tipo?: TipoColuna }): Coluna => ({ tipo: 'contagem', fonte: SIH, tabelas: ['saude_municipios'], cobertura: 'sih', territorio: 'municípios de residência', ressalva: RESSALVA_SIH, ...x });
+const CAP_SIH = ['infecciosas e parasitárias (A00–B99)', 'neoplasias (C00–D48)', 'sangue e imunidade (D50–D89)', 'endócrinas, nutricionais e metabólicas (E00–E90)', 'transtornos mentais (F00–F99)', 'sistema nervoso (G00–G99)', 'olho (H00–H59)', 'ouvido (H60–H95)', 'aparelho circulatório (I00–I99)', 'aparelho respiratório (J00–J99)', 'aparelho digestivo (K00–K93)', 'pele (L00–L99)', 'osteomuscular (M00–M99)', 'geniturinário (N00–N99)', 'gravidez, parto e puerpério (O00–O99)', 'afecções perinatais (P00–P96)', 'malformações congênitas (Q00–Q99)', 'mal definidas (R00–R99)', 'lesões e envenenamentos (S00–T98)', 'causas externas (V01–Y98)', 'fatores que influenciam o estado de saúde (Z00–Z99)', 'códigos especiais (U00–U99)'];
 const FUNCOES = 'função de governo 04 (Portaria MOG 42/1999)';
 
 const TERR_DCA = 'municípios e estados (com o DF) que entregaram a DCA do exercício';
@@ -68,6 +72,18 @@ export const COLUNAS: Record<string, Coluna> = {
     classificacao: 'CID-10, causa básica', ressalva: 'contagem direta, sem o fator de correção do Ministério da Saúde',
   }),
   homicidios: sim({ rotulo: 'homicídios', definicao: 'óbitos por agressão (X85–Y09) e intervenção legal (Y35–Y36) pela causa básica', classificacao: 'CID-10, causa básica', ressalva: 'não inclui as mortes por intenção indeterminada (Y10–Y34)' }),
+  int_total: sih({ rotulo: 'internações', definicao: 'AIH tipo 1 aprovadas e pagas pelo SUS de residentes do município, por ano de competência (as AIH de longa permanência, tipo 5, são continuação e não contam)' }),
+  int_fora: sih({ rotulo: 'internações fora do município de residência', definicao: 'internações de residentes feitas em hospital de outro município' }),
+  int_valor: sih({ tipo: 'reais', rotulo: 'valor pago nas internações (R$ correntes)', definicao: 'soma do valor total das AIH (serviços hospitalares e profissionais), a preços do ano de competência', ressalva: `${RESSALVA_SIH}; valor da tabela do SUS, não o custo real do hospital` }),
+  int_valor_real: sih({ tipo: 'reais', rotulo: 'valor pago nas internações (R$ de 2025)', definicao: 'int_valor corrigido para reais de 2025 pelo IPCA médio do ano (gold/ipca.parquet, fator_real); sem valor em 2008 e 2009, antes do IPCA da base', ressalva: `${RESSALVA_SIH}; valor da tabela do SUS, não o custo real do hospital` }),
+  int_dias: sih({ rotulo: 'dias de permanência', definicao: 'soma dos dias de internação das AIH' }),
+  int_obitos: sih({ rotulo: 'internações encerradas por óbito', definicao: 'AIH com saída por óbito (MORTE = 1)', ressalva: `${RESSALVA_SIH}; não é medida de qualidade do hospital` }),
+  int_menores_5: sih({ rotulo: 'internações de menores de 5 anos', definicao: 'internações de residentes com menos de 5 anos de idade' }),
+  int_60_mais: sih({ rotulo: 'internações de 60 anos ou mais', definicao: 'internações de residentes com 60 anos ou mais' }),
+  int_atendidas: sih({ rotulo: 'internações atendidas no município', definicao: 'internações feitas em hospitais do município, de quem for residente', territorio: 'municípios onde fica o hospital' }),
+  int_atendidas_de_fora: sih({ rotulo: 'internações atendidas de residentes de outros municípios', definicao: 'internações em hospitais do município de pessoas residentes em outro município', territorio: 'municípios onde fica o hospital' }),
+  int_atendidas_valor_real: sih({ tipo: 'reais', rotulo: 'valor pago nas internações atendidas (R$ de 2025)', definicao: 'valor das AIH atendidas por hospitais do município, em reais de 2025 pelo IPCA médio do ano', territorio: 'municípios onde fica o hospital' }),
+  ...Object.fromEntries(CAP_SIH.map((nome, i) => [`int_cap${String(i + 1).padStart(2, '0')}`, sih({ rotulo: `internações: ${nome}`, definicao: `internações cujo diagnóstico principal é do capítulo ${nome} da CID-10`, classificacao: 'CID-10, diagnóstico principal' })])),
   nascidos: { tipo: 'contagem', rotulo: 'nascidos vivos', definicao: 'nascidos vivos de mães residentes no município', fonte: SINASC, tabelas: ['saude_municipios'], cobertura: 'sinasc', territorio: 'municípios de residência da mãe' },
   populacao_ibge: {
     tipo: 'contagem', rotulo: 'população do IBGE (habitantes)',
@@ -141,6 +157,7 @@ export function coberturaDaColuna(c: Coluna, cob?: Cobertura | null): string {
   if (c.cobertura === 'pib') return cob?.pib ? `${cob.pib.de} a ${cob.pib.ate}` : '';
   if (c.cobertura === 'sim') return intervalo(cob?.sim);
   if (c.cobertura === 'sinasc') return intervalo(cob?.sinasc);
+  if (c.cobertura === 'sih') return intervalo(cob?.sih);
   return c.cobertura ?? '';
 }
 

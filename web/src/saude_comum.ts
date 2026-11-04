@@ -30,6 +30,8 @@ const G_MORT = () => t('Mortalidade', 'Mortality');
 const G_NASC = () => t('Nascimentos', 'Births');
 const G_CAUSAS = () => t('Causas de morte', 'Causes of death');
 
+const G_INT = () => t('Internações (SIH/SUS)', 'Hospital admissions (SIH/SUS)');
+
 export const INDICADORES: Indicador[] = [
   {
     id: 'mortalidade_infantil', grupo: G_MORT, nome: () => t('Mortalidade infantil', 'Infant mortality'),
@@ -123,6 +125,52 @@ export const INDICADORES: Indicador[] = [
     unidade: () => t('% dos nascidos com idade da mãe informada', '% of births with mother’s age recorded'), numerador: 'maes_10_19', denominador: 'idade_mae_informada', fator: 1, tipo: 'proporcao', minimo: 100,
     nota: () => t('Nascidos de mães de 10 a 19 anos ÷ nascidos com a idade da mãe informada.', 'Births to mothers aged 10–19 ÷ births with mother’s age recorded.'),
   },
+  // internações hospitalares do SUS (SIH, AIH reduzida), por município de residência e ano de competência
+  {
+    id: 'internacoes_mil', grupo: G_INT, nome: () => t('Internações hospitalares', 'Hospital admissions'),
+    unidade: () => t('por mil habitantes', 'per 1,000 inhabitants'), numerador: 'int_total', denominador: 'populacao', fator: 1000, tipo: 'taxa', minimo: 5000,
+    nota: () => t('Internações pagas pelo SUS (SIH, AIH tipo 1) de residentes ÷ população residente (estimativa da SVS/MS) × 1.000, por ano de competência da AIH. Mede o uso do SUS hospitalar, não a necessidade de saúde: quem tem plano privado ou não consegue vaga aparece menos. Não é padronizada por idade.',
+      'SUS-paid hospital admissions (SIH, type-1 AIH) of residents ÷ resident population (SVS/MS estimate) × 1,000, by AIH competence year. It measures use of SUS hospitals, not health need: people with private insurance or without access to a bed appear less. Not age-standardised.'),
+  },
+  {
+    id: 'internacoes_idosos', grupo: G_INT, nome: () => t('Internações de idosos (60 anos ou mais)', 'Admissions of older adults (60+)'),
+    unidade: () => t('por mil habitantes de 60 anos ou mais', 'per 1,000 aged 60 or over'), numerador: 'int_60_mais', denominador: 'pop_60_mais', fator: 1000, tipo: 'taxa', minimo: 1000,
+    nota: () => t('Internações de residentes com 60 anos ou mais ÷ população de 60 anos ou mais × 1.000.', 'Admissions of residents aged 60 or over ÷ population aged 60 or over × 1,000.'),
+  },
+  {
+    id: 'internacoes_criancas', grupo: G_INT, nome: () => t('Internações de menores de 5 anos', 'Admissions of children under 5'),
+    unidade: () => t('por mil crianças de 0 a 4 anos', 'per 1,000 children aged 0–4'), numerador: 'int_menores_5', denominador: 'pop_0_4', fator: 1000, tipo: 'taxa', minimo: 1000,
+    nota: () => t('Internações de residentes com menos de 5 anos ÷ população de 0 a 4 anos × 1.000.', 'Admissions of residents under 5 ÷ population aged 0–4 × 1,000.'),
+  },
+  {
+    id: 'internacoes_fora', grupo: G_INT, nome: () => t('Internações fora do município de residência', 'Admissions outside the municipality of residence'),
+    unidade: () => t('% das internações dos residentes', '% of residents’ admissions'), numerador: 'int_fora', denominador: 'int_total', fator: 1, tipo: 'proporcao', minimo: 500,
+    nota: () => t('Internações de residentes feitas em hospital de outro município ÷ internações dos residentes. Valores altos indicam dependência de outros municípios; municípios pequenos e vizinhos de polos regionais costumam ter proporções altas, e isso não é falha de gestão por si só.',
+      'Admissions of residents in a hospital of another municipality ÷ residents’ admissions. High values indicate dependence on other municipalities; small municipalities next to regional hubs usually have high shares, which is not a management failure by itself.'),
+  },
+  {
+    id: 'mortalidade_hospitalar', grupo: G_INT, nome: () => t('Mortalidade hospitalar', 'In-hospital mortality'),
+    unidade: () => t('% das internações', '% of admissions'), numerador: 'int_obitos', denominador: 'int_total', fator: 1, tipo: 'proporcao', minimo: 500,
+    nota: () => t('Internações encerradas por óbito ÷ internações dos residentes (SIH). Depende da gravidade dos casos e do perfil do hospital: não é uma medida de qualidade e não deve ser usada sozinha para comparar lugares.',
+      'Admissions ending in death ÷ residents’ admissions (SIH). It depends on case severity and hospital profile: it is not a quality measure and should not be used alone to compare places.'),
+  },
+  {
+    id: 'permanencia_media', grupo: G_INT, nome: () => t('Tempo médio de permanência', 'Average length of stay'),
+    unidade: () => t('dias por internação', 'days per admission'), numerador: 'int_dias', denominador: 'int_total', fator: 1, tipo: 'taxa', minimo: 500,
+    nota: () => t('Soma dos dias de permanência ÷ internações dos residentes (SIH).', 'Sum of days of stay ÷ residents’ admissions (SIH).'),
+  },
+  {
+    id: 'valor_por_internacao', grupo: G_INT, nome: () => t('Valor médio pago por internação', 'Average amount paid per admission'),
+    unidade: () => t('R$ de 2025 por internação', 'R$ of 2025 per admission'), numerador: 'int_valor_real', denominador: 'int_total', fator: 1, tipo: 'taxa', minimo: 500,
+    nota: () => t('Valor total das AIH pagas pelo SUS (serviços hospitalares e profissionais) ÷ internações dos residentes, em reais de 2025 pelo IPCA médio do ano (de 2010 em diante; antes, sem valor). É o valor da tabela do SUS, não o custo real do hospital.',
+      'Total value of AIH paid by SUS (hospital and professional services) ÷ residents’ admissions, in 2025 reais using the average-year IPCA (from 2010 onward; earlier years have no value). It is the SUS table value, not the hospital’s actual cost.'),
+  },
+  {
+    id: 'valor_por_habitante', grupo: G_INT, nome: () => t('Valor pago em internações por habitante', 'Amount paid for admissions per inhabitant'),
+    unidade: () => t('R$ de 2025 por habitante', 'R$ of 2025 per inhabitant'), numerador: 'int_valor_real', denominador: 'populacao', fator: 1, tipo: 'taxa', minimo: 5000,
+    nota: () => t('Valor total das AIH pagas pelo SUS aos residentes ÷ população residente, em reais de 2025 (de 2010 em diante). Reflete o que o SUS pagou, não o gasto da prefeitura.',
+      'Total value of AIH paid by SUS for residents ÷ resident population, in 2025 reais (from 2010 onward). It reflects what SUS paid, not municipal spending.'),
+  },
 ];
 
 export const indicador = (id: string | null | undefined) => INDICADORES.find((i) => i.id === id) ?? INDICADORES[0];
@@ -148,13 +196,18 @@ export const nomeContagem = (c: string): string => ({
   cesareos: t('Nascidos de cesárea', 'Caesarean births'), parto_informado: t('Nascidos com parto informado', 'Births with delivery recorded'),
   consultas_7_mais: t('Nascidos com 7+ consultas', 'Births with 7+ visits'), consultas_informadas: t('Nascidos com consultas informadas', 'Births with visits recorded'),
   maes_10_19: t('Nascidos de mães de 10–19 anos', 'Births to mothers aged 10–19'), idade_mae_informada: t('Nascidos com idade da mãe informada', 'Births with mother’s age recorded'),
+  int_total: t('Internações', 'Admissions'), int_fora: t('Internações fora do município', 'Admissions outside the municipality'),
+  int_obitos: t('Internações com óbito', 'Admissions ending in death'), int_dias: t('Dias de internação', 'Days of stay'),
+  int_60_mais: t('Internações de 60 anos ou mais', 'Admissions aged 60+'), int_menores_5: t('Internações de menores de 5', 'Admissions under 5'),
+  int_valor_real: t('Valor pago (R$ de 2025)', 'Amount paid (R$ of 2025)'), pop_60_mais: t('População de 60 anos ou mais', 'Population aged 60+'),
+  pop_0_4: t('População de 0 a 4 anos', 'Population aged 0–4'),
 }[c] ?? c);
 
 export const formatar = (ind: Indicador, v: number | null | undefined) => (ind.tipo === 'proporcao' ? pct(v) : numero1(v));
 
 export const fonteSaude = () => t(
-  'SIM (Sistema de Informações sobre Mortalidade) e SINASC (Sistema de Informações sobre Nascidos Vivos), Ministério da Saúde/DATASUS, microdados públicos por município de residência; população: estimativas da SVS/MS por município, sexo e idade (2000 em diante). Processamento: LAPAM/UFG.',
-  'SIM (Mortality Information System) and SINASC (Live Birth Information System), Ministry of Health/DATASUS, public microdata by municipality of residence; population: SVS/MS estimates by municipality, sex and age (2000 onwards). Processing: LAPAM/UFG.',
+  'SIM (Sistema de Informações sobre Mortalidade), SINASC (Sistema de Informações sobre Nascidos Vivos) e SIH (Sistema de Informações Hospitalares do SUS), Ministério da Saúde/DATASUS, microdados públicos por município de residência; população: estimativas da SVS/MS por município, sexo e idade (2000 em diante). Processamento: LAPAM/UFG.',
+  'SIM (Mortality Information System), SINASC (Live Birth Information System) and SIH (SUS Hospital Information System), Ministry of Health/DATASUS, public microdata by municipality of residence; population: SVS/MS estimates by municipality, sex and age (2000 onwards). Processing: LAPAM/UFG.',
 );
 
 /** Capítulos da CID-10 (causa básica do óbito), na ordem das colunas cap01…cap22. */

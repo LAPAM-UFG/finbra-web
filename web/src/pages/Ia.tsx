@@ -127,7 +127,7 @@ function coberturaDe(meta: Meta, microdados: boolean): Cobertura {
     siope: anos(f.siope?.anos), siopeRemuneracao: anos(f.siope?.remuneracao), siops: anos(f.siops?.anos),
     lrf: par(f.siconfi_lrf?.anos) && { ...par(f.siconfi_lrf?.anos)!, parciais: anos(f.siconfi_lrf?.parciais) }, bolsa: bolsa && { ...bolsa, mes: Number(f.bolsa_familia?.ultimo_mes) || bolsa.ate * 100 + 12 },
     inss: anos(f.inss?.exercicios),
-    sim: anos(f.sim?.anos), sinasc: anos(f.sinasc?.anos), popSvs: anos(f.populacao_svs?.anos),
+    sim: anos(f.sim?.anos), sinasc: anos(f.sinasc?.anos), sih: anos(f.sih?.anos), popSvs: anos(f.populacao_svs?.anos),
   };
 }
 
@@ -167,15 +167,15 @@ const descricao = (p: Painel[]) => (p.length > 1
     ? t('Pergunte em linguagem natural sobre emprego formal, remuneração, setores, ocupações, afastamentos e movimentações. A IA consulta a RAIS e o Novo CAGED aqui no seu navegador, faz os cálculos com SQL e explica o resultado, com as consultas à vista para conferência.',
       'Ask in plain language about formal employment, pay, sectors, occupations, leave and job flows. The AI queries RAIS and New CAGED here in your browser, does the calculations in SQL and explains the result, with the queries in view for checking.')
     : p[0] === 'saude'
-      ? t('Pergunte em linguagem natural sobre mortalidade, causas de morte e nascimentos por município de residência. A IA consulta o SIM, o SINASC e a população da SVS/MS aqui no seu navegador, faz os cálculos com SQL e explica o resultado, com as consultas à vista para conferência.',
-        'Ask in plain language about mortality, causes of death and births by municipality of residence. The AI queries SIM, SINASC and the SVS/MS population here in your browser, does the calculations in SQL and explains the result, with the queries in view for checking.')
+      ? t('Pergunte em linguagem natural sobre mortalidade, causas de morte, nascimentos e internações hospitalares do SUS por município de residência. A IA consulta o SIM, o SINASC, o SIH e a população da SVS/MS aqui no seu navegador, faz os cálculos com SQL e explica o resultado, com as consultas à vista para conferência.',
+        'Ask in plain language about mortality, causes of death, births and SUS hospital admissions by municipality of residence. The AI queries SIM, SINASC, SIH and the SVS/MS population here in your browser, does the calculations in SQL and explains the result, with the queries in view for checking.')
       : t('Pergunte em linguagem natural sobre receitas, despesas, transferências e indicadores fiscais de municípios, estados e DF. A IA consulta as declarações do SICONFI aqui no seu navegador, faz os cálculos com SQL e explica o resultado, com as consultas à vista para conferência.',
         'Ask in plain language about revenue, expenditure, transfers and fiscal indicators of municipalities, states and DF. The AI queries the SICONFI filings here in your browser, does the calculations in SQL and explains the result, with the queries in view for checking.'));
 
 const FONTES = (): Record<Painel, string> => ({
   financas: t('finanças públicas (SICONFI/Tesouro Nacional, IBGE, Banco Central, Portal da Transparência, Previdência)', 'public finances (SICONFI/National Treasury, IBGE, Central Bank, Transparency Portal, Social Security)'),
   trabalho: t('mercado de trabalho (RAIS e Novo CAGED, Ministério do Trabalho e Emprego)', 'labour market (RAIS and New CAGED, Ministry of Labour and Employment)'),
-  saude: t('saúde (SIM e SINASC, Ministério da Saúde/DATASUS; população da SVS/MS)', 'health (SIM and SINASC, Ministry of Health/DATASUS; SVS/MS population)'),
+  saude: t('saúde (SIM, SINASC e SIH, Ministério da Saúde/DATASUS; população da SVS/MS)', 'health (SIM, SINASC and SIH, Ministry of Health/DATASUS; SVS/MS population)'),
 });
 const fonteIa = (paineis: Painel[]) => t(
   `Painéis LAPAM/UFG: ${paineis.map((p) => FONTES()[p]).join('; ')}. Respostas e consultas geradas por IA (Claude, da Anthropic): confira antes de usar.`,

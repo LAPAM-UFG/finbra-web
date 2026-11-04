@@ -99,7 +99,7 @@ export function SaudeVisaoGeral() {
   return (
     <>
       <h2 className="titulo-pagina">{t('Saúde: visão geral', 'Health: overview')}</h2>
-      <p className="subtitulo">{rotulo} · {ano} · {t('nascimentos e óbitos por residência', 'births and deaths by residence')} <Dica rotulo={t('Fonte', 'Source')}>{fonteSaude()}</Dica></p>
+      <p className="subtitulo">{rotulo} · {ano} · {t('nascimentos, óbitos e internações por residência', 'births, deaths and admissions by residence')} <Dica rotulo={t('Fonte', 'Source')}>{fonteSaude()}</Dica></p>
       <BarraFiltros />
       <AvisoAno ano={ano} />
       <Estado carregando={serie.carregando} erro={serie.erro} tentarNovamente={serie.recarregar}
@@ -120,6 +120,19 @@ export function SaudeVisaoGeral() {
             <KpiIndicador ind={indicador('pre_natal')} r={a} />
             <KpiIndicador ind={indicador('mal_definidas')} r={a} />
           </div>
+          {num(a.int_total) !== null && (
+            <>
+              <p className="nota-base"><strong>{t('Internações hospitalares do SUS (SIH)', 'SUS hospital admissions (SIH)')}</strong> · {t('por ano de competência; só o SUS', 'by competence year; SUS only')}</p>
+              <div className="kpis kpis-4">
+                <Kpi rotulo={t('Internações (SUS)', 'Admissions (SUS)')} valor={numero(num(a.int_total))}
+                  nota={t(`${formatar(indicador('internacoes_mil'), calcular(indicador('internacoes_mil'), a))} por mil hab.`, `${formatar(indicador('internacoes_mil'), calcular(indicador('internacoes_mil'), a))} per 1,000`)}
+                  dica={<Dica rotulo={t('Fórmula', 'Formula')}>{indicador('internacoes_mil').nota()}</Dica>} />
+                <KpiIndicador ind={indicador('internacoes_fora')} r={a} />
+                <KpiIndicador ind={indicador('mortalidade_hospitalar')} r={a} />
+                <KpiIndicador ind={indicador('valor_por_internacao')} r={a} />
+              </div>
+            </>
+          )}
           {!temNasc && <p className="aviso">{t('Sem nascimentos registrados para este recorte e ano: os indicadores por nascidos vivos ficam vazios.', 'No births recorded for this scope and year: indicators per live birth are empty.')}</p>}
           <p className="nota-base">{notaResidencia()}</p>
         </>
@@ -424,6 +437,8 @@ export function SaudeMetodologia() {
         <ul>
           <li><strong>SIM</strong> ({faixa('sim')}): {t('declarações de óbito, microdados públicos do DATASUS (arquivos DORES de cada UF; o arquivo do Brasil repete os mesmos registros e fica de fora). Óbitos fetais à parte (DOFET).', 'death certificates, DATASUS public microdata (DORES files of each state; the national file repeats the same records and is left out). Fetal deaths separately (DOFET).')}</li>
           <li><strong>SINASC</strong> ({faixa('sinasc')}): {t('declarações de nascido vivo, pelo município de residência da mãe; os nascidos de mães residentes no exterior ficam de fora.', 'live birth certificates, by the mother’s municipality of residence; births to mothers living abroad are left out.')}</li>
+          <li><strong>SIH</strong> ({faixa('sih')}): {t('Sistema de Informações Hospitalares do SUS, AIH reduzida (tipo 1 aprovadas e pagas; as de longa permanência, tipo 5, são continuação e não contam), por município de residência do paciente e por ano de competência da AIH. Só o SUS: não inclui a saúde suplementar nem a privada. O valor é o da tabela do SUS, em reais de 2025 pelo IPCA médio do ano (de 2010 em diante, o primeiro ano do IPCA da base).',
+            'SUS Hospital Information System, reduced AIH (approved and paid type 1; long-stay type 5 are continuations and do not count), by the patient’s municipality of residence and AIH competence year. SUS only: it excludes supplementary and private care. The value is the SUS table value, in 2025 reais using the average-year IPCA (from 2010, the first IPCA year in the data).')}</li>
           <li><strong>{t('População', 'Population')}</strong> ({faixa('populacao_svs')}): {t('estimativas da SVS/MS por município, sexo e idade simples, as mesmas do TABNET para as taxas de saúde.', 'SVS/MS estimates by municipality, sex and single year of age, the same used by TABNET for health rates.')}</li>
         </ul>
         <h3>{t('Como as taxas são calculadas', 'How rates are calculated')}</h3>
@@ -444,6 +459,8 @@ export function SaudeMetodologia() {
           <li>{t('Prematuridade: em 2011 o SINASC mudou o cálculo da idade gestacional e o indicador subiu de patamar.', 'Preterm births: in 2011 SINASC changed how gestational age is computed, and the indicator rose.')}</li>
           <li>{t('O ano mais recente pode ser preliminar no DATASUS e mudar após a investigação dos óbitos.', 'The latest year may be preliminary at DATASUS and change after death investigations.')}</li>
           <li>{t('Taxas por habitante não são padronizadas por idade.', 'Rates per inhabitant are not age-standardised.')}</li>
+          <li>{t('Internações (SIH): medem o uso do SUS hospitalar, não a necessidade de saúde; quem tem plano privado aparece menos. A proporção de internações fora do município reflete a rede regional (municípios pequenos próximos de polos têm valores altos sem que isso seja falha de gestão), e a mortalidade hospitalar depende da gravidade e do perfil do hospital: não mede qualidade. Em 2008 e 2009 não há valor em reais de 2025 (o IPCA da base começa em 2010).',
+            'Admissions (SIH): they measure use of SUS hospitals, not health need; people with private insurance appear less. The share of admissions outside the municipality reflects the regional network (small municipalities near hubs have high values without any management failure), and in-hospital mortality depends on severity and hospital profile: it does not measure quality. There is no 2025-reais value for 2008 and 2009 (the IPCA in the data starts in 2010).')}</li>
           <li>{t('Rankings: só municípios do cadastro (residência), com o denominador mínimo escolhido; empates com a mesma posição (1, 2, 2, 4). O ranking anual e a evolução das posições usam a mesma classificação; na evolução, o universo pode ser o de cada ano ou constante (os mesmos municípios em todo o período). A taxa de cada município é a dele (numerador ÷ denominador), nunca a média de outras taxas.',
             'Rankings: only municipalities in the registry (residence), with the chosen minimum denominator; ties share the same position (1, 2, 2, 4). The annual ranking and positions over time use the same classification; over time, the universe can be each year’s or constant (the same municipalities throughout). Each municipality’s rate is its own (numerator ÷ denominator), never an average of other rates.')}</li>
         </ul>

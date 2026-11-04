@@ -2447,6 +2447,36 @@ describe('saúde (SIM, SINASC e população da SVS/MS)', () => {
     assert.ok((serie.find((r) => r.ano === 2000)!.populacao as number) > 1.6e8);
   });
 
+  test('SIH: invariantes das internações entre colunas, pontos de vista e anos', { skip: semSaude }, async () => {
+    const serie = await rota<L[]>('saude_serie');
+    const sih = serie.filter((r) => Number(r.int_total) > 0);
+    if (!sih.length) return; // dados ainda sem o SIH
+    const caps = Array.from({ length: 22 }, (_, i) => `int_cap${String(i + 1).padStart(2, '0')}`);
+    const anos = sih.map((r) => Number(r.ano));
+    assert.deepEqual(anos, Array.from({ length: anos.length }, (_, i) => anos[0] + i), 'anos seguidos, sem lacuna');
+    for (const r of sih) {
+      const ano = r.ano;
+      // todo diagnóstico principal cai num capítulo; o total pelo hospital é o mesmo universo do total pela residência
+      assert.equal(caps.reduce((a, c) => a + Number(r[c]), 0), r.int_total, `capítulos somam o total em ${ano}`);
+      assert.equal(r.int_atendidas, r.int_total, `atendidas = residentes em ${ano}`);
+      assert.equal(r.int_atendidas_de_fora, r.int_fora, `as que saem de um município entram em outro em ${ano}`);
+      assert.ok(Number(r.int_fora) <= Number(r.int_total) && Number(r.int_obitos) <= Number(r.int_total), `fora e óbitos não passam do total em ${ano}`);
+      assert.ok(Number(r.int_menores_5) + Number(r.int_60_mais) <= Number(r.int_total), `faixas etárias não passam do total em ${ano}`);
+      assert.ok(Number(r.int_dias) >= Number(r.int_total) * 0, `dias de permanência presentes em ${ano}`);
+      // valor em reais de 2025 só onde há IPCA (de 2010 em diante); antes, sem valor (nunca zero)
+      if (Number(ano) < 2010) assert.ok(!r.int_valor_real, `sem valor real em ${ano}, antes do IPCA`);
+      else assert.ok(Number(r.int_valor_real) > 0, `valor real em ${ano}`);
+    }
+    // indicadores: razão das somas, como nos demais
+    const r = sih.at(-1)!;
+    quase(calcular(indicador('internacoes_mil'), r)!, (1000 * Number(r.int_total)) / Number(r.populacao));
+    quase(calcular(indicador('internacoes_fora'), r)!, Number(r.int_fora) / Number(r.int_total));
+    quase(calcular(indicador('permanencia_media'), r)!, Number(r.int_dias) / Number(r.int_total));
+    // o manifesto anuncia os mesmos anos
+    const m = JSON.parse(await readFile(`${DATA}/gold/manifesto.json`, 'utf8'));
+    assert.deepEqual(m.fontes.sih.anos, anos);
+  });
+
   test('UF soma os municípios e os registros de município ignorado; o ranking só tem municípios do cadastro', { skip: semSaude }, async () => {
     const go = (await rota<L[]>('saude_serie', { uf: 'GO' })).find((r) => r.ano === 2023)!;
     const muns = await rota<L[]>('saude_municipios', { uf: 'GO', ano: 2023 });

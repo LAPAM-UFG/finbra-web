@@ -18,6 +18,15 @@ gold/saude/nascimentos.parquet ano × município da mãe: nascidos vivos do SINA
                                gestação, tipo de parto, consultas de pré-natal e idade da mãe; cada indicador leva
                                o número de registros com a informação preenchida, que é o denominador da proporção
 
+gold/saude/internacoes.parquet   ano × município de residência: internações do SIH/SUS (AIH reduzida, IDENT = 1: as AIH de
+                               longa permanência, IDENT = 5, são continuação e não contam), por ano de competência
+                               (2008–2025; 2026 fica de fora até fechar), com as que ocorreram em outro município,
+                               valor pago (nominal e em reais de 2025 pelo IPCA), dias de permanência, óbitos
+                               hospitalares, faixas etárias e capítulos da CID-10 do diagnóstico principal
+gold/saude/internacoes_atend.parquet  ano × município do hospital: internações atendidas e as de residentes de outros
+                               municípios (quem recebe pacientes)
+                               Ambas entram em municipios.parquet (colunas int_*)
+
 Uso:
     py pipeline/saude.py
 """
@@ -182,6 +191,54 @@ def nascimentos(con, micro: Path):
         round(100 * sum(cesareos) / sum(parto_informado), 2) FROM nascimentos WHERE ano IN (2019, 2024) GROUP BY 1 ORDER BY 1""").fetchall())
 
 
+SIH_ANOS = (2008, 2025)
+# idade em anos do SIH: COD_IDADE 2 = dias, 3 = meses, 4 = anos, 5 = 100 anos ou mais
+SIH_IDADE = "CASE WHEN COD_IDADE IN ('0', '1', '2', '3') THEN 0 WHEN COD_IDADE = '4' THEN TRY_CAST(IDADE AS INTEGER) WHEN COD_IDADE = '5' THEN 100 + TRY_CAST(IDADE AS INTEGER) END"
+
+
+def internacoes(con, micro: Path):
+    """SIH/SUS: internações por município de residência (internacoes) e do hospital (internacoes_atend)."""
+    rd = micro / "SIHSUS" / "200801_" / "Dados"
+    c3 = "left(upper(DIAG_PRINC), 3)"
+    capitulos = ",\n".join(f"count(*) FILTER (WHERE {c3} BETWEEN '{a}' AND '{b}') AS int_cap{n:02d}" for n, a, b in CAPITULOS)
+    ipca = (GOLD / "ipca.parquet").as_posix()
+    de, ate = SIH_ANOS
+    con.execute(f"""
+        CREATE OR REPLACE TABLE sih AS
+        SELECT TRY_CAST(ANO_CMPT AS INTEGER) AS ano, TRY_CAST(MUNIC_RES AS INTEGER) AS residencia, TRY_CAST(MUNIC_MOV AS INTEGER) AS hospital,
+               TRY_CAST(VAL_TOT AS DOUBLE) AS valor, TRY_CAST(DIAS_PERM AS INTEGER) AS dias, MORTE, DIAG_PRINC,
+               {SIH_IDADE} AS idade_anos
+        FROM read_parquet('{rd}/RD*.parquet')
+        WHERE IDENT = '1' AND TRY_CAST(ANO_CMPT AS INTEGER) BETWEEN {de} AND {ate}""")
+    con.execute(f"""
+        CREATE OR REPLACE TABLE internacoes AS
+        SELECT s.ano, s.residencia AS municipio, s.residencia // 10000 AS uf,
+               count(*) AS int_total,
+               count(*) FILTER (WHERE s.hospital <> s.residencia) AS int_fora,
+               sum(s.valor) AS int_valor,
+               sum(s.valor) * any_value(i.fator_real) AS int_valor_real,
+               sum(s.dias) AS int_dias,
+               count(*) FILTER (WHERE s.MORTE = '1') AS int_obitos,
+               count(*) FILTER (WHERE s.idade_anos < 5) AS int_menores_5,
+               count(*) FILTER (WHERE s.idade_anos >= 60) AS int_60_mais,
+               {capitulos.replace('DIAG_PRINC', 's.DIAG_PRINC')}
+        FROM sih s LEFT JOIN '{ipca}' i ON i.exercicio = s.ano
+        WHERE s.residencia IS NOT NULL GROUP BY s.ano, s.residencia ORDER BY 1, 2""")
+    con.execute(f"COPY internacoes TO '{GOLD_S / 'internacoes.parquet'}' (FORMAT parquet, COMPRESSION zstd)")
+    con.execute(f"""
+        CREATE OR REPLACE TABLE internacoes_atend AS
+        SELECT s.ano, s.hospital AS municipio, s.hospital // 10000 AS uf,
+               count(*) AS int_atendidas,
+               count(*) FILTER (WHERE s.residencia <> s.hospital) AS int_atendidas_de_fora,
+               sum(s.valor) * any_value(i.fator_real) AS int_atendidas_valor_real
+        FROM sih s LEFT JOIN '{ipca}' i ON i.exercicio = s.ano
+        WHERE s.hospital IS NOT NULL GROUP BY s.ano, s.hospital ORDER BY 1, 2""")
+    con.execute(f"COPY internacoes_atend TO '{GOLD_S / 'internacoes_atend.parquet'}' (FORMAT parquet, COMPRESSION zstd)")
+    print("internacoes:", con.sql("""SELECT ano, sum(int_total), round(sum(int_valor_real) / 1e9, 2), round(100.0 * sum(int_fora) / sum(int_total), 1),
+        round(100.0 * sum(int_obitos) / sum(int_total), 2) FROM internacoes WHERE ano IN (2008, 2019, 2020, 2025) GROUP BY 1 ORDER BY 1""").fetchall())
+    con.execute("DROP TABLE sih")
+
+
 def municipios(con):
     """Uma linha por ano e município de residência com população, óbitos, óbitos fetais e nascimentos."""
     s = SILVER.as_posix()
@@ -191,13 +248,16 @@ def municipios(con):
              estados AS (SELECT cod_ibge AS cod, uf FROM '{s}/entes.parquet' WHERE esfera IN ('E', 'D')),
              pop AS (SELECT * EXCLUDE (cod_ibge, uf) FROM populacao),
              chaves AS (SELECT ano, municipio FROM pop UNION SELECT ano, municipio FROM obitos
-                        UNION SELECT ano, municipio FROM nascimentos UNION SELECT ano, municipio FROM obitos_fetais)
+                        UNION SELECT ano, municipio FROM nascimentos UNION SELECT ano, municipio FROM obitos_fetais
+                        UNION SELECT ano, municipio FROM internacoes UNION SELECT ano, municipio FROM internacoes_atend)
         SELECT k.ano, m.cod_ibge, k.municipio, coalesce(m.nome, 'Município ignorado') AS nome,
                coalesce(m.uf, e.uf) AS uf,
                p.* EXCLUDE (ano, municipio),
                o.* EXCLUDE (ano, municipio, uf),
                f.obitos_fetais,
-               n.* EXCLUDE (ano, municipio, uf)
+               n.* EXCLUDE (ano, municipio, uf),
+               h.* EXCLUDE (ano, municipio, uf),
+               a.* EXCLUDE (ano, municipio, uf)
         FROM chaves k
         LEFT JOIN muni m ON m.municipio = k.municipio
         LEFT JOIN estados e ON e.cod = k.municipio // 10000
@@ -205,6 +265,8 @@ def municipios(con):
         LEFT JOIN obitos o ON o.ano = k.ano AND o.municipio = k.municipio
         LEFT JOIN obitos_fetais f ON f.ano = k.ano AND f.municipio = k.municipio
         LEFT JOIN nascimentos n ON n.ano = k.ano AND n.municipio = k.municipio
+        LEFT JOIN internacoes h ON h.ano = k.ano AND h.municipio = k.municipio
+        LEFT JOIN internacoes_atend a ON a.ano = k.ano AND a.municipio = k.municipio
         WHERE k.municipio IS NOT NULL
         ORDER BY k.ano, k.municipio""")
     con.execute(f"COPY municipios TO '{GOLD_S / 'municipios.parquet'}' (FORMAT parquet, COMPRESSION zstd)")
@@ -213,14 +275,17 @@ def municipios(con):
 
 
 def fonte_saude(con) -> dict:
-    """Anos do SIM, do SINASC e da população no gold/saude; vazio se ainda não processados."""
+    """Anos do SIM, do SINASC, do SIH e da população no gold/saude; vazio se ainda não processados."""
     arq = GOLD / "saude" / "municipios.parquet"
     if not arq.exists():
         return {}
     a = arq.as_posix()
     anos = lambda col: [r[0] for r in con.execute(f"SELECT DISTINCT ano FROM '{a}' WHERE {col} IS NOT NULL ORDER BY 1").fetchall()]
     quando = datetime.fromtimestamp(arq.stat().st_mtime, timezone.utc).isoformat(timespec="seconds")
+    colunas = {r[0] for r in con.execute(f"DESCRIBE SELECT * FROM '{a}'").fetchall()}
+    sih = {"sih": {"anos": anos("int_total"), "processado_em": quando, "url": "https://datasus.saude.gov.br/transferencia-de-arquivos/"}} if "int_total" in colunas else {}
     return {
+        **sih,
         "sim": {"anos": anos("obitos"), "processado_em": quando, "url": "https://datasus.saude.gov.br/transferencia-de-arquivos/"},
         "sinasc": {"anos": anos("nascidos"), "processado_em": quando, "url": "https://datasus.saude.gov.br/transferencia-de-arquivos/"},
         "populacao_svs": {"anos": anos("populacao"), "processado_em": quando,
@@ -248,6 +313,7 @@ def main():
     populacao(con, Path(a.brutos))
     obitos(con, Path(a.micro))
     nascimentos(con, Path(a.micro))
+    internacoes(con, Path(a.micro))
     municipios(con)
     atualizar_manifesto(con)
     # conferência: mortalidade infantil do Brasil (por mil nascidos vivos)

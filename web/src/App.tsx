@@ -49,7 +49,7 @@ const menuTrabalho = (): [string, [string, string][]][] => [
 
 /** Área de saúde (SIM, SINASC e população da SVS/MS), em /datasus; o /saude das finanças é o SIOPS. */
 const menuSaude = (): [string, [string, string][]][] => [
-  [t('Nascimentos e óbitos', 'Births and deaths'), [['/datasus', t('Visão geral', 'Overview')], ['/datasus/evolucao', t('Evolução', 'Trends')],
+  [t('Nascimentos, óbitos e internações', 'Births, deaths and admissions'), [['/datasus', t('Visão geral', 'Overview')], ['/datasus/evolucao', t('Evolução', 'Trends')],
     ['/datasus/rankings', 'Rankings']]],
   [t('Metodologia', 'Methodology'), [['/datasus/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
 ];
@@ -135,7 +135,7 @@ export function App() {
         <h1 className={area === 'ia' ? 'sr-only' : undefined}>{{
           financas: `${t('Finanças municipais', 'Municipal finances')} · SICONFI`,
           trabalho: t('Mercado de trabalho · RAIS e CAGED', 'Labour market · RAIS and CAGED'),
-          saude: t('Saúde · SIM e SINASC', 'Health · SIM and SINASC'),
+          saude: t('Saúde · SIM, SINASC e SIH', 'Health · SIM, SINASC and SIH'),
           ia: t('Pergunte aos dados · LAPAM/UFG', 'Ask the data · LAPAM/UFG'),
         }[area]}</h1>
         <nav className="areas" aria-label={t('Áreas', 'Areas')}>
