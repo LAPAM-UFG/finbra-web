@@ -13,7 +13,7 @@ import type { Cobertura } from './ia';
 import type { TipoColuna } from './ia_formato';
 
 /** Fonte cujos anos (do manifesto) dão a cobertura temporal da coluna. */
-export type ChaveCobertura = 'dca' | 'pib' | 'rais' | 'sim' | 'sinasc' | 'sih' | 'cnes' | 'sinan';
+export type ChaveCobertura = 'dca' | 'pib' | 'rais' | 'sim' | 'sinasc' | 'sih' | 'cnes' | 'sinan' | 'siscan' | 'oncologia' | 'resp';
 
 export type Coluna = {
   tipo: TipoColuna;
@@ -49,6 +49,12 @@ const CNES_F = 'Ministério da Saúde/DATASUS: CNES (retrato de dezembro; munic�
 const cnes = (x: Omit<Coluna, 'fonte' | 'tipo'>): Coluna => ({ tipo: 'contagem', fonte: CNES_F, tabelas: ['saude_municipios'], cobertura: 'cnes', territorio: 'municípios onde fica o estabelecimento', ressalva: 'retrato de dezembro; conta o que está no município (não o de residência de quem usa), então polos regionais têm valores altos por habitante', ...x });
 const SINAN_F = 'Ministério da Saúde/DATASUS: SINAN (agravos de notificação, arquivos finais, por município de residência)';
 const sinan = (x: Omit<Coluna, 'fonte' | 'tipo'>): Coluna => ({ tipo: 'contagem', fonte: SINAN_F, tabelas: ['saude_municipios'], cobertura: 'sinan', territorio: 'municípios de residência', ressalva: 'depende da vigilância local (subnotificação) e oscila com surtos; pode diferir dos boletins do Ministério', ...x });
+const SISCAN_F = 'Ministério da Saúde/DATASUS: SISCAN (exames de rastreamento do câncer do colo do útero e da mama, por município de residência)';
+const siscan = (x: Omit<Coluna, 'fonte' | 'tipo'>): Coluna => ({ tipo: 'contagem', fonte: SISCAN_F, tabelas: ['saude_municipios'], cobertura: 'siscan', territorio: 'municípios de residência', ressalva: 'só o que foi lançado no SISCAN (SUS); conta exames, não mulheres', ...x });
+const ONCO_F = 'Ministério da Saúde/DATASUS: Painel de Oncologia (diagnósticos de câncer, por município de residência e ano do diagnóstico)';
+const onco = (x: Omit<Coluna, 'fonte' | 'tipo'>): Coluna => ({ tipo: 'contagem', fonte: ONCO_F, tabelas: ['saude_municipios'], cobertura: 'oncologia', territorio: 'municípios de residência', ressalva: 'registro de diagnósticos nos sistemas do SUS, não incidência; antes de 2019 o painel cobria bem menos casos; os últimos anos ainda recebem registros', ...x });
+const RESP_F = 'Ministério da Saúde/DATASUS: RESP (microcefalia e alterações do sistema nervoso central, por município de residência e ano da notificação)';
+const resp = (x: Omit<Coluna, 'fonte' | 'tipo'>): Coluna => ({ tipo: 'contagem', fonte: RESP_F, tabelas: ['saude_municipios'], cobertura: 'resp', territorio: 'municípios de residência', ressalva: 'notificação não é caso confirmado; a vigilância mudou muito depois de 2016', ...x });
 const FUNCOES = 'função de governo 04 (Portaria MOG 42/1999)';
 
 const TERR_DCA = 'municípios e estados (com o DF) que entregaram a DCA do exercício';
@@ -112,6 +118,22 @@ export const COLUNAS: Record<string, Coluna> = {
   sinan_tb_casos_novos: sinan({ rotulo: 'casos novos de tuberculose', definicao: 'notificações com tipo de entrada caso novo (TRATAMENTO = 1), sem recidiva, reingresso, transferência nem pós-óbito', ressalva: 'os arquivos finais do SINAN só vão até 2019; fica 2 a 4% acima dos boletins, que aplicam exclusões extras', cobertura: '2001 a 2019' }),
   sinan_hans_casos_novos: sinan({ rotulo: 'casos novos de hanseníase', definicao: 'notificações com modo de entrada caso novo (MODOENTR = 1)', ressalva: 'fica 2 a 4% acima dos boletins, que aplicam exclusões extras', cobertura: '2001 a 2023' }),
   sinan_viol_notificacoes: sinan({ rotulo: 'notificações de violência', definicao: 'notificações de violência interpessoal e autoprovocada (SINAN-VIVA)', ressalva: 'mede a notificação, não a ocorrência; a cobertura cresceu muito desde 2009', cobertura: '2009 a 2024' }),
+  pop_mulheres_25_64: { tipo: 'contagem', rotulo: 'mulheres de 25 a 64 anos', definicao: 'população residente feminina de 25 a 64 anos (estimativas da SVS/MS)', fonte: 'Ministério da Saúde/SVS: estimativas de população por município, sexo e idade', tabelas: ['saude_municipios'], cobertura: 'popSvs', territorio: 'municípios' },
+  pop_mulheres_50_69: { tipo: 'contagem', rotulo: 'mulheres de 50 a 69 anos', definicao: 'população residente feminina de 50 a 69 anos (estimativas da SVS/MS)', fonte: 'Ministério da Saúde/SVS: estimativas de população por município, sexo e idade', tabelas: ['saude_municipios'], cobertura: 'popSvs', territorio: 'municípios' },
+  siscan_cito: siscan({ rotulo: 'exames citopatológicos do colo do útero', definicao: 'exames citopatológicos do colo liberados no ano (SISCAN), pelo município de residência da paciente' }),
+  siscan_cito_25_64: siscan({ rotulo: 'citopatológicos em mulheres de 25 a 64 anos', definicao: 'exames citopatológicos do colo liberados no ano em mulheres de 25 a 64 anos, a faixa-alvo da diretriz' }),
+  siscan_cito_alterados: siscan({ rotulo: 'citopatológicos alterados', definicao: 'exames citopatológicos do colo marcados como alterados no SISCAN (de alterações celulares leves a lesões de alto grau; alterado não é câncer)' }),
+  siscan_mamografias: siscan({ rotulo: 'mamografias', definicao: 'mamografias (de rastreamento e diagnósticas) liberadas no ano no SISCAN, pelo município de residência' }),
+  siscan_mamo_50_69: siscan({ rotulo: 'mamografias em mulheres de 50 a 69 anos', definicao: 'mamografias liberadas no ano em mulheres de 50 a 69 anos, a faixa-alvo da diretriz' }),
+  siscan_histo_colo: siscan({ rotulo: 'exames histopatológicos do colo do útero', definicao: 'exames histopatológicos do colo do útero liberados no ano (SISCAN)' }),
+  siscan_histo_mama: siscan({ rotulo: 'exames histopatológicos da mama', definicao: 'exames histopatológicos da mama liberados no ano (SISCAN)' }),
+  onco_casos: onco({ rotulo: 'diagnósticos de câncer', definicao: 'diagnósticos de câncer (CID-10 C na causa do diagnóstico, inclusive pele não melanoma e metástases) registrados no Painel de Oncologia, pelo ano do diagnóstico', cobertura: '2019 a 2025' }),
+  onco_tratados: onco({ rotulo: 'diagnósticos com tratamento registrado', definicao: 'diagnósticos de câncer com data de primeiro tratamento registrada', ressalva: 'cerca de 40% dos diagnósticos não têm tratamento registrado; nos últimos anos o registro ainda está incompleto', cobertura: '2019 a 2025' }),
+  onco_trat_validos: onco({ rotulo: 'diagnósticos com tratamento iniciado (data válida)', definicao: 'diagnósticos com tratamento registrado cuja data é igual ou posterior à do diagnóstico; denominador da proporção de tratamento em até 60 dias', cobertura: '2019 a 2025' }),
+  onco_trat_60d: onco({ rotulo: 'tratamentos iniciados em até 60 dias', definicao: 'diagnósticos cujo primeiro tratamento começou em até 60 dias da data do diagnóstico (prazo da Lei 12.732/2012)', cobertura: '2019 a 2025' }),
+  resp_notificacoes: resp({ rotulo: 'notificações de microcefalia e alterações do SNC', definicao: 'notificações do RESP (recém-nascidos, crianças, fetos, natimortos e abortos), sem as excluídas, pelo ano da notificação', cobertura: '2015 a 2024' }),
+  resp_confirmadas: resp({ rotulo: 'confirmadas de microcefalia e alterações do SNC', definicao: 'notificações do RESP com classificação final confirmada', ressalva: 'a confirmação pode levar meses: os últimos anos ficam subestimados', cobertura: '2015 a 2024' }),
+  resp_obitos: resp({ rotulo: 'óbitos entre as confirmadas', definicao: 'notificações confirmadas do RESP com óbito', cobertura: '2015 a 2024' }),
   nascidos: { tipo: 'contagem', rotulo: 'nascidos vivos', definicao: 'nascidos vivos de mães residentes no município', fonte: SINASC, tabelas: ['saude_municipios'], cobertura: 'sinasc', territorio: 'municípios de residência da mãe' },
   populacao_ibge: {
     tipo: 'contagem', rotulo: 'população do IBGE (habitantes)',
@@ -188,6 +210,9 @@ export function coberturaDaColuna(c: Coluna, cob?: Cobertura | null): string {
   if (c.cobertura === 'sih') return intervalo(cob?.sih);
   if (c.cobertura === 'cnes') return intervalo(cob?.cnes);
   if (c.cobertura === 'sinan') return intervalo(cob?.sinan);
+  if (c.cobertura === 'siscan') return intervalo(cob?.siscan);
+  if (c.cobertura === 'oncologia') return intervalo(cob?.oncologia);
+  if (c.cobertura === 'resp') return intervalo(cob?.resp);
   return c.cobertura ?? '';
 }
 

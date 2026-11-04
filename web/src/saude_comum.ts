@@ -33,6 +33,10 @@ const G_CAUSAS = () => t('Causas de morte', 'Causes of death');
 const G_INT = () => t('Internações (SIH/SUS)', 'Hospital admissions (SIH/SUS)');
 const G_REDE = () => t('Rede de saúde (CNES)', 'Health network (CNES)');
 const G_AGRAVOS = () => t('Agravos notificados (SINAN)', 'Notifiable diseases (SINAN)');
+const G_CANCER = () => t('Câncer: rastreamento e diagnóstico (SISCAN, Painel de Oncologia)', 'Cancer: screening and diagnosis (SISCAN, Oncology Panel)');
+const G_RESP = () => t('Microcefalia e alterações do sistema nervoso central (RESP)', 'Microcephaly and central nervous system changes (RESP)');
+const RESSALVA_SISCAN = () => t('Só traz o que foi lançado no SISCAN, sistema do SUS: exames feitos em plano de saúde ou clínica particular, quando não lançados, não aparecem, então valores baixos não significam falta de rastreamento. Conta exames, não mulheres: quem repete o exame no ano entra mais de uma vez.',
+  'It only holds what was entered in SISCAN, a SUS system: tests done under private insurance or clinics, when not entered, do not appear, so low values do not mean absence of screening. It counts tests, not women: someone tested more than once in the year counts more than once.');
 const RESSALVA_SINAN = () => t('Notificação depende da vigilância local: onde se notifica menos, aparece menos (subnotificação), e surtos fazem os números oscilar muito de um ano para outro. Pode diferir dos boletins do Ministério, que aplicam exclusões e atualizações próprias.',
   'Notification depends on local surveillance: where less is reported, less appears (under-reporting), and outbreaks make numbers swing from year to year. It may differ from the Ministry’s bulletins, which apply their own exclusions and updates.');
 const RESSALVA_CNES = () => t('Conta o que está no município do estabelecimento (não o de residência de quem usa) e o retrato de dezembro; municípios com hospital regional têm valores altos por habitante porque atendem moradores de outros.',
@@ -248,6 +252,50 @@ export const INDICADORES: Indicador[] = [
     nota: () => t(`Notificações de violência (SINAN-VIVA) ÷ população residente × 100.000. Mede a notificação, não a ocorrência: municípios com mais serviços que notificam aparecem com mais violência, e a cobertura cresceu muito desde 2009. ${RESSALVA_SINAN()}`,
       `Violence notifications (SINAN-VIVA) ÷ resident population × 100,000. It measures notification, not occurrence: municipalities with more reporting services appear to have more violence, and coverage grew a lot since 2009. ${RESSALVA_SINAN()}`),
   },
+  // câncer: rastreamento (SISCAN) e diagnósticos (Painel de Oncologia), por município de residência
+  {
+    id: 'cito_25_64', grupo: G_CANCER, nome: () => t('Colo do útero: exames citopatológicos em mulheres de 25 a 64 anos', 'Cervical cancer: Pap smears in women aged 25–64'),
+    unidade: () => t('por 100 mulheres de 25 a 64 anos', 'per 100 women aged 25–64'), numerador: 'siscan_cito_25_64', denominador: 'pop_mulheres_25_64', fator: 100, tipo: 'taxa', minimo: 2000,
+    nota: () => t(`Exames citopatológicos do colo do útero liberados no ano (SISCAN) em mulheres de 25 a 64 anos residentes ÷ mulheres dessa faixa × 100. É o número de exames no ano, não a cobertura: a diretriz é um exame a cada três anos depois de dois normais seguidos. ${RESSALVA_SISCAN()}`,
+      `Pap smears released in the year (SISCAN) in women aged 25–64 resident in the municipality ÷ women in that age band × 100. It is the number of tests in the year, not coverage: the guideline is one test every three years after two consecutive normal ones. ${RESSALVA_SISCAN()}`),
+  },
+  {
+    id: 'cito_alterados', grupo: G_CANCER, nome: () => t('Colo do útero: exames citopatológicos alterados', 'Cervical cancer: abnormal Pap smears'),
+    unidade: () => t('% dos exames', '% of tests'), numerador: 'siscan_cito_alterados', denominador: 'siscan_cito', fator: 1, tipo: 'proporcao', minimo: 100,
+    nota: () => t(`Exames marcados como alterados no SISCAN ÷ exames citopatológicos do colo liberados. Alterado não é câncer: inclui desde alterações celulares leves até lesões de alto grau. ${RESSALVA_SISCAN()}`,
+      `Tests flagged as abnormal in SISCAN ÷ cervical Pap smears released. Abnormal is not cancer: it ranges from mild cell changes to high-grade lesions. ${RESSALVA_SISCAN()}`),
+  },
+  {
+    id: 'mamo_50_69', grupo: G_CANCER, nome: () => t('Mama: mamografias em mulheres de 50 a 69 anos', 'Breast cancer: mammograms in women aged 50–69'),
+    unidade: () => t('por 100 mulheres de 50 a 69 anos', 'per 100 women aged 50–69'), numerador: 'siscan_mamo_50_69', denominador: 'pop_mulheres_50_69', fator: 100, tipo: 'taxa', minimo: 1000,
+    nota: () => t(`Mamografias (de rastreamento e diagnósticas) liberadas no ano no SISCAN em mulheres de 50 a 69 anos residentes ÷ mulheres dessa faixa × 100. A diretriz é um exame a cada dois anos: valores perto de 50 equivaleriam à cobertura plena só pelo SISCAN. ${RESSALVA_SISCAN()}`,
+      `Mammograms (screening and diagnostic) released in the year in SISCAN in women aged 50–69 resident in the municipality ÷ women in that age band × 100. The guideline is one test every two years: values near 50 would mean full coverage through SISCAN alone. ${RESSALVA_SISCAN()}`),
+  },
+  {
+    id: 'cancer_registros', grupo: G_CANCER, nome: () => t('Câncer: diagnósticos registrados no Painel de Oncologia', 'Cancer: diagnoses recorded in the Oncology Panel'),
+    unidade: () => t('por 100 mil habitantes', 'per 100,000 inhabitants'), numerador: 'onco_casos', denominador: 'populacao', fator: 100000, tipo: 'taxa', minimo: 5000,
+    nota: () => t(`Diagnósticos de câncer (CID-10 C, inclusive câncer de pele não melanoma e metástases) registrados no Painel de Oncologia do SUS, pelo ano do diagnóstico e município de residência ÷ população × 100.000. É registro de diagnósticos, não incidência: depende de os casos chegarem aos sistemas do SUS (quem se trata só na rede privada pode não aparecer). Antes de 2019 o painel cobria bem menos casos, então a série começa em 2019. Os últimos anos ainda recebem registros.`,
+      `Cancer diagnoses (ICD-10 C, including non-melanoma skin cancer and metastases) recorded in the SUS Oncology Panel, by year of diagnosis and municipality of residence ÷ population × 100,000. It counts recorded diagnoses, not incidence: it depends on cases reaching SUS systems (those treated only privately may not appear). Before 2019 the panel covered far fewer cases, so the series starts in 2019. The latest years still receive records.`),
+  },
+  {
+    id: 'cancer_60_dias', grupo: G_CANCER, nome: () => t('Câncer: tratamento iniciado em até 60 dias do diagnóstico', 'Cancer: treatment started within 60 days of diagnosis'),
+    unidade: () => t('% dos que iniciaram tratamento', '% of those who started treatment'), numerador: 'onco_trat_60d', denominador: 'onco_trat_validos', fator: 1, tipo: 'proporcao', minimo: 100,
+    nota: () => t(`Entre os diagnósticos com data de início de tratamento igual ou posterior à do diagnóstico, os que começaram em até 60 dias (prazo da Lei 12.732/2012) ÷ os que iniciaram tratamento. Não conta quem ainda não tem tratamento registrado, então não é a proporção de todos os pacientes (cerca de 40% dos diagnósticos não têm tratamento registrado). O último ano ainda é incompleto.`,
+      `Among diagnoses with a treatment start date on or after the diagnosis date, those that started within 60 days (the deadline in Law 12,732/2012) ÷ those that started treatment. It leaves out people with no treatment recorded yet, so it is not the share of all patients (about 40% of diagnoses have no treatment recorded). The latest year is still incomplete.`),
+  },
+  // microcefalia (RESP), por município de residência e ano da notificação
+  {
+    id: 'resp_notificacoes', grupo: G_RESP, nome: () => t('Microcefalia e alterações do SNC: notificações', 'Microcephaly and CNS changes: notifications'),
+    unidade: () => t('por 100 mil nascidos vivos', 'per 100,000 live births'), numerador: 'resp_notificacoes', denominador: 'nascidos', fator: 100000, tipo: 'taxa', minimo: 10000,
+    nota: () => t(`Notificações no RESP (registro criado na emergência da síndrome congênita ligada ao vírus Zika) de recém-nascidos, crianças, fetos, natimortos e abortos com microcefalia ou alterações do sistema nervoso central, pelo ano da notificação e município de residência, sem as excluídas ÷ nascidos vivos × 100.000. Notificação não é caso confirmado e a vigilância mudou muito depois de 2016. Veja também as confirmadas.`,
+      `RESP notifications (a registry created during the emergency of congenital syndrome linked to Zika virus) of newborns, children, fetuses, stillbirths and miscarriages with microcephaly or central nervous system changes, by year of notification and municipality of residence, excluding the removed ones ÷ live births × 100,000. A notification is not a confirmed case and surveillance changed a lot after 2016. See also the confirmed ones.`),
+  },
+  {
+    id: 'resp_confirmadas', grupo: G_RESP, nome: () => t('Microcefalia e alterações do SNC: confirmadas', 'Microcephaly and CNS changes: confirmed'),
+    unidade: () => t('por 100 mil nascidos vivos', 'per 100,000 live births'), numerador: 'resp_confirmadas', denominador: 'nascidos', fator: 100000, tipo: 'taxa', minimo: 10000,
+    nota: () => t(`Notificações do RESP com classificação final "confirmado" ÷ nascidos vivos × 100.000, pelo ano da notificação e município de residência. A confirmação pode levar meses: os últimos anos tendem a ficar subestimados.`,
+      `RESP notifications with final classification "confirmed" ÷ live births × 100,000, by year of notification and municipality of residence. Confirmation can take months: the latest years tend to be underestimated.`),
+  },
 ];
 
 export const indicador = (id: string | null | undefined) => INDICADORES.find((i) => i.id === id) ?? INDICADORES[0];
@@ -284,13 +332,19 @@ export const nomeContagem = (c: string): string => ({
   sinan_dengue_graves: t('Casos graves de dengue', 'Severe dengue cases'), sinan_dengue_obitos: t('Óbitos por dengue (confirmados)', 'Dengue deaths (confirmed)'),
   sinan_chik_confirmados: t('Casos confirmados de chikungunya', 'Confirmed chikungunya cases'), sinan_tb_casos_novos: t('Casos novos de tuberculose', 'New tuberculosis cases'),
   sinan_hans_casos_novos: t('Casos novos de hanseníase', 'New leprosy cases'), sinan_viol_notificacoes: t('Notificações de violência', 'Violence notifications'),
+  pop_mulheres_25_64: t('Mulheres de 25 a 64 anos', 'Women aged 25–64'), pop_mulheres_50_69: t('Mulheres de 50 a 69 anos', 'Women aged 50–69'),
+  siscan_cito: t('Exames citopatológicos do colo', 'Cervical Pap smears'), siscan_cito_25_64: t('Citopatológicos em mulheres de 25 a 64 anos', 'Pap smears in women aged 25–64'),
+  siscan_cito_alterados: t('Citopatológicos alterados', 'Abnormal Pap smears'), siscan_mamo_50_69: t('Mamografias em mulheres de 50 a 69 anos', 'Mammograms in women aged 50–69'),
+  onco_casos: t('Diagnósticos de câncer', 'Cancer diagnoses'), onco_trat_60d: t('Tratamentos iniciados em até 60 dias', 'Treatments started within 60 days'),
+  onco_trat_validos: t('Diagnósticos com tratamento iniciado', 'Diagnoses with treatment started'),
+  resp_notificacoes: t('Notificações de microcefalia (RESP)', 'Microcephaly notifications (RESP)'), resp_confirmadas: t('Confirmadas de microcefalia (RESP)', 'Confirmed microcephaly (RESP)'),
 }[c] ?? c);
 
 export const formatar = (ind: Indicador, v: number | null | undefined) => (ind.tipo === 'proporcao' ? pct(v) : numero1(v));
 
 export const fonteSaude = () => t(
-  'SIM (Sistema de Informações sobre Mortalidade), SINASC (Sistema de Informações sobre Nascidos Vivos), SIH (Sistema de Informações Hospitalares do SUS), CNES (Cadastro Nacional de Estabelecimentos de Saúde) e SINAN (agravos de notificação), Ministério da Saúde/DATASUS, microdados públicos por município de residência; população: estimativas da SVS/MS por município, sexo e idade (2000 em diante). Processamento: LAPAM/UFG.',
-  'SIM (Mortality Information System), SINASC (Live Birth Information System), SIH (SUS Hospital Information System), CNES (National Registry of Health Facilities) and SINAN (notifiable diseases), Ministry of Health/DATASUS, public microdata by municipality of residence; population: SVS/MS estimates by municipality, sex and age (2000 onwards). Processing: LAPAM/UFG.',
+  'SIM (Sistema de Informações sobre Mortalidade), SINASC (Sistema de Informações sobre Nascidos Vivos), SIH (Sistema de Informações Hospitalares do SUS), CNES (Cadastro Nacional de Estabelecimentos de Saúde), SINAN (agravos de notificação), SISCAN (controle do câncer do colo do útero e da mama), Painel de Oncologia e RESP (microcefalia), Ministério da Saúde/DATASUS, microdados públicos por município de residência; população: estimativas da SVS/MS por município, sexo e idade (2000 em diante). Processamento: LAPAM/UFG.',
+  'SIM (Mortality Information System), SINASC (Live Birth Information System), SIH (SUS Hospital Information System), CNES (National Registry of Health Facilities), SINAN (notifiable diseases), SISCAN (cervical and breast cancer control), Oncology Panel and RESP (microcephaly), Ministry of Health/DATASUS, public microdata by municipality of residence; population: SVS/MS estimates by municipality, sex and age (2000 onwards). Processing: LAPAM/UFG.',
 );
 
 /** Capítulos da CID-10 (causa básica do óbito), na ordem das colunas cap01…cap22. */

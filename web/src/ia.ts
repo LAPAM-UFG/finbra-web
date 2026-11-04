@@ -214,6 +214,9 @@ export function disponibilidadeNoAno(ano: number, paineis: Painel[], c: Cobertur
     if (c.sih?.length) marcar('SIH', c.sih.includes(ano), faixa(c.sih));
     if (c.cnes?.length) marcar('CNES', c.cnes.includes(ano), faixa(c.cnes));
     if (c.sinan?.length) marcar('SINAN', c.sinan.includes(ano), faixa(c.sinan));
+    if (c.siscan?.length) marcar('SISCAN', c.siscan.includes(ano), faixa(c.siscan));
+    if (c.oncologia?.length) marcar('Painel de Oncologia', c.oncologia.includes(ano), faixa(c.oncologia));
+    if (c.resp?.length) marcar('RESP', c.resp.includes(ano), faixa(c.resp));
     if (c.popSvs?.length) marcar('população da SVS/MS', c.popSvs.includes(ano), faixa(c.popSvs));
   }
   return [tem.length ? `com dados nesse ano: ${tem.join('; ')}` : 'nenhuma fonte tem dados nesse ano', nao.length ? `sem dados nesse ano: ${nao.join('; ')}` : '']
@@ -249,7 +252,7 @@ export type Cobertura = {
   rais: number[]; caged: { de: number; ate: number } | null; microdados: boolean; dca: number[];
   pib?: { de: number; ate: number; setorial_ate?: number } | null; siope?: number[]; siopeRemuneracao?: number[]; siops?: number[];
   lrf?: { de: number; ate: number; parciais?: number[] } | null; bolsa?: { de: number; ate: number; mes: number } | null; inss?: number[];
-  sim?: number[]; sinasc?: number[]; sih?: number[]; cnes?: number[]; sinan?: number[]; popSvs?: number[];
+  sim?: number[]; sinasc?: number[]; sih?: number[]; cnes?: number[]; sinan?: number[]; siscan?: number[]; oncologia?: number[]; resp?: number[]; popSvs?: number[];
 };
 /** Sugestão: título curto, a pergunta completa (que vai para o campo), o tema e as bases que a pergunta usa. */
 export type Sugestao = { titulo: string; tema: string; texto: string; paineis: Painel[]; nota?: string };
@@ -468,7 +471,7 @@ export function coberturaPorAno(c: Cobertura, paineis: Painel[]): Map<number, { 
     if (c.lrf) fechadas(faixaDe(c.lrf.de, c.lrf.ate));
     if (c.bolsa) mensal('Bolsa Família', c.bolsa.de * 100 + 1, c.bolsa.mes);
   }
-  if (paineis.includes('saude')) fechadas([...(c.sim ?? []), ...(c.sinasc ?? []), ...(c.sih ?? []), ...(c.cnes ?? []), ...(c.sinan ?? []), ...(c.popSvs ?? [])]);
+  if (paineis.includes('saude')) fechadas([...(c.sim ?? []), ...(c.sinasc ?? []), ...(c.sih ?? []), ...(c.cnes ?? []), ...(c.sinan ?? []), ...(c.siscan ?? []), ...(c.oncologia ?? []), ...(c.resp ?? []), ...(c.popSvs ?? [])]);
   return anos;
 }
 
@@ -544,6 +547,18 @@ export function descreverCobertura(paineis: Painel[], c: Cobertura): string[] {
   if (paineis.includes('saude') && c.sinan?.length) {
     linhas.push(t(`SINAN ${faixa(c.sinan[0], c.sinan.at(-1)!)}: dengue (casos prováveis, confirmados, graves e óbitos), chikungunya, tuberculose (casos novos, só até 2019), hanseníase (casos novos) e violência notificada, por município de residência; cada agravo tem a sua cobertura`,
       `SINAN ${faixa(c.sinan[0], c.sinan.at(-1)!)}: dengue (probable, confirmed, severe cases and deaths), chikungunya, tuberculosis (new cases, only to 2019), leprosy (new cases) and notified violence, by municipality of residence; each disease has its own coverage`));
+  }
+  if (paineis.includes('saude') && c.siscan?.length) {
+    linhas.push(t(`SISCAN ${faixa(c.siscan[0], c.siscan.at(-1)!)}: exames citopatológicos do colo do útero, mamografias e exames histopatológicos do colo e da mama, por município de residência`,
+      `SISCAN ${faixa(c.siscan[0], c.siscan.at(-1)!)}: cervical Pap smears, mammograms and cervical and breast histopathology exams, by municipality of residence`));
+  }
+  if (paineis.includes('saude') && c.oncologia?.length) {
+    linhas.push(t(`Painel de Oncologia ${faixa(c.oncologia[0], c.oncologia.at(-1)!)}: diagnósticos de câncer e início do tratamento, por município de residência e ano do diagnóstico`,
+      `Oncology Panel ${faixa(c.oncologia[0], c.oncologia.at(-1)!)}: cancer diagnoses and treatment start, by municipality of residence and year of diagnosis`));
+  }
+  if (paineis.includes('saude') && c.resp?.length) {
+    linhas.push(t(`RESP ${faixa(c.resp[0], c.resp.at(-1)!)}: notificações e confirmações de microcefalia e alterações do sistema nervoso central, por município de residência`,
+      `RESP ${faixa(c.resp[0], c.resp.at(-1)!)}: notifications and confirmations of microcephaly and central nervous system changes, by municipality of residence`));
   }
   if (paineis.includes('saude') && c.popSvs?.length) {
     linhas.push(t(`População da SVS/MS ${faixa(c.popSvs[0], c.popSvs.at(-1)!)}: estimativas por município, sexo e idade, denominador das taxas de saúde`,
@@ -786,6 +801,12 @@ const FONTES_TABELAS: [RegExp | ((sql: string) => boolean), () => string][] = [
     () => t('Ministério da Saúde/DATASUS: SIM (óbitos por município de residência)', 'Ministry of Health/DATASUS: SIM (deaths by municipality of residence)')],
   [(s) => /\bsaude_municipios\b/.test(s) && /\b(nascidos|baixo_peso|peso_informado|prematuros|gestacao_informada|cesareos|parto_informado|consultas_\w+|sem_consulta|maes_\w+|idade_mae_informada)\b/.test(s),
     () => t('Ministério da Saúde/DATASUS: SINASC (nascidos vivos por município de residência da mãe)', 'Ministry of Health/DATASUS: SINASC (live births by mother’s municipality of residence)')],
+  [(s) => /\bsaude_municipios\b/.test(s) && /\bsiscan_\w+\b/.test(s),
+    () => t('Ministério da Saúde/DATASUS: SISCAN (exames de rastreamento do câncer do colo do útero e da mama por município de residência)', 'Ministry of Health/DATASUS: SISCAN (cervical and breast cancer screening tests by municipality of residence)')],
+  [(s) => /\bsaude_municipios\b/.test(s) && /\bonco_\w+\b/.test(s),
+    () => t('Ministério da Saúde/DATASUS: Painel de Oncologia (diagnósticos de câncer por município de residência)', 'Ministry of Health/DATASUS: Oncology Panel (cancer diagnoses by municipality of residence)')],
+  [(s) => /\bsaude_municipios\b/.test(s) && /\bresp_\w+\b/.test(s),
+    () => t('Ministério da Saúde/DATASUS: RESP (microcefalia e alterações do sistema nervoso central por município de residência)', 'Ministry of Health/DATASUS: RESP (microcephaly and central nervous system changes by municipality of residence)')],
   [(s) => /\bsaude_municipios\b/.test(s) && /\bsinan_\w+\b/.test(s),
     () => t('Ministério da Saúde/DATASUS: SINAN (agravos de notificação por município de residência)', 'Ministry of Health/DATASUS: SINAN (notifiable diseases by municipality of residence)')],
   [(s) => /\bsaude_municipios\b/.test(s) && /\bcnes_\w+\b/.test(s),
@@ -1003,6 +1024,9 @@ export function coberturaDaFonte(sql: string, c?: Cobertura | null): CoberturaFo
   const s = sql.toLowerCase();
   if (/\btrab_caged/.test(s)) return c.caged ? { nome: 'Novo CAGED', meses: c.caged } : null;
   if (/\brais_(uf|mun|vinculos)\b|\btrab_(municipios|setores|setores_uf|grandes_setores)\b/.test(s)) return { nome: 'RAIS', anos: c.rais };
+  if (/\bsaude_municipios\b/.test(s) && /\bsiscan_\w+\b/.test(s) && c.siscan?.length) return { nome: 'SISCAN', anos: c.siscan };
+  if (/\bsaude_municipios\b/.test(s) && /\bonco_\w+\b/.test(s) && c.oncologia?.length) return { nome: 'Painel de Oncologia', anos: c.oncologia };
+  if (/\bsaude_municipios\b/.test(s) && /\bresp_\w+\b/.test(s) && c.resp?.length) return { nome: 'RESP', anos: c.resp };
   if (/\bsaude_municipios\b/.test(s) && /\bsinan_\w+\b/.test(s) && c.sinan?.length) return { nome: 'SINAN', anos: c.sinan };
   if (/\bsaude_municipios\b/.test(s) && /\bcnes_\w+\b/.test(s) && c.cnes?.length) return { nome: 'CNES', anos: c.cnes };
   if (/\bsaude_municipios\b/.test(s) && /\bint_\w+\b/.test(s) && c.sih?.length) return { nome: 'SIH', anos: c.sih };

@@ -7,7 +7,7 @@ tabelas de apoio). Ficam de fora as cópias do SIH em
 XML, DBF, CSV e DuckDB (as mesmas internações dos .dbc), o SIA (≈ 440 GB) e o PNI antigo.
 
 Um arquivo já baixado com o mesmo tamanho do FTP não é baixado de novo; cada um é gravado como .parte e
-renomeado no fim, para uma queda no meio não deixar arquivo truncado com o nome certo.
+renomeado no fim, para uma queda no meio não deixar arquivo truncado com o nome certo. Um .parte é retomado de onde parou.
 
 Uso:
     py pipeline/saude_baixar.py                      # todos os sistemas abaixo
@@ -102,8 +102,14 @@ def baixar(rel: str, tam: int, destino: Path, tentativas: int = 5) -> int:
     for t in range(tentativas):
         try:
             f = _conexao(nova=t > 0)
-            with open(parte, "wb") as saida:
-                f.retrbinary(f"RETR {RAIZ}/{rel}", saida.write, blocksize=1 << 20)
+            # retoma de onde parou (REST): arquivos de 2 GB não recomeçam do zero a cada queda da conexão; um .parte maior que o
+            # arquivo do servidor é descartado
+            ja = parte.stat().st_size if parte.exists() else 0
+            if ja > tam:
+                parte.unlink()
+                ja = 0
+            with open(parte, "ab" if ja else "wb") as saida:
+                f.retrbinary(f"RETR {RAIZ}/{rel}", saida.write, blocksize=1 << 20, rest=ja or None)
             if parte.stat().st_size != tam:
                 raise IOError(f"tamanho {parte.stat().st_size} ≠ {tam}")
             os.replace(parte, alvo)

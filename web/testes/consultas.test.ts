@@ -2532,6 +2532,42 @@ describe('saúde (SIM, SINASC e população da SVS/MS)', () => {
     assert.equal(m.fontes.sinan.agravos.chikungunya[0], 2014);
   });
 
+  test('SISCAN, Painel de Oncologia e RESP: invariantes, coberturas (fora delas nulo) e indicadores como razão das somas', { skip: semSaude }, async () => {
+    const serie = await rota<L[]>('saude_serie');
+    if (!serie.some((r) => Number(r.siscan_cito) > 0)) return; // dados ainda sem estas fontes
+    const por = (ano: number) => serie.find((r) => r.ano === ano)!;
+    for (const r of serie.filter((x) => Number(x.siscan_cito) > 0)) {
+      const ano = r.ano;
+      assert.ok(Number(r.siscan_cito_25_64) <= Number(r.siscan_cito) && Number(r.siscan_cito_alterados) <= Number(r.siscan_cito), `faixa e alterados dentro do total de citopatológicos em ${ano}`);
+      assert.ok(Number(r.siscan_mamo_50_69) <= Number(r.siscan_mamografias), `mamografias da faixa dentro do total em ${ano}`);
+    }
+    for (const r of serie.filter((x) => Number(x.onco_casos) > 0)) {
+      const ano = r.ano;
+      assert.ok(Number(r.onco_trat_60d) <= Number(r.onco_trat_validos) && Number(r.onco_trat_validos) <= Number(r.onco_tratados) && Number(r.onco_tratados) <= Number(r.onco_casos), `60 dias ≤ válidos ≤ tratados ≤ casos em ${ano}`);
+    }
+    for (const r of serie.filter((x) => Number(x.resp_notificacoes) > 0)) {
+      const ano = r.ano;
+      assert.ok(Number(r.resp_obitos) <= Number(r.resp_confirmadas) && Number(r.resp_confirmadas) <= Number(r.resp_notificacoes), `óbitos ≤ confirmadas ≤ notificações em ${ano}`);
+    }
+    // cada fonte só existe na sua cobertura: fora dela é nulo, nunca zero
+    assert.equal(por(2012).siscan_cito, null, 'SISCAN sem dado antes de 2014');
+    assert.equal(por(2013).siscan_cito, null, '2013 (primeiro ano do sistema, quase vazio) fica de fora');
+    assert.equal(por(2018).onco_casos, null, 'Painel de Oncologia só de 2019 em diante');
+    assert.equal(por(2014).resp_notificacoes, null, 'RESP começa em 2015');
+    assert.ok(Number(por(2019).siscan_cito) > 0 && Number(por(2019).onco_casos) > 0 && Number(por(2016).resp_notificacoes) > 0);
+    // indicadores como razão das somas
+    const r = por(2019);
+    quase(calcular(indicador('cito_25_64'), r)!, (100 * Number(r.siscan_cito_25_64)) / Number(r.pop_mulheres_25_64));
+    quase(calcular(indicador('mamo_50_69'), r)!, (100 * Number(r.siscan_mamo_50_69)) / Number(r.pop_mulheres_50_69));
+    quase(calcular(indicador('cancer_registros'), r)!, (100000 * Number(r.onco_casos)) / Number(r.populacao));
+    quase(calcular(indicador('cancer_60_dias'), r)!, Number(r.onco_trat_60d) / Number(r.onco_trat_validos));
+    quase(calcular(indicador('resp_confirmadas'), por(2016))!, (100000 * Number(por(2016).resp_confirmadas)) / Number(por(2016).nascidos));
+    const m = JSON.parse(await readFile(`${DATA}/gold/manifesto.json`, 'utf8'));
+    assert.equal(m.fontes.siscan.anos[0], 2014);
+    assert.equal(m.fontes.oncologia.anos[0], 2019);
+    assert.equal(m.fontes.resp.anos[0], 2015);
+  });
+
   test('UF soma os municípios e os registros de município ignorado; o ranking só tem municípios do cadastro', { skip: semSaude }, async () => {
     const go = (await rota<L[]>('saude_serie', { uf: 'GO' })).find((r) => r.ano === 2023)!;
     const muns = await rota<L[]>('saude_municipios', { uf: 'GO', ano: 2023 });

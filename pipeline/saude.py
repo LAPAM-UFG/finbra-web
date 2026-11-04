@@ -39,6 +39,16 @@ gold/saude/sinan.parquet       ano × município de residência: agravos de noti
                                confirmados), tuberculose (casos novos, até 2019 nestes arquivos), hanseníase (casos novos)
                                e violência interpessoal/autoprovocada (notificações); entra em municipios.parquet (sinan_*)
 
+gold/saude/siscan.parquet      ano × município de residência: exames do SISCAN (controle do câncer do colo do útero e da mama,
+                               2014–2025; 2013, primeiro ano do sistema, tem só 135 mil exames e fica de fora): citopatológicos do colo (total, mulheres de 25 a 64 anos, alterados), mamografias
+                               (total e mulheres de 50 a 69 anos) e exames histopatológicos do colo e da mama; entra em
+                               municipios.parquet (siscan_*). Só contagens; o arquivo por exame sai do HD externo
+gold/saude/oncologia.parquet   ano de diagnóstico × município de residência: Painel de Oncologia (diagnósticos de câncer, CID-10 C,
+                               2019–2025; antes o painel cobria bem menos casos) com os que iniciaram tratamento e os que iniciaram em
+                               até 60 dias do diagnóstico; entra em municipios.parquet (onco_*)
+gold/saude/resp.parquet        ano da notificação × município de residência: RESP (microcefalia e alterações do sistema nervoso
+                               central, 2015–2024): notificações válidas, confirmadas e óbitos entre as confirmadas (resp_*)
+
 Uso:
     py pipeline/saude.py
 """
@@ -123,7 +133,9 @@ def populacao(con, brutos: Path):
                sum(pop) FILTER (WHERE idade <= 4) AS pop_0_4,
                sum(pop) FILTER (WHERE idade BETWEEN 30 AND 69) AS pop_30_69,
                sum(pop) FILTER (WHERE idade >= 60) AS pop_60_mais,
-               sum(pop) FILTER (WHERE sexo = '2' AND idade BETWEEN 10 AND 49) AS pop_mulheres_10_49
+               sum(pop) FILTER (WHERE sexo = '2' AND idade BETWEEN 10 AND 49) AS pop_mulheres_10_49,
+               sum(pop) FILTER (WHERE sexo = '2' AND idade BETWEEN 25 AND 64) AS pop_mulheres_25_64,
+               sum(pop) FILTER (WHERE sexo = '2' AND idade BETWEEN 50 AND 69) AS pop_mulheres_50_69
         FROM p GROUP BY ALL ORDER BY ano, cod_ibge""")
     con.execute(f"COPY populacao TO '{GOLD_S / 'populacao.parquet'}' (FORMAT parquet, COMPRESSION zstd)")
     print("populacao:", con.sql("SELECT min(ano), max(ano), count(*), sum(populacao) FILTER (WHERE ano = 2024) FROM populacao").fetchall()[0])
@@ -385,6 +397,107 @@ SINAN_COLUNAS = ["sinan_dengue_provaveis", "sinan_dengue_confirmados", "sinan_de
                  "sinan_chik_notificacoes", "sinan_chik_confirmados", "sinan_tb_casos_novos", "sinan_hans_casos_novos", "sinan_viol_notificacoes"]
 
 
+SISCAN_COLUNAS = ["siscan_cito", "siscan_cito_25_64", "siscan_cito_alterados", "siscan_mamografias", "siscan_mamo_50_69",
+                   "siscan_histo_colo", "siscan_histo_mama"]
+
+
+def siscan(con, brutos: Path):
+    """SISCAN (CSV por exame, residência do paciente): um arquivo por tipo de exame e ano. Os *_PACNT repetem os mesmos exames
+    por paciente e ficam de fora. O ano é o do arquivo, conferido com a coluna de ano do próprio exame."""
+    base = brutos / "SISCAN" / "SISCAN"
+    def ler(arq):
+        # o separador muda entre anos (2013 usa vírgula, os demais ponto e vírgula)
+        with open(base / arq, encoding="utf-8") as f:
+            sep = ";" if ";" in f.readline() else ","
+        return f"read_csv('{(base / arq).as_posix()}', delim = '{sep}', header = true, all_varchar = true)"
+
+    partes = []
+    for ano in range(2014, 2026):
+        cito, mamo = base / f"SISCAN_CITO_COLO_{ano}.csv", base / f"SISCAN_MAMOGRAFIA_{ano}.csv"
+        hc, hm = base / f"SISCAN_HISTO_COLO_{ano}.csv", base / f"SISCAN_HISTO_MAMA_{ano}.csv"
+        if not (cito.exists() and mamo.exists() and hc.exists() and hm.exists()):
+            continue
+        idade = lambda col: f"TRY_CAST({col} AS INTEGER)"
+        t = con.execute(f"""
+            WITH c AS (
+                SELECT TRY_CAST(CO_MUN_RESIDENCIA AS INTEGER) AS municipio,
+                       count(*) AS siscan_cito,
+                       count(*) FILTER (WHERE SG_SEXO = 'F' AND {idade('CO_IDADE_PACIENTE')} BETWEEN 25 AND 64) AS siscan_cito_25_64,
+                       count(*) FILTER (WHERE NU_EXAME_ALTERADO = '1') AS siscan_cito_alterados,
+                       count(*) FILTER (WHERE CO_ANO_LIBERACAO != '{ano}') AS fora_ano_c
+                FROM {ler(cito.name)} GROUP BY 1),
+            m AS (
+                SELECT TRY_CAST(CO_MUN_RESIDENCIA AS INTEGER) AS municipio,
+                       count(*) AS siscan_mamografias,
+                       count(*) FILTER (WHERE SG_SEXO = 'F' AND {idade('CO_IDADE_PACIENTE')} BETWEEN 50 AND 69) AS siscan_mamo_50_69,
+                       count(*) FILTER (WHERE NU_ANO_COMPETENCIA != '{ano}') AS fora_ano_m
+                FROM {ler(mamo.name)} GROUP BY 1),
+            hc AS (SELECT TRY_CAST(CO_MUN_RESIDENCIA AS INTEGER) AS municipio, count(*) AS siscan_histo_colo FROM {ler(hc.name)} GROUP BY 1),
+            hm AS (SELECT TRY_CAST(CO_MUN_RESIDENCIA AS INTEGER) AS municipio, count(*) AS siscan_histo_mama FROM {ler(hm.name)} GROUP BY 1),
+            chaves AS (SELECT municipio FROM c UNION SELECT municipio FROM m UNION SELECT municipio FROM hc UNION SELECT municipio FROM hm)
+            SELECT {ano} AS ano, k.municipio, k.municipio // 10000 AS uf, c.* EXCLUDE (municipio), m.* EXCLUDE (municipio),
+                   hc.siscan_histo_colo, hm.siscan_histo_mama
+            FROM chaves k LEFT JOIN c USING (municipio) LEFT JOIN m USING (municipio) LEFT JOIN hc USING (municipio) LEFT JOIN hm USING (municipio)
+            WHERE k.municipio IS NOT NULL""").to_arrow_table()
+        fora = (sum(x or 0 for x in t["fora_ano_c"].to_pylist()), sum(x or 0 for x in t["fora_ano_m"].to_pylist()))
+        print(f"siscan {ano}: {t.num_rows} municípios; exames com ano diferente do arquivo (colo, mama): {fora}", flush=True)
+        partes.append(t.drop(["fora_ano_c", "fora_ano_m"]))
+    con.register("siscan_bruto", pa.concat_tables(partes, promote_options="default"))
+    con.execute(f"""
+        CREATE OR REPLACE TABLE siscan AS
+        SELECT ano, municipio, uf, {', '.join(SISCAN_COLUNAS)} FROM siscan_bruto ORDER BY ano, municipio""")
+    con.execute(f"COPY siscan TO '{GOLD_S / 'siscan.parquet'}' (FORMAT parquet, COMPRESSION zstd)")
+    print("siscan:", con.sql("""SELECT ano, sum(siscan_cito), sum(siscan_cito_25_64), sum(siscan_mamografias), sum(siscan_mamo_50_69),
+        sum(siscan_histo_colo), sum(siscan_histo_mama) FROM siscan GROUP BY 1 ORDER BY 1""").fetchall())
+
+
+ONCO_COLUNAS = ["onco_casos", "onco_tratados", "onco_trat_validos", "onco_trat_60d"]
+
+
+def oncologia(con, micro: Path):
+    """Painel de Oncologia (POBR): um registro por diagnóstico de câncer (CID-10 C na causa do diagnóstico). Até 2017 o painel
+    trazia pouco mais de 180 mil casos por ano e de 2018 em diante passou a incluir os diagnósticos sem tratamento registrado
+    (460 mil em 2019): a série só é comparável a partir de 2019. O tempo até o tratamento sai das datas (diagnóstico e primeiro
+    tratamento); datas de tratamento anteriores ao diagnóstico não entram no tempo. 2026 está incompleto e fica de fora."""
+    base = micro / "painel_oncologia" / "Dados"
+    con.execute(f"""
+        CREATE OR REPLACE TABLE oncologia AS
+        WITH c AS (
+            SELECT TRY_CAST(ANO_DIAGN AS INTEGER) AS ano, TRY_CAST(MUN_RESID AS INTEGER) AS municipio,
+                   TRY_STRPTIME(DT_DIAG, '%d/%m/%Y') AS dt_diag, TRY_STRPTIME(DT_TRAT, '%d/%m/%Y') AS dt_trat
+            FROM read_parquet('{base}/POBR*.parquet', union_by_name = true)
+            WHERE DIAG_DETH LIKE 'C%')
+        SELECT ano, municipio, municipio // 10000 AS uf,
+               count(*) AS onco_casos,
+               count(*) FILTER (WHERE dt_trat IS NOT NULL) AS onco_tratados,
+               count(*) FILTER (WHERE dt_trat >= dt_diag) AS onco_trat_validos,
+               count(*) FILTER (WHERE date_diff('day', dt_diag, dt_trat) BETWEEN 0 AND 60) AS onco_trat_60d
+        FROM c WHERE ano BETWEEN 2019 AND 2025 AND municipio IS NOT NULL GROUP BY ano, municipio ORDER BY ano, municipio""")
+    con.execute(f"COPY oncologia TO '{GOLD_S / 'oncologia.parquet'}' (FORMAT parquet, COMPRESSION zstd)")
+    print("oncologia:", con.sql("""SELECT ano, sum(onco_casos), sum(onco_tratados), sum(onco_trat_validos), sum(onco_trat_60d)
+        FROM oncologia GROUP BY 1 ORDER BY 1""").fetchall())
+
+
+RESP_COLUNAS = ["resp_notificacoes", "resp_confirmadas", "resp_obitos"]
+
+
+def resp(con, micro: Path):
+    """RESP (microcefalia e alterações do SNC): os RESPBR{aa} são o Brasil inteiro por ano de notificação (os de cada UF repetem os
+    mesmos registros). Excluídas (CLASSIFIN = 6, as mesmas com STATUS_NOT = 3, inativas) não contam como notificação."""
+    base = micro / "RESP" / "DADOS"
+    con.execute(f"""
+        CREATE OR REPLACE TABLE resp AS
+        SELECT TRY_CAST(ANO_NOT AS INTEGER) AS ano, TRY_CAST(CODMUNRES AS INTEGER) AS municipio, TRY_CAST(CODMUNRES AS INTEGER) // 10000 AS uf,
+               count(*) AS resp_notificacoes,
+               count(*) FILTER (WHERE CLASSIFIN = '1') AS resp_confirmadas,
+               count(*) FILTER (WHERE CLASSIFIN = '1' AND ST_OBITO = '1') AS resp_obitos
+        FROM read_parquet('{base}/RESPBR[0-9][0-9].parquet', union_by_name = true)
+        WHERE coalesce(CLASSIFIN, '') != '6' AND TRY_CAST(CODMUNRES AS INTEGER) IS NOT NULL
+        GROUP BY 1, 2 ORDER BY 1, 2""")
+    con.execute(f"COPY resp TO '{GOLD_S / 'resp.parquet'}' (FORMAT parquet, COMPRESSION zstd)")
+    print("resp:", con.sql("SELECT ano, sum(resp_notificacoes), sum(resp_confirmadas), sum(resp_obitos) FROM resp GROUP BY 1 ORDER BY 1").fetchall())
+
+
 def municipios(con):
     """Uma linha por ano e município de residência com população, óbitos, óbitos fetais e nascimentos."""
     s = SILVER.as_posix()
@@ -396,7 +509,8 @@ def municipios(con):
              chaves AS (SELECT ano, municipio FROM pop UNION SELECT ano, municipio FROM obitos
                         UNION SELECT ano, municipio FROM nascimentos UNION SELECT ano, municipio FROM obitos_fetais
                         UNION SELECT ano, municipio FROM internacoes UNION SELECT ano, municipio FROM internacoes_atend
-                        UNION SELECT ano, municipio FROM cnes UNION SELECT ano, municipio FROM sinan)
+                        UNION SELECT ano, municipio FROM cnes UNION SELECT ano, municipio FROM sinan
+                        UNION SELECT ano, municipio FROM siscan UNION SELECT ano, municipio FROM oncologia UNION SELECT ano, municipio FROM resp)
         SELECT k.ano, m.cod_ibge, k.municipio, coalesce(m.nome, 'Município ignorado') AS nome,
                coalesce(m.uf, e.uf) AS uf,
                p.* EXCLUDE (ano, municipio),
@@ -406,7 +520,10 @@ def municipios(con):
                h.* EXCLUDE (ano, municipio, uf),
                a.* EXCLUDE (ano, municipio, uf),
                c.* EXCLUDE (ano, municipio, uf),
-               z.* EXCLUDE (ano, municipio, uf)
+               z.* EXCLUDE (ano, municipio, uf),
+               sc.* EXCLUDE (ano, municipio, uf),
+               oc.* EXCLUDE (ano, municipio, uf),
+               rp.* EXCLUDE (ano, municipio, uf)
         FROM chaves k
         LEFT JOIN muni m ON m.municipio = k.municipio
         LEFT JOIN estados e ON e.cod = k.municipio // 10000
@@ -418,6 +535,9 @@ def municipios(con):
         LEFT JOIN internacoes_atend a ON a.ano = k.ano AND a.municipio = k.municipio
         LEFT JOIN cnes c ON c.ano = k.ano AND c.municipio = k.municipio
         LEFT JOIN sinan z ON z.ano = k.ano AND z.municipio = k.municipio
+        LEFT JOIN siscan sc ON sc.ano = k.ano AND sc.municipio = k.municipio
+        LEFT JOIN oncologia oc ON oc.ano = k.ano AND oc.municipio = k.municipio
+        LEFT JOIN resp rp ON rp.ano = k.ano AND rp.municipio = k.municipio
         WHERE k.municipio IS NOT NULL
         ORDER BY k.ano, k.municipio""")
     con.execute(f"COPY municipios TO '{GOLD_S / 'municipios.parquet'}' (FORMAT parquet, COMPRESSION zstd)")
@@ -443,10 +563,18 @@ def fonte_saude(con) -> dict:
                                                      ("hanseniase", "sinan_hans_casos_novos"), ("violencia", "sinan_viol_notificacoes"))}
         sinan_f = {"sinan": {"anos": sorted({a for v in agravos.values() for a in v}), "agravos": {k: [v[0], v[-1]] for k, v in agravos.items() if v},
                              "processado_em": quando, "url": "https://datasus.saude.gov.br/transferencia-de-arquivos/"}}
+    # SISCAN, oncologia e RESP: os anos são os das linhas com a coluna preenchida (fora da cobertura, NULL, nunca zero)
+    outros = {}
+    for chave, col, url in (("siscan", "siscan_cito", "https://datasus.saude.gov.br/transferencia-de-arquivos/"),
+                            ("oncologia", "onco_casos", "https://datasus.saude.gov.br/transferencia-de-arquivos/"),
+                            ("resp", "resp_notificacoes", "https://datasus.saude.gov.br/transferencia-de-arquivos/")):
+        if col in colunas:
+            outros[chave] = {"anos": anos(col), "processado_em": quando, "url": url}
     return {
         **sih,
         **cnes_f,
         **sinan_f,
+        **outros,
         "sim": {"anos": anos("obitos"), "processado_em": quando, "url": "https://datasus.saude.gov.br/transferencia-de-arquivos/"},
         "sinasc": {"anos": anos("nascidos"), "processado_em": quando, "url": "https://datasus.saude.gov.br/transferencia-de-arquivos/"},
         "populacao_svs": {"anos": anos("populacao"), "processado_em": quando,
@@ -477,6 +605,9 @@ def main():
     internacoes(con, Path(a.micro))
     cnes(con, Path(a.micro))
     sinan(con, Path(a.micro))
+    siscan(con, Path(a.brutos))
+    oncologia(con, Path(a.micro))
+    resp(con, Path(a.micro))
     municipios(con)
     atualizar_manifesto(con)
     # conferência: mortalidade infantil do Brasil (por mil nascidos vivos)
