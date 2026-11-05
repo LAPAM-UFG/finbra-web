@@ -326,6 +326,11 @@ figure.grafico { margin: 0; }
 .ia .ia-compositor textarea:focus-visible { outline: 0; }
 .ia-compositor-rodape { display: flex; align-items: center; justify-content: space-between; gap: 8px 10px; flex-wrap: wrap; margin-top: 6px; }
 .ia-dica { font-size: 12px; color: var(--tinta-3); margin: 6px 0 0; }
+.ia-fila { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.ia-fila li { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 13px; color: var(--tinta-2);
+  background: var(--superficie-2); border: 1px solid var(--borda); border-radius: 10px; padding: 6px 10px; }
+.ia-fila-texto { min-width: 0; overflow-wrap: anywhere; }
+.ia-fila .ia-link { flex: none; }
 .ia-alerta { color: color-mix(in srgb, var(--ruim) 75%, var(--tinta)); font-weight: 600; }
 .ia-compositor .botao { margin: 0; padding: 7px 16px; font-weight: 600; }
 .ia-compositor .botao:disabled { opacity: 0.45; cursor: default; }

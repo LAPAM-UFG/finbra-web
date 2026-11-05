@@ -40,6 +40,9 @@ const NOMES_PAINEIS = (): Record<Painel, string> => ({
   clima: t('Clima', 'Climate'),
 });
 
+/** Perguntas que podem esperar na fila de uma conversa. */
+const MAX_FILA = 8;
+
 type ItemConsulta = Extract<ItemTurno, { tipo: 'consulta' }>;
 /** Conversa aberta sem o conteúdo (mensagens, contexto das perguntas e resultados ficam no estado da página). */
 type Cabecalho = Omit<Conversa, 'mensagens' | 'metas' | 'resultados'>;
@@ -692,9 +695,10 @@ function SeletorModo({ modo, definir, travado }: { modo: Modo; definir: (m: Modo
  * Sem login, o envio vira "Entrar para perguntar": a pergunta fica guardada (sessionStorage) e o idioma
  * volta com o login.
  */
-function Compositor({ valor, mudar, enviar, cancelar, ocupado, bloqueio, exemplo, grande, campo, modo, descricaoDoModo, descricaoDoModelo, modeloAlterado, restaurarModelo,
+function Compositor({ valor, mudar, enviar, cancelar, ocupado, fila, aoRemoverDaFila, bloqueio, exemplo, grande, campo, modo, descricaoDoModo, descricaoDoModelo, modeloAlterado, restaurarModelo,
   entrar, verificando, aoComoAcesso, alerta }: {
   valor: string; mudar: (v: string) => void; enviar: (v: string) => void; cancelar: () => void; ocupado: boolean;
+  fila: string[]; aoRemoverDaFila: (i: number) => void;
   bloqueio: string | null; exemplo: string; grande?: boolean; campo: RefObject<HTMLTextAreaElement | null>;
   modo: ReactNode; descricaoDoModo: string; descricaoDoModelo: string; modeloAlterado: boolean; restaurarModelo: () => void;
   entrar: boolean; verificando: boolean;
@@ -712,6 +716,16 @@ function Compositor({ valor, mudar, enviar, cancelar, ocupado, bloqueio, exemplo
     <div className="ia-compositor-bloco">
       <p id="ia-dica-escrita" className="ia-dica-escrita">{t('Escreva o que quer saber. Você pode indicar o lugar e o período na própria pergunta.',
         'Write what you want to know. You can name the place and the period in the question itself.')}</p>
+      {fila.length > 0 && (
+        <ol className="ia-fila" aria-label={t('Perguntas na fila', 'Queued questions')}>
+          {fila.map((q, i) => (
+            <li key={`${i}-${q}`}>
+              <span className="ia-fila-texto" title={q}><b>{t('Na fila', 'Queued')} {i + 1}.</b> {q.length > 110 ? `${q.slice(0, 110)}…` : q}</span>
+              <button type="button" className="ia-link" onClick={() => aoRemoverDaFila(i)}>{t('Remover', 'Remove')}</button>
+            </li>
+          ))}
+        </ol>
+      )}
       <form className={`ia-compositor${grande ? ' grande' : ''}`} onSubmit={(e) => { e.preventDefault(); enviar(valor); }}>
         <label htmlFor="ia-pergunta" className="sr-only">{t('Sua pergunta', 'Your question')}</label>
         <textarea
@@ -726,7 +740,7 @@ function Compositor({ valor, mudar, enviar, cancelar, ocupado, bloqueio, exemplo
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
-              if (!ocupado) enviar(valor);
+              enviar(valor);
             } else if (e.key === 'Escape' && ocupado) {
               e.preventDefault();
               cancelar();
@@ -736,6 +750,13 @@ function Compositor({ valor, mudar, enviar, cancelar, ocupado, bloqueio, exemplo
         <div className="ia-compositor-barra">
           {modo}
           <span className="ia-compositor-espaco" />
+          {ocupado && !entrar && (
+            <button type="submit" className="ia-enviar ia-enfileirar" disabled={!!bloqueio || !valor.trim() || fila.length >= MAX_FILA}
+              aria-label={t('Colocar a pergunta na fila', 'Add the question to the queue')}
+              title={fila.length >= MAX_FILA ? t(`A fila comporta ${MAX_FILA} perguntas`, `The queue holds ${MAX_FILA} questions`) : t('Colocar na fila (Enter): roda quando a atual terminar', 'Add to the queue (Enter): runs when the current one finishes')}>
+              <Icone nome="enviar" />
+            </button>
+          )}
           {ocupado
             ? <button type="button" className="ia-parar" onClick={cancelar}><Icone nome="parar" tamanho={15} /> {t('Cancelar', 'Cancel')}</button>
             : entrar
@@ -754,7 +775,7 @@ function Compositor({ valor, mudar, enviar, cancelar, ocupado, bloqueio, exemplo
         <span id="ia-modelo-desc" className="sr-only"> {descricaoDoModelo}</span>
         {modeloAlterado && <> · <button type="button" className="ia-link" onClick={restaurarModelo}>{t('Voltar ao modelo padrão (Haiku)', 'Back to the default model (Haiku)')}</button></>}
         {' · '}
-        {ocupado ? t('Esc ou Cancelar interrompem a análise', 'Esc or Cancel stop the analysis')
+        {ocupado ? t('Enter coloca a próxima pergunta na fila · Esc ou Cancelar interrompem a análise e esvaziam a fila', 'Enter adds the next question to the queue · Esc or Cancel stop the analysis and empty the queue')
           : verificando ? t('verificando o acesso…', 'checking access…')
             : t('Enter envia · Shift+Enter quebra a linha', 'Enter sends · Shift+Enter adds a line')}
         {alerta && <> · <span className="ia-alerta">{alerta}</span></>}
@@ -1720,6 +1741,10 @@ export function Ia() {
   const [resultados, setResultados] = useState<Record<string, Resultado>>({});
   const [texto, setTexto] = useState(() => lerGuardado('ia-rascunho', true) ?? '');
   const [rodando, setRodando] = useState<AbortController | null>(null);
+  // perguntas escritas enquanto outra roda: cada uma começa quando a anterior termina, na mesma conversa
+  const [fila, setFila] = useState<{ id: string; texto: string }[]>([]);
+  const filaAtual = useRef(fila);
+  filaAtual.current = fila;
   const [progresso, setProgresso] = useState<Progresso | null>(null);
   const [falha, setFalha] = useState<{ mensagem: string; pergunta: string; entrar?: boolean } | null>(null);
   const [status, setStatus] = useState('');
@@ -1992,7 +2017,21 @@ export function Ia() {
 
   async function enviar(bruta: string) {
     const pergunta = bruta.trim();
-    if (!pergunta || rodando || enviando.current || bloqueio || refazendo) return;
+    if (!pergunta || bloqueio || refazendo) return;
+    if (rodando || enviando.current) {
+      if (!aberta) return;
+      if (fila.length >= MAX_FILA) {
+        setStatus(t(`A fila comporta ${MAX_FILA} perguntas.`, `The queue holds ${MAX_FILA} questions.`));
+      } else if (estado && estado.restantes <= fila.length) {
+        setStatus(t('Não há perguntas suficientes hoje para mais uma na fila.', 'There are not enough questions left today for another one in the queue.'));
+      } else {
+        setFila((f) => [...f, { id: aberta.id, texto: pergunta }]);
+        setTexto('');
+        setStatus(t(`Pergunta na fila (posição ${fila.length + 1}).`, `Question queued (position ${fila.length + 1}).`));
+        focarCampo();
+      }
+      return;
+    }
     enviando.current = true;
     const antes = { mensagens, metas };
     // a primeira pergunta cria a conversa: identificador e endereço (?conversa=) desde já
@@ -2062,9 +2101,15 @@ export function Ia() {
         // um histórico pela metade invalidaria as próximas perguntas: volta ao estado de antes
         setMensagens(antes.mensagens);
         setMetas(antes.metas);
-        // a pergunta volta para o campo, sem apagar o que tenha sido escrito enquanto ela rodava
-        setTexto((atual) => (atual.trim() ? atual : pergunta));
-        if (foiCancelado(e)) setStatus(t('Pergunta cancelada. Ela voltou para o campo de texto.', 'Question cancelled. It is back in the text box.'));
+        // a pergunta (e as da fila, que não rodam depois de um erro) volta para o campo, sem apagar o que tenha sido escrito enquanto ela rodava
+        const pendentes = filaAtual.current.filter((x) => x.id === id).map((x) => x.texto);
+        setFila([]);
+        setTexto((atual) => (atual.trim() ? atual : [pergunta, ...pendentes].join('\n\n')));
+        if (foiCancelado(e)) {
+          setStatus(pendentes.length
+            ? t(`Pergunta cancelada. Ela e as ${pendentes.length} da fila voltaram para o campo de texto.`, `Question cancelled. It and the ${pendentes.length} in the queue are back in the text box.`)
+            : t('Pergunta cancelada. Ela voltou para o campo de texto.', 'Question cancelled. It is back in the text box.'));
+        }
         else setFalha({ mensagem: e instanceof Error ? e.message : String(e), pergunta, entrar: e instanceof ErroAcesso && e.tipo === 'sessao' });
         // sem nenhuma resposta, a conversa nem chegou a existir
         if (!aberta) {
@@ -2087,6 +2132,18 @@ export function Ia() {
   }
 
   const cancelar = () => rodando?.abort();
+  // a próxima da fila começa quando a atual termina bem (o estado da conversa já está atualizado nesta renderização);
+  // trocar de conversa descarta a fila
+  useEffect(() => {
+    if (!fila.length || rodando || enviando.current || bloqueio || refazendo) return;
+    if (fila[0].id !== aberta?.id) {
+      setFila([]);
+      return;
+    }
+    const [proxima, ...resto] = fila;
+    setFila(resto);
+    void enviar(proxima.texto);
+  });
   const editarUltima = () => {
     if (rodando || !lista.length) return;
     const pergunta = lista.at(-1)!.pergunta;
@@ -2221,6 +2278,7 @@ export function Ia() {
     ? t(`restam ${contar(estado.restantes, 'pergunta', 'perguntas')} hoje`, `${contar(estado.restantes, 'question', 'questions')} left today`) : null;
   const compositor = (
     <Compositor valor={texto} mudar={setTexto} enviar={enviar} cancelar={cancelar} ocupado={!!rodando}
+      fila={fila.map((x) => x.texto)} aoRemoverDaFila={(i) => setFila((f) => f.filter((_, j) => j !== i))}
       bloqueio={estado === null || (estado === undefined && !falhaEstado) ? null : bloqueio}
       exemplo={exemplo} grande={!conversa} campo={campo}
       modo={<SeletorModo modo={modo} definir={definirModo} travado={!!rodando} />}
