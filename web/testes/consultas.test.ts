@@ -3616,3 +3616,65 @@ describe('IA: gestão pública (MUNIC e ESTADIC)', () => {
     assert.ok(Number(par.linhas[0][1]) >= 5560, `municípios sem par no cadastro: ${Number(par.linhas[0][0]) - Number(par.linhas[0][1])}`);
   });
 });
+
+describe('IA: clima (CHIRPS e ERA5-Land)', () => {
+  const semClima = !existsSync(`${DATA}/gold/clima/mensal.parquet`);
+  const consulta = async (sql: string, paineis: Parameters<typeof executarConsulta>[1] = ['clima']) => {
+    const r = await executarConsulta({ sql }, paineis);
+    assert.ok(!('erro' in r), 'erro' in r ? r.erro : '');
+    return r as Extract<typeof r, { linhas: unknown[][] }>;
+  };
+
+  test('o painel entra na lista de painéis da IA e tem cobertura, fonte, códigos e sugestões próprias', async () => {
+    assert.ok(PAINEIS.includes('clima'));
+    const cob = { rais: [], caged: null, microdados: false, dca: [], clima: { de: 1979, ate: 202609 } } as Parameters<typeof descreverCobertura>[1];
+    assert.match(descreverCobertura(['clima'], cob).join('\n'), /Clima 1979–2026: chuva \(CHIRPS, desde 1981\)/);
+    assert.match(disponibilidadeNoAno(2010, ['clima'], cob), /com dados nesse ano: clima \(CHIRPS e ERA5-Land\) \(1979–2026\)/);
+    assert.match(disponibilidadeNoAno(2026, ['clima'], cob), /ano incompleto/);
+    assert.match(disponibilidadeNoAno(1970, ['clima'], cob), /sem dados nesse ano: clima/);
+    assert.equal(fontesConsultadas(['SELECT * FROM clima_anual WHERE variavel = \'chuva_mm\'']).length, 1);
+    const sug = sugestoes(['clima'], { tipo: 'brasil' }, cob, null);
+    assert.ok(sug.length >= 3 && sug.every((s) => s.paineis.join() === 'clima'));
+    // o ano das sugestões é o último ano completo (2026 está em curso)
+    assert.ok(sug.every((s) => !/2026/.test(s.texto)));
+    assert.match(codigosDoMunicipio(ANDIRA, ['clima']), /cod = 4101101 \(7 dígitos\) em clima_territorio, clima_anual, clima_mensal e clima_normal/);
+  });
+
+  test('anual, mensal, normal e agregado respondem pela IA e concordam entre si', { skip: semClima }, async () => {
+    // Andirá: a chuva anual de 2020 é a soma dos 12 meses de clima_mensal
+    const anual = await consulta(`SELECT valor, normal, anomalia_pct, anomalia FROM clima_anual WHERE variavel = 'chuva_mm' AND cod = ${ANDIRA} AND ano = 2020`);
+    const mensal = await consulta(`SELECT sum(valor), count(*) FROM clima_mensal WHERE variavel = 'chuva_mm' AND cod = ${ANDIRA} AND ano = 2020`);
+    assert.equal(Number(mensal.linhas[0][1]), 12);
+    assert.ok(Math.abs(Number(anual.linhas[0][0]) - Number(mensal.linhas[0][0])) < 0.5);
+    // a normal anual é a soma das 12 normais mensais; a anomalia da chuva é relativa e a absoluta fica nula
+    const normal = await consulta(`SELECT sum(normal) FROM clima_normal WHERE variavel = 'chuva_mm' AND cod = ${ANDIRA}`);
+    assert.ok(Math.abs(Number(anual.linhas[0][1]) - Number(normal.linhas[0][0])) < 0.5);
+    assert.ok(Math.abs(Number(anual.linhas[0][2]) - (Number(anual.linhas[0][0]) / Number(anual.linhas[0][1]) - 1)) < 1e-6);
+    assert.equal(anual.linhas[0][3], null);
+    // a temperatura é o contrário: anomalia absoluta em °C, sem percentual
+    const temp = await consulta(`SELECT valor, normal, anomalia_pct, anomalia FROM clima_anual WHERE variavel = 'temperatura_c' AND cod = ${ANDIRA} AND ano = 2020`);
+    assert.equal(temp.linhas[0][2], null);
+    assert.ok(Math.abs(Number(temp.linhas[0][3]) - (Number(temp.linhas[0][0]) - Number(temp.linhas[0][1]))) < 1e-6);
+    assert.ok(Number(temp.linhas[0][0]) > 15 && Number(temp.linhas[0][0]) < 30);
+    // catálogo: 6 variáveis, chuva desde 1981 e as demais desde 1979
+    const cat = await consulta('SELECT variavel, ano_de FROM clima_catalogo ORDER BY variavel');
+    assert.equal(cat.linhas.length, 6);
+    assert.deepEqual(cat.linhas.map((l) => [l[0], Number(l[1])]).filter((l) => l[0] === 'chuva_mm' || l[0] === 'temperatura_c'), [['chuva_mm', 1981], ['temperatura_c', 1979]]);
+    // Brasil e UF: o ano inteiro está em mes = 0
+    const br = await consulta("SELECT valor FROM clima_agregado WHERE grupo = 'BR' AND variavel = 'temperatura_c' AND ano = 2020 AND mes = 0");
+    assert.ok(Number(br.linhas[0][0]) > 20 && Number(br.linhas[0][0]) < 29);
+  });
+
+  test('evaporação: os meses de 09/2022 a 02/2024 ficam de fora e o ano não fecha', { skip: semClima }, async () => {
+    const lacuna = await consulta(`SELECT count(*) FROM clima_mensal WHERE variavel = 'evap_mm' AND cod = ${ANDIRA} AND ano * 100 + mes BETWEEN 202209 AND 202402`);
+    assert.equal(Number(lacuna.linhas[0][0]), 0);
+    const anos = await consulta(`SELECT count(*) FROM clima_anual WHERE variavel = 'evap_mm' AND cod = ${ANDIRA} AND ano IN (2022, 2023)`);
+    assert.equal(Number(anos.linhas[0][0]), 0);
+  });
+
+  test('o cruzamento com o cadastro pelo código funciona na mesma conversa', { skip: semClima }, async () => {
+    const par = await consulta(`SELECT count(*) AS n, count(e.cod_ibge) AS com_par FROM clima_territorio t LEFT JOIN entes e ON e.cod_ibge = t.cod`, ['clima', 'financas']);
+    assert.equal(Number(par.linhas[0][0]), 5570);
+    assert.ok(Number(par.linhas[0][1]) >= 5560);
+  });
+});

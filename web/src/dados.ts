@@ -1224,6 +1224,23 @@ export function tabelasClima() {
   return climaCarregada;
 }
 
+/**
+ * Tabelas da IA de clima: as quatro pequenas em memória (tabelasClima) e visões sobre mensal e anual, lidos por Range
+ * (ordenados por variável, município e ano: o filtro das consultas descarta o resto).
+ */
+let iaClima: Promise<void> | null = null;
+export function tabelasIaClima() {
+  iaClima ??= (async () => {
+    const { con } = await iniciar();
+    await tabelasClima();
+    for (const nome of ['anual', 'mensal']) {
+      await con.query(`CREATE OR REPLACE VIEW clima_${nome} AS SELECT * FROM read_parquet(${arq(`gold/clima/${nome}.parquet`)})`);
+    }
+  })();
+  iaClima.catch(() => (iaClima = null));
+  return iaClima;
+}
+
 const NORMAL_DE = 1991;
 const NORMAL_ATE = 2020;
 const variavelClima = (q: Params) => String(q.variavel ?? 'chuva_mm');

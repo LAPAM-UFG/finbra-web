@@ -237,6 +237,10 @@ por município.
 | Regras | anos só com os 12 meses; normal 1991–2020 (mínimo de 25 anos); Brasil e UF ponderados pela área; município sem pixel com dado fica sem linha. No ERA5-Land, que só tem pixels de terra, o município sem pixel próprio usa o pixel de terra mais próximo se estiver a até 0,25°. A chuva do CHIRPS não cobre Fernando de Noronha e Trindade |
 | R2 | para subir só o clima, use uma pasta temporária com `gold/clima` e o manifesto e `r2.py enviar --raiz <pasta> --camadas gold` (o `enviar` normal sobe tudo o que mudou; nunca use `--limpar` com `--raiz`) |
 
+"Pergunte aos dados" (`/ia`) tem o painel `clima`: a seção das instruções está em `worker/src/sistema_clima.js` e as tabelas
+(`clima_territorio`, `clima_catalogo`, `clima_normal`, `clima_agregado` em memória; `clima_anual` e `clima_mensal` lidas por Range)
+são preparadas no navegador só quando uma consulta as usa (`tabelasIaClima` em `web/src/dados.ts`).
+
 ## Publicação do site
 
 Workflow **Publicar site** (`.github/workflows/publicar-site.yml`): a cada push na `main` que altere

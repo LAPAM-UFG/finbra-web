@@ -13,6 +13,7 @@ import { podeConferir } from '../src/conferencia.js';
 import { limparResumo, rotaConversas } from '../src/conversas.js';
 import { instrucoes, paineisDoPedido } from '../src/sistema_geral.js';
 import { contextoDosDados } from '../src/sistema.js';
+import { contextoClima } from '../src/sistema_clima.js';
 import { contextoMunic } from '../src/sistema_munic.js';
 
 const contexto = { type: 'text', text: 'Contexto da página nesta pergunta:\n- Território selecionado: Goiás (UF GO; código IBGE 52).' };
@@ -164,7 +165,7 @@ describe('instruções', () => {
 
   test('instruções com todas as bases: as três seções, regras de escolha de fonte e nenhuma menção a território da página', () => {
     const todas = instrucoes(paineisDoPedido(undefined), { manifesto: {}, contextoTrabalho: {} })[0].text;
-    for (const nome of ['finanças públicas', 'mercado de trabalho', 'saúde', 'gestão pública']) assert.match(todas, new RegExp(nome));
+    for (const nome of ['finanças públicas', 'mercado de trabalho', 'saúde', 'gestão pública', 'clima']) assert.match(todas, new RegExp(nome));
     assert.doesNotMatch(todas, /Contexto da página|território selecionado|territ[óo]rio do contexto/i);
     assert.match(todas, /Não há bases, território nem ano escolhidos na página/);
     assert.match(todas, /Período ausente/);
@@ -173,8 +174,8 @@ describe('instruções', () => {
 
   test('painéis desconhecidos são ignorados; nenhum válido = todos', () => {
     assert.deepEqual(paineisDoPedido(['trabalho', 'x']), ['trabalho']);
-    assert.deepEqual(paineisDoPedido([]), ['financas', 'trabalho', 'saude', 'munic']);
-    assert.deepEqual(paineisDoPedido('trabalho'), ['financas', 'trabalho', 'saude', 'munic']);
+    assert.deepEqual(paineisDoPedido([]), ['financas', 'trabalho', 'saude', 'munic', 'clima']);
+    assert.deepEqual(paineisDoPedido('trabalho'), ['financas', 'trabalho', 'saude', 'munic', 'clima']);
     assert.deepEqual(paineisDoPedido(['saude', 'financas']), ['financas', 'saude']);
   });
 
@@ -219,6 +220,29 @@ describe('instruções', () => {
     // sem o manifesto das pesquisas, a IA é avisada em vez de supor edições
     assert.match(contextoMunic({ fontes: {} }), /MUNIC: dados indisponíveis/);
     assert.match(contextoMunic(null), /ESTADIC: dados indisponíveis/);
+  });
+
+  test('clima: seção própria, período do manifesto e regras de cruzamento só dos painéis marcados', () => {
+    const manifesto = { gerado_em: 'x', anos: [2013, 2025], base_ipca: 2025, fontes: { clima: { anos: [1979, 2026], ate: 202609, variaveis: ['chuva_mm', 'temperatura_c'], normal: [1991, 2020], fontes: ['CHIRPS v3 (UCSB/CHC)', 'ERA5-Land (Copernicus/ECMWF)'] } } };
+    const texto = (p, m = manifesto) => instrucoes(p, { manifesto: m, contextoTrabalho: {} }).map((b) => b.text).join('\n');
+    const clima = texto(['clima']);
+    assert.match(clima, /# Painel de clima/);
+    for (const t of ['clima_territorio', 'clima_catalogo', 'clima_normal', 'clima_agregado', 'clima_anual', 'clima_mensal']) assert.match(clima, new RegExp(t));
+    assert.match(clima, /meses de 1979 a 2026, até 09\/2026 \(mês preliminar\)/);
+    assert.match(clima, /CHIRPS v3 \(UCSB\/CHC\) e ERA5-Land/);
+    // as regras que protegem o número: anomalia relativa x absoluta, lacuna da fonte, nada antes de 1979, grade e não estação
+    assert.match(clima, /RELATIVA \(anomalia_pct[^)]*\) para chuva_mm e evap_mm; ABSOLUTA/);
+    assert.match(clima, /setembro de 2022 a fevereiro de 2024 foram EXCLUÍDOS/);
+    assert.match(clima, /Antes de 1979 NÃO HÁ dado publicado/);
+    assert.match(clima, /não de estações/);
+    assert.doesNotMatch(clima, /# Painel de finanças públicas|# Painel de saúde|# Painel de gestão pública|# Cruzando painéis/);
+    assert.doesNotMatch(texto(['financas', 'trabalho']), /clima_anual|Painel de clima/);
+    assert.match(texto(['clima', 'saude']), /Clima × saúde/);
+    assert.doesNotMatch(texto(['clima', 'munic']), /Clima × saúde/);
+    assert.match(texto(['clima', 'munic']), /Clima × gestão pública/);
+    // sem o manifesto do clima, a IA é avisada em vez de supor um período
+    assert.match(contextoClima({ fontes: {} }), /Clima: dados indisponíveis/);
+    assert.match(contextoClima(null), /Clima: dados indisponíveis/);
   });
 });
 

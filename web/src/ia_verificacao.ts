@@ -158,6 +158,7 @@ const FONTES_DE_FATO: [RegExp, string][] = [
   [/^inss_\w+$/, 'INSS'],
   [/^saude_municipios$/, 'SIM/SINASC'],
   [/^munic_(agregados|respostas)$/, 'MUNIC/ESTADIC'],
+  [/^clima_(anual|mensal|agregado|normal)$/, 'CHIRPS/ERA5-Land'],
 ];
 
 /** Tabelas de fato lidas pela consulta (depois de FROM e JOIN; textos entre aspas e CTEs não contam). */

@@ -8,6 +8,7 @@
  * acrescente-a a PAINEIS.
  */
 import { FINANCAS, contextoDosDados } from './sistema.js';
+import { CLIMA, contextoClima } from './sistema_clima.js';
 import { MUNIC, contextoMunic } from './sistema_munic.js';
 import { SAUDE, contextoSaude } from './sistema_saude.js';
 import { TRABALHO, contextoTrabalho } from './sistema_trabalho.js';
@@ -17,6 +18,7 @@ export const PAINEIS = {
   trabalho: { nome: 'mercado de trabalho', secao: TRABALHO },
   saude: { nome: 'saúde', secao: SAUDE },
   munic: { nome: 'gestão pública (MUNIC e ESTADIC)', secao: MUNIC },
+  clima: { nome: 'clima (chuva, temperatura e solo)', secao: CLIMA },
 };
 
 const introducao = (nomes) => `Você analisa dados dos painéis do LAPAM/UFG incluídos nesta conversa: ${nomes}. Cada painel tem a sua seção abaixo, com tabelas, conceitos e regras próprios; use as regras do painel de onde vem cada número.
@@ -43,6 +45,11 @@ const REGRAS_CRUZAMENTO = [
   [['munic', 'financas'], 'População: munic_territorio.populacao serve só à faixa de porte da MUNIC; nos valores por habitante das finanças use indicadores.populacao_ibge e diga qual entrou. A faixa da MUNIC (munic_territorio.faixa) e a das finanças (faixas, pela população declarada na DCA) são classificações diferentes: não as misture.'],
   [['munic', 'trabalho'], 'Gestão pública × trabalho: o quadro de pessoal da prefeitura na MUNIC (Recursos humanos) é o declarado pela prefeitura, por tipo de vínculo; o emprego público da RAIS é contado no estabelecimento, nos três níveis de governo. Os números não coincidem e nenhum valida o outro: diga a fonte de cada um.'],
   [['munic', 'saude'], 'Gestão pública × saúde: a MUNIC tem perguntas sobre a estrutura de saúde do município (declaradas pela prefeitura); o CNES e o SIM/SINASC são registros administrativos. Quando as duas fontes tratarem do mesmo assunto, mostre as duas e não use uma para validar a outra.'],
+  [['clima'], 'Clima: clima_*.cod tem 7 dígitos, o mesmo cod_ibge das finanças, da saúde e das tabelas trab_* (e cod_ibge // 10 = municipio de rais_mun e rais_vinculos); Brasil e UF estão em clima_agregado (grupo = "BR" ou a sigla da UF). O clima é de grade (satélite e reanálise) agregada ao município: diga isso ao relacioná-lo a registros administrativos.'],
+  [['clima', 'saude'], 'Clima × saúde: dengue, internações e óbitos dependem de chuva, temperatura, umidade, defasagem de semanas ou meses, saneamento e vigilância; a relação com o clima é associação. Use o mesmo ano (ou o mesmo mês) dos dois lados, diga a defasagem escolhida e que a saúde conta pelo município de residência. Para o ano em curso, compare só meses completos.'],
+  [['clima', 'financas'], 'Clima × finanças: associar chuva ou temperatura à receita, à despesa ou ao PIB agropecuário é correlação entre séries de causas muitas; diga o ano de cada fonte (a DCA fecha com atraso e o clima é mensal) e não conclua causalidade.'],
+  [['clima', 'trabalho'], 'Clima × trabalho: a RAIS é anual (vínculos em 31 de dezembro) e o clima é mensal; compare o ano civil do clima com o ano da RAIS e diga isso. Associação, não causa.'],
+  [['clima', 'munic'], 'Clima × gestão pública: a MUNIC é autodeclarada e de uma edição por vez; use o clima do ano da edição, ou a média de um período que você diga, e trate como associação.'],
   [[], 'Ao combinar números de painéis diferentes, diga de qual painel e fonte vem cada um.'],
   [[], 'Ano automático entre bases: as fontes terminam em anos diferentes (ex.: finanças até um ano, saúde até outro). Sem ano na pergunta, não use o "mais recente" de cada fonte lado a lado como se fosse o mesmo período: se a comparação exige o mesmo período, use o último ano comum a todas as fontes, com o ano no título, e diga o último ano de cada uma em recorte. Para séries, use o período comum e diga quais anos finais ficaram de fora. Se não existe período comum que sirva à pergunta (a pergunta é sobre um ano que uma fonte não cobre, ou o período comum seria curto demais), explique essa limitação na conclusão ANTES de qualquer comparação e não apresente números das fontes como se fossem do mesmo período.'],
   [[], 'Antes de cruzar, confira a chave (cod_ibge de 7 dígitos ou municipio de 6), a unicidade (uma linha por município e ano em cada lado) e as perdas do cruzamento (quantos de cada lado ficaram sem par), com o campo verificacao de consultar (juncoes e chaves): a página faz as contagens. Diga os três na resposta.'],
@@ -148,6 +155,6 @@ export function paineisDoPedido(v) {
 export function instrucoes(paineis, { manifesto, contextoTrabalho: ctxTrabalho }) {
   const nomes = paineis.map((p) => PAINEIS[p].nome).join(', ').replace(/, ([^,]*)$/, ' e $1');
   const fixo = [introducao(nomes), ...paineis.map((p) => PAINEIS[p].secao), ...(paineis.length > 1 ? [cruzamento(paineis)] : []), COMO_RESPONDER].join('\n\n');
-  const dados = paineis.map((p) => (p === 'financas' ? contextoDosDados(manifesto) : p === 'saude' ? contextoSaude(manifesto) : p === 'munic' ? contextoMunic(manifesto) : contextoTrabalho(ctxTrabalho)));
+  const dados = paineis.map((p) => (p === 'financas' ? contextoDosDados(manifesto) : p === 'saude' ? contextoSaude(manifesto) : p === 'munic' ? contextoMunic(manifesto) : p === 'clima' ? contextoClima(manifesto) : contextoTrabalho(ctxTrabalho)));
   return [{ type: 'text', text: fixo, cache_control: { type: 'ephemeral' } }, ...dados.map((text) => ({ type: 'text', text }))];
 }

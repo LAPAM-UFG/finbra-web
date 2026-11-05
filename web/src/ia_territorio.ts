@@ -57,6 +57,7 @@ const comTrabalho = (p: Paineis) => p.includes('trabalho');
 const comFinancas = (p: Paineis) => p.includes('financas');
 const comSaude = (p: Paineis) => p.includes('saude');
 const comMunic = (p: Paineis) => p.includes('munic');
+const comClima = (p: Paineis) => p.includes('clima');
 /** "a, b e c". */
 const emLista = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} e ${xs.at(-1)}` : xs.join(''));
 
@@ -67,6 +68,7 @@ export function codigosDoMunicipio(cod: number, paineis: Paineis): string {
   const partes = [`cod_ibge = ${cod} (7 dígitos) em ${emLista(tabelas7)}`];
   if (comTrabalho(paineis)) partes.push(`municipio = ${Math.floor(cod / 10)} (6 dígitos) só em rais_mun e rais_vinculos`);
   if (comMunic(paineis)) partes.push(`cod = ${cod} (7 dígitos) em munic_territorio e munic_respostas (MUNIC)`);
+  if (comClima(paineis)) partes.push(`cod = ${cod} (7 dígitos) em clima_territorio, clima_anual, clima_mensal e clima_normal`);
   return `Códigos: ${partes.join('; ')}.`;
 }
 
@@ -79,6 +81,7 @@ export function codigosDaUf(uf: string, cod: number, paineis: Paineis): string {
   }
   if (comFinancas(paineis)) partes.push(`governo estadual: cod_ibge = ${cod} (esfera 'E'); municípios da UF: uf = '${uf}' com esfera 'M'`);
   if (comSaude(paineis)) partes.push(`uf = '${uf}' (sigla) em saude_municipios (inclui as linhas de município ignorado da UF)`);
+  if (comClima(paineis)) partes.push(`grupo = '${uf}' (sigla) em clima_agregado; municípios da UF: uf = '${uf}' em clima_territorio`);
   if (comMunic(paineis)) partes.push(`uf = '${uf}' (sigla) em munic_territorio; grupo = '${uf}' no corte 'uf' de munic_agregados; na ESTADIC, cod = ${cod} em munic_territorio e munic_respostas (pesquisa = 'estadic')`);
   return `Códigos: ${partes.join('; ')}.`;
 }

@@ -12,7 +12,7 @@
  * confere os códigos de território (conferirCodigos); lugares citados pelo nome passam pela ferramenta
  * "localizar", que usa o cadastro de entes.
  */
-import { consultaLivre, contextoTrabalhoIa, manifestoDados, tabelaDespesaFuncao, tabelaLrf, tabelasEducacaoSaude, tabelasIaMunic, tabelasIaTrabalho, tabelasSaude } from './dados';
+import { consultaLivre, contextoTrabalhoIa, manifestoDados, tabelaDespesaFuncao, tabelaLrf, tabelasEducacaoSaude, tabelasIaClima, tabelasIaMunic, tabelasIaTrabalho, tabelasSaude } from './dados';
 import { t } from './idioma';
 import {
   competenciasNoTexto, formatarValor, periodoDasConsultas, periodoDe, registrarColunas, rotuloCompetencia, rotuloPeriodo, sqlSemTextos, tiposDoResultado,
@@ -115,13 +115,13 @@ export async function estadoIa(): Promise<EstadoIa | null> {
 }
 
 /** Painéis que a IA pode consultar (aba "Pergunte aos dados"); cada um tem tabelas e instruções próprias. */
-export type Painel = 'financas' | 'trabalho' | 'saude' | 'munic';
-export const PAINEIS: Painel[] = ['financas', 'trabalho', 'saude', 'munic'];
+export type Painel = 'financas' | 'trabalho' | 'saude' | 'munic' | 'clima';
+export const PAINEIS: Painel[] = ['financas', 'trabalho', 'saude', 'munic', 'clima'];
 
 export async function chamarIa(mensagens: Mensagem[], idioma: string, paineis: Painel[] = PAINEIS, sinal?: AbortSignal, modelo: EscolhaModelo = MODELO_PADRAO): Promise<RespostaIa> {
   const contexto = paineis.includes('trabalho') ? await contextoTrabalhoIa() : undefined;
   // o manifesto só é usado pelo Worker local (wrangler dev), que não tem o do R2
-  const manifesto = emLocalhost() && (paineis.includes('financas') || paineis.includes('saude') || paineis.includes('munic')) ? await manifestoDados() : undefined;
+  const manifesto = emLocalhost() && (paineis.includes('financas') || paineis.includes('saude') || paineis.includes('munic') || paineis.includes('clima')) ? await manifestoDados() : undefined;
   const enviar = () => fetch(`${servidor}/api/ia`, {
     method: 'POST',
     redirect: 'manual',
@@ -224,6 +224,11 @@ export function disponibilidadeNoAno(ano: number, paineis: Painel[], c: Cobertur
     if (c.munic?.length) marcar('MUNIC', c.munic.includes(ano), faixa(c.munic));
     if (c.estadic?.length) marcar('ESTADIC', c.estadic.includes(ano), faixa(c.estadic));
   }
+  if (paineis.includes('clima') && c.clima) {
+    const de = Math.max(c.clima.de * 100 + 1, ano * 100 + 1);
+    const ate = Math.min(c.clima.ate, ano * 100 + 12);
+    marcar('clima (CHIRPS e ERA5-Land)', de <= ate, ` (${c.clima.de}–${Math.floor(c.clima.ate / 100)}${de <= ate && ate % 100 < 12 ? ', ano incompleto' : ''})`);
+  }
   return [tem.length ? `com dados nesse ano: ${tem.join('; ')}` : 'nenhuma fonte tem dados nesse ano', nao.length ? `sem dados nesse ano: ${nao.join('; ')}` : '']
     .filter(Boolean).join('. ');
 }
@@ -267,7 +272,7 @@ export type Cobertura = {
   rais: number[]; caged: { de: number; ate: number } | null; microdados: boolean; dca: number[];
   pib?: { de: number; ate: number; setorial_ate?: number } | null; siope?: number[]; siopeRemuneracao?: number[]; siops?: number[];
   lrf?: { de: number; ate: number; parciais?: number[] } | null; bolsa?: { de: number; ate: number; mes: number } | null; inss?: number[];
-  sim?: number[]; sinasc?: number[]; sih?: number[]; cnes?: number[]; sinan?: number[]; siscan?: number[]; oncologia?: number[]; resp?: number[]; popSvs?: number[]; munic?: number[]; estadic?: number[];
+  sim?: number[]; sinasc?: number[]; sih?: number[]; cnes?: number[]; sinan?: number[]; siscan?: number[]; oncologia?: number[]; resp?: number[]; popSvs?: number[]; munic?: number[]; estadic?: number[]; clima?: { de: number; ate: number } | null;
 };
 /** Sugestão: título curto, a pergunta completa (que vai para o campo), o tema e as bases que a pergunta usa. */
 export type Sugestao = { titulo: string; tema: string; texto: string; paineis: Painel[]; nota?: string };
@@ -316,13 +321,14 @@ export function sugestoes(paineis: Painel[], tr: Territorio, c: Cobertura, ano: 
   const financas = paineis.includes('financas') && c.dca.length > 0;
   const saude = paineis.includes('saude') && (c.sim?.length ?? 0) > 0;
   const munic = paineis.includes('munic') && (c.munic?.length ?? 0) > 0;
+  const clima = paineis.includes('clima') && !!c.clima;
   const ult = (anos: number[]) => (ano && anos.includes(ano) ? ano : anos.at(-1)!);
   const recuo = (anos: number[], n: number) => Math.max(anos[0], ult(anos) - n);
   const f = formas(tr);
   const uf = tr.tipo === 'municipio' ? formas({ tipo: 'uf', uf: tr.uf, nome: nomeDaUf(tr.uf), cod: 0 }) : null;
   const tema = {
     trabalho: t('Mercado de trabalho', 'Labour market'), financas: t('Finanças públicas', 'Public finances'), saude: t('Saúde', 'Health'),
-    munic: t('Gestão pública', 'Public management'),
+    munic: t('Gestão pública', 'Public management'), clima: t('Clima', 'Climate'),
     cruzamento: t('Entre bases', 'Across datasets'),
   };
   const grupos: Sugestao[][] = [];
@@ -415,6 +421,23 @@ export function sugestoes(paineis: Painel[], tr: Territorio, c: Cobertura, ano: 
       },
     ].map((x) => ({ ...x, tema: tema.munic, paineis: ['munic'] as Painel[] })));
   }
+  if (clima) {
+    // último ano completo: o da cobertura, ou o anterior se o mês final não for dezembro
+    const ultimo = Math.floor(c.clima!.ate / 100) - (c.clima!.ate % 100 < 12 ? 1 : 0);
+    const a = ano && ano >= 1981 && ano <= ultimo ? ano : ultimo;
+    const a10 = Math.max(1981, a - 10);
+    grupos.push([
+      { titulo: t('Chuva sobre a normal', 'Rain vs normal'),
+        texto: t(`Quanto choveu em ${a} ${f.em}, em relação à normal de 1991 a 2020?`, `How much did it rain in ${a} ${f.em}, compared with the 1991–2020 normal?`) },
+      { titulo: t('Temperatura em dez anos', 'Temperature in ten years'),
+        texto: t(`Quanto a temperatura média anual ${f.de} mudou entre ${a10} e ${a}?`, `How much did the annual mean temperature ${f.de} change between ${a10} and ${a}?`) },
+      tr.tipo === 'municipio'
+        ? { titulo: t('Meses mais secos', 'Driest months'),
+            texto: t(`Quais foram os meses mais secos de ${a} ${f.em}, comparados à normal de cada mês?`, `Which were the driest months of ${a} ${f.em}, compared with each month’s normal?`) }
+        : { titulo: t('Municípios mais quentes', 'Hottest municipalities'),
+            texto: t(`Quais os 10 municípios ${f.de} com a maior temperatura média em ${a}?`, `Which 10 municipalities ${f.de} had the highest mean temperature in ${a}?`) },
+    ].map((x) => ({ ...x, tema: tema.clima, paineis: ['clima'] as Painel[] })));
+  }
   const cruzadas: Sugestao[] = [];
   if (financas && saude && !trabalho) {
     const a = Math.min(ult(c.dca), ult(c.sim!));
@@ -501,6 +524,7 @@ export function coberturaPorAno(c: Cobertura, paineis: Painel[]): Map<number, { 
     if (c.bolsa) mensal('Bolsa Família', c.bolsa.de * 100 + 1, c.bolsa.mes);
   }
   if (paineis.includes('munic')) fechadas([...(c.munic ?? []), ...(c.estadic ?? [])]);
+  if (paineis.includes('clima') && c.clima) mensal('Clima', c.clima.de * 100 + 1, c.clima.ate);
   if (paineis.includes('saude')) fechadas([...(c.sim ?? []), ...(c.sinasc ?? []), ...(c.sih ?? []), ...(c.cnes ?? []), ...(c.sinan ?? []), ...(c.siscan ?? []), ...(c.oncologia ?? []), ...(c.resp ?? []), ...(c.popSvs ?? [])]);
   return anos;
 }
@@ -597,6 +621,10 @@ export function descreverCobertura(paineis: Painel[], c: Cobertura): string[] {
   if (paineis.includes('munic') && c.munic?.length) {
     linhas.push(t(`MUNIC ${anosLista(c.munic)}: perguntas que as prefeituras respondem ao IBGE sobre a estrutura e as políticas do município (uma edição por vez; os temas se alternam)`,
       `MUNIC ${anosLista(c.munic)}: questions municipal governments answer for IBGE about their structure and policies (one edition at a time; topics rotate)`));
+  }
+  if (paineis.includes('clima') && c.clima) {
+    linhas.push(t(`Clima ${faixa(c.clima.de, Math.floor(c.clima.ate / 100))}: chuva (CHIRPS, desde 1981), temperatura, ponto de orvalho, umidade do solo, evaporação e radiação solar (ERA5-Land) por município e mês, com a normal de 1991 a 2020 (estimativas de satélite e reanálise, não de estações)`,
+      `Climate ${faixa(c.clima.de, Math.floor(c.clima.ate / 100))}: rainfall (CHIRPS, since 1981), temperature, dew point, soil moisture, evaporation and solar radiation (ERA5-Land) by municipality and month, with the 1991–2020 normal (satellite and reanalysis estimates, not station data)`));
   }
   if (paineis.includes('munic') && c.estadic?.length) {
     linhas.push(t(`ESTADIC ${anosLista(c.estadic)}: o mesmo para os 27 governos estaduais`, `ESTADIC ${anosLista(c.estadic)}: the same for the 27 state governments`));
@@ -852,6 +880,7 @@ const FONTES_TABELAS: [RegExp | ((sql: string) => boolean), () => string][] = [
     () => t('Ministério da Saúde/DATASUS: SIH (internações hospitalares do SUS por município de residência ou do hospital)', 'Ministry of Health/DATASUS: SIH (SUS hospital admissions by municipality of residence or of the hospital)')],
   [(s) => /\bsaude_municipios\b/.test(s) && /\b(populacao|pop_\w+)\b/.test(s),
     () => t('SVS/MS: estimativas de população por município, sexo e idade', 'SVS/MS: population estimates by municipality, sex and age')],
+  [/\bclima_(anual|mensal|agregado|normal)\b/, () => t('CHIRPS v3 (chuva) e ERA5-Land (demais variáveis), agregados por município', 'CHIRPS v3 (rainfall) and ERA5-Land (other variables), aggregated by municipality')],
   [/\bmunic_(agregados|respostas)\b/,
     () => t('IBGE: MUNIC (Pesquisa de Informações Básicas Municipais) e ESTADIC (Estaduais), autodeclaradas', 'IBGE: MUNIC (Municipal Basic Information Survey) and ESTADIC (State), self-reported')],
   [/\bbolsa_familia_[a-z]+/, () => t('Portal da Transparência: Bolsa Família', 'Transparency Portal: Bolsa Família')],
@@ -1788,6 +1817,7 @@ export async function executarConsulta(entrada: unknown, paineis: Painel[] = PAI
     if (paineis.includes('financas') && /\bdespesa_funcao\b/i.test(todas)) await tabelaDespesaFuncao();
     if (paineis.includes('saude') && /\bsaude_municipios\b/i.test(todas)) await tabelasSaude();
     if (paineis.includes('munic') && /\bmunic_\w+/i.test(todas)) await tabelasIaMunic();
+    if (paineis.includes('clima') && /\bclima_\w+/i.test(todas)) await tabelasIaClima();
     const reg = lerRegressao((entrada as { regressao?: unknown }).regressao);
     if (typeof reg === 'string') return { erro: reg, bloqueada: true };
     const r = reg ? await estimar(e.sql, reg, sinal) : await consultaLivre(e.sql, limite, sinal);
