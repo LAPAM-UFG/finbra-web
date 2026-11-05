@@ -8,6 +8,7 @@
  * acrescente-a a PAINEIS.
  */
 import { FINANCAS, contextoDosDados } from './sistema.js';
+import { MUNIC, contextoMunic } from './sistema_munic.js';
 import { SAUDE, contextoSaude } from './sistema_saude.js';
 import { TRABALHO, contextoTrabalho } from './sistema_trabalho.js';
 
@@ -15,6 +16,7 @@ export const PAINEIS = {
   financas: { nome: 'finanças públicas', secao: FINANCAS },
   trabalho: { nome: 'mercado de trabalho', secao: TRABALHO },
   saude: { nome: 'saúde', secao: SAUDE },
+  munic: { nome: 'gestão pública (MUNIC e ESTADIC)', secao: MUNIC },
 };
 
 const introducao = (nomes) => `Você analisa dados dos painéis do LAPAM/UFG incluídos nesta conversa: ${nomes}. Cada painel tem a sua seção abaixo, com tabelas, conceitos e regras próprios; use as regras do painel de onde vem cada número.
@@ -36,6 +38,11 @@ const REGRAS_CRUZAMENTO = [
   [['saude'], 'Município: a saúde conta pelo município de residência (de quem morreu ou da mãe); a RAIS, pelo do estabelecimento; as finanças, pelo ente que declarou. Diga isso ao relacionar indicadores de painéis diferentes.'],
   [['financas', 'saude'], 'Gasto com saúde: está no painel de finanças (função 10 – Saúde em despesa_funcao e nos indicadores; SIOPS em siops_*). Relacionar gasto e indicadores de saúde é associação: lugares com mais doentes podem gastar mais, e não o contrário; não fale em efeito do gasto.'],
   [['financas', 'trabalho'], 'Despesa com pessoal da DCA é do ente (todos os poderes, com encargos); o emprego público na RAIS é contado no município do estabelecimento e inclui as três esferas (CNAE 84 ou natureza jurídica 1xxx). Para o emprego da própria prefeitura, use a natureza jurídica municipal (1031, 1120, 1155), que só existe nos microdados.'],
+  [['munic'], 'Gestão pública (MUNIC): munic_territorio.cod e munic_respostas.cod têm 7 dígitos, o mesmo cod_ibge das finanças, da saúde e das tabelas trab_* (e cod_ibge // 10 = municipio de rais_mun e rais_vinculos). Na ESTADIC, cod é o código da UF de 2 dígitos (= cod_ibge dos estados nas finanças, com esfera "E", e uf de rais_uf). A MUNIC é uma pesquisa por edição (anos da pesquisa), não anual como a DCA e a RAIS: cruze com o exercício ou o ano da outra fonte que a pergunta pedir e diga os dois anos; não repita a resposta da MUNIC nos anos sem edição como se fosse medida naquele ano.'],
+  [['munic', 'financas'], 'Gestão pública × finanças: a MUNIC é o que a prefeitura declara sobre a própria estrutura e políticas; a DCA é o que ela declarou gastar e arrecadar. Comparar as duas é associação (por exemplo, municípios com plano diretor e receita per capita), não efeito; compare grupos pela razão dos totais e diga quantos municípios entraram de cada lado.'],
+  [['munic', 'financas'], 'População: munic_territorio.populacao serve só à faixa de porte da MUNIC; nos valores por habitante das finanças use indicadores.populacao_ibge e diga qual entrou. A faixa da MUNIC (munic_territorio.faixa) e a das finanças (faixas, pela população declarada na DCA) são classificações diferentes: não as misture.'],
+  [['munic', 'trabalho'], 'Gestão pública × trabalho: o quadro de pessoal da prefeitura na MUNIC (Recursos humanos) é o declarado pela prefeitura, por tipo de vínculo; o emprego público da RAIS é contado no estabelecimento, nos três níveis de governo. Os números não coincidem e nenhum valida o outro: diga a fonte de cada um.'],
+  [['munic', 'saude'], 'Gestão pública × saúde: a MUNIC tem perguntas sobre a estrutura de saúde do município (declaradas pela prefeitura); o CNES e o SIM/SINASC são registros administrativos. Quando as duas fontes tratarem do mesmo assunto, mostre as duas e não use uma para validar a outra.'],
   [[], 'Ao combinar números de painéis diferentes, diga de qual painel e fonte vem cada um.'],
   [[], 'Ano automático entre bases: as fontes terminam em anos diferentes (ex.: finanças até um ano, saúde até outro). Sem ano na pergunta, não use o "mais recente" de cada fonte lado a lado como se fosse o mesmo período: se a comparação exige o mesmo período, use o último ano comum a todas as fontes, com o ano no título, e diga o último ano de cada uma em recorte. Para séries, use o período comum e diga quais anos finais ficaram de fora. Se não existe período comum que sirva à pergunta (a pergunta é sobre um ano que uma fonte não cobre, ou o período comum seria curto demais), explique essa limitação na conclusão ANTES de qualquer comparação e não apresente números das fontes como se fossem do mesmo período.'],
   [[], 'Antes de cruzar, confira a chave (cod_ibge de 7 dígitos ou municipio de 6), a unicidade (uma linha por município e ano em cada lado) e as perdas do cruzamento (quantos de cada lado ficaram sem par), com o campo verificacao de consultar (juncoes e chaves): a página faz as contagens. Diga os três na resposta.'],
@@ -141,6 +148,6 @@ export function paineisDoPedido(v) {
 export function instrucoes(paineis, { manifesto, contextoTrabalho: ctxTrabalho }) {
   const nomes = paineis.map((p) => PAINEIS[p].nome).join(', ').replace(/, ([^,]*)$/, ' e $1');
   const fixo = [introducao(nomes), ...paineis.map((p) => PAINEIS[p].secao), ...(paineis.length > 1 ? [cruzamento(paineis)] : []), COMO_RESPONDER].join('\n\n');
-  const dados = paineis.map((p) => (p === 'financas' ? contextoDosDados(manifesto) : p === 'saude' ? contextoSaude(manifesto) : contextoTrabalho(ctxTrabalho)));
+  const dados = paineis.map((p) => (p === 'financas' ? contextoDosDados(manifesto) : p === 'saude' ? contextoSaude(manifesto) : p === 'munic' ? contextoMunic(manifesto) : contextoTrabalho(ctxTrabalho)));
   return [{ type: 'text', text: fixo, cache_control: { type: 'ephemeral' } }, ...dados.map((text) => ({ type: 'text', text }))];
 }

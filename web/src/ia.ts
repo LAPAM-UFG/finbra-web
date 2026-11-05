@@ -12,7 +12,7 @@
  * confere os códigos de território (conferirCodigos); lugares citados pelo nome passam pela ferramenta
  * "localizar", que usa o cadastro de entes.
  */
-import { consultaLivre, contextoTrabalhoIa, manifestoDados, tabelaDespesaFuncao, tabelaLrf, tabelasEducacaoSaude, tabelasIaTrabalho, tabelasSaude } from './dados';
+import { consultaLivre, contextoTrabalhoIa, manifestoDados, tabelaDespesaFuncao, tabelaLrf, tabelasEducacaoSaude, tabelasIaMunic, tabelasIaTrabalho, tabelasSaude } from './dados';
 import { t } from './idioma';
 import {
   competenciasNoTexto, formatarValor, periodoDasConsultas, periodoDe, registrarColunas, rotuloCompetencia, rotuloPeriodo, sqlSemTextos, tiposDoResultado,
@@ -115,13 +115,13 @@ export async function estadoIa(): Promise<EstadoIa | null> {
 }
 
 /** Painéis que a IA pode consultar (aba "Pergunte aos dados"); cada um tem tabelas e instruções próprias. */
-export type Painel = 'financas' | 'trabalho' | 'saude';
-export const PAINEIS: Painel[] = ['financas', 'trabalho', 'saude'];
+export type Painel = 'financas' | 'trabalho' | 'saude' | 'munic';
+export const PAINEIS: Painel[] = ['financas', 'trabalho', 'saude', 'munic'];
 
 export async function chamarIa(mensagens: Mensagem[], idioma: string, paineis: Painel[] = PAINEIS, sinal?: AbortSignal, modelo: EscolhaModelo = MODELO_PADRAO): Promise<RespostaIa> {
   const contexto = paineis.includes('trabalho') ? await contextoTrabalhoIa() : undefined;
   // o manifesto só é usado pelo Worker local (wrangler dev), que não tem o do R2
-  const manifesto = emLocalhost() && (paineis.includes('financas') || paineis.includes('saude')) ? await manifestoDados() : undefined;
+  const manifesto = emLocalhost() && (paineis.includes('financas') || paineis.includes('saude') || paineis.includes('munic')) ? await manifestoDados() : undefined;
   const enviar = () => fetch(`${servidor}/api/ia`, {
     method: 'POST',
     redirect: 'manual',
@@ -219,6 +219,11 @@ export function disponibilidadeNoAno(ano: number, paineis: Painel[], c: Cobertur
     if (c.resp?.length) marcar('RESP', c.resp.includes(ano), faixa(c.resp));
     if (c.popSvs?.length) marcar('população da SVS/MS', c.popSvs.includes(ano), faixa(c.popSvs));
   }
+  if (paineis.includes('munic')) {
+    const faixa = (a?: number[]) => (a?.length ? ` (${a[0]}–${a.at(-1)})` : '');
+    if (c.munic?.length) marcar('MUNIC', c.munic.includes(ano), faixa(c.munic));
+    if (c.estadic?.length) marcar('ESTADIC', c.estadic.includes(ano), faixa(c.estadic));
+  }
   return [tem.length ? `com dados nesse ano: ${tem.join('; ')}` : 'nenhuma fonte tem dados nesse ano', nao.length ? `sem dados nesse ano: ${nao.join('; ')}` : '']
     .filter(Boolean).join('. ');
 }
@@ -262,7 +267,7 @@ export type Cobertura = {
   rais: number[]; caged: { de: number; ate: number } | null; microdados: boolean; dca: number[];
   pib?: { de: number; ate: number; setorial_ate?: number } | null; siope?: number[]; siopeRemuneracao?: number[]; siops?: number[];
   lrf?: { de: number; ate: number; parciais?: number[] } | null; bolsa?: { de: number; ate: number; mes: number } | null; inss?: number[];
-  sim?: number[]; sinasc?: number[]; sih?: number[]; cnes?: number[]; sinan?: number[]; siscan?: number[]; oncologia?: number[]; resp?: number[]; popSvs?: number[];
+  sim?: number[]; sinasc?: number[]; sih?: number[]; cnes?: number[]; sinan?: number[]; siscan?: number[]; oncologia?: number[]; resp?: number[]; popSvs?: number[]; munic?: number[]; estadic?: number[];
 };
 /** Sugestão: título curto, a pergunta completa (que vai para o campo), o tema e as bases que a pergunta usa. */
 export type Sugestao = { titulo: string; tema: string; texto: string; paineis: Painel[]; nota?: string };
@@ -310,12 +315,14 @@ export function sugestoes(paineis: Painel[], tr: Territorio, c: Cobertura, ano: 
   const trabalho = paineis.includes('trabalho') && c.rais.length > 0;
   const financas = paineis.includes('financas') && c.dca.length > 0;
   const saude = paineis.includes('saude') && (c.sim?.length ?? 0) > 0;
+  const munic = paineis.includes('munic') && (c.munic?.length ?? 0) > 0;
   const ult = (anos: number[]) => (ano && anos.includes(ano) ? ano : anos.at(-1)!);
   const recuo = (anos: number[], n: number) => Math.max(anos[0], ult(anos) - n);
   const f = formas(tr);
   const uf = tr.tipo === 'municipio' ? formas({ tipo: 'uf', uf: tr.uf, nome: nomeDaUf(tr.uf), cod: 0 }) : null;
   const tema = {
     trabalho: t('Mercado de trabalho', 'Labour market'), financas: t('Finanças públicas', 'Public finances'), saude: t('Saúde', 'Health'),
+    munic: t('Gestão pública', 'Public management'),
     cruzamento: t('Entre bases', 'Across datasets'),
   };
   const grupos: Sugestao[][] = [];
@@ -395,6 +402,18 @@ export function sugestoes(paineis: Painel[], tr: Territorio, c: Cobertura, ano: 
         texto: t(`Como mudaram as proporções de partos cesáreos e de mães adolescentes ${f.em} de ${a10} a ${a}?`,
           `How did the shares of caesarean births and adolescent mothers ${f.em} change from ${a10} to ${a}?`) },
     ].map((x) => ({ ...x, tema: tema.saude, paineis: ['saude'] as Painel[] })));
+  }
+  if (munic) {
+    grupos.push([
+      {
+        titulo: t('Plano diretor por porte', 'Master plan by size'),
+        texto: t('Qual a proporção de municípios com plano diretor, por faixa de porte, na edição mais recente da MUNIC em que a pergunta foi feita?', 'What share of municipalities have a master plan, by size bracket, in the most recent MUNIC edition that asked it?'),
+      },
+      {
+        titulo: t('Plano diretor ao longo das edições', 'Master plan across editions'),
+        texto: t('Como mudou, entre as edições da MUNIC, a proporção de municípios com plano diretor?', 'How did the share of municipalities with a master plan change across MUNIC editions?'),
+      },
+    ].map((x) => ({ ...x, tema: tema.munic, paineis: ['munic'] as Painel[] })));
   }
   const cruzadas: Sugestao[] = [];
   if (financas && saude && !trabalho) {
@@ -481,6 +500,7 @@ export function coberturaPorAno(c: Cobertura, paineis: Painel[]): Map<number, { 
     if (c.lrf) fechadas(faixaDe(c.lrf.de, c.lrf.ate));
     if (c.bolsa) mensal('Bolsa Família', c.bolsa.de * 100 + 1, c.bolsa.mes);
   }
+  if (paineis.includes('munic')) fechadas([...(c.munic ?? []), ...(c.estadic ?? [])]);
   if (paineis.includes('saude')) fechadas([...(c.sim ?? []), ...(c.sinasc ?? []), ...(c.sih ?? []), ...(c.cnes ?? []), ...(c.sinan ?? []), ...(c.siscan ?? []), ...(c.oncologia ?? []), ...(c.resp ?? []), ...(c.popSvs ?? [])]);
   return anos;
 }
@@ -573,6 +593,13 @@ export function descreverCobertura(paineis: Painel[], c: Cobertura): string[] {
   if (paineis.includes('saude') && c.popSvs?.length) {
     linhas.push(t(`População da SVS/MS ${faixa(c.popSvs[0], c.popSvs.at(-1)!)}: estimativas por município, sexo e idade, denominador das taxas de saúde`,
       `SVS/MS population ${faixa(c.popSvs[0], c.popSvs.at(-1)!)}: estimates by municipality, sex and age, the denominator of health rates`));
+  }
+  if (paineis.includes('munic') && c.munic?.length) {
+    linhas.push(t(`MUNIC ${anosLista(c.munic)}: perguntas que as prefeituras respondem ao IBGE sobre a estrutura e as políticas do município (uma edição por vez; os temas se alternam)`,
+      `MUNIC ${anosLista(c.munic)}: questions municipal governments answer for IBGE about their structure and policies (one edition at a time; topics rotate)`));
+  }
+  if (paineis.includes('munic') && c.estadic?.length) {
+    linhas.push(t(`ESTADIC ${anosLista(c.estadic)}: o mesmo para os 27 governos estaduais`, `ESTADIC ${anosLista(c.estadic)}: the same for the 27 state governments`));
   }
   return linhas;
 }
@@ -825,6 +852,8 @@ const FONTES_TABELAS: [RegExp | ((sql: string) => boolean), () => string][] = [
     () => t('Ministério da Saúde/DATASUS: SIH (internações hospitalares do SUS por município de residência ou do hospital)', 'Ministry of Health/DATASUS: SIH (SUS hospital admissions by municipality of residence or of the hospital)')],
   [(s) => /\bsaude_municipios\b/.test(s) && /\b(populacao|pop_\w+)\b/.test(s),
     () => t('SVS/MS: estimativas de população por município, sexo e idade', 'SVS/MS: population estimates by municipality, sex and age')],
+  [/\bmunic_(agregados|respostas)\b/,
+    () => t('IBGE: MUNIC (Pesquisa de Informações Básicas Municipais) e ESTADIC (Estaduais), autodeclaradas', 'IBGE: MUNIC (Municipal Basic Information Survey) and ESTADIC (State), self-reported')],
   [/\bbolsa_familia_[a-z]+/, () => t('Portal da Transparência: Bolsa Família', 'Transparency Portal: Bolsa Família')],
   [/\binss_[a-z]+/, () => t('Previdência Social: benefícios do INSS', 'Social Security: INSS benefits')],
   [/\bipca\b/, () => t('IPCA (Banco Central, SGS 433)', 'IPCA (Central Bank of Brazil, SGS 433)')],
@@ -1758,6 +1787,7 @@ export async function executarConsulta(entrada: unknown, paineis: Painel[] = PAI
     if (paineis.includes('financas') && /\bsiop[es]_/i.test(todas)) await tabelasEducacaoSaude();
     if (paineis.includes('financas') && /\bdespesa_funcao\b/i.test(todas)) await tabelaDespesaFuncao();
     if (paineis.includes('saude') && /\bsaude_municipios\b/i.test(todas)) await tabelasSaude();
+    if (paineis.includes('munic') && /\bmunic_\w+/i.test(todas)) await tabelasIaMunic();
     const reg = lerRegressao((entrada as { regressao?: unknown }).regressao);
     if (typeof reg === 'string') return { erro: reg, bloqueada: true };
     const r = reg ? await estimar(e.sql, reg, sinal) : await consultaLivre(e.sql, limite, sinal);

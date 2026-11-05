@@ -8,6 +8,7 @@ import { DespesasEvolucao, DespesasNaturezaEvolucao, DespesasNaturezaVisaoGeral,
 import { Fpm, FpmFaixas } from './pages/Fpm';
 import { Ia } from './pages/Ia';
 import { MunicEvolucao, MunicMetodologia, MunicTerritorio, MunicVisaoGeral } from './pages/Munic';
+import { ClimaMetodologia, ClimaRankings, ClimaVisaoGeral } from './pages/Clima';
 import { LrfDemonstrativos, LrfIndicadores } from './pages/Lrf';
 import { Deflatores, Qualidade } from './pages/Metodologia';
 import { Rankings } from './pages/Rankings';
@@ -42,8 +43,7 @@ const menu = (): [string, [string, string][]][] => [
 
 /** Área de mercado de trabalho (RAIS e Novo CAGED), em /trabalho. */
 const menuTrabalho = (): [string, [string, string][]][] => [
-  ['RAIS', [['/trabalho', t('Visão geral', 'Overview')], ['/trabalho/evolucao', t('Evolução', 'Trends')], ['/trabalho/rankings', 'Rankings'],
-    ['/trabalho/consulta', t('Consulta personalizada', 'Custom query')], ['/trabalho/perfil', t('Perfil da ocupação', 'Occupation profile')]]],
+  ['RAIS', [['/trabalho', t('Visão geral', 'Overview')], ['/trabalho/evolucao', t('Evolução', 'Trends')], ['/trabalho/rankings', 'Rankings']]],
   ['CAGED', [['/trabalho/caged', t('Empregos mês a mês', 'Jobs month by month')]]],
   [t('Metodologia', 'Methodology'), [['/trabalho/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
 ];
@@ -62,13 +62,19 @@ const menuMunic = (): [string, [string, string][]][] => [
   [t('Metodologia', 'Methodology'), [['/munic/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
 ];
 
+/** Área de clima (chuva por município e mês, CHIRPS), em /clima. */
+const menuClima = (): [string, [string, string][]][] => [
+  [t('Chuva', 'Rainfall'), [['/clima', t('Visão geral', 'Overview')], ['/clima/rankings', 'Rankings']]],
+  [t('Metodologia', 'Methodology'), [['/clima/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
+];
+
 /** Aba geral da IA (/ia), que consulta os painéis marcados na página. */
 // a aba da IA tem uma página só: a lateral fica para o histórico de conversas (o nome já está no topo e nas abas)
 const menuIa = (): [string, [string, string][]][] => [];
 
-type Area = 'financas' | 'trabalho' | 'saude' | 'munic' | 'ia';
+type Area = 'financas' | 'trabalho' | 'saude' | 'munic' | 'clima' | 'ia';
 const areaDe = (pathname: string): Area => (pathname === '/ia' ? 'ia' : pathname.startsWith('/trabalho') ? 'trabalho'
-  : pathname.startsWith('/datasus') ? 'saude' : pathname.startsWith('/munic') ? 'munic' : 'financas');
+  : pathname.startsWith('/datasus') ? 'saude' : pathname.startsWith('/munic') ? 'munic' : pathname.startsWith('/clima') ? 'clima' : 'financas');
 
 function lerTema(): string | null {
   try {
@@ -125,7 +131,7 @@ export function App() {
   const atuais = new URLSearchParams(search);
   const filtros = new URLSearchParams();
   // o painel da MUNIC tem escolhas próprias (ano é a edição): nada dele vai para os outros painéis, nem o contrário
-  for (const k of ['ano', 'uf', 'ente']) if (area !== 'munic' && atuais.get(k)) filtros.set(k, atuais.get(k)!);
+  for (const k of ['ano', 'uf', 'ente']) if (area !== 'munic' && area !== 'clima' && atuais.get(k)) filtros.set(k, atuais.get(k)!);
   // dentro da área de trabalho o recorte (ocupação, atividade, perfil, agrupamentos) segue entre as páginas
   const dentro = new URLSearchParams(filtros);
   if (area === 'trabalho') for (const k of PARAMS_TRABALHO) if (atuais.get(k)) dentro.set(k, atuais.get(k)!);
@@ -134,7 +140,7 @@ export function App() {
   // a aba da IA abre com o tema da área de onde se veio (só ordena os exemplos): território e ano dos filtros do painel não
   // vão junto, porque a pergunta diz o recorte e a IA escolhe as fontes
   const filtrosIa = new URLSearchParams(area === 'ia' ? atuais : undefined);
-  if (area !== 'ia' && area !== 'munic') filtrosIa.set('paineis', area);
+  if (area !== 'ia' && area !== 'munic' && area !== 'clima') filtrosIa.set('paineis', area);
   const buscaIa = `?${filtrosIa}`;
 
   return (
@@ -147,6 +153,7 @@ export function App() {
           trabalho: t('Mercado de trabalho · RAIS e CAGED', 'Labour market · RAIS and CAGED'),
           saude: t('Saúde · DATASUS', 'Health · DATASUS'),
           munic: t('Gestão pública · MUNIC e ESTADIC', 'Public management · MUNIC and ESTADIC'),
+          clima: t('Clima · CHIRPS', 'Climate · CHIRPS'),
           ia: t('Pergunte aos dados · LAPAM/UFG', 'Ask the data · LAPAM/UFG'),
         }[area]}</h1>
         <nav className="areas" aria-label={t('Áreas', 'Areas')}>
@@ -155,6 +162,7 @@ export function App() {
           <NavLink to={{ pathname: '/trabalho', search: busca }} className={area === 'trabalho' ? 'ativo' : ''}>{t('Mercado de trabalho', 'Labour market')}</NavLink>
           <NavLink to={{ pathname: '/datasus', search: busca }} className={area === 'saude' ? 'ativo' : ''}>{t('Saúde', 'Health')}</NavLink>
           <NavLink to={{ pathname: '/munic', search: '' }} className={area === 'munic' ? 'ativo' : ''}>{t('Gestão pública', 'Public management')}</NavLink>
+          <NavLink to={{ pathname: '/clima', search: '' }} className={area === 'clima' ? 'ativo' : ''}>{t('Clima', 'Climate')}</NavLink>
         </nav>
         <span className="espaco" />
         <AlternarIdioma />
@@ -162,11 +170,11 @@ export function App() {
       </header>
       <div className={`casca${area === 'ia' ? ' casca-ia' : ''}`}>
         <nav className={`menu${area === 'ia' ? ' menu-ia' : ''}`} aria-label={t('Páginas', 'Pages')}>
-          {({ financas: menu, trabalho: menuTrabalho, saude: menuSaude, munic: menuMunic, ia: menuIa }[area])().map(([grupo, itens]) => (
+          {({ financas: menu, trabalho: menuTrabalho, saude: menuSaude, munic: menuMunic, clima: menuClima, ia: menuIa }[area])().map(([grupo, itens]) => (
             <div key={grupo} style={{ display: 'contents' }}>
               <h4>{grupo}</h4>
               {itens.map(([para, rotulo]) => (
-                <NavLink key={para} to={{ pathname: para, search: area === 'ia' ? buscaIa : area === 'munic' ? '' : buscaArea }} end className={({ isActive }) => (isActive ? 'ativo' : '')}>
+                <NavLink key={para} to={{ pathname: para, search: area === 'ia' ? buscaIa : area === 'munic' || area === 'clima' ? '' : buscaArea }} end className={({ isActive }) => (isActive ? 'ativo' : '')}>
                   {rotulo}
                 </NavLink>
               ))}
@@ -212,6 +220,9 @@ export function App() {
               <Route path="/munic/evolucao" element={<MunicEvolucao />} />
               <Route path="/munic/territorio" element={<MunicTerritorio />} />
               <Route path="/munic/metodologia" element={<MunicMetodologia />} />
+              <Route path="/clima" element={<ClimaVisaoGeral />} />
+              <Route path="/clima/rankings" element={<ClimaRankings />} />
+              <Route path="/clima/metodologia" element={<ClimaMetodologia />} />
               <Route path="/deflatores" element={<Deflatores />} />
               <Route path="/qualidade" element={<Qualidade />} />
               <Route path="*" element={<p className="vazio">{t('Página não encontrada.', 'Page not found.')}</p>} />

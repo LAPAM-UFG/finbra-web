@@ -56,6 +56,7 @@ type Paineis = readonly string[];
 const comTrabalho = (p: Paineis) => p.includes('trabalho');
 const comFinancas = (p: Paineis) => p.includes('financas');
 const comSaude = (p: Paineis) => p.includes('saude');
+const comMunic = (p: Paineis) => p.includes('munic');
 /** "a, b e c". */
 const emLista = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} e ${xs.at(-1)}` : xs.join(''));
 
@@ -65,6 +66,7 @@ export function codigosDoMunicipio(cod: number, paineis: Paineis): string {
     ...(comSaude(paineis) ? ['saude_municipios'] : []), 'entes', ...(comFinancas(paineis) ? ['indicadores', 'alertas', 'lrf'] : [])];
   const partes = [`cod_ibge = ${cod} (7 dígitos) em ${emLista(tabelas7)}`];
   if (comTrabalho(paineis)) partes.push(`municipio = ${Math.floor(cod / 10)} (6 dígitos) só em rais_mun e rais_vinculos`);
+  if (comMunic(paineis)) partes.push(`cod = ${cod} (7 dígitos) em munic_territorio e munic_respostas (MUNIC)`);
   return `Códigos: ${partes.join('; ')}.`;
 }
 
@@ -77,6 +79,7 @@ export function codigosDaUf(uf: string, cod: number, paineis: Paineis): string {
   }
   if (comFinancas(paineis)) partes.push(`governo estadual: cod_ibge = ${cod} (esfera 'E'); municípios da UF: uf = '${uf}' com esfera 'M'`);
   if (comSaude(paineis)) partes.push(`uf = '${uf}' (sigla) em saude_municipios (inclui as linhas de município ignorado da UF)`);
+  if (comMunic(paineis)) partes.push(`uf = '${uf}' (sigla) em munic_territorio; grupo = '${uf}' no corte 'uf' de munic_agregados; na ESTADIC, cod = ${cod} em munic_territorio e munic_respostas (pesquisa = 'estadic')`);
   return `Códigos: ${partes.join('; ')}.`;
 }
 
@@ -86,6 +89,7 @@ export function codigosDoDf(paineis: Paineis): string {
   if (comFinancas(paineis)) partes.push("nas finanças, cod_ibge = 53 (esfera 'D')");
   if (comTrabalho(paineis)) partes.push("no trabalho, Brasília: cod_ibge = 5300108 nas tabelas trab_*, municipio = 530010 em rais_mun e rais_vinculos, uf = 53 ou uf_sigla = 'DF' nas tabelas rais_*, escopo = 'DF' nas tabelas por UF");
   if (comSaude(paineis)) partes.push("na saúde, o DF inteiro é Brasília: cod_ibge = 5300108 (ou uf = 'DF') em saude_municipios");
+  if (comMunic(paineis)) partes.push("na gestão pública, Brasília é o município 5300108 (cod em munic_territorio e munic_respostas, pesquisa = 'munic'); o governo do DF, na ESTADIC (pesquisa = 'estadic'), é cod = 53; uf = 'DF' / grupo = 'DF' nos cortes por UF");
   return `Códigos: ${partes.join('; ')}.`;
 }
 
@@ -249,6 +253,19 @@ export function conferirCodigos(sql: string, cad: Cadastro): string | null {
   }
   if (/\b(?:\w+\.)?nome\s*\)*\s*(?:not\s+)?(?:i?like|similar\s+to|~~\*?|=)\s*'|(?:lower|upper|strip_accents)\s*\(\s*(?:(?:lower|upper|strip_accents)\s*\(\s*)?(?:\w+\.)?nome\b/.test(s)) {
     problemas.push('para achar um município ou uma UF pelo nome, use a ferramenta localizar; nas consultas, filtre pelo código (cod_ibge, municipio ou uf).');
+  }
+  // gestão pública: a coluna é cod (7 dígitos na MUNIC, 2 na ESTADIC), não cod_ibge
+  if (/\bmunic_(territorio|respostas)\b/.test(s)) {
+    for (const m of s.matchAll(/\b(?:\w+\.)?cod\s*(?:=|<>|!=)\s*(\d+)\b/g)) {
+      const n = Number(m[1]);
+      const digitos = m[1].length;
+      if (digitos === 6) {
+        const e = cad.porRais.get(n);
+        problemas.push(e ? `cod tem 7 dígitos na MUNIC; ${n} é o código de 6 dígitos de ${descrever(e)}: use cod = ${e.cod}.` : `cod = ${n}: o código de município tem 7 dígitos e ${n} não corresponde a nenhum município.`);
+      } else if (digitos === 7) {
+        if (!cad.porCodigo.has(n)) problemas.push(`cod = ${n} não existe no cadastro de municípios: use a ferramenta localizar.`);
+      } else if (digitos !== 2) problemas.push(`cod = ${n}: na MUNIC o município tem 7 dígitos (ex.: 4101101) e, na ESTADIC, a UF tem 2 (ex.: 41).`);
+    }
   }
   return problemas.length ? [...new Set(problemas)].join(' ') : null;
 }

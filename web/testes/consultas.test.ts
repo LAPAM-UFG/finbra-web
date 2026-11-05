@@ -3555,3 +3555,64 @@ describe('MUNIC e ESTADIC (IBGE)', () => {
     assert.equal((await rota<L[]>('munic_busca', { pesquisa: 'munic', q: 'PLANO DIRETOR' })).length, grupos.length);
   });
 });
+
+describe('IA: gestão pública (MUNIC e ESTADIC)', () => {
+  const semMunic = !existsSync(`${DATA}/gold/munic/respostas.parquet`);
+  const consulta = async (sql: string, paineis: Parameters<typeof executarConsulta>[1] = ['munic']) => {
+    const r = await executarConsulta({ sql }, paineis);
+    assert.ok(!('erro' in r), 'erro' in r ? r.erro : '');
+    return r as Extract<typeof r, { linhas: unknown[][] }>;
+  };
+
+  test('o painel entra na lista de painéis da IA e tem cobertura, fonte e sugestões próprias', () => {
+    assert.ok(PAINEIS.includes('munic'));
+    const cob = { rais: [], caged: null, microdados: false, dca: [], munic: [2004, 2024], estadic: [2012, 2024] } as Parameters<typeof descreverCobertura>[1];
+    assert.match(descreverCobertura(['munic'], cob).join('\n'), /MUNIC 2004, 2024[\s\S]*ESTADIC 2012, 2024/);
+    assert.match(disponibilidadeNoAno(2010, ['munic'], cob), /sem dados nesse ano: MUNIC \(2004–2024\); ESTADIC \(2012–2024\)/);
+    assert.match(disponibilidadeNoAno(2024, ['munic'], cob), /com dados nesse ano: MUNIC/);
+    assert.deepEqual(fontesConsultadas(['SELECT * FROM munic_agregados WHERE var = 1']).length, 1);
+    assert.ok(sugestoes(['munic'], { tipo: 'brasil' }, cob, null).every((s) => s.paineis.join() === 'munic'));
+  });
+
+  test('código no formato errado em munic_respostas é barrado antes de rodar', async () => {
+    const cad = await cadastro();
+    assert.match(conferirCodigos(`SELECT * FROM munic_respostas WHERE pesquisa = 'munic' AND ano = 2024 AND var = 'x' AND cod = ${ANDIRA / 10 | 0}`, cad) ?? '', /cod tem 7 dígitos/);
+    assert.match(conferirCodigos('SELECT * FROM munic_respostas WHERE cod = 4101102', cad) ?? '', /não existe/);
+    assert.equal(conferirCodigos(`SELECT * FROM munic_respostas WHERE cod = ${ANDIRA}`, cad), null);
+    // na ESTADIC o código da UF tem 2 dígitos
+    assert.equal(conferirCodigos("SELECT * FROM munic_respostas WHERE pesquisa = 'estadic' AND cod = 52", cad), null);
+    assert.match(codigosDoMunicipio(ANDIRA, ['munic']), /cod = 4101101 \(7 dígitos\) em munic_territorio e munic_respostas/);
+  });
+
+  test('catálogo, agregados e respostas respondem pela IA e concordam entre si', { skip: semMunic }, async () => {
+    // a pergunta "Plano diretor - existência" ligada entre as edições (munic_comparaveis)
+    const ligadas = await consulta(`SELECT c.ano, c.var, c.rotulo FROM munic_comparaveis c WHERE c.pesquisa = 'munic' AND c.grupo = (
+        SELECT grupo FROM munic_comparaveis WHERE pesquisa = 'munic' AND strip_accents(lower(rotulo)) LIKE 'plano diretor - existencia%' GROUP BY grupo ORDER BY count(DISTINCT ano) DESC LIMIT 1) ORDER BY c.ano`);
+    assert.ok(ligadas.linhas.length >= 2, 'o plano diretor deveria existir em mais de uma edição');
+    const [ano, v] = [Number(ligadas.linhas.at(-1)![0]), String(ligadas.linhas.at(-1)![1])];
+    // percentual de Sim entre as válidas, no Brasil, pelos agregados
+    const agr = await consulta(`SELECT sum(n) FILTER (WHERE valor_txt = 'Sim') AS sim, sum(n) FILTER (WHERE valida) AS validas
+      FROM munic_agregados WHERE pesquisa = 'munic' AND ano = ${ano} AND var = '${v}' AND corte = 'brasil'`);
+    // o mesmo número contado nas respostas município a município
+    const resp = await consulta(`SELECT count(*) FILTER (WHERE valor_txt = 'Sim') AS sim, count(*) FILTER (WHERE valida) AS validas
+      FROM munic_respostas WHERE pesquisa = 'munic' AND ano = ${ano} AND var = '${v}'`);
+    assert.deepEqual(agr.linhas[0], resp.linhas[0]);
+    assert.ok(Number(agr.linhas[0][0]) > 0 && Number(agr.linhas[0][1]) > Number(agr.linhas[0][0]));
+    // o catálogo diz o mesmo número de respostas válidas
+    const cat = await consulta(`SELECT n_validas FROM munic_catalogo WHERE pesquisa = 'munic' AND ano = ${ano} AND var = '${v}'`);
+    assert.equal(Number(cat.linhas[0][0]), Number(agr.linhas[0][1]));
+    // por faixa de porte: as faixas somam o Brasil, menos os sem faixa (Noronha)
+    const faixas = await consulta(`SELECT sum(n) FROM munic_agregados WHERE pesquisa = 'munic' AND ano = ${ano} AND var = '${v}' AND corte = 'faixa' AND valida`);
+    assert.ok(Number(agr.linhas[0][1]) - Number(faixas.linhas[0][0]) <= 1);
+  });
+
+  test('as visões da ESTADIC e o cruzamento com as finanças pelo código funcionam na mesma conversa', { skip: semMunic }, async () => {
+    const est = await consulta("SELECT count(DISTINCT cod) AS ufs FROM munic_territorio WHERE pesquisa = 'estadic' AND ano = 2024");
+    assert.equal(Number(est.linhas[0][0]), 27);
+    // município da MUNIC × cadastro das finanças: a chave é cod = cod_ibge (7 dígitos)
+    const par = await consulta(`SELECT count(*) AS n, count(e.cod_ibge) AS com_par FROM munic_territorio t LEFT JOIN entes e ON e.cod_ibge = t.cod
+      WHERE t.pesquisa = 'munic' AND t.ano = 2024`, ['munic', 'financas']);
+    assert.equal(Number(par.linhas[0][0]), 5570);
+    assert.ok(Number(par.linhas[0][1]) >= 5560, `municípios sem par no cadastro: ${Number(par.linhas[0][0]) - Number(par.linhas[0][1])}`);
+  });
+});

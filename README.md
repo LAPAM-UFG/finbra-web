@@ -218,6 +218,23 @@ estaduais (ESTADIC, 10 edições: 2012–2024). Só o bloco de recursos humanos 
 | Respostas sem valor | "Não aplicável", "Não informou", "Recusa" e "-" ficam na base com `valida = false` e fora da base dos percentuais; célula vazia não vira linha (nunca zero) |
 | Faixa de porte | uma regra só em todas as edições: a população da edição (SVS/MS do ano mais próximo, ou a que a própria base traz nas recentes) nas faixas do IBGE |
 
+"Pergunte aos dados" (`/ia`) tem o painel `munic`: a seção das instruções está em `worker/src/sistema_munic.js` e as tabelas
+(`munic_catalogo`, `munic_territorio`, `munic_comparaveis` em memória; `munic_agregados` e `munic_respostas` lidas por Range)
+são preparadas no navegador só quando uma consulta as usa (`tabelasIaMunic` em `web/src/dados.ts`).
+
+### Clima (chuva por município e mês, CHIRPS)
+
+Painel próprio em `/clima` (Visão geral, Rankings e Metodologia), sem filtros dos outros painéis. Chuva mensal do CHIRPS v3
+(Climate Hazards Center, grade de 0,05°, 1981 em diante) agregada por município; temperatura e outras variáveis (ERA5-Land)
+ainda não estão publicadas.
+
+| | |
+|---|---|
+| Download | `python pipeline/clima_baixar.py` grava em `E:/finbra/brutos/clima` (`chirps/`, 549 arquivos de ~4 MB, e `malha/`, a malha municipal do IBGE 2022). O servidor do CHC responde 429 com muitas conexões: o script usa 2 e retoma de onde parou |
+| Processamento | `pipeline/clima.py chirps` (precisa de `rasterio` e `geopandas`) rasteriza a malha numa grade 5 vezes mais fina e pondera cada pixel pela fração do município; `pipeline/clima.py gold` gera `gold/clima/` (`mensal`, `anual`, `normal`, `agregado`, `territorio`, `catalogo`) e a fonte `clima` do manifesto |
+| Regras | anos só com os 12 meses; normal 1991–2020 (mínimo de 25 anos); Brasil e UF ponderados pela área; município sem pixel com dado fica sem linha (Fernando de Noronha, fora da grade) |
+| R2 | para subir só o clima, use uma pasta temporária com `gold/clima` e o manifesto e `r2.py enviar --raiz <pasta> --camadas gold` (o `enviar` normal sobe tudo o que mudou; nunca use `--limpar` com `--raiz`) |
+
 ## Publicação do site
 
 Workflow **Publicar site** (`.github/workflows/publicar-site.yml`): a cada push na `main` que altere

@@ -13,6 +13,7 @@ import { podeConferir } from '../src/conferencia.js';
 import { limparResumo, rotaConversas } from '../src/conversas.js';
 import { instrucoes, paineisDoPedido } from '../src/sistema_geral.js';
 import { contextoDosDados } from '../src/sistema.js';
+import { contextoMunic } from '../src/sistema_munic.js';
 
 const contexto = { type: 'text', text: 'Contexto da página nesta pergunta:\n- Território selecionado: Goiás (UF GO; código IBGE 52).' };
 const pergunta = (texto, antes = []) => ({ role: 'user', content: [...antes, contexto, { type: 'text', text: texto }] });
@@ -163,7 +164,7 @@ describe('instruções', () => {
 
   test('instruções com todas as bases: as três seções, regras de escolha de fonte e nenhuma menção a território da página', () => {
     const todas = instrucoes(paineisDoPedido(undefined), { manifesto: {}, contextoTrabalho: {} })[0].text;
-    for (const nome of ['finanças públicas', 'mercado de trabalho', 'saúde']) assert.match(todas, new RegExp(nome));
+    for (const nome of ['finanças públicas', 'mercado de trabalho', 'saúde', 'gestão pública']) assert.match(todas, new RegExp(nome));
     assert.doesNotMatch(todas, /Contexto da página|território selecionado|territ[óo]rio do contexto/i);
     assert.match(todas, /Não há bases, território nem ano escolhidos na página/);
     assert.match(todas, /Período ausente/);
@@ -172,8 +173,8 @@ describe('instruções', () => {
 
   test('painéis desconhecidos são ignorados; nenhum válido = todos', () => {
     assert.deepEqual(paineisDoPedido(['trabalho', 'x']), ['trabalho']);
-    assert.deepEqual(paineisDoPedido([]), ['financas', 'trabalho', 'saude']);
-    assert.deepEqual(paineisDoPedido('trabalho'), ['financas', 'trabalho', 'saude']);
+    assert.deepEqual(paineisDoPedido([]), ['financas', 'trabalho', 'saude', 'munic']);
+    assert.deepEqual(paineisDoPedido('trabalho'), ['financas', 'trabalho', 'saude', 'munic']);
     assert.deepEqual(paineisDoPedido(['saude', 'financas']), ['financas', 'saude']);
   });
 
@@ -194,6 +195,30 @@ describe('instruções', () => {
     assert.doesNotMatch(comFinancas, /a RAIS e o CAGED registram o DF/);
     assert.match(texto(['financas', 'trabalho', 'saude']), /conversa: finanças públicas, mercado de trabalho e saúde\./);
     assert.doesNotMatch(texto(['financas', 'trabalho']), /saude_municipios/);
+  });
+
+  test('gestão pública: seção própria, edições do manifesto e regras de cruzamento só dos painéis marcados', () => {
+    const manifesto = { gerado_em: 'x', anos: [2013, 2025], base_ipca: 2025, fontes: { munic: { anos: [2004, 2005, 2024] }, estadic: { anos: [2012, 2024] } } };
+    const texto = (p, m = manifesto) => instrucoes(p, { manifesto: m, contextoTrabalho: {} }).map((b) => b.text).join('\n');
+    const munic = texto(['munic']);
+    assert.match(munic, /# Painel de gestão pública \(MUNIC e ESTADIC\)/);
+    for (const t of ['munic_catalogo', 'munic_territorio', 'munic_comparaveis', 'munic_agregados', 'munic_respostas']) assert.match(munic, new RegExp(t));
+    assert.match(munic, /MUNIC \(municípios, 2004 a 2024\): edições com base municipal 2004, 2005, 2024/);
+    assert.match(munic, /ESTADIC \(27 UFs, 2012 a 2024\)/);
+    // as regras que protegem o número: denominador das válidas, par (ano, var), ligação automática, numéricas que são códigos
+    assert.match(munic, /valida = false e FORA do denominador/);
+    assert.match(munic, /par \(ano, var\)/);
+    assert.match(munic, /AUTOMÁTICA, pelo enunciado/);
+    assert.match(munic, /identificadores, não quantidades/);
+    assert.doesNotMatch(munic, /# Painel de finanças públicas|# Painel de saúde|# Cruzando painéis/);
+    // cruzamento: a regra de gestão pública × finanças só entra com os dois painéis
+    assert.doesNotMatch(texto(['munic', 'saude']), /Gestão pública × finanças/);
+    assert.match(texto(['munic', 'financas']), /Gestão pública × finanças/);
+    assert.match(texto(['munic', 'trabalho']), /Gestão pública × trabalho/);
+    assert.doesNotMatch(texto(['financas', 'saude']), /munic_catalogo|Gestão pública/);
+    // sem o manifesto das pesquisas, a IA é avisada em vez de supor edições
+    assert.match(contextoMunic({ fontes: {} }), /MUNIC: dados indisponíveis/);
+    assert.match(contextoMunic(null), /ESTADIC: dados indisponíveis/);
   });
 });
 

@@ -99,8 +99,6 @@ function AvisoRecorte({ pagina }: { pagina: string }) {
     <div className="aviso" role="status">
       <p>{t(`O recorte abaixo está ativo, mas ${pagina} usa as tabelas somadas por município (todos os vínculos ativos), que não têm ocupação nem os demais filtros. Os números desta página não aplicam o recorte.`,
         `The recorte below is active, but ${pagina} uses tables summed by municipality (all active jobs), which have no occupation or the other filters. The numbers on this page do not apply the recorte.`)}{' '}
-        <Link to={`/trabalho/consulta${search}`}>{t('Consulta com o recorte', 'Query with the recorte')}</Link> ·{' '}
-        <Link to={`/trabalho/perfil${search}`}>{t('Perfil da ocupação', 'Occupation profile')}</Link> ·{' '}
         <Link to={`/trabalho/evolucao${search}`}>{t('Evolução do recorte', 'Recorte over time')}</Link></p>
       <EtiquetasRecorte recorte={recorte} definir={definir} />
     </div>

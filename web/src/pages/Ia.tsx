@@ -36,6 +36,7 @@ const NOMES_PAINEIS = (): Record<Painel, string> => ({
   financas: t('Finanças públicas', 'Public finances'),
   trabalho: t('Mercado de trabalho', 'Labour market'),
   saude: t('Saúde', 'Health'),
+  munic: t('Gestão pública', 'Public management'),
 });
 
 type ItemConsulta = Extract<ItemTurno, { tipo: 'consulta' }>;
@@ -124,7 +125,7 @@ function coberturaDe(meta: Meta, microdados: boolean): Cobertura {
     siope: anos(f.siope?.anos), siopeRemuneracao: anos(f.siope?.remuneracao), siops: anos(f.siops?.anos),
     lrf: par(f.siconfi_lrf?.anos) && { ...par(f.siconfi_lrf?.anos)!, parciais: anos(f.siconfi_lrf?.parciais) }, bolsa: bolsa && { ...bolsa, mes: Number(f.bolsa_familia?.ultimo_mes) || bolsa.ate * 100 + 12 },
     inss: anos(f.inss?.exercicios),
-    sim: anos(f.sim?.anos), sinasc: anos(f.sinasc?.anos), sih: anos(f.sih?.anos), cnes: anos(f.cnes?.anos), sinan: anos(f.sinan?.anos), siscan: anos(f.siscan?.anos), oncologia: anos(f.oncologia?.anos), resp: anos(f.resp?.anos), popSvs: anos(f.populacao_svs?.anos),
+    sim: anos(f.sim?.anos), sinasc: anos(f.sinasc?.anos), sih: anos(f.sih?.anos), cnes: anos(f.cnes?.anos), sinan: anos(f.sinan?.anos), siscan: anos(f.siscan?.anos), oncologia: anos(f.oncologia?.anos), resp: anos(f.resp?.anos), popSvs: anos(f.populacao_svs?.anos), munic: anos(f.munic?.anos), estadic: anos(f.estadic?.anos),
   };
 }
 
@@ -144,7 +145,7 @@ const recorteEfetivo = (p?: RespostaPronta | null) => (p
 
 /** Temas dos painéis marcados, no subtítulo ("finanças, emprego e saúde"). */
 const TEMAS = (): Record<Painel, string> => ({
-  financas: t('finanças', 'public finances'), trabalho: t('emprego', 'employment'), saude: t('saúde', 'health'),
+  financas: t('finanças', 'public finances'), trabalho: t('emprego', 'employment'), saude: t('saúde', 'health'), munic: t('gestão pública', 'public management'),
 });
 const subtitulo = (p: Painel[]) => {
   const temas = p.map((x) => TEMAS()[x]).join(', ').replace(/, ([^,]*)$/, t(' e $1', ' and $1'));
@@ -157,6 +158,9 @@ const descricao = (p: Painel[]) => (p.length > 1
   : p[0] === 'trabalho'
     ? t('Pergunte em linguagem natural sobre emprego formal, remuneração, setores, ocupações, afastamentos e movimentações. A IA consulta a RAIS e o Novo CAGED aqui no seu navegador, faz os cálculos com SQL e explica o resultado, com as consultas à vista para conferência.',
       'Ask in plain language about formal employment, pay, sectors, occupations, leave and job flows. The AI queries RAIS and New CAGED here in your browser, does the calculations in SQL and explains the result, with the queries in view for checking.')
+    : p[0] === 'munic'
+      ? t('Pergunte em linguagem natural sobre a gestão das prefeituras e dos governos estaduais: estrutura administrativa, conselhos, planos e políticas de saúde, educação, habitação, meio ambiente, segurança e tecnologia. A IA consulta a MUNIC e a ESTADIC, do IBGE, aqui no seu navegador, faz os cálculos com SQL e explica o resultado, com as consultas à vista para conferência.',
+        'Ask in plain language about how municipal and state governments are run: administrative structure, councils, plans and policies on health, education, housing, environment, security and technology. The AI queries IBGE’s MUNIC and ESTADIC here in your browser, does the calculations in SQL and explains the result, with the queries in view for checking.')
     : p[0] === 'saude'
       ? t('Pergunte em linguagem natural sobre mortalidade, causas de morte, nascimentos, internações hospitalares do SUS, a rede de saúde (leitos, médicos, estabelecimentos), agravos como dengue e o controle do câncer (exames de rastreamento e diagnósticos). A IA consulta o SIM, o SINASC, o SIH, o CNES, o SINAN, o SISCAN, o Painel de Oncologia, o RESP e a população da SVS/MS aqui no seu navegador, faz os cálculos com SQL e explica o resultado, com as consultas à vista para conferência.',
         'Ask in plain language about mortality, causes of death, births, SUS hospital admissions, the health network (beds, physicians, facilities), diseases such as dengue and cancer control (screening tests and diagnoses). The AI queries SIM, SINASC, SIH, CNES, SINAN, SISCAN, the Oncology Panel, RESP and the SVS/MS population here in your browser, does the calculations in SQL and explains the result, with the queries in view for checking.')
@@ -167,6 +171,7 @@ const FONTES = (): Record<Painel, string> => ({
   financas: t('finanças públicas (SICONFI/Tesouro Nacional, IBGE, Banco Central, Portal da Transparência, Previdência)', 'public finances (SICONFI/National Treasury, IBGE, Central Bank, Transparency Portal, Social Security)'),
   trabalho: t('mercado de trabalho (RAIS e Novo CAGED, Ministério do Trabalho e Emprego)', 'labour market (RAIS and New CAGED, Ministry of Labour and Employment)'),
   saude: t('saúde (SIM, SINASC, SIH, CNES, SINAN, SISCAN, Painel de Oncologia e RESP, Ministério da Saúde/DATASUS; população da SVS/MS)', 'health (SIM, SINASC, SIH, CNES, SINAN, SISCAN, Oncology Panel and RESP, Ministry of Health/DATASUS; SVS/MS population)'),
+  munic: t('gestão pública (MUNIC e ESTADIC, IBGE)', 'public management (MUNIC and ESTADIC, IBGE)'),
 });
 const fonteIa = (paineis: Painel[]) => t(
   `Painéis LAPAM/UFG: ${paineis.map((p) => FONTES()[p]).join('; ')}. Respostas e consultas geradas por IA (Claude, da Anthropic): confira antes de usar.`,
