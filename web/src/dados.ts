@@ -2157,6 +2157,16 @@ export function tabelasIaTrabalho() {
  * Nos testes há uma conexão só.
  */
 let conexaoDaIa: Promise<duckdb.AsyncDuckDBConnection> | null = null;
+
+/**
+ * Larga a conexão da IA depois de uma consulta cancelada ou estourada: se o DuckDB estiver preso numa leitura de rede,
+ * a pergunta seguinte abre outra conexão em vez de entrar na fila atrás dela. Pede também que a consulta pare.
+ */
+export function abandonarConsultaIa() {
+  const antiga = conexaoDaIa;
+  conexaoDaIa = null;
+  void antiga?.then((c) => c.cancelSent()).catch(() => undefined);
+}
 async function conexaoIa(): Promise<duckdb.AsyncDuckDBConnection> {
   const { con } = await iniciar();
   if (lerLocal || typeof db.connect !== 'function') return con;

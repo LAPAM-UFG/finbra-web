@@ -12,7 +12,7 @@
  * confere os códigos de território (conferirCodigos); lugares citados pelo nome passam pela ferramenta
  * "localizar", que usa o cadastro de entes.
  */
-import { consultaLivre, contextoTrabalhoIa, manifestoDados, tabelaDespesaFuncao, tabelaLrf, tabelasEducacaoSaude, tabelasIaClima, tabelasIaMunic, tabelasIaTrabalho, tabelasSaude } from './dados';
+import { abandonarConsultaIa, consultaLivre, contextoTrabalhoIa, manifestoDados, tabelaDespesaFuncao, tabelaLrf, tabelasEducacaoSaude, tabelasIaClima, tabelasIaMunic, tabelasIaTrabalho, tabelasSaude } from './dados';
 import { t } from './idioma';
 import {
   competenciasNoTexto, formatarValor, periodoDasConsultas, periodoDe, registrarColunas, rotuloCompetencia, rotuloPeriodo, sqlSemTextos, tiposDoResultado,
@@ -1794,6 +1794,40 @@ export function validarSql(sql: string): string | null {
  * o SQL e os códigos de território: o que for recusado volta como erro "bloqueada", sem rodar.
  */
 export async function executarConsulta(entrada: unknown, paineis: Painel[] = PAINEIS, sinal?: AbortSignal, limite = LINHAS_TELA): Promise<Resultado> {
+  // o cancelamento e o limite de tempo valem mesmo que o DuckDB esteja preso numa leitura de rede: a página não espera por ele
+  let fim: ReturnType<typeof setTimeout> | undefined;
+  let aoCancelar: (() => void) | undefined;
+  const saida = new Promise<never>((_, rejeitar) => {
+    fim = setTimeout(() => rejeitar(new ConsultaLenta()), LIMITE_CONSULTA_MS);
+    aoCancelar = () => rejeitar(cancelado());
+    if (sinal?.aborted) aoCancelar();
+    else sinal?.addEventListener('abort', aoCancelar, { once: true });
+  });
+  saida.catch(() => undefined);
+  try {
+    return await Promise.race([consultaSemLimite(entrada, paineis, sinal, limite), saida]);
+  } catch (err) {
+    if (sinal?.aborted) {
+      abandonarConsultaIa();
+      throw cancelado();
+    }
+    if (err instanceof ConsultaLenta) {
+      abandonarConsultaIa();
+      return { erro: t(`a consulta passou de ${LIMITE_CONSULTA_MS / 60_000} minutos e foi interrompida; refaça com um recorte menor (um ano, uma UF ou menos colunas) ou use uma tabela já agregada`,
+        `the query ran for over ${LIMITE_CONSULTA_MS / 60_000} minutes and was stopped; retry with a narrower scope (one year, one state or fewer columns) or use a pre-aggregated table`) };
+    }
+    throw err;
+  } finally {
+    clearTimeout(fim);
+    if (aoCancelar) sinal?.removeEventListener('abort', aoCancelar);
+  }
+}
+
+/** Tempo máximo de uma consulta da IA no navegador. */
+const LIMITE_CONSULTA_MS = 4 * 60_000;
+class ConsultaLenta extends Error {}
+
+async function consultaSemLimite(entrada: unknown, paineis: Painel[], sinal: AbortSignal | undefined, limite: number): Promise<Resultado> {
   const e = entrada as { sql?: unknown };
   if (!e || typeof e.sql !== 'string') return { erro: 'entrada inválida: falta o campo sql', bloqueada: true };
   const motivo = validarSql(e.sql);

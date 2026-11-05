@@ -3678,3 +3678,16 @@ describe('IA: clima (CHIRPS e ERA5-Land)', () => {
     assert.ok(Number(par.linhas[0][1]) >= 5560);
   });
 });
+
+describe('IA: cancelamento de consultas', () => {
+  test('o sinal cancela a consulta de imediato, mesmo sem o DuckDB responder', async () => {
+    const parar = new AbortController();
+    const andamento = executarConsulta({ sql: 'SELECT count(*) FROM range(100000000) a, range(1000) b' }, ['financas'], parar.signal);
+    parar.abort();
+    const inicio = Date.now();
+    await assert.rejects(andamento, (e: unknown) => (e as { name?: string }).name === 'AbortError');
+    assert.ok(Date.now() - inicio < 2000, 'a página não deve esperar o fim da consulta');
+    // com o sinal já cancelado, nem começa
+    await assert.rejects(executarConsulta({ sql: 'SELECT 1' }, ['financas'], AbortSignal.abort()), (e: unknown) => (e as { name?: string }).name === 'AbortError');
+  });
+});
