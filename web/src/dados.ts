@@ -1205,17 +1205,17 @@ const rotasMunic: Record<string, (q: Params) => Promise<unknown>> = {
   },
 };
 
-// ---------------- clima por município e mês (CHIRPS; pipeline/clima.py) ----------------
+// ---------------- clima por município e mês (CHIRPS e ERA5-Land; pipeline/clima.py) ----------------
 
 /**
- * territorio, catalogo, normal, anual e agregado (Brasil e UF) são pequenos e ficam em memória; mensal (3 milhões de
- * linhas, ordenado por variável, município, ano e mês) é lido por Range: cada consulta pede um município.
+ * territorio, catalogo, normal e agregado (Brasil e UF) são pequenos e ficam em memória; mensal e anual (milhões de
+ * linhas, ordenados por variável, município e ano) são lidos por Range: cada consulta pede uma variável e um município.
  */
 let climaCarregada: Promise<void> | null = null;
 export function tabelasClima() {
   climaCarregada ??= (async () => {
     const { con } = await iniciar();
-    for (const nome of ['territorio', 'catalogo', 'normal', 'anual', 'agregado']) {
+    for (const nome of ['territorio', 'catalogo', 'normal', 'agregado']) {
       await db.registerFileBuffer(`clima_${nome}.parquet`, await baixar(`gold/clima/${nome}.parquet`));
       await con.query(`CREATE TABLE clima_${nome} AS SELECT * FROM read_parquet('clima_${nome}.parquet')`);
     }
@@ -1234,16 +1234,19 @@ const rotasClima: Record<string, (q: Params) => Promise<unknown>> = {
   /** Variáveis publicadas (catálogo). */
   async clima_catalogo() {
     await tabelasClima();
-    return consultar('SELECT variavel, rotulo, unidade, resumo_anual, fonte FROM clima_catalogo ORDER BY rotulo');
+    return consultar(
+      `SELECT variavel, rotulo, unidade, resumo_anual, fonte, anomalia, ano_de, ano_ate, ate FROM clima_catalogo
+       ORDER BY variavel <> 'chuva_mm', rotulo`,
+    );
   },
 
-  /** Municípios com dados de clima (de uma UF ou todos). */
+  /** Municípios com dados da variável (de uma UF ou todos). */
   async clima_lugares(q) {
     await tabelasClima();
     return consultar(
       `SELECT cod, nome, uf, regiao, area_km2 FROM clima_territorio
-       WHERE ($uf = '' OR uf = $uf) AND cod IN (SELECT DISTINCT cod FROM clima_anual) ORDER BY nome`,
-      { uf: UFS.has(String(q.uf)) ? String(q.uf) : '' },
+       WHERE ($uf = '' OR uf = $uf) AND cod IN (SELECT cod FROM clima_normal WHERE variavel = $v) ORDER BY nome`,
+      { uf: UFS.has(String(q.uf)) ? String(q.uf) : '', v: variavelClima(q) },
     );
   },
 
@@ -1253,7 +1256,8 @@ const rotasClima: Record<string, (q: Params) => Promise<unknown>> = {
     const v = variavelClima(q);
     if (inteiro(q.cod)) {
       return consultar(
-        `SELECT ano, valor, normal, anomalia_pct, anomalia FROM clima_anual WHERE cod = $cod::INTEGER AND variavel = $v ORDER BY ano`,
+        `SELECT ano, valor, normal, anomalia_pct, anomalia FROM read_parquet(${arq('gold/clima/anual.parquet')})
+         WHERE variavel = $v AND cod = $cod::INTEGER ORDER BY ano`,
         { cod: inteiro(q.cod), v },
       );
     }
@@ -1285,12 +1289,12 @@ const rotasClima: Record<string, (q: Params) => Promise<unknown>> = {
     );
   },
 
-  /** Ranking dos municípios num ano (de uma UF ou do Brasil): total ou média anual, normal e anomalia. */
+  /** Ranking dos municípios num ano (de uma UF ou do Brasil): total ou média anual, normal e anomalia (relativa ou absoluta). */
   async clima_ranking(q) {
     await tabelasClima();
     return consultar(
       `SELECT a.cod, t.nome, t.uf, a.valor, a.normal, a.anomalia_pct, a.anomalia
-       FROM clima_anual a JOIN clima_territorio t USING (cod)
+       FROM read_parquet(${arq('gold/clima/anual.parquet')}) a JOIN clima_territorio t USING (cod)
        WHERE a.variavel = $v AND a.ano = $ano::INTEGER AND ($uf = '' OR t.uf = $uf)`,
       { v: variavelClima(q), ano: inteiro(q.ano), uf: UFS.has(String(q.uf)) ? String(q.uf) : '' },
     );

@@ -62,9 +62,9 @@ const menuMunic = (): [string, [string, string][]][] => [
   [t('Metodologia', 'Methodology'), [['/munic/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
 ];
 
-/** Área de clima (chuva por município e mês, CHIRPS), em /clima. */
+/** Área de clima (chuva do CHIRPS; temperatura e outras variáveis do ERA5-Land; por município e mês), em /clima. */
 const menuClima = (): [string, [string, string][]][] => [
-  [t('Chuva', 'Rainfall'), [['/clima', t('Visão geral', 'Overview')], ['/clima/rankings', 'Rankings']]],
+  [t('Variáveis climáticas', 'Climate variables'), [['/clima', t('Visão geral', 'Overview')], ['/clima/rankings', 'Rankings']]],
   [t('Metodologia', 'Methodology'), [['/clima/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
 ];
 
@@ -153,7 +153,7 @@ export function App() {
           trabalho: t('Mercado de trabalho · RAIS e CAGED', 'Labour market · RAIS and CAGED'),
           saude: t('Saúde · DATASUS', 'Health · DATASUS'),
           munic: t('Gestão pública · MUNIC e ESTADIC', 'Public management · MUNIC and ESTADIC'),
-          clima: t('Clima · CHIRPS', 'Climate · CHIRPS'),
+          clima: t('Clima · CHIRPS e ERA5-Land', 'Climate · CHIRPS and ERA5-Land'),
           ia: t('Pergunte aos dados · LAPAM/UFG', 'Ask the data · LAPAM/UFG'),
         }[area]}</h1>
         <nav className="areas" aria-label={t('Áreas', 'Areas')}>

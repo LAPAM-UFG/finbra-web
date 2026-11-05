@@ -146,8 +146,11 @@ export function graficoSvg(opcao: (t: Tokens) => EChartsCoreOption, largura = 64
 /** Linha vertical tracejada numa categoria do eixo x (ex.: ano de uma quebra de série), com rótulo no topo. */
 export type Marca = { x: string; rotulo: string };
 
-/** Linhas sobre os anos: 2px, marcadores de 8px com anel na cor da superfície, mira e tooltip. */
-export function linhas(anos: (number | string)[], series: Serie[], formato: (v: number) => string, marcas: Marca[] = []) {
+/**
+ * Linhas sobre os anos: 2px, marcadores de 8px com anel na cor da superfície, mira e tooltip.
+ * `escalaLivre`: o eixo não precisa incluir o zero (temperatura, por exemplo, ficaria achatada).
+ */
+export function linhas(anos: (number | string)[], series: Serie[], formato: (v: number) => string, marcas: Marca[] = [], escalaLivre = false) {
   return (t: Tokens): EChartsCoreOption => ({
     grid: { left: 8, right: 16, top: series.length > 1 ? 36 : marcas.length ? 26 : 16, bottom: 8, containLabel: true },
     legend: series.length > 1
@@ -160,7 +163,7 @@ export function linhas(anos: (number | string)[], series: Serie[], formato: (v: 
       valueFormatter: (v: number) => (v === null || v === undefined ? '–' : formato(v)),
     },
     xAxis: { ...eixoCategoria(t, anos), boundaryGap: false },
-    yAxis: eixoValor(t, formato),
+    yAxis: { ...eixoValor(t, formato), ...(escalaLivre ? { scale: true } : {}) },
     series: series.map((s, i) => ({
       name: s.nome,
       type: 'line',

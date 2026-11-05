@@ -222,17 +222,19 @@ estaduais (ESTADIC, 10 edições: 2012–2024). Só o bloco de recursos humanos 
 (`munic_catalogo`, `munic_territorio`, `munic_comparaveis` em memória; `munic_agregados` e `munic_respostas` lidas por Range)
 são preparadas no navegador só quando uma consulta as usa (`tabelasIaMunic` em `web/src/dados.ts`).
 
-### Clima (chuva por município e mês, CHIRPS)
+### Clima (chuva do CHIRPS; temperatura e outras variáveis do ERA5-Land; por município e mês)
 
-Painel próprio em `/clima` (Visão geral, Rankings e Metodologia), sem filtros dos outros painéis. Chuva mensal do CHIRPS v3
-(Climate Hazards Center, grade de 0,05°, 1981 em diante) agregada por município; temperatura e outras variáveis (ERA5-Land)
-ainda não estão publicadas.
+Painel próprio em `/clima` (Visão geral, Rankings e Metodologia), sem filtros dos outros painéis, com seletor de variável. Chuva
+mensal do CHIRPS v3 (Climate Hazards Center, grade de 0,05°, 1981 em diante); temperatura, ponto de orvalho, umidade do solo,
+evaporação total e radiação solar do ERA5-Land (Copernicus/ECMWF, grade de 0,1°; baixado de 1950 em diante e publicado de 1979 em diante, porque antes disso a série nacional dá saltos sem sentido físico), todas agregadas
+por município.
 
 | | |
 |---|---|
-| Download | `python pipeline/clima_baixar.py` grava em `E:/finbra/brutos/clima` (`chirps/`, 549 arquivos de ~4 MB, e `malha/`, a malha municipal do IBGE 2022). O servidor do CHC responde 429 com muitas conexões: o script usa 2 e retoma de onde parou |
-| Processamento | `pipeline/clima.py chirps` (precisa de `rasterio` e `geopandas`) rasteriza a malha numa grade 5 vezes mais fina e pondera cada pixel pela fração do município; `pipeline/clima.py gold` gera `gold/clima/` (`mensal`, `anual`, `normal`, `agregado`, `territorio`, `catalogo`) e a fonte `clima` do manifesto |
-| Regras | anos só com os 12 meses; normal 1991–2020 (mínimo de 25 anos); Brasil e UF ponderados pela área; município sem pixel com dado fica sem linha (Fernando de Noronha, fora da grade) |
+| Download CHIRPS | `python pipeline/clima_baixar.py` grava em `E:/finbra/brutos/clima` (`chirps/`, 549 arquivos de ~4 MB, e `malha/`, a malha municipal do IBGE 2022). O servidor do CHC responde 429 com muitas conexões: o script usa 2 e retoma de onde parou |
+| Download ERA5-Land | `python pipeline/clima_era5.py [mensal] [diario]` grava em `E:/finbra/brutos/clima/era5/` (`mensal/AAAA.nc` e, em `diario/`, as pastas `media`, `tmax` e `tmin`). Precisa de conta no Climate Data Store com a licença do ERA5-Land aceita e de `CDSAPI_URL` e `CDSAPI_KEY` no `.env` (só o código da chave, sem `key:`). O CDS rejeita pedidos que chegam juntos: o script espaça os envios em 30 s e retoma o que já está no disco. O diário (estatísticas diárias de temperatura, orvalho, umidade do solo e vento, fuso de Brasília) fica só em arquivos, sem painel |
+| Processamento | `pipeline/clima.py chirps` e `pipeline/clima.py era5` (precisam de `rasterio`, `geopandas` e `xarray`) rasterizam a malha numa grade 5 vezes mais fina e ponderam cada pixel pela fração do município; `pipeline/clima.py gold` gera `gold/clima/` (`mensal`, `anual`, `normal`, `agregado`, `territorio`, `catalogo`) e a fonte `clima` do manifesto. Unidades finais: °C, % de umidade do solo (0–7 cm), mm por mês de evaporação e W/m² de radiação. A evaporação potencial do ERA5-Land é baixada, mas não publicada: passa de 50 mm/dia na seca do Cerrado |
+| Regras | anos só com os 12 meses; normal 1991–2020 (mínimo de 25 anos); Brasil e UF ponderados pela área; município sem pixel com dado fica sem linha. No ERA5-Land, que só tem pixels de terra, o município sem pixel próprio usa o pixel de terra mais próximo se estiver a até 0,25°. A chuva do CHIRPS não cobre Fernando de Noronha e Trindade |
 | R2 | para subir só o clima, use uma pasta temporária com `gold/clima` e o manifesto e `r2.py enviar --raiz <pasta> --camadas gold` (o `enviar` normal sobe tudo o que mudou; nunca use `--limpar` com `--raiz`) |
 
 ## Publicação do site
