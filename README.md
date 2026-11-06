@@ -653,3 +653,14 @@ cd web && npm test         # rotas do site sobre os dados locais (DuckDB-WASM no
   (`ben_municipios_especie_AAAA.xlsx`), gravados em `silver/inss_municipios.parquet`. Publicados para 2017
   e 2019 em diante; os demais anos ficam em branco (os microdados do INSS começam em jul/2021).
 - O painel da pesquisa LAPAM (`.dta`) não é usado pelo pipeline nem pelo site.
+
+## Pergunte aos dados: continuidade das conversas
+
+`web/src/ia_continuidade.ts` reúne o que mantém uma análise longa de pé (testes em `web/testes/consultas.test.ts`, bloco "IA: continuidade"):
+
+- **Consulta partida por ano.** O campo `particao` de `consultar` (`{"anos": [2011, …]}`, com o marcador `{ano}` no SQL) roda um ano por vez (uma conexão do DuckDB-WASM tem um só fluxo aberto), guarda os anos concluídos por versão dos dados e SQL, e devolve resultado **parcial** (anos que faltam e o motivo) em vez de falhar tudo. Uma nova tentativa só roda o que faltou. O estouro dos 4 minutos devolve ao modelo o pedido de dividir por ano, não de repetir a consulta ampla; o progresso aparece como "7 de 11 anos concluídos".
+- **Reaproveitamento.** Resultados completos (sem erro, parciais ou truncados) da própria conversa e da mesma versão dos dados viram tabelas temporárias `res_C1…`, listadas no contexto da pergunta com objetivo, definição (`definicao` de `consultar`) e filtros; as perguntas seguintes calculam participações e variações sobre elas. Um `res_Cn` que não é da conversa é recusado.
+- **Contexto longo.** Ao modelo vai um histórico compactado (`compactarParaEnvio`): as perguntas antigas perdem as tabelas (ficam em `res_Cn`) e, com muitas perguntas ou corpo grande, viram um resumo (`[RESUMO DA CONVERSA]`, até 8 mil caracteres) que preserva conclusões, recortes, consultas e ressalvas metodológicas. A conversa guardada não muda; ao reabrir uma conversa salva, os resultados guardados voltam como `res_Cn`.
+- **Cancelamento.** Respostas do modelo ou consultas que chegam depois do cancelamento são descartadas e a execução antiga não escreve na tela; se o DuckDB não puder ser interrompido, a página avisa que a consulta termina em segundo plano.
+- **Números.** As colunas DECIMAL da RAIS (`rais_uf`, `rais_mun`, `rais_vinculos`) e os resultados reaproveitados são DOUBLE, o que evita o estouro de DECIMAL ao multiplicar remunerações por fatores; a mensagem de overflow volta ao modelo com a correção.
+- **Coerência.** A revisão da resposta recusa tema de outra cadeia na conclusão ou nos títulos (ex.: bovinos numa resposta sobre avicultura) e classe e subclasse CNAE no mesmo filtro.

@@ -2095,6 +2095,41 @@ export async function contextoTrabalhoIa(): Promise<ContextoTrabalho> {
   };
 }
 
+/**
+ * Colunas DECIMAL da fonte como DOUBLE (cláusula REPLACE do SELECT *): uma soma ou um produto de DECIMAL, como a
+ * remuneração vezes o fator do IPCA, estoura a precisão do tipo (erro de overflow); em DOUBLE as contas de valores
+ * reais não estouram, e os centavos seguem exatos nas ordens de grandeza da RAIS. Sem DESCRIBE, a fonte fica como está.
+ */
+async function decimaisEmDouble(fonte: string): Promise<string> {
+  try {
+    const colunas = await consultar(`DESCRIBE SELECT * FROM ${fonte} LIMIT 0`);
+    const decimais = colunas.filter((c) => /^DECIMAL/i.test(String(c.column_type))).map((c) => String(c.column_name).replace(/"/g, '""'));
+    return decimais.length ? ` REPLACE (${decimais.map((c) => `"${c}"::DOUBLE AS "${c}"`).join(', ')})` : '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Cria, na conexão da IA, uma tabela temporária para cada resultado já apurado na conversa (res_C1…), para as
+ * perguntas seguintes recalcularem sobre ele. Números não inteiros entram como DOUBLE (um literal decimal do
+ * DuckDB é DECIMAL e voltaria a estourar nas contas).
+ */
+export async function prepararResultadosIa(tabelas: { nome: string; colunas: string[]; linhas: (string | number | boolean | null)[][] }[], sinal?: AbortSignal) {
+  const con = await conexaoIa();
+  const lit = (v: string | number | boolean | null) => (v === null || (typeof v === 'number' && !Number.isFinite(v)) ? 'NULL'
+    : typeof v === 'number' ? (Number.isInteger(v) ? String(v) : `${v}::DOUBLE`)
+      : typeof v === 'boolean' ? String(v) : `'${v.replace(/'/g, "''")}'`);
+  for (const tab of tabelas) {
+    if (!/^res_C\d+$/.test(tab.nome)) throw new Error(`nome de tabela não permitido: ${tab.nome}`);
+    const nomes = tab.colunas.map((c) => `"${c.replace(/"/g, '""')}"`);
+    const sql = tab.linhas.length
+      ? `CREATE OR REPLACE TEMP TABLE ${tab.nome} AS SELECT * FROM (VALUES ${tab.linhas.map((l) => `(${l.map(lit).join(', ')})`).join(', ')}) AS t(${nomes.join(', ')})`
+      : `CREATE OR REPLACE TEMP TABLE ${tab.nome} AS SELECT ${nomes.map((n) => `NULL::DOUBLE AS ${n}`).join(', ')} WHERE false`;
+    await lerCancelavel(con, sql, sinal);
+  }
+}
+
 export function tabelasIaTrabalho() {
   iaTrabalho ??= (async () => {
     const { con, manifesto } = await iniciar();
@@ -2121,9 +2156,9 @@ export function tabelasIaTrabalho() {
       : 'NULL::VARCHAR');
     if (microAnos.length) {
       const cubo = (pasta: string) => `read_parquet(${lista(microAnos.map((a) => `gold/trabalho/${pasta}/ano=${a}.parquet`))})`;
-      await con.query(`CREATE OR REPLACE VIEW rais_uf AS SELECT *, ${sigla('uf')} AS uf_sigla FROM ${cubo('cubo_uf')}`);
+      await con.query(`CREATE OR REPLACE VIEW rais_uf AS SELECT *${await decimaisEmDouble(cubo('cubo_uf'))}, ${sigla('uf')} AS uf_sigla FROM ${cubo('cubo_uf')}`);
       // uf (2 dígitos) a partir do município, para filtrar uma UF nesta tabela como nas outras
-      await con.query(`CREATE OR REPLACE VIEW rais_mun AS SELECT *, (municipio // 10000)::INTEGER AS uf, ${sigla('municipio // 10000')} AS uf_sigla FROM ${cubo('cubo_mun')}`);
+      await con.query(`CREATE OR REPLACE VIEW rais_mun AS SELECT *${await decimaisEmDouble(cubo('cubo_mun'))}, (municipio // 10000)::INTEGER AS uf, ${sigla('municipio // 10000')} AS uf_sigla FROM ${cubo('cubo_mun')}`);
     }
     let microdados = false;
     if (temMicro()) {
@@ -2133,7 +2168,8 @@ export function tabelasIaTrabalho() {
           ufs.filter(Number.isInteger).map((uf) => `silver/trabalho/micro/rais_vinculos/ano=${Number(ano)}/uf=${uf}.parquet`));
         if (arquivos.length) {
           // hive_partitioning: o filtro por ano e uf descarta arquivos pelo caminho, sem abri-los
-          await con.query(`CREATE OR REPLACE VIEW rais_vinculos AS SELECT *, ${sigla('uf')} AS uf_sigla FROM read_parquet(${lista(arquivos)}, hive_partitioning = true)`);
+          const fonteVinculos = `read_parquet(${lista(arquivos)}, hive_partitioning = true)`;
+          await con.query(`CREATE OR REPLACE VIEW rais_vinculos AS SELECT *${await decimaisEmDouble(fonteVinculos)}, ${sigla('uf')} AS uf_sigla FROM ${fonteVinculos}`);
           microdados = true;
         }
       } catch {

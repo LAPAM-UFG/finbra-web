@@ -12,8 +12,12 @@
  * confere os códigos de território (conferirCodigos); lugares citados pelo nome passam pela ferramenta
  * "localizar", que usa o cadastro de entes.
  */
-import { abandonarConsultaIa, consultaLivre, contextoTrabalhoIa, manifestoDados, tabelaDespesaFuncao, tabelaLrf, tabelasEducacaoSaude, tabelasIaClima, tabelasIaMunic, tabelasIaTrabalho, tabelasSaude } from './dados';
+import { abandonarConsultaIa, consultaLivre, prepararResultadosIa, contextoTrabalhoIa, manifestoDados, tabelaDespesaFuncao, tabelaLrf, tabelasEducacaoSaude, tabelasIaClima, tabelasIaMunic, tabelasIaTrabalho, tabelasSaude } from './dados';
 import { t } from './idioma';
+import {
+  catalogoDeResultados, citadasNoSql, compactarParaEnvio, descreverParcial, dicaDoErro, executarPartida, incoerenciasDoRecorte, lerParticao, nomeTabela, resultadosReaproveitaveis,
+  type Parcial, type ResultadoGuardado,
+} from './ia_continuidade';
 import {
   competenciasNoTexto, formatarValor, periodoDasConsultas, periodoDe, registrarColunas, rotuloCompetencia, rotuloPeriodo, sqlSemTextos, tiposDoResultado,
   unidadeLimpa, type Formato, type Periodo,
@@ -60,7 +64,10 @@ export function nomeDoModelo(id?: string | null): string {
 }
 /** Resultado de uma consulta; bloqueada = a página recusou a consulta antes de rodá-la (SQL ou códigos). */
 /** verificacao: chave, junções e amostra conferidas pela página (ia_verificacao.ts), quando a consulta as pediu. */
-export type Resultado = { colunas: string[]; linhas: (string | number | boolean | null)[][]; total: number; verificacao?: VerificacaoFeita } | { erro: string; bloqueada?: boolean };
+export type Resultado =
+  // parcial: anos de uma consulta partida que não foram concluídos; dados: versão dos dados (manifesto) em que foi apurado
+  | { colunas: string[]; linhas: (string | number | boolean | null)[][]; total: number; verificacao?: VerificacaoFeita; parcial?: Parcial; dados?: string }
+  | { erro: string; bloqueada?: boolean; tempoEsgotado?: boolean };
 
 /** Linhas da consulta mostradas na página e enviadas ao modelo. */
 export const LINHAS_TELA = 2000;
@@ -686,7 +693,7 @@ export function rotulosConsultas(mensagens: Mensagem[]): Map<string, string> {
 
 /** Uma consulta da conversa: identificador, SQL, objetivo, a que ela refaz (se refaz) e o resultado. */
 export type ConsultaFeita = {
-  id: string; rotulo: string; sql: string; objetivo: string; substitui: string; resultado?: Resultado; regressao?: PedidoRegressao; verificacao?: PedidoVerificacao;
+  id: string; rotulo: string; sql: string; objetivo: string; substitui: string; resultado?: Resultado; regressao?: PedidoRegressao; verificacao?: PedidoVerificacao; particao?: unknown;
 };
 
 /** Consultas da conversa pelo identificador (C1…), com os resultados que a página guardou. */
@@ -697,14 +704,14 @@ export function consultasDaConversa(mensagens: Mensagem[], resultados: Record<st
     if (m.role !== 'assistant' || !Array.isArray(m.content)) continue;
     for (const b of m.content) {
       if (b.type !== 'tool_use' || b.name !== 'consultar' || !b.id) continue;
-      const e = (b.input ?? {}) as { sql?: unknown; objetivo?: unknown; substitui?: unknown; colunas?: unknown; regressao?: unknown; verificacao?: unknown };
+      const e = (b.input ?? {}) as { sql?: unknown; objetivo?: unknown; substitui?: unknown; colunas?: unknown; regressao?: unknown; verificacao?: unknown; particao?: unknown };
       registrarColunas(String(e.sql ?? ''), e.colunas);
       const rotulo = rotulos.get(b.id)!;
       const reg = lerRegressao(e.regressao);
       const ver = lerVerificacao(e.verificacao);
       r.set(rotulo, {
         id: b.id, rotulo, sql: String(e.sql ?? ''), objetivo: String(e.objetivo ?? ''), substitui: consultaSubstituida(e.substitui), resultado: resultados[b.id],
-        ...(reg && typeof reg === 'object' ? { regressao: reg } : {}), ...(ver && typeof ver === 'object' ? { verificacao: ver } : {}),
+        ...(reg && typeof reg === 'object' ? { regressao: reg } : {}), ...(ver && typeof ver === 'object' ? { verificacao: ver } : {}), ...(e.particao ? { particao: e.particao } : {}),
       });
     }
   }
@@ -1452,6 +1459,9 @@ export function revisarMetodo(p: RespostaPronta, o: { pergunta?: string } = {}):
   if (daResposta.some((c) => RAZAO_DE_INDICES.test(sqlSemTextos(c.sql)))) {
     problemas.push('Deflação: use ipca.fator_real (valor em R$ de dezembro do ano-base = nominal × fator_real, maior que 1 nos anos anteriores ao ano-base). Não monte a razão de índices na consulta: refaça as consultas com fator_real.');
   }
+  problemas.push(...incoerenciasDoRecorte(o.pergunta ?? '', {
+    conclusao: p.r.conclusao, titulos: p.r.tabelas.map((x) => x.titulo).join(' '), sqls: daResposta.map((c) => c.sql), objetivos: daResposta.map((c) => c.objetivo),
+  }));
   // números formatados no SQL (printf('%,d'), format, to_char) viram texto na tela e no Excel
   const formatadas = [...new Set(daResposta.filter((c) => NUMERO_COMO_TEXTO.test(sqlSemTextos(c.sql))).map((c) => c.rotulo))];
   if (formatadas.length) {
@@ -1622,7 +1632,7 @@ export type Etapa = { tipo: 'modelo' | 'consulta' | 'localizar' | 'revisao'; ms:
 
 export type Progresso =
   | { fase: 'modelo'; rodada: number }
-  | { fase: 'consulta'; rotulo: string; objetivo: string }
+  | { fase: 'consulta'; rotulo: string; objetivo: string; parte?: { feitas: number; total: number } }
   | { fase: 'localizar'; nome: string }
   | { fase: 'revisao' };
 export type Desfecho = 'resposta' | 'texto' | 'limite' | 'recusa' | 'longa';
@@ -1645,6 +1655,8 @@ type ResultadoPergunta = { mensagens: Mensagem[]; desfecho: Desfecho; detalhe?: 
 type ParametrosPergunta = {
   historico: Mensagem[]; pergunta: string; contexto: string; idioma: string; paineis: Painel[]; sinal: AbortSignal;
   resultados?: Record<string, Resultado>; ultimaCompetencia?: number | null; modo?: Modo; cobertura?: Cobertura | null; modelo?: EscolhaModelo;
+  /** Versão dos dados desta sessão (manifesto): resultados de outra versão não são reaproveitados. */
+  versaoDados?: string;
   aoAtualizar: (mensagens: Mensagem[]) => void;
   aoResultado: (id: string, r: Resultado) => void;
   aoProgresso?: (p: Progresso) => void;
@@ -1652,7 +1664,9 @@ type ParametrosPergunta = {
 };
 
 async function conduzir(o: ParametrosPergunta, registro: RegistroModelo): Promise<Omit<ResultadoPergunta, 'modelo' | 'uso'>> {
-  let hist = comPergunta(o.historico, o.pergunta, o.contexto);
+  // resultados já apurados na conversa entram no contexto da pergunta (e viram tabelas res_C1… para as consultas)
+  const catalogo = catalogoDeResultados(resultadosReaproveitaveis(o.historico, o.resultados ?? {}, o.versaoDados));
+  let hist = comPergunta(o.historico, o.pergunta, catalogo ? `${o.contexto}\n\n${catalogo}` : o.contexto);
   const etapas: Etapa[] = [];
   const medir = async <T>(tipo: Etapa['tipo'], f: () => Promise<T>, rotulo?: string): Promise<T> => {
     const t0 = Date.now();
@@ -1668,7 +1682,10 @@ async function conduzir(o: ParametrosPergunta, registro: RegistroModelo): Promis
   for (let rodada = 0; rodada < MAX_RODADAS; rodada++) {
     if (o.sinal.aborted) throw cancelado();
     o.aoProgresso?.({ fase: 'modelo', rodada });
-    const r = await medir('modelo', () => chamarIa(hist, o.idioma, o.paineis, o.sinal, o.modelo));
+    // ao modelo vai o histórico compactado (sem as tabelas antigas, com resumo se a conversa for longa); a conversa guardada não muda
+    const r = await medir('modelo', () => chamarIa(compactarParaEnvio(hist, resultados, o.versaoDados).mensagens, o.idioma, o.paineis, o.sinal, o.modelo));
+    // resposta que chega depois do cancelamento: descartada, sem tocar na conversa nem nos contadores da tela
+    if (o.sinal.aborted) throw cancelado();
     o.aoRestantes?.(r.restantes);
     // cada chamada diz o modelo que respondeu e o que gastou: a resposta registra o modelo e a soma das chamadas
     registro.modelo = r.modelo ?? registro.modelo;
@@ -1710,12 +1727,20 @@ async function conduzir(o: ParametrosPergunta, registro: RegistroModelo): Promis
         const rotulo = rotulos.get(u.id) ?? '';
         o.aoProgresso?.({ fase: 'consulta', rotulo, objetivo: String((u.input as { objetivo?: unknown } | undefined)?.objetivo ?? '') });
         // consulta idêntica (mesmo SQL e mesma regressão) que já deu certo nesta conversa: reaproveita o resultado
-        const igual = [...consultasDaConversa(hist, resultados).values()].find((c) => c.id !== u.id && c.resultado && !('erro' in c.resultado)
-          && chaveConsulta(c.sql, c.regressao, c.verificacao) === chaveConsulta(String((u.input as { sql?: unknown })?.sql ?? ''), lerRegressao((u.input as { regressao?: unknown })?.regressao),
-            lerVerificacao((u.input as { verificacao?: unknown })?.verificacao)));
+        const entradaU = (u.input ?? {}) as { sql?: unknown; regressao?: unknown; verificacao?: unknown; particao?: unknown };
+        const igual = [...consultasDaConversa(hist, resultados).values()].find((c) => c.id !== u.id && c.resultado && !('erro' in c.resultado) && !c.resultado.parcial
+          && (!c.resultado.dados || !o.versaoDados || c.resultado.dados === o.versaoDados)
+          && chaveConsulta(c.sql, c.regressao, c.verificacao, c.particao) === chaveConsulta(String(entradaU.sql ?? ''), lerRegressao(entradaU.regressao),
+            lerVerificacao(entradaU.verificacao), entradaU.particao));
         const t0 = Date.now();
-        const res = igual ? igual.resultado! : await executarConsulta(u.input, o.paineis, o.sinal);
+        const feita = igual ? igual.resultado! : await executarConsulta(u.input, o.paineis, o.sinal, LINHAS_TELA, {
+          versao: o.versaoDados, anteriores: resultadosReaproveitaveis(hist, resultados, o.versaoDados),
+          aoParte: (feitas, total) => o.aoProgresso?.({ fase: 'consulta', rotulo, objetivo: String((u.input as { objetivo?: unknown } | undefined)?.objetivo ?? ''), parte: { feitas, total } }),
+        });
+        // consulta que terminou depois do cancelamento: o resultado é descartado
+        if (o.sinal.aborted) throw cancelado();
         etapas.push({ tipo: 'consulta', ms: Date.now() - t0, rotulo, ...(igual ? { reaproveitada: true } : {}) });
+        const res: Resultado = !('erro' in feita) && o.versaoDados && !feita.dados ? { ...feita, dados: o.versaoDados } : feita;
         guardar(u.id, res);
         const avisoReuso = igual ? `Mesma consulta de ${igual.rotulo}: resultado reaproveitado, sem rodar de novo.` : undefined;
         devolver.push({ type: 'tool_result', tool_use_id: u.id, content: paraModelo(res, rotulo, [avisoReuso, aviso].filter(Boolean).join(' ') || undefined), ...('erro' in res ? { is_error: true } : {}) });
@@ -1746,8 +1771,8 @@ async function conduzir(o: ParametrosPergunta, registro: RegistroModelo): Promis
 }
 
 /** Identidade de uma consulta para reaproveitar o resultado: SQL sem espaços extras, a regressão e as verificações pedidas. */
-const chaveConsulta = (sql: string, reg: PedidoRegressao | string | null | undefined, ver?: PedidoVerificacao | string | null) =>
-  `${sql.replace(/\s+/g, ' ').trim()}|${reg && typeof reg === 'object' ? JSON.stringify(reg) : ''}|${ver && typeof ver === 'object' ? JSON.stringify(ver) : ''}`;
+const chaveConsulta = (sql: string, reg: PedidoRegressao | string | null | undefined, ver?: PedidoVerificacao | string | null, particao?: unknown) =>
+  `${sql.replace(/\s+/g, ' ').trim()}|${reg && typeof reg === 'object' ? JSON.stringify(reg) : ''}|${ver && typeof ver === 'object' ? JSON.stringify(ver) : ''}|${particao && typeof particao === 'object' ? JSON.stringify(particao) : ''}`;
 
 // ---------------- SQL somente leitura ----------------
 
@@ -1793,7 +1818,39 @@ export function validarSql(sql: string): string | null {
  * Roda a consulta proposta pelo modelo (entrada da ferramenta "consultar"); o sinal a cancela. Antes, confere
  * o SQL e os códigos de território: o que for recusado volta como erro "bloqueada", sem rodar.
  */
-export async function executarConsulta(entrada: unknown, paineis: Painel[] = PAINEIS, sinal?: AbortSignal, limite = LINHAS_TELA): Promise<Resultado> {
+export type ExtraConsulta = {
+  /** Progresso de uma consulta partida: partes concluídas ou falhas, e o total. */
+  aoParte?: (feitas: number, total: number) => void;
+  /** Resultados da conversa que a consulta pode ler como res_C1… */
+  anteriores?: Map<string, ResultadoGuardado>;
+  /** Versão dos dados, parte da identidade das partes guardadas. */
+  versao?: string;
+};
+
+/** Consultas abandonadas (canceladas ou estouradas) que o DuckDB ainda não devolveu: a página parou de esperar, mas elas não puderam ser interrompidas. */
+let emSegundoPlano = 0;
+export const consultasEmSegundoPlano = () => emSegundoPlano;
+
+/**
+ * Roda a consulta do modelo. Com `particao` ({anos: [...]} e o marcador {ano} no SQL), roda um ano de cada vez, com
+ * concorrência limitada, reaproveita os anos já concluídos e devolve o resultado parcial (com os anos que faltam)
+ * se algum falhar.
+ */
+export async function executarConsulta(entrada: unknown, paineis: Painel[] = PAINEIS, sinal?: AbortSignal, limite = LINHAS_TELA, extra: ExtraConsulta = {}): Promise<Resultado> {
+  const e = entrada as { sql?: unknown; particao?: unknown } | null;
+  if (e && typeof e.sql === 'string' && e.particao !== undefined && e.particao !== null) {
+    const p = lerParticao(e.particao, e.sql);
+    if (typeof p === 'string') return { erro: p, bloqueada: true };
+    if (p) {
+      const { particao: _descartada, ...resto } = e;
+      return executarPartida(e.sql, p, (s) => executarConsulta({ ...resto, sql: s }, paineis, sinal, limite, { ...extra, aoParte: undefined }),
+        { sinal, versao: extra.versao, limite, aoParte: extra.aoParte });
+    }
+  }
+  return executarUma(entrada, paineis, sinal, limite, extra);
+}
+
+async function executarUma(entrada: unknown, paineis: Painel[], sinal: AbortSignal | undefined, limite: number, extra: ExtraConsulta): Promise<Resultado> {
   // o cancelamento e o limite de tempo valem mesmo que o DuckDB esteja preso numa leitura de rede: a página não espera por ele
   let fim: ReturnType<typeof setTimeout> | undefined;
   let aoCancelar: (() => void) | undefined;
@@ -1804,17 +1861,24 @@ export async function executarConsulta(entrada: unknown, paineis: Painel[] = PAI
     else sinal?.addEventListener('abort', aoCancelar, { once: true });
   });
   saida.catch(() => undefined);
+  const trabalho = consultaSemLimite(entrada, paineis, sinal, limite, extra);
+  // a consulta já enviada ao DuckDB não pode ser interrompida se ele está preso numa leitura de rede: a página só para de esperar
+  const largar = () => {
+    abandonarConsultaIa();
+    emSegundoPlano++;
+    void trabalho.then(() => undefined, () => undefined).then(() => { emSegundoPlano--; });
+  };
   try {
-    return await Promise.race([consultaSemLimite(entrada, paineis, sinal, limite), saida]);
+    return await Promise.race([trabalho, saida]);
   } catch (err) {
     if (sinal?.aborted) {
-      abandonarConsultaIa();
+      largar();
       throw cancelado();
     }
     if (err instanceof ConsultaLenta) {
-      abandonarConsultaIa();
-      return { erro: t(`a consulta passou de ${LIMITE_CONSULTA_MS / 60_000} minutos e foi interrompida; refaça com um recorte menor (um ano, uma UF ou menos colunas) ou use uma tabela já agregada`,
-        `the query ran for over ${LIMITE_CONSULTA_MS / 60_000} minutes and was stopped; retry with a narrower scope (one year, one state or fewer columns) or use a pre-aggregated table`) };
+      largar();
+      return { tempoEsgotado: true, erro: t(`a consulta passou de ${LIMITE_CONSULTA_MS / 60_000} minutos e foi interrompida (não repita o mesmo plano amplo). Refaça dividindo por ano: no campo particao, {"anos": [...]}, com o marcador {ano} no filtro do SQL (ex.: WHERE ano = {ano}); os anos concluídos ficam guardados. Ou use uma tabela já agregada, menos colunas ou uma UF`,
+        `the query ran for over ${LIMITE_CONSULTA_MS / 60_000} minutes and was stopped (do not repeat the same broad plan). Rerun split by year: in the particao field, {"anos": [...]}, with the {ano} marker in the SQL filter (e.g. WHERE ano = {ano}); completed years are kept. Or use a pre-aggregated table, fewer columns or one state`) };
     }
     throw err;
   } finally {
@@ -1827,7 +1891,7 @@ export async function executarConsulta(entrada: unknown, paineis: Painel[] = PAI
 const LIMITE_CONSULTA_MS = 4 * 60_000;
 class ConsultaLenta extends Error {}
 
-async function consultaSemLimite(entrada: unknown, paineis: Painel[], sinal: AbortSignal | undefined, limite: number): Promise<Resultado> {
+async function consultaSemLimite(entrada: unknown, paineis: Painel[], sinal: AbortSignal | undefined, limite: number, extra: ExtraConsulta = {}): Promise<Resultado> {
   const e = entrada as { sql?: unknown };
   if (!e || typeof e.sql !== 'string') return { erro: 'entrada inválida: falta o campo sql', bloqueada: true };
   const motivo = validarSql(e.sql);
@@ -1852,6 +1916,16 @@ async function consultaSemLimite(entrada: unknown, paineis: Painel[], sinal: Abo
     if (paineis.includes('saude') && /\bsaude_municipios\b/i.test(todas)) await tabelasSaude();
     if (paineis.includes('munic') && /\bmunic_\w+/i.test(todas)) await tabelasIaMunic();
     if (paineis.includes('clima') && /\bclima_\w+/i.test(todas)) await tabelasIaClima();
+    // resultados já apurados na conversa, lidos como tabelas (res_C1…): só os completos, da mesma versão dos dados e desta conversa
+    const citadas = citadasNoSql(todas);
+    if (citadas.length) {
+      const faltam = citadas.filter((c) => !extra.anteriores?.has(c));
+      if (faltam.length) {
+        return { bloqueada: true, erro: t(`${faltam.map(nomeTabela).join(', ')} não está disponível: o resultado não existe nesta conversa, é parcial, truncado, deu erro ou veio de outra versão dos dados. Consulte as bases de novo`,
+          `${faltam.map(nomeTabela).join(', ')} is not available: the result does not exist in this conversation, is partial, truncated, failed or came from another data version. Query the data again`) };
+      }
+      await prepararResultadosIa(citadas.map((c) => ({ nome: nomeTabela(c), colunas: extra.anteriores!.get(c)!.res.colunas, linhas: extra.anteriores!.get(c)!.res.linhas })), sinal);
+    }
     const reg = lerRegressao((entrada as { regressao?: unknown }).regressao);
     if (typeof reg === 'string') return { erro: reg, bloqueada: true };
     const r = reg ? await estimar(e.sql, reg, sinal) : await consultaLivre(e.sql, limite, sinal);
@@ -1864,7 +1938,7 @@ async function consultaSemLimite(entrada: unknown, paineis: Painel[], sinal: Abo
     return { ...r, verificacao: await verificar(e.sql, ver, (s) => consultaLivre(s, 50, sinal), { validar: validarSql, nomear, colunas: r.colunas }) };
   } catch (err) {
     if (sinal?.aborted || foiCancelado(err)) throw cancelado();
-    return { erro: err instanceof Error ? err.message : String(err) };
+    return { erro: dicaDoErro(err instanceof Error ? err.message : String(err)) };
   }
 }
 
@@ -1914,7 +1988,8 @@ export function paraModelo(r: Resultado, consulta?: string, aviso?: string): str
   let n = Math.min(LINHAS_MODELO, r.linhas.length);
   for (;;) {
     const json = JSON.stringify({ ...extra, colunas: r.colunas, linhas: r.linhas.slice(0, n), total_linhas: r.total, linhas_enviadas: n,
-      ...(r.verificacao ? { verificacao_da_pagina: r.verificacao } : {}), ...fim });
+      ...(r.verificacao ? { verificacao_da_pagina: r.verificacao } : {}),
+      ...(r.parcial ? { cobertura_parcial: { anos_pedidos: r.parcial.pedidos, anos_concluidos: r.parcial.concluidos, anos_faltantes: r.parcial.faltam }, aviso_parcial: descreverParcial(r.parcial) } : {}), ...fim });
     if (json.length <= TAMANHO_MODELO || n <= 5) return json;
     n = Math.floor(n / 2);
   }

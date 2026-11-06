@@ -42,7 +42,7 @@ describe('histórico da conversa', () => {
   test('recusa pergunta vazia, longa demais ou com contexto longo demais', () => {
     assert.match(validar([pergunta('   ')]), /vazia/);
     assert.match(validar([pergunta('x'.repeat(2001))]), /2000/);
-    const longo = { role: 'user', content: [{ type: 'text', text: 'c'.repeat(1501) }, { type: 'text', text: 'Quantos vínculos?' }] };
+    const longo = { role: 'user', content: [{ type: 'text', text: 'c'.repeat(6001) }, { type: 'text', text: 'Quantos vínculos?' }] };
     assert.match(validar([longo]), /2000/);
   });
 

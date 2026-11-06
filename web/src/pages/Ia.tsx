@@ -10,7 +10,7 @@ import { contextoTrabalhoIa } from '../dados';
 import { baixarArquivo, nomeArquivo, paraXlsxAbas, type Celula, type Planilha } from '../exportar';
 import { idioma, local, t } from '../idioma';
 import {
-  avisoFaltantes, consultasDaConversa, contextoParaModelo, descreverCobertura, descricaoModo, ErroAcesso, estadoIa, executarConsulta, exemploPergunta, foiCancelado,
+  avisoFaltantes, consultasDaConversa, consultasEmSegundoPlano, contextoParaModelo, descreverCobertura, descricaoModo, ErroAcesso, estadoIa, executarConsulta, exemploPergunta, foiCancelado,
   fontesConsultadas, lerEscolhaModelo, lerModo, LINHAS_TELA, MAX_PERGUNTA, MODELO_PADRAO, MODOS, nomeDaUf, nomeDoModelo, PAINEIS, perguntarIa, prepararResposta,
   periodosDiferem, recorteDe, rotuloAno, rotuloModo, rotuloTerritorio, semUltimaPergunta, sugestoes, tabelaInteira, textoDaResposta, textoPeriodosPorFonte, turnos, urlEntrar,
   type Cobertura, type ConsultaFeita, type ContextoIa, type EscolhaModelo, type DadosGrafico, type DestaquePronto, type Etapa, type EstadoIa, type GraficoIa,
@@ -986,6 +986,7 @@ function Andamento({ progresso, inicio }: { progresso: Progresso | null; inicio:
   const s = useSegundos(inicio);
   const texto = progresso?.fase === 'consulta'
     ? t(`Executando ${progresso.rotulo}: ${progresso.objetivo}`, `Running ${progresso.rotulo}: ${progresso.objetivo}`)
+      + (progresso.parte ? t(` — ${progresso.parte.feitas} de ${progresso.parte.total} anos concluídos`, ` — ${progresso.parte.feitas} of ${progresso.parte.total} years done`) : '')
     : progresso?.fase === 'localizar'
       ? t(`Localizando “${progresso.nome}” no cadastro de municípios…`, `Looking up “${progresso.nome}” in the municipality registry…`)
       : progresso?.fase === 'revisao'
@@ -2065,16 +2066,18 @@ export function Ia() {
     try {
       const r = await perguntarIa({
         historico: mensagens, resultados, ultimaCompetencia, pergunta, contexto: contextoParaModelo(contexto, cobertura), idioma: idioma(),
-        paineis: contexto.paineis, sinal: controle.signal, modo: contexto.modo, cobertura, modelo: escolhaModelo,
+        paineis: contexto.paineis, sinal: controle.signal, modo: contexto.modo, cobertura, modelo: escolhaModelo, versaoDados: meta.geradoEm,
+        // depois do cancelamento nada mais da execução antiga chega à tela: uma resposta tardia não sobrescreve a pergunta seguinte
         aoAtualizar: (m) => {
-          if (naTela()) setMensagens(m);
+          if (naTela() && !controle.signal.aborted) setMensagens(m);
         },
         aoResultado: (x, v) => {
+          if (controle.signal.aborted) return;
           res[x] = v;
           if (naTela()) setResultados((m) => ({ ...m, [x]: v }));
         },
         aoProgresso: (pr) => {
-          if (naTela()) setProgresso(pr);
+          if (naTela() && !controle.signal.aborted) setProgresso(pr);
         },
         aoRestantes: (n) => setEstado((e) => (e ? { ...e, restantes: n } : e)),
       });
@@ -2106,9 +2109,14 @@ export function Ia() {
         setFila([]);
         setTexto((atual) => (atual.trim() ? atual : [pergunta, ...pendentes].join('\n\n')));
         if (foiCancelado(e)) {
-          setStatus(pendentes.length
+          // uma consulta já enviada ao DuckDB pode não ter parado: avisa, para o usuário não achar que o navegador está livre
+          const preso = consultasEmSegundoPlano() > 0
+            ? t(' Uma consulta já enviada ao banco do navegador não pôde ser interrompida e termina em segundo plano; o resultado dela será descartado.',
+              ' A query already sent to the browser database could not be interrupted and finishes in the background; its result will be discarded.')
+            : '';
+          setStatus((pendentes.length
             ? t(`Pergunta cancelada. Ela e as ${pendentes.length} da fila voltaram para o campo de texto.`, `Question cancelled. It and the ${pendentes.length} in the queue are back in the text box.`)
-            : t('Pergunta cancelada. Ela voltou para o campo de texto.', 'Question cancelled. It is back in the text box.'));
+            : t('Pergunta cancelada. Ela voltou para o campo de texto.', 'Question cancelled. It is back in the text box.')) + preso);
         }
         else setFalha({ mensagem: e instanceof Error ? e.message : String(e), pergunta, entrar: e instanceof ErroAcesso && e.tipo === 'sessao' });
         // sem nenhuma resposta, a conversa nem chegou a existir

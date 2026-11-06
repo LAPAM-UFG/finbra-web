@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { basesAV, codigoConta, formatarPct } from '../src/calculos';
 import { consultaLivre, executar, sqlClassificacao, type Classificacao, tabelaDespesaFuncao, tabelasEducacaoSaude, tabelasIaTrabalho, usarMicrodadosNoTeste, usarMotorDeTeste } from '../src/dados';
 import {
-  anosPedidos, PAINEIS, chamarIa, coberturaDaFonte, coberturaPorAno, lerEscolhaModelo, nomeDoModelo, periodosDiferem, codigosDoSql, comPergunta, conferir, consultasDaConversa, contextoParaModelo, descreverCobertura, disponibilidadeNoAno, pedeTabelaMunicipal, dadosDoGrafico, executarConsulta, fontesConsultadas, lerModo, lerResposta,
+  anosPedidos, ehPergunta, textoDaPergunta, PAINEIS, chamarIa, coberturaDaFonte, coberturaPorAno, lerEscolhaModelo, nomeDoModelo, periodosDiferem, codigosDoSql, comPergunta, conferir, consultasDaConversa, contextoParaModelo, descreverCobertura, disponibilidadeNoAno, pedeTabelaMunicipal, dadosDoGrafico, executarConsulta, fontesConsultadas, lerModo, lerResposta,
   lerRegressao, paraModelo, pedeTabela, perguntarIa, prepararResposta, recorteDe, revisarMetodo, revisarResposta, rotulosConsultas, semNominal, semUltimaPergunta, sugestoes, valorOficial,
   textoDaResposta, turnos, usarServidorIaNoTeste, validarGrafico, validarSql, type ConsultaFeita, type ContextoIa, type GraficoIa, type Mensagem, type Painel,
   type Bloco, type Cobertura, type Resultado,
@@ -35,6 +35,10 @@ import { pedidoConferencia } from '../src/ia_conferencia';
 import { atendeConceito, CONCEITOS, fichaDaColuna } from '../src/ia_catalogo';
 import { mqo, pBilateral } from '../src/ia_estatistica';
 import { contextoDosDados, FINANCAS } from '../../worker/src/sistema.js';
+import { validar as validarHistorico } from '../../worker/src/ia.js';
+import {
+  catalogoDeResultados, compactarParaEnvio, dicaDoErro, executarPartida, incoerenciasDoRecorte, lerParticao, limparCacheDePartes, resultadosReaproveitaveis,
+} from '../src/ia_continuidade';
 import { TRABALHO } from '../../worker/src/sistema_trabalho.js';
 import { SAUDE } from '../../worker/src/sistema_saude.js';
 import { calcular, indicador } from '../src/saude_comum';
@@ -3689,5 +3693,264 @@ describe('IA: cancelamento de consultas', () => {
     assert.ok(Date.now() - inicio < 2000, 'a página não deve esperar o fim da consulta');
     // com o sinal já cancelado, nem começa
     await assert.rejects(executarConsulta({ sql: 'SELECT 1' }, ['financas'], AbortSignal.abort()), (e: unknown) => (e as { name?: string }).name === 'AbortError');
+  });
+});
+
+describe('IA: continuidade (consulta partida por ano, reaproveitamento, compactação, cancelamento)', () => {
+  const resposta = (k: number, extra: Record<string, unknown> = {}) => ({ resposta: {
+    tipo: 'resposta', conclusao: `Conclusão ${k}.`, destaques: [], explicacao: '', interpretacao: [], hipoteses: '', limitacoes: `Ressalva ${k}: média anual de remuneração.`,
+    recorte: { territorio: 'Itaberaí', periodo_solicitado: '2011 e 2021', periodo: '2011 e 2021', unidade: 'vínculos', filtros: 'ativos em 31/12', agrupamentos: '' },
+    metodologia: 'Soma ÷ vínculos.', tabelas: [], graficos: [], aprofundar: [], ...extra,
+  } });
+  const original = globalThis.fetch;
+  after(() => {
+    globalThis.fetch = original;
+  });
+
+  test('consulta partida: junta os anos, mostra o progresso, guarda os concluídos e diz o que falta', async () => {
+    limparCacheDePartes();
+    const chamadas: number[] = [];
+    let falhar = true;
+    const rodar = async (s: string): Promise<Resultado> => {
+      const ano = Number(/ano = (\d+)/.exec(s)![1]);
+      chamadas.push(ano);
+      if (ano === 2013 && falhar) return { erro: 'a consulta passou de 4 minutos e foi interrompida', tempoEsgotado: true };
+      return { colunas: ['ano', 'vinculos'], linhas: [[ano, ano - 2000]], total: 1 };
+    };
+    const sql = 'SELECT ano, count(*) AS vinculos FROM t WHERE ano = {ano} GROUP BY 1';
+    const p = lerParticao({ anos: [2014, 2011, 2012, 2013, 2012] }, sql);
+    assert.ok(p && typeof p === 'object');
+    if (!p || typeof p === 'string') return;
+    assert.deepEqual(p.anos, [2011, 2012, 2013, 2014]);
+    const progresso: string[] = [];
+    const r1 = await executarPartida(sql, p, rodar, { versao: 'v1', limite: 2000, aoParte: (f, t0) => progresso.push(`${f}/${t0}`) });
+    assert.ok(!('erro' in r1));
+    if ('erro' in r1) return;
+    assert.deepEqual(r1.parcial?.concluidos, [2011, 2012, 2014]);
+    assert.deepEqual(r1.parcial?.faltam.map((f) => f.ano), [2013]);
+    assert.equal(r1.linhas.length, 3);
+    assert.equal(progresso[0], '0/4');
+    assert.equal(progresso.at(-1), '4/4');
+    // para o modelo: cobertura parcial explícita, sem tratar o total como completo
+    const paraIa = JSON.parse(paraModelo(r1, 'C1'));
+    assert.deepEqual(paraIa.cobertura_parcial.anos_faltantes.map((f: { ano: number }) => f.ano), [2013]);
+    assert.match(paraIa.aviso_parcial, /PARCIAL: 3 de 4 anos/);
+    // nova tentativa: só o ano que faltou roda de novo
+    falhar = false;
+    chamadas.length = 0;
+    const r2 = await executarPartida(sql, p, rodar, { versao: 'v1', limite: 2000 });
+    assert.deepEqual(chamadas, [2013]);
+    assert.ok(!('erro' in r2) && !r2.parcial && r2.linhas.length === 4 && r2.total === 4);
+    // outra versão dos dados não reaproveita nada
+    chamadas.length = 0;
+    await executarPartida(sql, p, rodar, { versao: 'v2', limite: 2000 });
+    assert.equal(chamadas.length, 4);
+    // todos falham por tempo: erro marcado como tempo esgotado (o modelo deve mudar o plano, não repetir)
+    limparCacheDePartes();
+    const tudo = await executarPartida(sql, p, async () => ({ erro: 'a consulta passou de 4 minutos e foi interrompida' }), { limite: 10 });
+    assert.ok('erro' in tudo && tudo.tempoEsgotado === true);
+    // marcador ausente ou ano inválido
+    assert.match(String(lerParticao({ anos: [2011, 2012] }, 'SELECT 1')), /marcador \{ano\}/);
+    assert.match(String(lerParticao({ anos: ['x'] }, sql)), /lista de anos/);
+    assert.equal(lerParticao({ anos: [] }, 'SELECT 1'), null);
+  });
+
+  test('consulta partida no DuckDB: um ano de cada vez, mesmo SQL validado, cancelável', async () => {
+    limparCacheDePartes();
+    const r = await executarConsulta({ sql: 'SELECT {ano} AS ano, {ano} * 2 AS dobro', objetivo: 'teste', particao: { anos: [2011, 2012, 2013] } }, ['financas']);
+    assert.ok(!('erro' in r), JSON.stringify(r));
+    if ('erro' in r) return;
+    assert.ok(!r.parcial, JSON.stringify(r.parcial));
+    assert.deepEqual(r.linhas, [[2011, 4022], [2012, 4024], [2013, 4026]]);
+    // o SQL de cada ano passa pela validação como qualquer outro
+    const ruim = await executarConsulta({ sql: 'DROP TABLE x -- {ano}', particao: { anos: [2011] } }, ['financas']);
+    assert.ok('erro' in ruim);
+    const parar = new AbortController();
+    parar.abort();
+    await assert.rejects(executarConsulta({ sql: 'SELECT {ano}', particao: { anos: [2011, 2012] } }, ['financas'], parar.signal), (e: unknown) => (e as { name?: string }).name === 'AbortError');
+  });
+
+  const consultaDe = (id: string, sql: string, extra: Record<string, unknown> = {}): Mensagem => ({ role: 'assistant', content: [{ type: 'tool_use', id, name: 'consultar', input: { sql, objetivo: `Objetivo de ${id}`, ...extra } }] });
+  const apurado = { colunas: ['ano', 'municipio', 'vinculos', 'remuneracao'], linhas: [[2011, 'Itaberaí', 2606, 995.35], [2011, 'Goiás', 49, 1500.5], [2021, 'Itaberaí', 4713, 1977.75], [2021, 'Goiás', 237, 2100.25]], total: 4, dados: 'v1' };
+
+  test('resultado apurado vira tabela res_C1: participações sem apurar de novo; mudanças de versão ou conversa bloqueiam', async () => {
+    const hist: Mensagem[] = [
+      { role: 'user', content: [{ type: 'text', text: 'ctx' }, { type: 'text', text: 'Vínculos de 2011 e 2021' }] },
+      consultaDe('c1', 'SELECT ano, municipio, vinculos, remuneracao FROM base WHERE ano IN (2011, 2021) AND cnae_classe = \'01555\'', { definicao: 'vínculos ativos em 31/12; média ÷ todos os ativos' }),
+    ];
+    const resultados: Record<string, Resultado> = { c1: apurado };
+    const anteriores = resultadosReaproveitaveis(hist, resultados, 'v1');
+    assert.deepEqual([...anteriores.keys()], ['C1']);
+    const cat = catalogoDeResultados(anteriores);
+    assert.match(cat, /^\[RESULTADOS DA CONVERSA\]/);
+    assert.match(cat, /res_C1 \(4 linhas; colunas: ano, municipio, vinculos, remuneracao\)/);
+    assert.match(cat, /definição: vínculos ativos em 31\/12/);
+    assert.match(cat, /filtros: ano IN \(2011, 2021\) AND cnae_classe/);
+    const part = await executarConsulta({ sql: 'SELECT ano, municipio, round(100.0 * vinculos / sum(vinculos) OVER (PARTITION BY ano), 2) AS part FROM res_C1 ORDER BY ano, municipio' }, ['financas'], undefined, 2000, { anteriores });
+    assert.ok(!('erro' in part), JSON.stringify(part));
+    if ('erro' in part) return;
+    assert.deepEqual(part.linhas.find((l) => l[0] === 2021 && l[1] === 'Itaberaí'), [2021, 'Itaberaí', 95.21]);
+    // números não inteiros entram como DOUBLE: contas de valores reais não estouram como DECIMAL
+    const tipo = await executarConsulta({ sql: 'SELECT typeof(remuneracao) AS tipo, sum(remuneracao * 1e15 * remuneracao) AS grande FROM res_C1 GROUP BY 1' }, ['financas'], undefined, 2000, { anteriores });
+    assert.ok(!('erro' in tipo), JSON.stringify(tipo));
+    if (!('erro' in tipo)) assert.equal(tipo.linhas[0][0], 'DOUBLE');
+    // outra versão dos dados, resultado parcial, truncado ou com erro: não é oferecido
+    assert.equal(resultadosReaproveitaveis(hist, resultados, 'v2').size, 0);
+    assert.equal(resultadosReaproveitaveis(hist, { c1: { ...apurado, parcial: { pedidos: [2011, 2021], concluidos: [2011], reaproveitados: [], faltam: [{ ano: 2021, motivo: 'x' }] } } }, 'v1').size, 0);
+    assert.equal(resultadosReaproveitaveis(hist, { c1: { ...apurado, total: 9000 } }, 'v1').size, 0);
+    assert.equal(resultadosReaproveitaveis(hist, { c1: { erro: 'falhou' } }, 'v1').size, 0);
+    // outra conversa (sem anteriores): res_C1 não existe, mesmo que a tabela temporária ainda esteja na conexão
+    const outra = await executarConsulta({ sql: 'SELECT * FROM res_C1' }, ['financas'], undefined, 2000, { anteriores: new Map() });
+    assert.ok('erro' in outra && outra.bloqueada && /res_C1 não está disponível/.test(outra.erro));
+    // identificadores que não são de resultado não passam
+    const falsa = await executarConsulta({ sql: 'SELECT * FROM res_C9' }, ['financas'], undefined, 2000, { anteriores });
+    assert.ok('erro' in falsa && /res_C9/.test(falsa.erro));
+  });
+
+  test('sequência de perguntas: a segunda recebe o catálogo e consulta res_C1 em vez de apurar de novo', async () => {
+    limparCacheDePartes();
+    const pedidos: { mensagens: Mensagem[] }[] = [];
+    const passos: ((p: { mensagens: Mensagem[] }) => unknown)[] = [
+      () => ({ parada: 'tool_use', restantes: 40, conteudo: [{ type: 'tool_use', id: 'a1', name: 'consultar', input: {
+        sql: 'SELECT {ano} AS ano, \'Itaberaí\' AS municipio, {ano} * 2 AS vinculos', objetivo: 'Vínculos por ano', definicao: 'vínculos ativos em 31/12', particao: { anos: [2011, 2021] } } }] }),
+      () => ({ parada: 'end_turn', restantes: 40, conteudo: [{ type: 'text', text: 'Pronto.' }] }),
+      () => ({ parada: 'tool_use', restantes: 39, conteudo: [{ type: 'tool_use', id: 'a2', name: 'consultar', input: {
+        sql: 'SELECT ano, round(100.0 * vinculos / sum(vinculos) OVER (), 1) AS participacao FROM res_C1 ORDER BY ano', objetivo: 'Participação por ano', definicao: '', particao: { anos: [] } } }] }),
+      () => ({ parada: 'end_turn', restantes: 39, conteudo: [{ type: 'text', text: 'Pronto de novo.' }] }),
+    ];
+    globalThis.fetch = (async (_u: unknown, init?: { body?: string; signal?: AbortSignal }) => {
+      const pedido = JSON.parse(String(init?.body));
+      pedidos.push(pedido);
+      return new Response(JSON.stringify(passos[pedidos.length - 1](pedido)), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }) as typeof fetch;
+    usarServidorIaNoTeste('');
+    const resultados: Record<string, Resultado> = {};
+    const partes: string[] = [];
+    const base = { contexto: 'ctx', idioma: 'pt', paineis: ['financas'] as Painel[], sinal: new AbortController().signal, versaoDados: 'v1', aoAtualizar: () => undefined, aoResultado: (id: string, r: Resultado) => (resultados[id] = r),
+      aoProgresso: (p: { fase: string; parte?: { feitas: number; total: number } }) => { if (p.fase === 'consulta' && p.parte) partes.push(`${p.parte.feitas}/${p.parte.total}`); } };
+    const r1 = await perguntarIa({ ...base, historico: [], pergunta: 'Vínculos em 2011 e 2021?' });
+    assert.equal(r1.desfecho, 'texto');
+    assert.deepEqual(partes, ['0/2', '1/2', '2/2']);
+    assert.equal((resultados.a1 as { dados?: string }).dados, 'v1');
+    const r2 = await perguntarIa({ ...base, historico: r1.mensagens, resultados, pergunta: 'Qual a participação de cada ano?' });
+    assert.equal(r2.desfecho, 'texto');
+    // a pergunta 2 foi enviada com o catálogo dos resultados já apurados
+    const textos = (pedidos[2].mensagens.at(-1)!.content as { type: string; text?: string }[]).filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+    assert.match(textos, /\[RESULTADOS DA CONVERSA\][\s\S]*res_C1 \(2 linhas/);
+    const rr = JSON.parse((pedidos[3].mensagens.at(-1)!.content as { content: string }[])[0].content);
+    assert.deepEqual(rr.linhas, [[2011, 49.9], [2021, 50.1]]); // 4022 e 4042 do total de 8064
+    // a consulta sobre res_C1 não leu as bases: nenhuma etapa de apuração nova com a mesma consulta partida
+    assert.equal(partes.length, 3, 'o progresso (0/2, 1/2, 2/2) é só da primeira pergunta');
+  });
+
+  test('resposta que chega depois do cancelamento é descartada e não toca na conversa', async () => {
+    const controle = new AbortController();
+    const atualizacoes: number[] = [];
+    let resultados = 0;
+    globalThis.fetch = (async () => {
+      controle.abort(); // o usuário cancela enquanto o modelo ainda pensa; a resposta chega depois
+      return new Response(JSON.stringify({ parada: 'tool_use', restantes: 30, conteudo: [{ type: 'tool_use', id: 'z1', name: 'consultar', input: { sql: 'SELECT 1 AS n', objetivo: 'x' } }] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }) as typeof fetch;
+    usarServidorIaNoTeste('');
+    await assert.rejects(perguntarIa({
+      historico: [], pergunta: 'Teste', contexto: 'ctx', idioma: 'pt', paineis: ['financas'], sinal: controle.signal,
+      aoAtualizar: (m) => atualizacoes.push(m.length), aoResultado: () => { resultados++; },
+    }), (e: Error) => e.name === 'AbortError');
+    assert.deepEqual(atualizacoes, [1], 'só a pergunta; a resposta tardia do modelo não é registrada');
+    assert.equal(resultados, 0, 'a consulta do modelo não chega a rodar');
+  });
+
+  test('histórico longo: tabelas antigas viram res_Cn e, passado o limite, um resumo com as ressalvas; a conversa guardada não muda', () => {
+    let hist: Mensagem[] = [];
+    const resultados: Record<string, Resultado> = {};
+    const grande = { ...apurado, linhas: Array.from({ length: 150 }, (_, i) => [2011, `Município ${i}`, i, 1000 + i / 7]), total: 150 };
+    for (let k = 1; k <= 9; k++) {
+      hist = comPergunta(hist, `Pergunta ${k}`, 'ctx');
+      hist = [...hist, consultaDe(`c${k}`, `SELECT * FROM base WHERE ano = ${2010 + k}`),
+        { role: 'user', content: [{ type: 'tool_result', tool_use_id: `c${k}`, content: paraModelo(grande, `C${k}`) }] },
+        { role: 'assistant', content: [{ type: 'tool_use', id: `r${k}`, name: 'responder', input: resposta(k, { tabelas: [{ consulta: `C${k}`, papel: 'principal', tipo: 'tabela', titulo: 'x'.repeat(2000) }] }) }] }];
+      resultados[`c${k}`] = grande;
+    }
+    hist = comPergunta(hist, 'Pergunta 10', 'ctx');
+    const antes = JSON.stringify(hist);
+    const tabelas = compactarParaEnvio(hist.slice(0, 17), resultados, 'v1');
+    assert.equal(tabelas.compactada, 'tabelas');
+    const stub = JSON.stringify(tabelas.mensagens);
+    assert.ok(stub.includes('Tabela completa guardada na página como res_C1'));
+    assert.ok(stub.length < JSON.stringify(hist.slice(0, 17)).length / 2);
+    const envio = compactarParaEnvio(hist, resultados, 'v1');
+    assert.equal(envio.compactada, 'resumo');
+    assert.equal(JSON.stringify(hist), antes, 'a conversa guardada continua inteira');
+    const primeira = envio.mensagens[0].content as { text: string }[];
+    assert.ok(primeira[0].text.startsWith('[RESUMO DA CONVERSA]'));
+    assert.match(primeira[0].text, /Ressalva 1: média anual/);
+    assert.match(primeira[0].text, /Ressalva 7: média anual/);
+    assert.match(primeira[0].text, /Pergunta 3/);
+    assert.ok(JSON.stringify(envio.mensagens).length < antes.length / 3, `${JSON.stringify(envio.mensagens).length} de ${antes.length}`);
+    assert.equal(textoDaPergunta(envio.mensagens.at(-1)!), 'Pergunta 10');
+    assert.equal(envio.mensagens.filter(ehPergunta).length, 3, 'resumo + a pergunta anterior + a nova');
+    // o Worker aceita o histórico compactado (sem o limite de 15 perguntas por conversa, que só conta o que é enviado)
+    assert.equal(validarHistorico(envio.mensagens), null);
+    // toda ferramenta pedida continua com o seu resultado
+    const pedidas = new Set(envio.mensagens.flatMap((m) => (Array.isArray(m.content) ? m.content.filter((b) => b.type === 'tool_use').map((b) => b.id) : [])));
+    const devolvidas = new Set(envio.mensagens.flatMap((m) => (Array.isArray(m.content) ? m.content.filter((b) => b.type === 'tool_result').map((b) => b.tool_use_id) : [])));
+    for (const id of pedidas) assert.ok(devolvidas.has(id), `sem resultado para ${id}`);
+    // retomar uma conversa salva: os resultados guardados voltam como res_Cn
+    assert.equal(resultadosReaproveitaveis(hist, resultados, 'v1').size, 9);
+  });
+
+  test('coerência: tema de outra cadeia na conclusão, classe e subclasse CNAE no mesmo filtro', () => {
+    const tcc = "WHERE cnae_classe IN ('01555', '46346', '47229') OR cnae_subclasse = '1012101'";
+    const base = { conclusao: 'Os vínculos da avicultura passaram de 2.655 para 4.950.', titulos: 'Vínculos na cadeia avícola', sqls: [`SELECT ano FROM rais_vinculos ${tcc}`], objetivos: ['Vínculos da avicultura'] };
+    assert.deepEqual(incoerenciasDoRecorte('Vínculos da avicultura nos 13 municípios', base), []);
+    const bovina = incoerenciasDoRecorte('Vínculos da avicultura nos 13 municípios', { ...base, conclusao: 'Os vínculos da cadeia bovina e da avicultura cresceram.' });
+    assert.equal(bovina.length, 1);
+    assert.match(bovina[0], /bovinos/);
+    // o tema que está nos filtros ou na pergunta é legítimo
+    assert.deepEqual(incoerenciasDoRecorte('Vínculos da avicultura', { ...base, sqls: ["SELECT 1 -- bovino\nWHERE cnae_classe = '01555'"] }), []);
+    assert.equal(incoerenciasDoRecorte('x', { ...base, sqls: ["SELECT 1 WHERE cnae_classe = '10121' OR cnae_subclasse = '1012101'"] }).length, 1);
+    assert.deepEqual(incoerenciasDoRecorte('x', { ...base, sqls: ["SELECT CASE WHEN cnae_classe = '10121' THEN 1 WHEN cnae_subclasse = '1012101' THEN 2 END"] }), []);
+    // erro de DECIMAL volta com a correção conhecida
+    assert.match(dicaDoErro('Out of Range Error: Overflow in multiplication of DECIMAL(18,2) (1 * 2)'), /CAST\(coluna AS DOUBLE\)/);
+    assert.equal(dicaDoErro('Catalog Error: tabela x'), 'Catalog Error: tabela x');
+  });
+
+  const semMicroRef = !existsSync(`${DATA}/gold/trabalho/cubo_mun`) || !existsSync(`${MICRO}/silver/trabalho/micro/rais_vinculos/ano=2021/uf=52.parquet`)
+    || !existsSync(`${MICRO}/silver/trabalho/micro/indice.json`);
+
+  test('regressão dos 13 municípios (microdados): vínculos, remuneração média anual e denominadores, calculados dos dados', { skip: semMicroRef, timeout: 600_000 }, async () => {
+    limparCacheDePartes();
+    usarMicrodadosNoTeste(true);
+    await tabelasIaTrabalho();
+    usarMicrodadosNoTeste(false);
+    const municipios = [520215, 521040, 521120, 520960, 520160, 521056, 521295, 520753, 521140, 521060, 520250, 520890, 520929];
+    const nomes = await executarConsulta({ sql: `SELECT count(*) AS n FROM entes WHERE esfera = 'M' AND cod_ibge // 10 IN (${municipios.join(',')})` }, ['trabalho']);
+    assert.ok(!('erro' in nomes), JSON.stringify(nomes));
+    const sql = `SELECT ano, municipio, count(*) AS vinculos, count(*) FILTER (WHERE rem_media_nom > 0) AS vinculos_rem_positiva,
+        sum(rem_media_nom) FILTER (WHERE rem_media_nom > 0) AS rem_soma, typeof(any_value(rem_media_nom)) AS tipo
+      FROM rais_vinculos WHERE ano = {ano} AND uf = 52 AND ativo_31_12 = 1 AND municipio IN (${municipios.join(',')})
+        AND (cnae_classe = '01555' OR cnae_subclasse = '1012101' OR cnae_classe IN ('46346', '47229'))
+      GROUP BY ano, municipio ORDER BY municipio`;
+    const r = await executarConsulta({ sql, objetivo: 'Vínculos e remuneração', particao: { anos: [2011, 2021] } }, ['trabalho']);
+    assert.ok(!('erro' in r), JSON.stringify(r));
+    if ('erro' in r) return;
+    assert.ok(!r.parcial);
+    const por = (ano: number) => r.linhas.filter((l) => l[0] === ano);
+    const soma = (ano: number) => por(ano).reduce((s, l) => s + Number(l[2]), 0);
+    // os totais dos 13 municípios e os de Itaberaí (521040 = 5210406)
+    assert.equal(soma(2011), 2655);
+    assert.equal(soma(2021), 4950);
+    const ita = (ano: number) => por(ano).find((l) => l[1] === 521040)!;
+    assert.equal(ita(2011)[2], 2606);
+    assert.equal(ita(2021)[2], 4713);
+    assert.equal(ita(2021)[3], 4646);
+    // a remuneração de referência é a média do ano (rem_media_nom): numerador comum, dois denominadores
+    const rem = Number(ita(2021)[4]);
+    assert.equal(Math.round((rem / Number(ita(2021)[2])) * 100) / 100, 1977.75, 'soma ÷ todos os vínculos');
+    assert.equal(Math.round((rem / Number(ita(2021)[3])) * 100) / 100, 2006.27, 'soma ÷ só os vínculos com remuneração positiva');
+    // os valores monetários chegam em DOUBLE: produtos de remunerações não estouram como DECIMAL
+    assert.equal(ita(2021)[5], 'DOUBLE');
+    const grande = await executarConsulta({ sql: 'SELECT sum(rem_dezembro_nom * rem_dezembro_nom * rem_dezembro_nom * rem_dezembro_nom) AS p4 FROM rais_vinculos WHERE ano = 2021 AND uf = 52 AND municipio = 521040 AND ativo_31_12 = 1' }, ['trabalho']);
+    assert.ok(!('erro' in grande), JSON.stringify(grande));
   });
 });

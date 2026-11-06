@@ -46,7 +46,10 @@ const MAX_SAIDA = 128_000;
 const MAX_PERGUNTAS_CONVERSA = 15;
 const MAX_CORPO = 600_000; // bytes
 const MAX_PERGUNTA = 2000; // caracteres
-const MAX_CONTEXTO = 1500; // caracteres do contexto da página que acompanha cada pergunta
+const MAX_CONTEXTO = 6000; // caracteres do contexto da página que acompanha cada pergunta (inclui a lista de resultados já apurados)
+// o histórico antigo, resumido pela página, entra como a primeira mensagem do usuário, com este marcador e mais espaço
+const MARCA_RESUMO = '[RESUMO DA CONVERSA]';
+const MAX_RESUMO = 8000;
 
 // sem enum nos esquemas: com eles e as tabelas, a gramática do modo estrito passa do limite da API; a página
 // normaliza os valores (lerResposta)
@@ -70,6 +73,20 @@ export const FERRAMENTAS = [
         sql: { type: 'string', description: 'Uma única consulta SELECT/WITH em SQL do DuckDB.' },
         objetivo: { type: 'string', description: 'Frase curta, no idioma da resposta, dizendo o que a consulta mede.' },
         substitui: { type: 'string', description: 'Identificador da consulta que esta corrige ou refaz (ex.: C4), ou "" se for nova.' },
+        definicao: {
+          type: 'string',
+          description: 'Definição do indicador desta consulta, que a página guarda com o resultado para as perguntas seguintes o reaproveitarem: o que mede, numerador, denominador, '
+            + 'filtros (território, período, situação, CNAE com o alcance de cada código), fonte e, em valores reais, índice e ano-base. Uma ou duas frases; "" se não houver indicador.',
+        },
+        particao: {
+          type: 'object',
+          description: 'Consulta ampla dividida por ano: {"anos": [2011, 2012, …]} e o marcador {ano} no filtro do SQL (ex.: WHERE ano = {ano}). A página roda um ano de cada vez, com concorrência '
+            + 'limitada, guarda os anos concluídos (uma nova tentativa só roda o que faltou) e junta as linhas; se algum ano falhar, devolve o resultado como parcial, dizendo quais faltam. '
+            + 'Consulta comum: {"anos": []}.',
+          properties: { anos: { type: 'array', items: { type: 'integer' } } },
+          required: ['anos'],
+          additionalProperties: false,
+        },
         colunas: {
           type: 'array',
           description: 'Unidade de cada coluna do resultado, na ordem do SELECT; a página formata por ela (não pelo nome). '
@@ -136,7 +153,7 @@ export const FERRAMENTAS = [
           additionalProperties: false,
         },
       },
-      required: ['sql', 'objetivo', 'substitui', 'colunas', 'regressao', 'verificacao'],
+      required: ['sql', 'objetivo', 'substitui', 'definicao', 'particao', 'colunas', 'regressao', 'verificacao'],
       additionalProperties: false,
     },
   },
@@ -362,7 +379,7 @@ export function validar(mensagens) {
   if (perguntas.some((m) => {
     const tx = textos(m);
     const pergunta = tx.at(-1);
-    return !pergunta.trim() || pergunta.length > MAX_PERGUNTA || tx.slice(0, -1).join('').length > MAX_CONTEXTO;
+    return !pergunta.trim() || pergunta.length > (pergunta.startsWith(MARCA_RESUMO) ? MAX_RESUMO : MAX_PERGUNTA) || tx.slice(0, -1).join('').length > MAX_CONTEXTO;
   })) return `pergunta vazia ou com mais de ${MAX_PERGUNTA} caracteres`;
   const inicio = mensagens.findLastIndex(ehPergunta);
   if (mensagens.slice(inicio).filter((m) => m.role === 'assistant').length >= MAX_RODADAS) return 'consultas demais nesta pergunta';
