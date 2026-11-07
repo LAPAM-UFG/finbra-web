@@ -487,6 +487,10 @@ def fonte_trabalho(con):
     anos_cubo = sorted(int(p.stem[4:]) for p in (pasta / "cubo_uf").glob("ano=*.parquet"))
     if anos_cubo:
         saida["rais_micro"] = {"anos": anos_cubo, "processado_em": _quando(pasta / "cubo_uf" / f"ano={anos_cubo[-1]}.parquet")}
+        # cruzamento nacional escolaridade × porte (microdados.py, cubo_esc_porte): anos já gerados
+        anos_esc = sorted(int(p.stem[4:]) for p in (pasta / "cubo_esc_porte").glob("ano=*.parquet"))
+        if anos_esc:
+            saida["rais_micro"]["esc_porte"] = anos_esc
     return saida
 
 

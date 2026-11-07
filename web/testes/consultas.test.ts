@@ -20,6 +20,9 @@ import {
   textoDaResposta, turnos, usarServidorIaNoTeste, validarGrafico, validarSql, type ConsultaFeita, type ContextoIa, type GraficoIa, type Mensagem, type Painel,
   type Bloco, type Cobertura, type Resultado,
 } from '../src/ia';
+import { SQL_IPCA_BASE, fatorParaAno, notaDeValorReal, valorReal } from '../src/ia_moeda';
+import { abertas, enfileirar, lerFila, marcar as marcarItem, proxima, remover as removerItem, serializar, tentarDeNovo, type ItemFila } from '../src/ia_fila';
+import { paraPdf, paraWinAnsi, quebrar } from '../src/pdf';
 import { formatarCelulaT, montarTabela, rodapeTabela, tabelaExportavel, tabelaHtml, tabelaTsv, type EspecTabela } from '../src/ia_tabelas';
 import { juntaFontes, lerVerificacao, linhasDaVerificacao, problemasDaVerificacao } from '../src/ia_verificacao';
 import {
@@ -38,11 +41,12 @@ import { contextoDosDados, FINANCAS } from '../../worker/src/sistema.js';
 import { validar as validarHistorico } from '../../worker/src/ia.js';
 import {
   catalogoDeResultados, compactarParaEnvio, dicaDoErro, executarPartida, incoerenciasDoRecorte, lerParticao, limparCacheDePartes, resultadosReaproveitaveis,
+  tendenciasSemSuporte,
 } from '../src/ia_continuidade';
 import { TRABALHO } from '../../worker/src/sistema_trabalho.js';
 import { SAUDE } from '../../worker/src/sistema_saude.js';
 import { calcular, indicador } from '../src/saude_comum';
-import { cadastro, codigosDoMunicipio, conferirCodigos, executarLocalizacao, localizar } from '../src/ia_territorio';
+import { cadastro, codigosDoMunicipio, conferirCodigos, executarLocalizacao, localizar, territoriosNasConsultas } from '../src/ia_territorio';
 import { crc32, paraCsv, paraXlsx, paraXlsxAbas } from '../src/exportar';
 import { ordenarBusca } from '../src/contexto';
 import { gravarEstadoEvolucao, lerEstadoEvolucao, MAX_COMPARADOS, posicaoRelativa, resumoTrajetoria, tabelaMudancas, tabelaTrajetorias, variacaoPct, variacaoPosicao } from '../src/posicoes';
@@ -96,6 +100,7 @@ before(async () => {
   })) {
     await con.query(`CREATE TABLE ${nome} AS SELECT * FROM read_parquet('${DATA}/${arq}')`);
   }
+  await con.query(SQL_IPCA_BASE);
   usarMotorDeTeste(adb as any, con as any, manifesto, onde, async (c) => new Uint8Array(await readFile(onde(c))));
 });
 after(() => undefined);
@@ -3952,5 +3957,246 @@ describe('IA: continuidade (consulta partida por ano, reaproveitamento, compacta
     assert.equal(ita(2021)[5], 'DOUBLE');
     const grande = await executarConsulta({ sql: 'SELECT sum(rem_dezembro_nom * rem_dezembro_nom * rem_dezembro_nom * rem_dezembro_nom) AS p4 FROM rais_vinculos WHERE ano = 2021 AND uf = 52 AND municipio = 521040 AND ativo_31_12 = 1' }, ['trabalho']);
     assert.ok(!('erro' in grande), JSON.stringify(grande));
+  });
+});
+
+describe('IA: fila de perguntas com estado por item', () => {
+  test('seis perguntas, falha na terceira: só ela muda de estado, as outras ficam e podem rodar depois da nova tentativa', () => {
+    let fila: ItemFila[] = [];
+    for (let i = 1; i <= 6; i++) fila = enfileirar(fila, 'conv-1', `Pergunta ${i}`, `q${i}`);
+    const rodadas: string[] = [];
+    const rodar = (falhar: string[] = []) => {
+      for (let p = proxima(fila, 'conv-1'); p; p = proxima(fila, 'conv-1')) {
+        fila = marcarItem(fila, p.id, 'executando');
+        assert.equal(proxima(fila, 'conv-1'), null, 'nada começa enquanto uma executa');
+        rodadas.push(p.id);
+        fila = falhar.includes(p.id) ? marcarItem(fila, p.id, 'falhou', 'timeout') : marcarItem(fila, p.id, 'concluida');
+      }
+    };
+    rodar(['q3']);
+    assert.deepEqual(rodadas, ['q1', 'q2', 'q3']);
+    assert.deepEqual(fila.map((x) => x.estado), ['concluida', 'concluida', 'falhou', 'aguardando', 'aguardando', 'aguardando']);
+    assert.equal(fila[2].erro, 'timeout');
+    assert.equal(proxima(fila, 'conv-1'), null, 'a fila espera a decisão sobre a que falhou');
+    // tentar de novo só a que falhou; as demais seguem como estão e nenhuma é repetida
+    fila = tentarDeNovo(fila, 'q4'); // não falhou: nada muda
+    assert.equal(fila[3].estado, 'aguardando');
+    fila = tentarDeNovo(fila, 'q3');
+    assert.equal(fila[2].estado, 'aguardando');
+    assert.equal(fila[2].erro, undefined);
+    rodar();
+    assert.deepEqual(rodadas, ['q1', 'q2', 'q3', 'q3', 'q4', 'q5', 'q6']);
+    assert.ok(fila.every((x) => x.estado === 'concluida'));
+    assert.equal(new Set(fila.map((x) => x.id)).size, 6);
+    assert.equal(abertas(fila), 0);
+  });
+
+  test('cancelada e removida: o resto da fila segue; o que executa não é removido', () => {
+    let fila = ['A', 'B', 'C'].reduce((f, x) => enfileirar(f, 'c', x, `id${x}`), [] as ItemFila[]);
+    fila = marcarItem(fila, 'idA', 'cancelada');
+    assert.equal(proxima(fila, 'c'), null);
+    fila = removerItem(fila, 'idA');
+    assert.equal(proxima(fila, 'c')?.texto, 'B');
+    fila = marcarItem(fila, 'idB', 'executando');
+    assert.equal(removerItem(fila, 'idB').length, fila.length);
+    assert.equal(proxima(fila, 'outra-conversa'), null);
+  });
+
+  test('recarregar a página: a fila volta; o que executava volta como falhou; lixo é ignorado; concluídas não voltam', () => {
+    let fila = ['A', 'B', 'C', 'D'].reduce((f, x) => enfileirar(f, 'c', x, `id${x}`), [] as ItemFila[]);
+    fila = marcarItem(marcarItem(fila, 'idA', 'concluida'), 'idB', 'executando');
+    const volta = lerFila(serializar(fila));
+    assert.deepEqual(volta.map((x) => [x.id, x.estado]), [['idB', 'falhou'], ['idC', 'aguardando'], ['idD', 'aguardando']]);
+    assert.match(volta[0].erro ?? '', /recarregar/);
+    assert.deepEqual(lerFila('não é json'), []);
+    assert.deepEqual(lerFila(JSON.stringify([{ id: 1 }, { id: 'x', conversa: 'c', texto: 't', estado: 'qualquer' }])), []);
+    assert.equal(lerFila(JSON.stringify([...volta, ...volta])).length, 3, 'sem perguntas duplicadas');
+  });
+});
+
+describe('PDF gerado no navegador', () => {
+  const textosDoPdf = (pdf: Uint8Array) => {
+    const s = Buffer.from(pdf).toString('latin1');
+    return [...s.matchAll(/<([0-9a-f]+)> Tj/g)].map((m) => Buffer.from(m[1], 'hex').toString('latin1'));
+  };
+  const linhas28 = Array.from({ length: 28 }, (_, i) => [`Município ${i + 1} — ação`, String(1000 + i), `${(i * 3.5).toFixed(1).replace('.', ',')}%`]);
+
+  test('arquivo válido: cabeçalho, xref com os deslocamentos certos, trailer e número de páginas', () => {
+    const pdf = paraPdf({ titulo: 'Pergunte aos dados', rodape: 'LAPAM/UFG', blocos: [
+      { tipo: 'titulo', nivel: 1, texto: '1. Qual a escolaridade?' },
+      { tipo: 'tabela', titulo: 'Tabela 1', colunas: ['Território', 'Vínculos', 'Participação'], linhas: linhas28, texto: [true, false, false], notas: ['Fonte: RAIS (MTE).'] },
+    ] });
+    const s = Buffer.from(pdf).toString('latin1');
+    assert.ok(s.startsWith('%PDF-1.4'));
+    assert.ok(s.trimEnd().endsWith('%%EOF'));
+    const xref = Number(/startxref\n(\d+)/.exec(s)![1]);
+    assert.equal(s.slice(xref, xref + 4), 'xref');
+    const tamanho = Number(/\/Size (\d+)/.exec(s)![1]);
+    const entradas = [...s.slice(xref).matchAll(/^(\d{10}) \d{5} n $/gm)].map((m) => Number(m[1]));
+    assert.equal(entradas.length, tamanho - 1);
+    entradas.forEach((pos, i) => assert.ok(s.startsWith(`${i + 1} 0 obj`, pos), `objeto ${i + 1} no deslocamento ${pos}`));
+    const paginas = Number(/\/Count (\d+)/.exec(s)![1]);
+    assert.equal((s.match(/\/Type \/Page /g) ?? []).length, paginas);
+    assert.ok(paginas >= 1);
+  });
+
+  test('todas as 28 linhas e a acentuação (WinAnsi) estão no arquivo', () => {
+    const pdf = paraPdf({ titulo: 'Relatório — ação', rodape: 'LAPAM/UFG', blocos: [
+      { tipo: 'tabela', colunas: ['Território', 'Vínculos', 'Participação'], linhas: linhas28, texto: [true, false, false] },
+    ] });
+    const t = textosDoPdf(pdf).join('\n');
+    for (let i = 1; i <= 28; i++) assert.ok(t.includes(`Município ${i} `), `linha ${i}`);
+    assert.ok(t.includes('ação'));
+    assert.ok(t.includes('Participação'));
+    assert.deepEqual(paraWinAnsi('çãé–×'), [0xe7, 0xe3, 0xe9, 0x96, 0xd7]);
+    assert.equal(Buffer.from(paraWinAnsi('≥ 5 → ok')).toString('latin1'), '>= 5 -> ok');
+  });
+
+  test('tabela longa pagina e repete o cabeçalho; tabela larga se divide em blocos de colunas com a primeira repetida', () => {
+    const longa = Array.from({ length: 400 }, (_, i) => [`Linha ${i}`, String(i)]);
+    const pdfLongo = paraPdf({ titulo: 'x', rodape: 'r', blocos: [{ tipo: 'tabela', colunas: ['Rótulo', 'Valor'], linhas: longa, texto: [true, false] }] });
+    const paginas = Number(/\/Count (\d+)/.exec(Buffer.from(pdfLongo).toString('latin1'))![1]);
+    assert.ok(paginas >= 5, `páginas: ${paginas}`);
+    const t = textosDoPdf(pdfLongo);
+    assert.equal(t.filter((x) => x === 'Rótulo').length, paginas, 'cabeçalho em cada página');
+    assert.ok(t.includes('Linha 399'));
+    const cols = Array.from({ length: 30 }, (_, j) => `Coluna_com_nome_comprido_${j}`);
+    const larga = paraPdf({ titulo: 'x', rodape: 'r', blocos: [{ tipo: 'tabela', colunas: cols, linhas: [cols.map((_, j) => `valor ${j}`)], texto: cols.map((_, j) => j === 0) }] });
+    const tl = textosDoPdf(larga).join('|');
+    for (let j = 0; j < 30; j++) assert.ok(tl.includes(`valor ${j}`), `coluna ${j}`);
+    assert.ok(/\(colunas 1, 2/.test(tl) && /de 30\)/.test(tl));
+    assert.ok(Buffer.from(larga).toString('latin1').includes('/MediaBox [0 0 842 595]'), 'paisagem');
+  });
+
+  test('palavras maiores que a coluna são quebradas sem perder texto', () => {
+    const l = quebrar('A'.repeat(200), 60, 8);
+    assert.ok(l.length > 1);
+    assert.equal(l.join(''), 'A'.repeat(200));
+    assert.deepEqual(quebrar('um dois', 500, 8), ['um dois']);
+  });
+});
+
+describe('IA: conversão para outro ano-base e agregado escolaridade × porte', () => {
+  test('fator para 2021: igual a 1 em 2021, valor real = nominal em 2021, e a visão ipca_base concorda com a fórmula', async () => {
+    const base = await executarConsulta({ sql: 'SELECT exercicio, fator_real FROM ipca WHERE fator_real IS NOT NULL', objetivo: 'fatores de 2025' }, ['trabalho']);
+    assert.ok(!('erro' in base), JSON.stringify(base));
+    const fatores = Object.fromEntries((base as unknown as { linhas: number[][] }).linhas.map((l) => [Number(l[0]), Number(l[1])]));
+    assert.equal(fatorParaAno(fatores, 2021, 2021), 1);
+    assert.equal(valorReal(fatores, 2021, 2021, 1977.75), 1977.75);
+    assert.ok(fatorParaAno(fatores, 2011, 2021) > 1 && fatorParaAno(fatores, 2024, 2021) < 1);
+    assert.ok(Math.abs(fatorParaAno(fatores, 2015, 2021) - fatores[2015] / fatores[2021]) < 1e-12);
+    const r = await executarConsulta({ sql: 'SELECT exercicio, fator FROM ipca_base WHERE ano_base_alvo = 2021 AND exercicio IN (2011, 2021, 2024) ORDER BY exercicio', objetivo: 'fatores para 2021' }, ['trabalho']);
+    assert.ok(!('erro' in r), JSON.stringify(r));
+    const f = new Map((r as unknown as { linhas: number[][] }).linhas.map((l) => [Number(l[0]), Number(l[1])]));
+    assert.equal(f.get(2021), 1);
+    for (const a of [2011, 2024]) assert.ok(Math.abs(f.get(a)! - fatorParaAno(fatores, a, 2021)) < 1e-12);
+    assert.match(notaDeValorReal(2021), /R\$ de dezembro de 2021/);
+    assert.throws(() => fatorParaAno(fatores, 1800, 2021), /sem fator/);
+  });
+
+  const semEsc = !existsSync(`${DATA}/gold/trabalho/cubo_esc_porte/ano=2021.parquet`) || !existsSync(`${DATA}/gold/trabalho/cubo_esc_porte/ano=2011.parquet`);
+  test('rais_esc_porte: controles nacionais (Seção A, divisões 01 a 03), H1 a H4 conciliados com o total e porte acumulado', { skip: semEsc }, async () => {
+    const ctx = await tabelasIaTrabalho();
+    assert.ok(ctx.esc_porte_anos?.includes(2021));
+    const sql = async (q: string) => {
+      const r = await executarConsulta({ sql: q, objetivo: 'controle' }, ['trabalho']);
+      assert.ok(!('erro' in r), JSON.stringify(r));
+      return (r as unknown as { linhas: (number | string)[][] }).linhas;
+    };
+    const A = "situacao = 1 AND (starts_with(cnae_classe, '01') OR starts_with(cnae_classe, '02') OR starts_with(cnae_classe, '03'))";
+    const total = await sql(`SELECT ano, sum(vinculos) FROM rais_esc_porte WHERE ano IN (2011, 2021) AND ${A} GROUP BY ano ORDER BY ano`);
+    assert.deepEqual(total.map((l) => Number(l[1])), [1522633, 1531816]);
+    const grupos = await sql(`SELECT ano, escolaridade_grupo, sum(vinculos) FROM rais_esc_porte WHERE ano IN (2011, 2021) AND ${A} GROUP BY ALL ORDER BY ano, escolaridade_grupo`);
+    const h4 = (ano: number) => Number(grupos.find((l) => Number(l[0]) === ano && l[1] === 'H4')![2]);
+    assert.equal(h4(2011), 38426);
+    assert.equal(h4(2021), 60963);
+    for (const [k, ano] of [[0, 2011], [1, 2021]] as const) {
+      const soma = grupos.filter((l) => Number(l[0]) === ano).reduce((s, l) => s + Number(l[2]), 0);
+      assert.equal(soma, Number(total[k][1]), `H1 a H4 e ignorada somam o total de ${ano}`);
+    }
+    const porte = await sql(`SELECT sum(vinculos) FILTER (tamanho_estab_cod BETWEEN 1 AND 2), sum(vinculos) FILTER (tamanho_estab_cod BETWEEN 1 AND 4) FROM rais_esc_porte WHERE ano = 2021 AND ${A}`);
+    assert.deepEqual(porte[0].map(Number), [371905, 777135]);
+    // médias a partir das somas (nunca média de médias)
+    const rem = await sql(`SELECT escolaridade_grupo, sum(rem_media_soma) / sum(vinculos) FROM rais_esc_porte WHERE ano = 2021 AND ${A} AND escolaridade_grupo = 'H4' GROUP BY 1`);
+    assert.ok(Number(rem[0][1]) > 3000 && Number(rem[0][1]) < 9000);
+  });
+});
+
+describe('IA: território e fonte derivados da execução', () => {
+  test('consolidação nacional sem filtro de UF é Brasil, mesmo com uma consulta de apoio só do Distrito Federal', () => {
+    const nacional = 'SELECT ano, escolaridade_grupo, sum(vinculos) FROM rais_esc_porte WHERE ano = 2021 AND situacao = 1 GROUP BY ALL';
+    const df = 'SELECT sum(vinculos) FROM rais_uf WHERE uf = 53 AND ano = 2021';
+    const t1 = territoriosNasConsultas([nacional, df], null);
+    assert.ok(t1.some((x) => /Brasil/.test(x)), t1.join('; '));
+    assert.deepEqual(territoriosNasConsultas([nacional], null), ['Brasil (todas as UFs)']);
+    assert.ok(!territoriosNasConsultas(['SELECT 1 FROM rais_uf WHERE uf = 53'], null).some((x) => /Brasil/.test(x)));
+  });
+
+  test('as 27 UFs consultadas uma a uma viram Brasil, não o último estado', () => {
+    const ufs = [11, 12, 13, 14, 15, 16, 17, 21, 22, 23, 24, 25, 26, 27, 28, 29, 31, 32, 33, 35, 41, 42, 43, 50, 51, 52, 53];
+    const siglas = ['RO', 'AC', 'AM', 'RR', 'PA', 'AP', 'TO', 'MA', 'PI', 'CE', 'RN', 'PB', 'PE', 'AL', 'SE', 'BA', 'MG', 'ES', 'RJ', 'SP', 'PR', 'SC', 'RS', 'MS', 'MT', 'GO', 'DF'];
+    const cad = { porCodigo: new Map(ufs.map((c, i) => [c, { cod: c, nome: `UF${c}`, uf: siglas[i], esfera: c === 53 ? 'D' : 'E' }])), porRais: new Map() } as any;
+    const r = territoriosNasConsultas(ufs.map((c) => `SELECT sum(vinculos) FROM rais_uf WHERE uf = ${c} AND ano = 2021`), cad);
+    assert.equal(r.length, 1);
+    assert.match(r[0], /Brasil/);
+  });
+
+  test('"faixas" como apelido de porte não vira a fonte "faixas populacionais"; a tabela faixas de verdade continua sendo citada', () => {
+    const porte = 'WITH faixas AS (SELECT tamanho_estab_cod, sum(vinculos) AS n FROM rais_esc_porte GROUP BY 1) SELECT * FROM faixas';
+    const fontes = fontesConsultadas([porte]);
+    assert.ok(fontes.some((f) => /RAIS/.test(f)));
+    assert.ok(!fontes.some((f) => /faixas populacionais|population brackets/.test(f)), fontes.join('; '));
+    assert.ok(fontesConsultadas(['SELECT * FROM indicadores i JOIN faixas f ON f.exercicio = i.exercicio']).some((f) => /faixas populacionais|population brackets/.test(f)));
+  });
+});
+
+describe('Excel: números como números, nomes de abas e linhas completas', () => {
+  /** Arquivos de um zip sem compressão (como o gerado em exportar.ts). */
+  const lerZip = (z: Uint8Array) => {
+    const v = new DataView(z.buffer, z.byteOffset, z.byteLength);
+    const saida = new Map<string, string>();
+    for (let p = 0; v.getUint32(p, true) === 0x04034b50;) {
+      const tam = v.getUint32(p + 18, true);
+      const n = v.getUint16(p + 26, true);
+      const extra = v.getUint16(p + 28, true);
+      const nome = new TextDecoder().decode(z.slice(p + 30, p + 30 + n));
+      saida.set(nome, new TextDecoder().decode(z.slice(p + 30 + n + extra, p + 30 + n + extra + tam)));
+      p += 30 + n + extra + tam;
+    }
+    return saida;
+  };
+  test('28 linhas na planilha, números numéricos, nomes de aba válidos e sem repetição', () => {
+    const linhas28 = Array.from({ length: 28 }, (_, i) => [`Linha ${i + 1}`, 1000 + i, i / 7]);
+    const longo = 'Tabela 1: porte/escolaridade? [H1–H4] com um nome muito comprido demais';
+    const arquivos = lerZip(paraXlsxAbas([
+      { nome: longo, linhas: [['rótulo', 'vínculos', 'razão'], ...linhas28] },
+      { nome: longo, linhas: [['b']] },
+    ]));
+    const nomes = [...arquivos.get('xl/workbook.xml')!.matchAll(/<sheet name="([^"]*)"/g)].map((m) => m[1]);
+    assert.equal(nomes.length, 2);
+    assert.equal(new Set(nomes.map((n) => n.toLowerCase())).size, 2);
+    for (const n of nomes) {
+      assert.ok(n.length <= 31);
+      assert.ok(!/[:\\/?*[\]]/.test(n));
+    }
+    const aba = arquivos.get('xl/worksheets/sheet1.xml')!;
+    assert.equal((aba.match(/<row /g) ?? []).length, 29);
+    assert.ok(aba.includes('<c r="B2"><v>1000</v></c>'), 'número como número, sem t="inlineStr"');
+    assert.ok(aba.includes(`<v>${28 - 1 + 1000 - 27}</v>`) || aba.includes('<v>1027</v>'));
+    assert.ok(aba.includes('vínculos') && aba.includes('rótulo'), 'acentuação preservada');
+  });
+});
+
+describe('IA: afirmações de tendência contra as séries calculadas', () => {
+  const serie = (valores: number[]) => [{ rotulo: 'C1', colunas: ['ano', 'vinculos'], linhas: valores.map((v, i) => [2011 + i, v]) as unknown[][] }];
+  test('crescimento contínuo exige série crescente em todos os anos; queda contínua, decrescente', () => {
+    assert.deepEqual(tendenciasSemSuporte('Houve crescimento contínuo dos vínculos.', serie([10, 12, 15, 20])), []);
+    assert.equal(tendenciasSemSuporte('Houve crescimento contínuo dos vínculos.', serie([10, 12, 11, 20])).length, 1);
+    assert.equal(tendenciasSemSuporte('Os vínculos cresceram todos os anos.', serie([10, 9, 11])).length, 1);
+    assert.deepEqual(tendenciasSemSuporte('A queda contínua foi de 2011 a 2021.', serie([30, 20, 10])), []);
+    assert.equal(tendenciasSemSuporte('Houve queda contínua.', serie([30, 20, 25])).length, 1);
+    // sem série anual para conferir, ou sem a afirmação, nada a apontar
+    assert.deepEqual(tendenciasSemSuporte('Houve crescimento contínuo.', [{ rotulo: 'C1', colunas: ['uf', 'n'], linhas: [['GO', 1], ['MG', 2], ['SP', 3]] }]), []);
+    assert.deepEqual(tendenciasSemSuporte('Os vínculos oscilaram.', serie([10, 9, 11])), []);
   });
 });

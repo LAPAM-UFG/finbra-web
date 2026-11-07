@@ -7,7 +7,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import Anthropic from '@anthropic-ai/sdk';
-import { FERRAMENTAS, SEM_ESTRITO, gramaticaGrande, rotaIa, validar } from '../src/ia.js';
+import { FERRAMENTAS, SEM_ESTRITO, assinaturaInvalida, gramaticaGrande, rotaIa, semRaciocinioAntigo, validar } from '../src/ia.js';
 import { acesso, destinoSeguro } from '../src/acesso.js';
 import { podeConferir } from '../src/conferencia.js';
 import { limparResumo, rotaConversas } from '../src/conversas.js';
@@ -496,5 +496,87 @@ describe('modelo por pedido (só Haiku no site)', () => {
     assert.equal(corpo.modelo_padrao, 'haiku');
     assert.equal(corpo.modelo, 'claude-haiku-5-5');
     assert.deepEqual(corpo.modelos, { haiku: 'claude-haiku-5-5' });
+  });
+});
+
+describe('assinatura dos blocos de raciocínio', () => {
+  const raciocinio = { type: 'thinking', thinking: 'pensando', signature: 'assinatura-de-outra-conversa' };
+  const historico = [
+    pergunta('Primeira?'),
+    { role: 'assistant', content: [raciocinio, { type: 'tool_use', id: 'c1', name: 'consultar', input: {} }] },
+    { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'c1', content: '{}' }] },
+    { role: 'assistant', content: [raciocinio, { type: 'tool_use', id: 'r1', name: 'responder', input: {} }] },
+    pergunta('Segunda?', [{ type: 'tool_result', tool_use_id: 'r1', content: 'Resposta exibida ao usuário.' }]),
+    { role: 'assistant', content: [raciocinio, { type: 'tool_use', id: 'c2', name: 'consultar', input: {} }] },
+    { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'c2', content: '{}' }] },
+  ];
+  const blocos = (ms) => ms.flatMap((m) => (Array.isArray(m.content) ? m.content : [])).filter((b) => b.type === 'thinking');
+
+  test('o raciocínio das perguntas anteriores sai do envio; o da pergunta em andamento e os pares tool_use/tool_result ficam', () => {
+    const r = semRaciocinioAntigo(historico);
+    assert.equal(blocos(r).length, 1);
+    assert.equal(r[5].content[0].type, 'thinking');
+    assert.equal(r[1].content.length, 1);
+    assert.equal(r[1].content[0].type, 'tool_use');
+    assert.equal(r.length, historico.length);
+    assert.equal(validar(r), null);
+    assert.equal(blocos(historico).length, 3); // o histórico guardado não muda
+  });
+
+  test('uma mensagem que só tinha raciocínio não fica vazia', () => {
+    const r = semRaciocinioAntigo([pergunta('A?'), { role: 'assistant', content: [raciocinio] }, pergunta('B?')]);
+    assert.ok(r[1].content.length > 0);
+    assert.equal(blocos(r).length, 0);
+  });
+
+  const sse = [
+    ['message_start', { type: 'message_start', message: { id: 'm', type: 'message', role: 'assistant', model: 'claude-haiku-5-5', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 } } }],
+    ['content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }],
+    ['content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'ok' } }],
+    ['content_block_stop', { type: 'content_block_stop', index: 0 }],
+    ['message_delta', { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 2 } }],
+    ['message_stop', { type: 'message_stop' }],
+  ].map(([e, d]) => `event: ${e}\ndata: ${JSON.stringify(d)}\n\n`).join('');
+  const recusa = () => new Response(JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: 'messages.1.content.0: Invalid `signature` in `thinking` block. The block is bound to a different conversation.' } }),
+    { status: 400, headers: { 'content-type': 'application/json' } });
+  const enviar = async (respostas) => {
+    const chamadas = [];
+    const original = globalThis.fetch;
+    globalThis.fetch = async (_u, init) => { chamadas.push(JSON.parse(init.body)); return respostas[Math.min(chamadas.length - 1, respostas.length - 1)](); };
+    try {
+      const m = new Map();
+      const dados = { get: async () => null, put: async (k, v) => void m.set(k, v) };
+      const url = new URL('https://localhost/api/ia');
+      const r = await rotaIa(new Request(url, { method: 'POST', body: JSON.stringify({ idioma: 'pt', paineis: ['trabalho'], mensagens: historico }) }),
+        { ANTHROPIC_API_KEY: 'x', IA_DEV_EMAIL: 'a@b.c', DADOS: dados }, url);
+      return { status: r.status, corpo: await r.json(), chamadas };
+    } finally {
+      globalThis.fetch = original;
+    }
+  };
+  const ok = () => new Response(sse, { status: 200, headers: { 'content-type': 'text/event-stream' } });
+
+  test('a assinatura é reconhecida pela mensagem de erro da API', async () => {
+    const e = Anthropic.BadRequestError.generate(400, { error: { message: 'Invalid `signature` in `thinking` block' } }, 'Invalid `signature` in `thinking` block', new Headers());
+    assert.equal(assinaturaInvalida(e), true);
+    assert.equal(assinaturaInvalida(new Error('outro')), false);
+  });
+
+  test('erro de assinatura: uma única nova tentativa, sem raciocínio no corpo, e a resposta chega', async () => {
+    const { status, corpo, chamadas } = await enviar([recusa, ok]);
+    assert.equal(status, 200);
+    assert.equal(corpo.conteudo[0].text, 'ok');
+    assert.equal(chamadas.length, 2);
+    assert.equal(blocos(chamadas[0].messages).length, 1); // a primeira tentativa já sai sem o raciocínio antigo
+    assert.equal(blocos(chamadas[1].messages).length, 0);
+    assert.equal('thinking' in chamadas[1], false);
+    assert.equal(chamadas[1].messages.length, historico.length);
+  });
+
+  test('se o erro persiste, não há laço: duas chamadas no máximo e erro claro', async () => {
+    const { status, corpo, chamadas } = await enviar([recusa, recusa, recusa]);
+    assert.equal(chamadas.length, 2);
+    assert.equal(status, 400);
+    assert.match(corpo.erro, /signature/);
   });
 });

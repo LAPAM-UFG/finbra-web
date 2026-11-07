@@ -282,6 +282,9 @@ def gerar_cubos(con, saida: Path, gold: Path, anos, refazer: bool):
 
     gold/trabalho/cubo_uf/ano=AAAA.parquet    UF × classe CNAE × CBO × sexo × situação × afastamento
     gold/trabalho/cubo_mun/ano=AAAA.parquet   município × divisão CNAE × grande grupo CBO × sexo × situação × afastamento
+    gold/trabalho/cubo_esc_porte/ano=AAAA.parquet   UF × classe CNAE × situação × escolaridade (código 1 a 11; 0 = ignorada)
+                                              × tamanho do estabelecimento (código 1 a 10; 0 = ignorado): o cruzamento
+                                              nacional de escolaridade e porte sem ler os microdados
 
     Somas e contagens (médias = soma ÷ contagem em qualquer agrupamento); ordenadas por UF ou município,
     para a leitura por Range trazer só o trecho do recorte.
@@ -292,7 +295,12 @@ def gerar_cubos(con, saida: Path, gold: Path, anos, refazer: bool):
             continue
         cubos = {"cubo_uf": ("uf, cnae_classe, cbo, sexo, situacao, afastado", "uf, cnae_classe, cbo"),
                  "cubo_mun": ("municipio, cnae_classe[1:2] AS cnae_divisao, cbo[1:1] AS cbo_grande_grupo, sexo, situacao, afastado",
-                              "municipio, cnae_divisao, cbo_grande_grupo")}
+                              "municipio, cnae_divisao, cbo_grande_grupo"),
+                 # escolaridade_cod: 1 a 11 como na RAIS (grupos H1 a H4 se montam na consulta); fora disso, 0 (ignorada).
+                 # O alias não repete o nome da coluna de origem, para as medidas (escolaridade >= 9) não o lerem por engano
+                 "cubo_esc_porte": ("uf, cnae_classe, situacao, (CASE WHEN escolaridade BETWEEN 1 AND 11 THEN escolaridade ELSE 0 END)::TINYINT AS escolaridade_cod, "
+                                    "(CASE WHEN tamanho_estab BETWEEN 1 AND 10 THEN tamanho_estab ELSE 0 END)::TINYINT AS tamanho_estab_cod",
+                                    "uf, cnae_classe")}
         for nome, (dims, ordem) in cubos.items():
             destino = gold / nome / f"ano={ano}.parquet"
             if destino.exists() and not refazer:

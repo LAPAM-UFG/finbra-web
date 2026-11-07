@@ -277,11 +277,17 @@ export function conferirCodigos(sql: string, cad: Cadastro): string | null {
  * Lugares que as consultas filtraram por código ou UF fixos, com nome (para a ficha da resposta, em vez
  * do que o modelo escreveu): "Andirá (PR) · IBGE 4101101", "Paraná (PR)", "Brasil".
  */
+/** Tabelas com todas as UFs: sem filtro de território, a consulta cobre o Brasil inteiro. */
+const TABELAS_NACIONAIS = /\b(?:from|join)\s+(?:\w+\.)?(rais_uf|rais_esc_porte|rais_mun|rais_vinculos|trab_setores_uf)\b/;
+const FILTRO_TERRITORIO = /\b(?:\w+\.)?(cod_ibge|municipio|uf|uf_sigla|escopo)\b\s*(=|in\b|<>|!=|like\b|between\b|<|>)/;
+
 export function territoriosNasConsultas(sqls: string[], cad: Cadastro | null): string[] {
   const r = new Map<string, string>();
   for (const sql of sqls) {
     const s = sqlSemTextos(sql);
     const comTextos = sql.toLowerCase();
+    // consolidação nacional: nenhuma restrição geográfica numa tabela por UF; o último estado consultado não a substitui
+    if (TABELAS_NACIONAIS.test(s) && !FILTRO_TERRITORIO.test(comTextos)) r.set('br', t('Brasil (todas as UFs)', 'Brazil (all states)'));
     const numeros: [string, number][] = [];
     for (const m of s.matchAll(/\b(?:\w+\.)?(cod_ibge|municipio|uf)\s*=\s*(\d+)\b/g)) numeros.push([m[1], Number(m[2])]);
     for (const m of s.matchAll(/\b(?:\w+\.)?(cod_ibge|municipio|uf)\s+in\s*\(([\d\s,]+)\)/g)) for (const x of m[2].split(',')) numeros.push([m[1], Number(x)]);
@@ -298,6 +304,12 @@ export function territoriosNasConsultas(sqls: string[], cad: Cadastro | null): s
         else if (UF_NOMES[u]) r.set(`u${u}`, `${nomeDaUf(u)} (${u})`);
       }
     }
+  }
+  // as 27 UFs (26 estados e o DF) consultadas uma a uma e somadas são o Brasil, não uma lista de estados
+  const ufs = [...r.keys()].filter((k) => k.startsWith('u'));
+  if (ufs.length >= 27 && !r.has('br')) {
+    for (const k of ufs) r.delete(k);
+    r.set('br', t('Brasil (27 UFs consultadas)', 'Brazil (27 states queried)'));
   }
   return [...r.values()];
 }

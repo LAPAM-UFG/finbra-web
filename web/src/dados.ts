@@ -13,6 +13,7 @@
  */
 import * as duckdb from '@duckdb/duckdb-wasm';
 import { t } from './idioma';
+import { SQL_IPCA_BASE } from './ia_moeda';
 import { indicador as indicadorSaude, type Indicador } from './saude_comum';
 
 type Valor = string | number | boolean | null;
@@ -99,6 +100,8 @@ function iniciar() {
       await db.registerFileBuffer(`${nome}.parquet`, dados);
       await con.query(`CREATE TABLE ${nome} AS SELECT * FROM read_parquet('${nome}.parquet')`);
     }
+    // valores reais em qualquer ano-base completo (ex.: 2021 com fatores referenciados a 2025), sem montar razões à mão
+    await con.query(SQL_IPCA_BASE);
     await carregarIndiceMicro();
     return { con, manifesto };
   })();
@@ -2066,7 +2069,7 @@ export function cadastroEntes() {
 /** O que a IA do mercado de trabalho tem nesta sessão (vai no pedido ao Worker, que monta as instruções). */
 export type ContextoTrabalho = {
   rais_anos: number[]; micro_anos: number[]; caged_de: number | null; caged_ate: number | null;
-  base_ipca: number; microdados: boolean;
+  base_ipca: number; microdados: boolean; esc_porte_anos?: number[];
 };
 
 /**
@@ -2092,6 +2095,7 @@ export async function contextoTrabalhoIa(): Promise<ContextoTrabalho> {
   return {
     rais_anos: rais?.anos ?? [], micro_anos: microAnos, caged_de: caged?.de ?? null, caged_ate: caged?.ate ?? null,
     base_ipca: manifesto.base_ipca, microdados: temMicro() && microAnos.length > 0,
+    esc_porte_anos: (((f.rais_micro as { esc_porte?: number[] } | undefined)?.esc_porte) ?? []).filter(Number.isInteger),
   };
 }
 
@@ -2160,6 +2164,15 @@ export function tabelasIaTrabalho() {
       // uf (2 dígitos) a partir do município, para filtrar uma UF nesta tabela como nas outras
       await con.query(`CREATE OR REPLACE VIEW rais_mun AS SELECT *${await decimaisEmDouble(cubo('cubo_mun'))}, (municipio // 10000)::INTEGER AS uf, ${sigla('municipio // 10000')} AS uf_sigla FROM ${cubo('cubo_mun')}`);
     }
+    // cruzamento nacional escolaridade × porte do estabelecimento (cubo_esc_porte): H1 a H4 montados aqui, na visão
+    const escAnos = ((f.rais_micro as { esc_porte?: number[] } | undefined)?.esc_porte ?? []).filter(Number.isInteger);
+    if (escAnos.length) {
+      const fonteEsc = `read_parquet(${lista(escAnos.map((a) => `gold/trabalho/cubo_esc_porte/ano=${a}.parquet`))})`;
+      await con.query(`CREATE OR REPLACE VIEW rais_esc_porte AS SELECT *${await decimaisEmDouble(fonteEsc)}, ${sigla('uf')} AS uf_sigla,
+        CASE WHEN escolaridade_cod BETWEEN 1 AND 4 THEN 'H1' WHEN escolaridade_cod BETWEEN 5 AND 6 THEN 'H2'
+             WHEN escolaridade_cod BETWEEN 7 AND 8 THEN 'H3' WHEN escolaridade_cod BETWEEN 9 AND 11 THEN 'H4' ELSE 'ignorada' END AS escolaridade_grupo
+        FROM ${fonteEsc}`);
+    }
     let microdados = false;
     if (temMicro()) {
       try {
@@ -2180,7 +2193,7 @@ export function tabelasIaTrabalho() {
     const caged = f.caged as { de?: number; ate?: number } | undefined;
     return (iaTrabalhoPronto = {
       rais_anos: rais?.anos ?? [], micro_anos: microAnos, caged_de: caged?.de ?? null, caged_ate: caged?.ate ?? null,
-      base_ipca: manifesto.base_ipca, microdados,
+      base_ipca: manifesto.base_ipca, microdados, esc_porte_anos: escAnos,
     });
   })();
   iaTrabalho.catch(() => (iaTrabalho = null));

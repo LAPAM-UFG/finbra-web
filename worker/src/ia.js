@@ -318,6 +318,24 @@ export const FERRAMENTAS = [
   },
 ];
 export const SEM_ESTRITO = FERRAMENTAS.map((f) => ({ ...f, strict: false }));
+/**
+ * A assinatura de um bloco de raciocínio vale só para a conversa (prefixo: instruções, ferramentas, mensagens)
+ * que o produziu. O contexto da página, a lista de resultados e a compactação mudam o prefixo de uma pergunta
+ * para a outra, e a API recusa o bloco ("Invalid `signature` in `thinking` block"). Por isso o raciocínio das
+ * perguntas anteriores não é reenviado (a API o descartaria de qualquer forma); o da pergunta em andamento
+ * (ciclo tool_use/tool_result) é mantido, pois o prefixo dele não muda.
+ */
+const ehRaciocinio = (b) => b?.type === 'thinking' || b?.type === 'redacted_thinking';
+export function semRaciocinioAntigo(mensagens, tudo = false) {
+  const inicio = tudo ? mensagens.length : mensagens.findLastIndex(ehPergunta);
+  return mensagens.map((m, i) => {
+    if (m.role !== 'assistant' || i > inicio || !Array.isArray(m.content) || !m.content.some(ehRaciocinio)) return m;
+    const conteudo = m.content.filter((b) => !ehRaciocinio(b));
+    // uma mensagem do assistente nunca fica vazia: o par tool_use/tool_result e o texto continuam
+    return { ...m, content: conteudo.length ? conteudo : [{ type: 'text', text: '(sem texto)' }] };
+  });
+}
+export const assinaturaInvalida = (e) => e instanceof Anthropic.BadRequestError && /signature|thinking block|redacted_thinking/i.test(e.message ?? '');
 export const gramaticaGrande = (e) => e instanceof Anthropic.BadRequestError && /grammar is too large/i.test(e.message ?? '');
 
 const IDIOMA = {
@@ -451,7 +469,7 @@ export async function rotaIa(request, env, url) {
       { type: 'text', text: IDIOMA[corpo.idioma === 'en' ? 'en' : 'pt'] },
     ],
     tools: FERRAMENTAS,
-    messages: mensagens,
+    messages: semRaciocinioAntigo(mensagens),
   };
   // mesmo só com responder estrita, a gramática às vezes passa do limite da API (400 "compiled grammar is too
   // large", não cobrado): repete sem modo estrito; a página confere e normaliza a resposta do mesmo jeito
@@ -460,6 +478,13 @@ export async function rotaIa(request, env, url) {
     try {
       return await cliente.messages.stream(pedido).finalMessage();
     } catch (e) {
+      if (assinaturaInvalida(e)) {
+        // recuperação controlada, uma única vez: sem nenhum bloco de raciocínio no histórico e sem raciocínio na
+        // chamada (o prefixo mudou, o bloco não vale); as perguntas, os resultados e os pares tool_use/tool_result seguem
+        console.log(JSON.stringify({ ia: { assinatura: 'refeito sem raciocinio' } }));
+        const { thinking, ...resto } = pedido;
+        return await cliente.messages.stream({ ...resto, messages: semRaciocinioAntigo(mensagens, true) }).finalMessage();
+      }
       if (!gramaticaGrande(e)) throw e;
       console.log(JSON.stringify({ ia: { estrito: false } }));
       return cliente.messages.stream({ ...pedido, tools: SEM_ESTRITO }).finalMessage();

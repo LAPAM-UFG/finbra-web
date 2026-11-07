@@ -333,3 +333,43 @@ export function incoerenciasDoRecorte(pergunta: string, o: { conclusao: string; 
   }
   return problemas;
 }
+
+// ---------------- afirmações de tendência ----------------
+
+const CONTINUO_SOBE = /(crescimento|aumento|alta|expans[ãa]o)\s+(cont[íi]nu[oa]|ininterrupt[oa]|constante|sistem[áa]tic[oa])|cresc(eu|eram)\s+(continuamente|ininterruptamente|todos\s+os\s+anos|a\s+cada\s+ano|ano\s+a\s+ano)|sem\s+(nenhuma\s+)?queda/i;
+const CONTINUO_CAI = /(queda|redu[çc][ãa]o|diminui[çc][ãa]o|decl[íi]nio)\s+(cont[íi]nu[oa]|ininterrupt[oa]|constante)|(caiu|ca[íi]ram|diminuiu|diminu[íi]ram|reduziu|reduziram)\s+(continuamente|ininterruptamente|todos\s+os\s+anos|a\s+cada\s+ano|ano\s+a\s+ano)|sem\s+(nenhum\s+)?aumento/i;
+
+/**
+ * "Crescimento contínuo" ou "queda contínua" no texto contra as séries anuais calculadas (uma linha por ano, três anos
+ * ou mais): se nenhuma coluna numérica das consultas usadas é monótona na direção afirmada, a afirmação não tem suporte
+ * nos números. Sem série anual nas consultas, nada a conferir.
+ */
+export function tendenciasSemSuporte(texto: string, consultas: { rotulo: string; colunas: string[]; linhas: unknown[][] }[]): string[] {
+  const sobe = CONTINUO_SOBE.test(texto);
+  const cai = CONTINUO_CAI.test(texto);
+  if (!sobe && !cai) return [];
+  let temSerie = false;
+  let sobeEmAlguma = false;
+  let caiEmAlguma = false;
+  for (const c of consultas) {
+    const iAno = c.colunas.findIndex((x) => /^(ano|exercicio)$/i.test(x));
+    if (iAno < 0) continue;
+    const anos = c.linhas.map((l) => l[iAno]);
+    if (anos.length < 3 || new Set(anos).size !== anos.length || !anos.every((a) => typeof a === 'number')) continue;
+    const ordem = c.linhas.map((l, i) => i).sort((a, b) => Number(anos[a]) - Number(anos[b]));
+    for (const [j, nome] of c.colunas.entries()) {
+      if (j === iAno || /^(uf|cod|codigo|municipio|cnae|cbo)/i.test(nome)) continue;
+      const v = ordem.map((i) => c.linhas[i][j]);
+      if (!v.every((x) => typeof x === 'number' && Number.isFinite(x))) continue;
+      temSerie = true;
+      const d = v.slice(1).map((x, k) => (x as number) - (v[k] as number));
+      if (d.every((x) => x >= 0) && d.some((x) => x > 0)) sobeEmAlguma = true;
+      if (d.every((x) => x <= 0) && d.some((x) => x < 0)) caiEmAlguma = true;
+    }
+  }
+  if (!temSerie) return [];
+  const problemas: string[] = [];
+  if (sobe && !sobeEmAlguma) problemas.push('O texto afirma crescimento contínuo (ou ausência de queda), mas nenhuma série anual calculada nas consultas é crescente em todos os anos. Confira os números ano a ano e descreva a trajetória real (altas e quedas, ou o crescimento entre os extremos).');
+  if (cai && !caiEmAlguma) problemas.push('O texto afirma queda contínua (ou ausência de aumento), mas nenhuma série anual calculada nas consultas é decrescente em todos os anos. Confira os números ano a ano e descreva a trajetória real.');
+  return problemas;
+}

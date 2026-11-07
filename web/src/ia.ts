@@ -15,7 +15,7 @@
 import { abandonarConsultaIa, consultaLivre, prepararResultadosIa, contextoTrabalhoIa, manifestoDados, tabelaDespesaFuncao, tabelaLrf, tabelasEducacaoSaude, tabelasIaClima, tabelasIaMunic, tabelasIaTrabalho, tabelasSaude } from './dados';
 import { t } from './idioma';
 import {
-  catalogoDeResultados, citadasNoSql, compactarParaEnvio, descreverParcial, dicaDoErro, executarPartida, incoerenciasDoRecorte, lerParticao, nomeTabela, resultadosReaproveitaveis,
+  catalogoDeResultados, citadasNoSql, compactarParaEnvio, tendenciasSemSuporte, descreverParcial, dicaDoErro, executarPartida, incoerenciasDoRecorte, lerParticao, nomeTabela, resultadosReaproveitaveis,
   type Parcial, type ResultadoGuardado,
 } from './ia_continuidade';
 import {
@@ -850,15 +850,24 @@ export function conferir(d: Destaque, r?: Resultado): Conferencia {
 }
 
 /** Tabelas → fontes, na ordem em que aparecem na ficha da resposta. */
+/**
+ * Tabela lida de verdade (depois de FROM, JOIN ou vírgula), não uma palavra qualquer: "faixas" como apelido de
+ * uma coluna ou CTE (porte do estabelecimento) não é a tabela faixas (faixas populacionais).
+ */
+const lidaComoTabela = (nome: string) => {
+  const lida = new RegExp(`(?:\\bfrom|\\bjoin|,)\\s*(?:\\w+\\.)?(?:${nome})\\b`);
+  const cte = new RegExp(`\\b(?:${nome})\\s+as\\s*(?:not\\s+materialized\\s*)?\\(`);
+  return (s: string) => lida.test(s) && !cte.test(s);
+};
 const FONTES_TABELAS: [RegExp | ((sql: string) => boolean), () => string][] = [
   [/\brais_vinculos\b/, () => t('RAIS (MTE): microdados por vínculo', 'RAIS (MTE): job-level microdata')],
-  [/\brais_(uf|mun)\b/, () => t('RAIS (MTE): tabelas somadas dos microdados', 'RAIS (MTE): tables summed from the microdata')],
+  [/\brais_(uf|mun|esc_porte)\b/, () => t('RAIS (MTE): tabelas somadas dos microdados', 'RAIS (MTE): tables summed from the microdata')],
   [/\btrab_(municipios|setores|setores_uf|grandes_setores)\b/, () => t('RAIS (MTE): séries do painel', 'RAIS (MTE): dashboard series')],
   [/\btrab_caged(_anual|_uf)?\b/, () => t('Novo CAGED (MTE)', 'New CAGED (MTE)')],
   [/\btrab_(dic|cnae)\b/, () => t('Classificações CBO 2002 e CNAE 2.0', 'CBO 2002 and CNAE 2.0 classifications')],
-  [/\bindicadores\b/, () => t('SICONFI/Tesouro Nacional: DCA', 'SICONFI/National Treasury: DCA')],
+  [lidaComoTabela('indicadores'), () => t('SICONFI/Tesouro Nacional: DCA', 'SICONFI/National Treasury: DCA')],
   [/\bdespesa_funcao\b/, () => t('SICONFI/Tesouro Nacional: DCA, anexo I-E (despesa por função)', 'SICONFI/National Treasury: DCA, annex I-E (spending by function)')],
-  [/\blrf\b/, () => t('SICONFI/Tesouro Nacional: RREO e RGF', 'SICONFI/National Treasury: RREO and RGF')],
+  [lidaComoTabela('lrf'), () => t('SICONFI/Tesouro Nacional: RREO e RGF', 'SICONFI/National Treasury: RREO and RGF')],
   [/\bsiope_[a-z_]+/, () => t('FNDE: SIOPE (declarações de educação)', 'FNDE: SIOPE (education filings)')],
   [/\bsiops_[a-z_]+/, () => t('Ministério da Saúde: SIOPS (declarações de saúde)', 'Ministry of Health: SIOPS (health filings)')],
   [/\b(pib|vab_[a-z_]+)\b/, () => t('IBGE: PIB dos municípios', 'IBGE: municipal GDP')],
@@ -892,10 +901,10 @@ const FONTES_TABELAS: [RegExp | ((sql: string) => boolean), () => string][] = [
     () => t('IBGE: MUNIC (Pesquisa de Informações Básicas Municipais) e ESTADIC (Estaduais), autodeclaradas', 'IBGE: MUNIC (Municipal Basic Information Survey) and ESTADIC (State), self-reported')],
   [/\bbolsa_familia_[a-z]+/, () => t('Portal da Transparência: Bolsa Família', 'Transparency Portal: Bolsa Família')],
   [/\binss_[a-z]+/, () => t('Previdência Social: benefícios do INSS', 'Social Security: INSS benefits')],
-  [/\bipca\b/, () => t('IPCA (Banco Central, SGS 433)', 'IPCA (Central Bank of Brazil, SGS 433)')],
-  [/\b(alertas|escopos)\b/, () => t('LAPAM/UFG: avaliação de qualidade das declarações', 'LAPAM/UFG: quality review of filings')],
-  [/\bfaixas\b/, () => t('LAPAM/UFG: faixas populacionais', 'LAPAM/UFG: population brackets')],
-  [/\bentes\b/, () => t('SICONFI: cadastro de entes', 'SICONFI: registry of governments')],
+  [(s) => lidaComoTabela('ipca|ipca_base')(s), () => t('IPCA (Banco Central, SGS 433)', 'IPCA (Central Bank of Brazil, SGS 433)')],
+  [lidaComoTabela('alertas|escopos'), () => t('LAPAM/UFG: avaliação de qualidade das declarações', 'LAPAM/UFG: quality review of filings')],
+  [lidaComoTabela('faixas'), () => t('LAPAM/UFG: faixas populacionais', 'LAPAM/UFG: population brackets')],
+  [lidaComoTabela('entes'), () => t('SICONFI: cadastro de entes', 'SICONFI: registry of governments')],
 ];
 
 /** Fontes das tabelas que as consultas (as que deram certo) leram de fato; textos entre aspas não contam. */
@@ -1098,7 +1107,7 @@ export function coberturaDaFonte(sql: string, c?: Cobertura | null): CoberturaFo
   if (!c) return null;
   const s = sql.toLowerCase();
   if (/\btrab_caged/.test(s)) return c.caged ? { nome: 'Novo CAGED', meses: c.caged } : null;
-  if (/\brais_(uf|mun|vinculos)\b|\btrab_(municipios|setores|setores_uf|grandes_setores)\b/.test(s)) return { nome: 'RAIS', anos: c.rais };
+  if (/\brais_(uf|mun|esc_porte|vinculos)\b|\btrab_(municipios|setores|setores_uf|grandes_setores)\b/.test(s)) return { nome: 'RAIS', anos: c.rais };
   if (/\bsaude_municipios\b/.test(s) && /\bsiscan_\w+\b/.test(s) && c.siscan?.length) return { nome: 'SISCAN', anos: c.siscan };
   if (/\bsaude_municipios\b/.test(s) && /\bonco_\w+\b/.test(s) && c.oncologia?.length) return { nome: 'Painel de Oncologia', anos: c.oncologia };
   if (/\bsaude_municipios\b/.test(s) && /\bresp_\w+\b/.test(s) && c.resp?.length) return { nome: 'RESP', anos: c.resp };
@@ -1459,6 +1468,8 @@ export function revisarMetodo(p: RespostaPronta, o: { pergunta?: string } = {}):
   if (daResposta.some((c) => RAZAO_DE_INDICES.test(sqlSemTextos(c.sql)))) {
     problemas.push('Deflação: use ipca.fator_real (valor em R$ de dezembro do ano-base = nominal × fator_real, maior que 1 nos anos anteriores ao ano-base). Não monte a razão de índices na consulta: refaça as consultas com fator_real.');
   }
+  // "crescimento contínuo", "queda contínua": só com série anual que a sustente
+  problemas.push(...tendenciasSemSuporte(textos, daResposta.flatMap((c) => (c.resultado && !('erro' in c.resultado) ? [{ rotulo: c.rotulo, colunas: c.resultado.colunas, linhas: c.resultado.linhas as unknown[][] }] : []))));
   problemas.push(...incoerenciasDoRecorte(o.pergunta ?? '', {
     conclusao: p.r.conclusao, titulos: p.r.tabelas.map((x) => x.titulo).join(' '), sqls: daResposta.map((c) => c.sql), objetivos: daResposta.map((c) => c.objetivo),
   }));

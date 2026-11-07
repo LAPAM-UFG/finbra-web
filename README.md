@@ -654,6 +654,15 @@ cd web && npm test         # rotas do site sobre os dados locais (DuckDB-WASM no
   e 2019 em diante; os demais anos ficam em branco (os microdados do INSS começam em jul/2021).
 - O painel da pesquisa LAPAM (`.dta`) não é usado pelo pipeline nem pelo site.
 
+## Pergunte aos dados: fila, cruzamentos nacionais, valores reais e exportação
+
+- **Assinatura dos blocos de raciocínio:** a assinatura de um bloco `thinking` vale só para a conversa que o produziu; o contexto da página e a compactação mudam o prefixo entre perguntas. O Worker (`semRaciocinioAntigo`) não reenvia o raciocínio das perguntas anteriores (o da pergunta em andamento fica, com os pares `tool_use`/`tool_result`). Se a API ainda recusar por assinatura, há uma única nova tentativa, sem raciocínio, e nunca um laço.
+- **Fila de perguntas (`web/src/ia_fila.ts`):** cada pergunta é um item (id, ordem, estado: aguardando, executando, concluída, falhou, cancelada). Uma falha ou cancelamento muda só aquele item; a fila espera a decisão (Tentar de novo / Remover) e as demais seguem na ordem. O rascunho do campo de texto não é tocado. A fila sobrevive a recarregar a página (o que executava volta como "falhou").
+- **Escolaridade × porte (`rais_esc_porte`):** `py pipeline/microdados.py --so cubos` gera `gold/trabalho/cubo_esc_porte/ano=AAAA.parquet` (UF × classe CNAE × situação × escolaridade 1–11 × porte 1–10, com contagens, somas de remuneração e de idade). A visão traz `escolaridade_grupo` (H1: 1–4, H2: 5–6, H3: 7–8, H4: 9–11, ignorada). O manifesto lista os anos em `fontes.rais_micro.esc_porte`; enviar o gold ao R2 publica o agregado.
+- **Valores reais em outro ano-base:** visão `ipca_base` (`fator = fator_real(ano) ÷ fator_real(alvo)`, igual a 1 no próprio alvo); funções equivalentes em `web/src/ia_moeda.ts`.
+- **Metadados:** o território vem das consultas executadas (consolidação nacional = Brasil; 27 UFs somadas = Brasil), e a fonte só cita a tabela lida de verdade (um apelido como `faixas` não vira "faixas populacionais"). Afirmações de "crescimento/queda contínuos" são conferidas contra a série anual calculada.
+- **PDF:** "PDF" gera e baixa o arquivo (`web/src/pdf.ts`, sem dependências, com todas as linhas das tabelas); "Imprimir" continua abrindo a impressão do navegador.
+
 ## Pergunte aos dados: continuidade das conversas
 
 `web/src/ia_continuidade.ts` reúne o que mantém uma análise longa de pé (testes em `web/testes/consultas.test.ts`, bloco "IA: continuidade"):

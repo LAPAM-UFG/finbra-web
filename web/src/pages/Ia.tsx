@@ -8,6 +8,7 @@ import { barrasAgrupadas, Grafico, graficoSvg, linhas, type Marca } from '../com
 import { useDados } from '../contexto';
 import { contextoTrabalhoIa } from '../dados';
 import { baixarArquivo, nomeArquivo, paraXlsxAbas, type Celula, type Planilha } from '../exportar';
+import { paraPdf, type BlocoPdf } from '../pdf';
 import { idioma, local, t } from '../idioma';
 import {
   avisoFaltantes, consultasDaConversa, consultasEmSegundoPlano, contextoParaModelo, descreverCobertura, descricaoModo, ErroAcesso, estadoIa, executarConsulta, exemploPergunta, foiCancelado,
@@ -27,6 +28,7 @@ import {
   ehTexto, formatarCelulaT, rodapeTabela, tabelaExportavel, tabelaHtml, tabelaTsv, type TabelaAnalitica,
 } from '../ia_tabelas';
 import { pedidoConferencia } from '../ia_conferencia';
+import { abertas, enfileirar, lerFila, limparConcluidas, marcar as marcarItem, proxima, remover as removerItem, serializar, tentarDeNovo, type ItemFila } from '../ia_fila';
 import { linhasDaVerificacao } from '../ia_verificacao';
 import { cadastro as carregarCadastro, type Cadastro } from '../ia_territorio';
 
@@ -42,6 +44,11 @@ const NOMES_PAINEIS = (): Record<Painel, string> => ({
 
 /** Perguntas que podem esperar na fila de uma conversa. */
 const MAX_FILA = 8;
+const ROTULO_ITEM: Record<ItemFila['estado'], () => string> = {
+  aguardando: () => t('Aguardando', 'Waiting'), executando: () => t('Executando', 'Running'), concluida: () => t('Concluída', 'Done'),
+  falhou: () => t('Falhou', 'Failed'), cancelada: () => t('Cancelada', 'Cancelled'),
+};
+const CHAVE_FILA = 'ia-fila';
 
 type ItemConsulta = Extract<ItemTurno, { tipo: 'consulta' }>;
 /** Conversa aberta sem o conteúdo (mensagens, contexto das perguntas e resultados ficam no estado da página). */
@@ -373,6 +380,53 @@ async function baixarExcel(lista: TurnoIa[], metas: MetaTurno[], prontas: (Respo
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 }
 
+/**
+ * PDF de verdade (arquivo baixado, sem a impressão do navegador): todas as perguntas, respostas e tabelas, com os mesmos
+ * dados estruturados da tela e do Excel (a consulta roda de novo para a tabela levar todas as linhas, se a tela mostra menos).
+ */
+async function baixarPdfArquivo(lista: TurnoIa[], metas: MetaTurno[], prontas: (RespostaPronta | null)[], resultados: Record<string, Resultado>, paineis: Painel[],
+  cobertura: Cobertura, geradoEm: string) {
+  const inteiras = await Promise.all(prontas.map((p, i) => Promise.all((p?.tabelas ?? []).map((x) => (versaoDoTurno(metas[i], geradoEm).atual
+    ? tabelaInteira(x, cobertura).catch(() => x.tabela)
+    : Promise.resolve(x.tabela))))));
+  const blocos: BlocoPdf[] = [{ tipo: 'ficha', linhas: [[t('Fonte', 'Source'), fonteIa(paineis)], [t('Exportado em', 'Exported on'), new Date().toLocaleString(local())]] }];
+  lista.forEach((turno, i) => {
+    const p = prontas[i];
+    blocos.push({ tipo: 'titulo', nivel: 1, texto: `${i + 1}. ${turno.pergunta}` });
+    if (metas[i]) {
+      blocos.push({ tipo: 'ficha', linhas: [
+        [t('Modo', 'Mode'), rotuloModo(metas[i].contexto.modo)], [t('Contexto', 'Context'), descreverContexto(metas[i].contexto, p?.periodo, true, p)],
+        [t('Modelo', 'Model'), textoModelo(metas[i])], [t('Dados processados em', 'Data processed on'), versaoDoTurno(metas[i], geradoEm).geradoEm],
+      ] });
+    }
+    for (const par of (p ? textoDaResposta(p) : turno.textoFinal ?? '').split(/\n+/).filter(Boolean)) blocos.push({ tipo: 'paragrafo', texto: par });
+    if (p) blocos.push({ tipo: 'titulo', nivel: 3, texto: t('Recorte da análise', 'Scope of the analysis') }, { tipo: 'ficha', linhas: recorteDe(p).filter(([, v]) => v) });
+    let n = 0;
+    for (const [k, x] of (p?.tabelas ?? []).entries()) {
+      const tab = inteiras[i][k] ?? x.tabela;
+      if (!tab) continue;
+      n += 1;
+      blocos.push({
+        tipo: 'tabela', titulo: `${t('Tabela', 'Table')} ${n} — ${tab.titulo}`, colunas: tab.colunas.map((c) => c.nome),
+        linhas: tab.linhas.map((l) => l.map((c, j) => formatarCelulaT(c, tab.colunas[j]))), texto: tab.colunas.map(ehTexto),
+        linhaTotal: tab.linhaTotal ?? undefined, notas: [...rodapeTabela(tab), ...linhasGuardadas(tab, versaoDoTurno(metas[i], geradoEm)).map(([a, b]) => `${a}: ${b}`)],
+      });
+    }
+    // sem tabela montada, vão as consultas usadas, com todas as linhas
+    if (!n) {
+      for (const item of turno.itens) {
+        if (item.tipo !== 'consulta' || !p?.usadas.has(item.rotulo)) continue;
+        const r = resultados[item.id];
+        if (!r || 'erro' in r || !r.linhas.length) continue;
+        const f = formatarTabela(r, item.sql);
+        blocos.push({ tipo: 'tabela', titulo: `${item.rotulo} — ${item.objetivo}`, colunas: f.cabecalho, linhas: f.linhas, texto: f.texto, notas: [...f.extras, `${t('Fonte', 'Source')}: ${fontesConsultadas([item.sql]).join('; ')}`] });
+      }
+    }
+  });
+  baixarArquivo(`${nomeArquivo(t('pergunte_aos_dados', 'ask_the_data'))}.pdf`,
+    paraPdf({ titulo: t('Pergunte aos dados — LAPAM/UFG', 'Ask the data — LAPAM/UFG'), rodape: 'LAPAM/UFG', blocos }) as BlobPart, 'application/pdf');
+}
+
 /** Aviso na exportação de uma tabela cortada de uma resposta com dados de outra versão: vão só as linhas guardadas. */
 function linhasGuardadas(tab: TabelaAnalitica, v: VersaoDados): [string, string][] {
   if (v.atual || tab.registros <= tab.carregados) return [];
@@ -695,10 +749,10 @@ function SeletorModo({ modo, definir, travado }: { modo: Modo; definir: (m: Modo
  * Sem login, o envio vira "Entrar para perguntar": a pergunta fica guardada (sessionStorage) e o idioma
  * volta com o login.
  */
-function Compositor({ valor, mudar, enviar, cancelar, ocupado, fila, aoRemoverDaFila, bloqueio, exemplo, grande, campo, modo, descricaoDoModo, descricaoDoModelo, modeloAlterado, restaurarModelo,
+function Compositor({ valor, mudar, enviar, cancelar, ocupado, fila, aoRemoverDaFila, aoTentarDeNovo, aoLimparConcluidas, bloqueio, exemplo, grande, campo, modo, descricaoDoModo, descricaoDoModelo, modeloAlterado, restaurarModelo,
   entrar, verificando, aoComoAcesso, alerta }: {
   valor: string; mudar: (v: string) => void; enviar: (v: string) => void; cancelar: () => void; ocupado: boolean;
-  fila: string[]; aoRemoverDaFila: (i: number) => void;
+  fila: ItemFila[]; aoRemoverDaFila: (id: string) => void; aoTentarDeNovo: (id: string) => void; aoLimparConcluidas: () => void;
   bloqueio: string | null; exemplo: string; grande?: boolean; campo: RefObject<HTMLTextAreaElement | null>;
   modo: ReactNode; descricaoDoModo: string; descricaoDoModelo: string; modeloAlterado: boolean; restaurarModelo: () => void;
   entrar: boolean; verificando: boolean;
@@ -718,12 +772,23 @@ function Compositor({ valor, mudar, enviar, cancelar, ocupado, fila, aoRemoverDa
         'Write what you want to know. You can name the place and the period in the question itself.')}</p>
       {fila.length > 0 && (
         <ol className="ia-fila" aria-label={t('Perguntas na fila', 'Queued questions')}>
-          {fila.map((q, i) => (
-            <li key={`${i}-${q}`}>
-              <span className="ia-fila-texto" title={q}><b>{t('Na fila', 'Queued')} {i + 1}.</b> {q.length > 110 ? `${q.slice(0, 110)}…` : q}</span>
-              <button type="button" className="ia-link" onClick={() => aoRemoverDaFila(i)}>{t('Remover', 'Remove')}</button>
+          {fila.map((x, i) => (
+            <li key={x.id} className={`ia-fila-${x.estado}`}>
+              <span className="ia-fila-texto" title={x.texto}>
+                <b>{i + 1}. {ROTULO_ITEM[x.estado]()}</b> {x.texto.length > 110 ? `${x.texto.slice(0, 110)}…` : x.texto}
+                {x.erro && <em className="ia-fila-erro"> — {x.erro}</em>}
+              </span>
+              {(x.estado === 'falhou' || x.estado === 'cancelada') && (
+                <button type="button" className="ia-link" onClick={() => aoTentarDeNovo(x.id)}>{t('Tentar de novo', 'Try again')}</button>
+              )}
+              {x.estado !== 'executando' && x.estado !== 'concluida' && (
+                <button type="button" className="ia-link" onClick={() => aoRemoverDaFila(x.id)}>{t('Remover', 'Remove')}</button>
+              )}
             </li>
           ))}
+          {fila.some((x) => x.estado === 'concluida') && (
+            <li><button type="button" className="ia-link" onClick={aoLimparConcluidas}>{t('Limpar concluídas', 'Clear completed')}</button></li>
+          )}
         </ol>
       )}
       <form className={`ia-compositor${grande ? ' grande' : ''}`} onSubmit={(e) => { e.preventDefault(); enviar(valor); }}>
@@ -751,9 +816,9 @@ function Compositor({ valor, mudar, enviar, cancelar, ocupado, fila, aoRemoverDa
           {modo}
           <span className="ia-compositor-espaco" />
           {ocupado && !entrar && (
-            <button type="submit" className="ia-enviar ia-enfileirar" disabled={!!bloqueio || !valor.trim() || fila.length >= MAX_FILA}
+            <button type="submit" className="ia-enviar ia-enfileirar" disabled={!!bloqueio || !valor.trim() || abertas(fila) >= MAX_FILA}
               aria-label={t('Colocar a pergunta na fila', 'Add the question to the queue')}
-              title={fila.length >= MAX_FILA ? t(`A fila comporta ${MAX_FILA} perguntas`, `The queue holds ${MAX_FILA} questions`) : t('Colocar na fila (Enter): roda quando a atual terminar', 'Add to the queue (Enter): runs when the current one finishes')}>
+              title={abertas(fila) >= MAX_FILA ? t(`A fila comporta ${MAX_FILA} perguntas`, `The queue holds ${MAX_FILA} questions`) : t('Colocar na fila (Enter): roda quando a atual terminar', 'Add to the queue (Enter): runs when the current one finishes')}>
               <Icone nome="enviar" />
             </button>
           )}
@@ -1743,9 +1808,11 @@ export function Ia() {
   const [texto, setTexto] = useState(() => lerGuardado('ia-rascunho', true) ?? '');
   const [rodando, setRodando] = useState<AbortController | null>(null);
   // perguntas escritas enquanto outra roda: cada uma começa quando a anterior termina, na mesma conversa
-  const [fila, setFila] = useState<{ id: string; texto: string }[]>([]);
+  // cada pergunta é um item com identificador e estado; a fila sobrevive a recarregar a página (sessionStorage)
+  const [fila, setFila] = useState<ItemFila[]>(() => lerFila(lerGuardado(CHAVE_FILA, true)));
   const filaAtual = useRef(fila);
   filaAtual.current = fila;
+  useEffect(() => guardar(CHAVE_FILA, fila.length ? serializar(fila) : null, true), [fila]);
   const [progresso, setProgresso] = useState<Progresso | null>(null);
   const [falha, setFalha] = useState<{ mensagem: string; pergunta: string; entrar?: boolean } | null>(null);
   const [status, setStatus] = useState('');
@@ -2016,19 +2083,21 @@ export function Ia() {
           ? t('Você usou as perguntas de hoje; o limite volta amanhã (horário de Brasília).', 'You have used today’s questions; the limit resets tomorrow (Brasília time).')
           : null;
 
-  async function enviar(bruta: string) {
+  async function enviar(bruta: string, itemFila?: string) {
     const pergunta = bruta.trim();
     if (!pergunta || bloqueio || refazendo) return;
     if (rodando || enviando.current) {
       if (!aberta) return;
-      if (fila.length >= MAX_FILA) {
+      if (abertas(fila) >= MAX_FILA) {
         setStatus(t(`A fila comporta ${MAX_FILA} perguntas.`, `The queue holds ${MAX_FILA} questions.`));
-      } else if (estado && estado.restantes <= fila.length) {
+      } else if (estado && estado.restantes <= abertas(fila)) {
         setStatus(t('Não há perguntas suficientes hoje para mais uma na fila.', 'There are not enough questions left today for another one in the queue.'));
+      } else if (fila.some((x) => x.conversa === aberta.id && x.estado !== 'concluida' && x.texto === pergunta)) {
+        setStatus(t('Essa pergunta já está na fila.', 'That question is already in the queue.'));
       } else {
-        setFila((f) => [...f, { id: aberta.id, texto: pergunta }]);
+        setFila((f) => enfileirar(f, aberta.id, pergunta));
         setTexto('');
-        setStatus(t(`Pergunta na fila (posição ${fila.length + 1}).`, `Question queued (position ${fila.length + 1}).`));
+        setStatus(t(`Pergunta na fila (posição ${abertas(fila) + 1}).`, `Question queued (position ${abertas(fila) + 1}).`));
         focarCampo();
       }
       return;
@@ -2055,7 +2124,8 @@ export function Ia() {
     const inicio: MetaTurno = { contexto, inicio: Date.now(), dados: meta.geradoEm, escolhaModelo };
     // resultados da conversa com os desta pergunta, para gravá-la mesmo que a página já não esteja nela
     const res: Record<string, Resultado> = { ...resultados };
-    setTexto('');
+    // uma pergunta da fila não apaga o que a pessoa está escrevendo no campo
+    if (!itemFila) setTexto('');
     setSubstituida(null);
     setFalha(null);
     setMetas([...metas, inicio]);
@@ -2099,23 +2169,26 @@ export function Ia() {
           : t('A pergunta terminou sem uma resposta completa.', 'The question ended without a complete answer.'));
       }
       await historico.salvar(conversa);
+      if (itemFila) setFila((f) => marcarItem(f, itemFila, 'concluida'));
     } catch (e) {
       if (naTela()) {
         // um histórico pela metade invalidaria as próximas perguntas: volta ao estado de antes
         setMensagens(antes.mensagens);
         setMetas(antes.metas);
-        // a pergunta (e as da fila, que não rodam depois de um erro) volta para o campo, sem apagar o que tenha sido escrito enquanto ela rodava
-        const pendentes = filaAtual.current.filter((x) => x.id === id).map((x) => x.texto);
-        setFila([]);
-        setTexto((atual) => (atual.trim() ? atual : [pergunta, ...pendentes].join('\n\n')));
+        // só a pergunta que falhou muda de estado (e pode ser tentada de novo); as outras seguem na fila e o rascunho fica como está.
+        // Uma pergunta enviada direto, sem fila, volta sozinha ao campo se ele estiver vazio.
+        const mensagemErro = foiCancelado(e) ? undefined : (e instanceof Error ? e.message : String(e));
+        if (itemFila) setFila((f) => marcarItem(f, itemFila, foiCancelado(e) ? 'cancelada' : 'falhou', mensagemErro));
+        else setTexto((atual) => (atual.trim() ? atual : pergunta));
+        const pendentes = filaAtual.current.filter((x) => x.conversa === id && x.estado === 'aguardando');
         if (foiCancelado(e)) {
           // uma consulta já enviada ao DuckDB pode não ter parado: avisa, para o usuário não achar que o navegador está livre
           const preso = consultasEmSegundoPlano() > 0
             ? t(' Uma consulta já enviada ao banco do navegador não pôde ser interrompida e termina em segundo plano; o resultado dela será descartado.',
               ' A query already sent to the browser database could not be interrupted and finishes in the background; its result will be discarded.')
             : '';
-          setStatus((pendentes.length
-            ? t(`Pergunta cancelada. Ela e as ${pendentes.length} da fila voltaram para o campo de texto.`, `Question cancelled. It and the ${pendentes.length} in the queue are back in the text box.`)
+          setStatus((itemFila
+            ? t(`Pergunta cancelada. Ela segue na fila como cancelada${pendentes.length ? `, com ${pendentes.length} aguardando` : ''}: tente de novo ou remova.`, `Question cancelled. It stays in the queue as cancelled${pendentes.length ? `, with ${pendentes.length} waiting` : ''}: try again or remove it.`)
             : t('Pergunta cancelada. Ela voltou para o campo de texto.', 'Question cancelled. It is back in the text box.')) + preso);
         }
         else setFalha({ mensagem: e instanceof Error ? e.message : String(e), pergunta, entrar: e instanceof ErroAcesso && e.tipo === 'sessao' });
@@ -2141,16 +2214,13 @@ export function Ia() {
 
   const cancelar = () => rodando?.abort();
   // a próxima da fila começa quando a atual termina bem (o estado da conversa já está atualizado nesta renderização);
-  // trocar de conversa descarta a fila
+  // com uma pergunta falhada ou cancelada na frente, a fila espera a decisão da pessoa (tentar de novo ou remover)
   useEffect(() => {
-    if (!fila.length || rodando || enviando.current || bloqueio || refazendo) return;
-    if (fila[0].id !== aberta?.id) {
-      setFila([]);
-      return;
-    }
-    const [proxima, ...resto] = fila;
-    setFila(resto);
-    void enviar(proxima.texto);
+    if (!fila.length || rodando || enviando.current || bloqueio || refazendo || !aberta) return;
+    const proximaDaFila = proxima(fila, aberta.id);
+    if (!proximaDaFila) return;
+    setFila((f) => marcarItem(f, proximaDaFila.id, 'executando'));
+    void enviar(proximaDaFila.texto, proximaDaFila.id);
   });
   const editarUltima = () => {
     if (rodando || !lista.length) return;
@@ -2286,7 +2356,8 @@ export function Ia() {
     ? t(`restam ${contar(estado.restantes, 'pergunta', 'perguntas')} hoje`, `${contar(estado.restantes, 'question', 'questions')} left today`) : null;
   const compositor = (
     <Compositor valor={texto} mudar={setTexto} enviar={enviar} cancelar={cancelar} ocupado={!!rodando}
-      fila={fila.map((x) => x.texto)} aoRemoverDaFila={(i) => setFila((f) => f.filter((_, j) => j !== i))}
+      fila={aberta ? fila.filter((x) => x.conversa === aberta.id) : []} aoRemoverDaFila={(id) => setFila((f) => removerItem(f, id))}
+      aoTentarDeNovo={(id) => setFila((f) => tentarDeNovo(f, id))} aoLimparConcluidas={() => setFila(limparConcluidas)}
       bloqueio={estado === null || (estado === undefined && !falhaEstado) ? null : bloqueio}
       exemplo={exemplo} grande={!conversa} campo={campo}
       modo={<SeletorModo modo={modo} definir={definirModo} travado={!!rodando} />}
@@ -2445,13 +2516,21 @@ export function Ia() {
             <div className="ia-cabeca-acoes">
               <Popover rotulo={<><Icone nome="baixar" tamanho={16} /> {t('Exportar', 'Export')}</>} conteudo={(fechar) => (
                 <div className="ia-exportar" role="group" aria-label={t('Exportar a conversa', 'Export the conversation')}>
+                  <button type="button" className="ia-menu-item" disabled={!!rodando}
+                    onClick={() => {
+                      void baixarPdfArquivo(lista, metas, prontas, resultados, contexto.paineis, cobertura, meta.geradoEm);
+                      fechar();
+                    }}
+                    title={t('Gera e baixa o arquivo PDF, com todas as perguntas, respostas e linhas das tabelas', 'Generates and downloads the PDF file, with all questions, answers and table rows')}>
+                    {t('PDF', 'PDF')}<span className="ia-nota"> · {t('baixa o arquivo, com todas as linhas', 'downloads the file, with all rows')}</span>
+                  </button>
                   <button type="button" className="ia-menu-item" disabled={!!rodando || !estado}
                     onClick={() => {
                       imprimirPdf(lista, metas, prontas, resultados, { email: estado?.email ?? '', paineis: contexto.paineis, apendice, geradoEm: (versoes.length ? versoes : [meta.geradoEm]).join('; ') });
                       fechar();
                     }}
                     title={t('Abre a impressão do navegador; escolha "Salvar como PDF"', 'Opens the browser print dialog; choose "Save as PDF"')}>
-                    {t('PDF', 'PDF')}<span className="ia-nota"> · {t('pela impressão do navegador', 'via the browser print dialog')}</span>
+                    {t('Imprimir', 'Print')}<span className="ia-nota"> · {t('pela impressão do navegador', 'via the browser print dialog')}</span>
                   </button>
                   <button type="button" className="ia-menu-item" disabled={!!rodando}
                     onClick={() => {

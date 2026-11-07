@@ -139,7 +139,7 @@ export const NOTAS_METODO: NotaMetodologica[] = [
 ];
 
 /** Tabelas da RAIS (estoque, vínculos em 31/12 ou do ano) e do Novo CAGED (fluxos). */
-const TABELAS_RAIS = /\b(trab_municipios|trab_setores|trab_setores_uf|trab_grandes_setores|rais_uf|rais_mun|rais_vinculos)\b/;
+const TABELAS_RAIS = /\b(trab_municipios|trab_setores|trab_setores_uf|trab_grandes_setores|rais_uf|rais_mun|rais_esc_porte|rais_vinculos)\b/;
 const TABELAS_CAGED = /\btrab_caged(_anual|_uf)?\b/;
 export const leRais = (sql: string) => TABELAS_RAIS.test(sqlSemTextos(sql));
 export const leCaged = (sql: string) => TABELAS_CAGED.test(sqlSemTextos(sql));

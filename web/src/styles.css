@@ -1071,3 +1071,6 @@ button.ia-historico-importar:focus-visible { outline: 2px solid var(--ia-acao); 
 /* /ia sem filtros manuais: dica curta junto do campo e aviso de link antigo com recorte */
 .ia-dica-escrita { margin: 0 0 6px; font-size: 0.9rem; color: var(--texto-suave, #5b6770); }
 .ia-recorte-link { margin: 10px 0; }
+.ia-fila-falhou .ia-fila-texto b, .ia-fila-cancelada .ia-fila-texto b { color: var(--erro, #b3261e); }
+.ia-fila-concluida { opacity: .65; }
+.ia-fila-erro { font-style: normal; color: var(--tinta-2); }
