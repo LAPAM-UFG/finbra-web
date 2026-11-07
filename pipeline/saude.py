@@ -263,6 +263,57 @@ def internacoes(con, micro: Path):
     con.execute("DROP TABLE sih")
 
 
+SIA_ANOS = (2008, 2025)  # 2026 fica de fora até fechar o ano
+# grupos de procedimentos da tabela do SUS (2 primeiros dígitos de PA_PROC_ID)
+GRUPOS_SIA = {1: "promocao", 2: "diagnostico", 3: "clinicos", 4: "cirurgicos", 5: "transplantes", 6: "medicamentos", 7: "orteses", 8: "complementares"}
+
+
+def ambulatorial(con, sia: Path, saida: Path | None = None):
+    """SIA/SUS: produção ambulatorial por município do estabelecimento (sia.py agrega os .dbc do grupo PA).
+
+    ambulatorial: ano × município, com registros, quantidade e valor aprovados (nominal e em reais de 2025 pelo IPCA), a parte
+    de pacientes de outros municípios e, por grupo de procedimento, quantidade e valor real; entra em municipios.parquet (amb_*).
+    ambulatorial_subgrupo: ano × município × subgrupo (4 dígitos do procedimento), para o detalhe da IA.
+    Valores aprovados seguem a tabela do SUS (não são o custo do serviço); a quantidade é de procedimentos, não de pessoas.
+    Sem agregados em --sia, cria as tabelas vazias (o painel segue sem as colunas amb_*)."""
+    saida = saida or GOLD_S
+    ipca = (GOLD / "ipca.parquet").as_posix()
+    de, ate = SIA_ANOS
+    arquivos = list(sia.glob("*/*.parquet"))
+    colunas_grupo = ",\n".join(
+        f"sum(qtd_apr) FILTER (WHERE grupo = {g}) AS amb_{n}_qtd, sum(val_apr) FILTER (WHERE grupo = {g}) * any_value(i.fator_real) AS amb_{n}_valor_real"
+        for g, n in GRUPOS_SIA.items())
+    if not arquivos:
+        con.execute("CREATE OR REPLACE TABLE ambulatorial (ano INTEGER, municipio INTEGER, uf INTEGER, amb_registros BIGINT)")
+        con.execute("CREATE OR REPLACE TABLE ambulatorial_subgrupo (ano INTEGER, municipio INTEGER, subgrupo VARCHAR)")
+        return
+    con.execute(f"""
+        CREATE OR REPLACE TABLE sia AS
+        SELECT ano, municipio, proc, TRY_CAST(left(proc, 2) AS INTEGER) AS grupo, left(proc, 4) AS subgrupo,
+               registros, qtd_apr, val_apr, qtd_apr_fora, val_apr_fora
+        FROM read_parquet('{sia.as_posix()}/*/*.parquet') WHERE ano BETWEEN {de} AND {ate} AND municipio IS NOT NULL""")
+    con.execute(f"""
+        CREATE OR REPLACE TABLE ambulatorial AS
+        SELECT s.ano, s.municipio, s.municipio // 10000 AS uf,
+               sum(s.registros) AS amb_registros, sum(s.qtd_apr) AS amb_qtd,
+               sum(s.val_apr) AS amb_valor, sum(s.val_apr) * any_value(i.fator_real) AS amb_valor_real,
+               coalesce(sum(s.qtd_apr_fora), 0) AS amb_qtd_fora, coalesce(sum(s.val_apr_fora), 0) * any_value(i.fator_real) AS amb_valor_fora_real,
+               {colunas_grupo.replace('grupo', 's.grupo').replace('qtd_apr)', 's.qtd_apr)').replace('val_apr)', 's.val_apr)')}
+        FROM sia s LEFT JOIN '{ipca}' i ON i.exercicio = s.ano
+        GROUP BY s.ano, s.municipio ORDER BY 1, 2""")
+    con.execute(f"COPY ambulatorial TO '{saida / 'ambulatorial.parquet'}' (FORMAT parquet, COMPRESSION zstd)")
+    con.execute(f"""
+        CREATE OR REPLACE TABLE ambulatorial_subgrupo AS
+        SELECT s.ano, s.municipio, s.subgrupo, sum(s.registros) AS registros, sum(s.qtd_apr) AS qtd, sum(s.val_apr) AS valor,
+               sum(s.val_apr) * any_value(i.fator_real) AS valor_real
+        FROM sia s LEFT JOIN '{ipca}' i ON i.exercicio = s.ano
+        GROUP BY s.ano, s.municipio, s.subgrupo ORDER BY 1, 2, 3""")
+    con.execute(f"COPY ambulatorial_subgrupo TO '{saida / 'ambulatorial_subgrupo.parquet'}' (FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE 100000)")
+    print("ambulatorial:", con.sql("""SELECT ano, sum(amb_qtd), round(sum(amb_valor_real) / 1e9, 2), count(DISTINCT municipio)
+        FROM ambulatorial WHERE ano IN (2008, 2019, 2020, 2025) GROUP BY 1 ORDER BY 1""").fetchall())
+    con.execute("DROP TABLE sia")
+
+
 CNES_ANOS = (2006, 2025)
 
 
@@ -510,7 +561,8 @@ def municipios(con):
                         UNION SELECT ano, municipio FROM nascimentos UNION SELECT ano, municipio FROM obitos_fetais
                         UNION SELECT ano, municipio FROM internacoes UNION SELECT ano, municipio FROM internacoes_atend
                         UNION SELECT ano, municipio FROM cnes UNION SELECT ano, municipio FROM sinan
-                        UNION SELECT ano, municipio FROM siscan UNION SELECT ano, municipio FROM oncologia UNION SELECT ano, municipio FROM resp)
+                        UNION SELECT ano, municipio FROM siscan UNION SELECT ano, municipio FROM oncologia UNION SELECT ano, municipio FROM resp
+                        UNION SELECT ano, municipio FROM ambulatorial)
         SELECT k.ano, m.cod_ibge, k.municipio, coalesce(m.nome, 'Município ignorado') AS nome,
                coalesce(m.uf, e.uf) AS uf,
                p.* EXCLUDE (ano, municipio),
@@ -523,7 +575,8 @@ def municipios(con):
                z.* EXCLUDE (ano, municipio, uf),
                sc.* EXCLUDE (ano, municipio, uf),
                oc.* EXCLUDE (ano, municipio, uf),
-               rp.* EXCLUDE (ano, municipio, uf)
+               rp.* EXCLUDE (ano, municipio, uf),
+               am.* EXCLUDE (ano, municipio, uf)
         FROM chaves k
         LEFT JOIN muni m ON m.municipio = k.municipio
         LEFT JOIN estados e ON e.cod = k.municipio // 10000
@@ -538,6 +591,7 @@ def municipios(con):
         LEFT JOIN siscan sc ON sc.ano = k.ano AND sc.municipio = k.municipio
         LEFT JOIN oncologia oc ON oc.ano = k.ano AND oc.municipio = k.municipio
         LEFT JOIN resp rp ON rp.ano = k.ano AND rp.municipio = k.municipio
+        LEFT JOIN ambulatorial am ON am.ano = k.ano AND am.municipio = k.municipio
         WHERE k.municipio IS NOT NULL
         ORDER BY k.ano, k.municipio""")
     con.execute(f"COPY municipios TO '{GOLD_S / 'municipios.parquet'}' (FORMAT parquet, COMPRESSION zstd)")
@@ -570,8 +624,10 @@ def fonte_saude(con) -> dict:
                             ("resp", "resp_notificacoes", "https://datasus.saude.gov.br/transferencia-de-arquivos/")):
         if col in colunas:
             outros[chave] = {"anos": anos(col), "processado_em": quando, "url": url}
+    sia_f = {"sia": {"anos": anos("amb_registros"), "processado_em": quando, "url": "https://datasus.saude.gov.br/transferencia-de-arquivos/"}} if "amb_registros" in colunas else {}
     return {
         **sih,
+        **sia_f,
         **cnes_f,
         **sinan_f,
         **outros,
@@ -608,6 +664,7 @@ def main():
     siscan(con, Path(a.brutos))
     oncologia(con, Path(a.micro))
     resp(con, Path(a.micro))
+    ambulatorial(con, Path(os.environ.get("SAUDE_SIA", Path(a.micro).parent / "sia")))
     municipios(con)
     atualizar_manifesto(con)
     # conferência: mortalidade infantil do Brasil (por mil nascidos vivos)

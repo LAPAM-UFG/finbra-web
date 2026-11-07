@@ -35,6 +35,9 @@ PASTAS = {
     "SIH": ["SIHSUS/199201_200712/Dados", "SIHSUS/200801_/Dados", "SIHSUS/200801_/Auxiliar"],
     "CNES": ["CNES/200508_/Dados", "CNES/200508_/Auxiliar"],
     "SINAN": ["SINAN/DADOS/FINAIS", "SINAN/DADOS/PRELIM", "SINAN/AUXILIAR", "SINAN/DOCS"],
+    # produção ambulatorial: só o grupo PA (produção ambulatorial detalhada, por UF e mês, ~214 GB em .dbc) e as tabelas auxiliares;
+    # os grupos de APAC e o BI ficam de fora
+    "SIA": ["SIASUS/200801_/Dados", "SIASUS/200801_/Auxiliar"],
     "CIHA": ["CIHA/201101_/Dados", "CIHA/201101_/Auxiliar"],
     "SISCAN": ["SISCAN/SISCAN", "SISCAN"],
     "ONCOLOGIA": ["painel_oncologia/Dados"],
@@ -45,6 +48,8 @@ PASTAS = {
 # na raiz do SISCAN entram só os arquivos soltos (as subpastas já estão acima)
 SO_ARQUIVOS_SOLTOS = {"SISCAN"}
 EXTENSOES = {".dbc", ".dbf", ".csv", ".zip", ".rar"}
+# em algumas pastas só entram os arquivos que casam com o padrão (SIA: PAGO2401.dbc, PASP2401a.dbc)
+SO_NOMES = {"SIASUS/200801_/Dados": re.compile(r"^PA[A-Z]{2}\d{4}[a-z]?\.dbc$", re.I)}
 LINHA_DOS = re.compile(r"^\d\d-\d\d-\d\d\s+\d\d:\d\d[AP]M\s+(<DIR>|\d+)\s+(.+)$")
 
 
@@ -73,7 +78,7 @@ def arquivos(f: ftplib.FTP, pasta: str, recursivo: bool) -> list[tuple[str, int]
         if tam is None:
             if recursivo:
                 r += arquivos(f, f"{pasta}/{nome}", True)
-        elif Path(nome).suffix.lower() in EXTENSOES:
+        elif Path(nome).suffix.lower() in EXTENSOES and (pasta not in SO_NOMES or SO_NOMES[pasta].match(nome)):
             r.append((f"{pasta}/{nome}", tam))
     return r
 
@@ -94,7 +99,7 @@ def _conexao(nova: bool = False) -> ftplib.FTP:
     return _local.ftp
 
 
-def baixar(rel: str, tam: int, destino: Path, tentativas: int = 5) -> int:
+def baixar(rel: str, tam: int, destino: Path, tentativas: int = 12) -> int:
     alvo = destino / rel
     alvo.parent.mkdir(parents=True, exist_ok=True)
     parte = alvo.with_name(alvo.name + ".parte")
@@ -117,7 +122,7 @@ def baixar(rel: str, tam: int, destino: Path, tentativas: int = 5) -> int:
             if t == tentativas - 1:
                 print(f"FALHA {rel}: {e}", flush=True)
                 return 0
-            time.sleep(10 * (t + 1))
+            time.sleep(min(10 * (t + 1), 120))  # até 2 min entre tentativas: uma queda de rede de alguns minutos não derruba o arquivo
     return 0
 
 

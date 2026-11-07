@@ -88,14 +88,14 @@ def populacao_ibge():
 
 
 def ipca():
-    serie = pd.DataFrame(get_json(BCB_IPCA, formato="json", dataInicial="01/01/2010"))
+    serie = pd.DataFrame(get_json(BCB_IPCA, formato="json", dataInicial="01/01/2006"))
     serie["data"] = pd.to_datetime(serie["data"], dayfirst=True)
     serie["fator"] = 1 + serie["valor"].astype(float) / 100
     anual = serie.groupby(serie["data"].dt.year).agg(fator=("fator", "prod"), meses=("fator", "size"))
     anual = anual.reset_index(names="exercicio")
     anual["ipca_pct"] = (anual["fator"] - 1) * 100
     anual["completo"] = anual["meses"] == 12
-    # índice acumulado (dez/2009 = 1): deflacionar para a base B é valor * indice[B] / indice[ano]
+    # índice acumulado (dez/2005 = 1): deflacionar para a base B é valor * indice[B] / indice[ano]
     anual["indice"] = anual["fator"].cumprod()
     return anual[["exercicio", "ipca_pct", "indice", "completo", "meses"]]
 
