@@ -13,7 +13,7 @@ import type { Cobertura } from './ia';
 import type { TipoColuna } from './ia_formato';
 
 /** Fonte cujos anos (do manifesto) dão a cobertura temporal da coluna. */
-export type ChaveCobertura = 'dca' | 'pib' | 'rais' | 'sim' | 'sinasc' | 'sih' | 'cnes' | 'sinan' | 'siscan' | 'oncologia' | 'resp';
+export type ChaveCobertura = 'dca' | 'pib' | 'rais' | 'sim' | 'sinasc' | 'sih' | 'sia' | 'cnes' | 'sinan' | 'siscan' | 'oncologia' | 'resp';
 
 export type Coluna = {
   tipo: TipoColuna;
@@ -43,6 +43,10 @@ const SINASC = 'Ministério da Saúde/DATASUS: SINASC (nascidos vivos por munic�
 const sim = (x: Omit<Coluna, 'fonte' | 'tipo'>): Coluna => ({ tipo: 'contagem', fonte: SIM, tabelas: ['saude_municipios'], cobertura: 'sim', territorio: 'municípios de residência', ...x });
 const SIH = 'Ministério da Saúde/DATASUS: SIH (internações hospitalares pagas pelo SUS, AIH tipo 1, por município de residência)';
 const RESSALVA_SIH = 'só internações pagas pelo SUS (não inclui a saúde suplementar nem a privada); por ano de competência da AIH';
+const SIA = 'Ministério da Saúde/DATASUS: SIA (produção ambulatorial do SUS, grupo PA: procedimentos aprovados, por município do estabelecimento)';
+const RESSALVA_SIA = 'só o SUS; conta procedimentos aprovados (não pessoas) pelo município do estabelecimento, por ano de apresentação; valor da tabela do SUS (SIGTAP), não o custo nem o gasto do município';
+const sia = (x: Omit<Coluna, 'fonte' | 'tipo'> & { tipo?: TipoColuna }): Coluna => ({ tipo: 'contagem', fonte: SIA, tabelas: ['saude_municipios'], cobertura: 'sia', territorio: 'municípios onde fica o estabelecimento', ressalva: RESSALVA_SIA, ...x });
+const GRUPOS_SIA: [string, string, string][] = [['promocao', '01', 'promoção e prevenção em saúde'], ['diagnostico', '02', 'diagnóstico (exames e imagem)'], ['clinicos', '03', 'procedimentos clínicos (consultas e terapias)'], ['cirurgicos', '04', 'procedimentos cirúrgicos'], ['transplantes', '05', 'transplantes de órgãos, tecidos e células'], ['medicamentos', '06', 'medicamentos (componente especializado)'], ['orteses', '07', 'órteses, próteses e materiais especiais'], ['complementares', '08', 'ações complementares da atenção à saúde']];
 const sih = (x: Omit<Coluna, 'fonte' | 'tipo'> & { tipo?: TipoColuna }): Coluna => ({ tipo: 'contagem', fonte: SIH, tabelas: ['saude_municipios'], cobertura: 'sih', territorio: 'municípios de residência', ressalva: RESSALVA_SIH, ...x });
 const CAP_SIH = ['infecciosas e parasitárias (A00–B99)', 'neoplasias (C00–D48)', 'sangue e imunidade (D50–D89)', 'endócrinas, nutricionais e metabólicas (E00–E90)', 'transtornos mentais (F00–F99)', 'sistema nervoso (G00–G99)', 'olho (H00–H59)', 'ouvido (H60–H95)', 'aparelho circulatório (I00–I99)', 'aparelho respiratório (J00–J99)', 'aparelho digestivo (K00–K93)', 'pele (L00–L99)', 'osteomuscular (M00–M99)', 'geniturinário (N00–N99)', 'gravidez, parto e puerpério (O00–O99)', 'afecções perinatais (P00–P96)', 'malformações congênitas (Q00–Q99)', 'mal definidas (R00–R99)', 'lesões e envenenamentos (S00–T98)', 'causas externas (V01–Y98)', 'fatores que influenciam o estado de saúde (Z00–Z99)', 'códigos especiais (U00–U99)'];
 const CNES_F = 'Ministério da Saúde/DATASUS: CNES (retrato de dezembro; município do estabelecimento)';
@@ -85,11 +89,21 @@ export const COLUNAS: Record<string, Coluna> = {
   int_total: sih({ rotulo: 'internações', definicao: 'AIH tipo 1 aprovadas e pagas pelo SUS de residentes do município, por ano de competência (as AIH de longa permanência, tipo 5, são continuação e não contam)' }),
   int_fora: sih({ rotulo: 'internações fora do município de residência', definicao: 'internações de residentes feitas em hospital de outro município' }),
   int_valor: sih({ tipo: 'reais', rotulo: 'valor pago nas internações (R$ correntes)', definicao: 'soma do valor total das AIH (serviços hospitalares e profissionais), a preços do ano de competência', ressalva: `${RESSALVA_SIH}; valor da tabela do SUS, não o custo real do hospital` }),
-  int_valor_real: sih({ tipo: 'reais', rotulo: 'valor pago nas internações (R$ de 2025)', definicao: 'int_valor corrigido para reais de 2025 pelo IPCA médio do ano (gold/ipca.parquet, fator_real); sem valor em 2008 e 2009, antes do IPCA da base', ressalva: `${RESSALVA_SIH}; valor da tabela do SUS, não o custo real do hospital` }),
+  int_valor_real: sih({ tipo: 'reais', rotulo: 'valor pago nas internações (R$ de 2025)', definicao: 'int_valor corrigido para reais de 2025 pelo IPCA médio do ano (gold/ipca.parquet, fator_real); reais de 2025 desde 2008', ressalva: `${RESSALVA_SIH}; valor da tabela do SUS, não o custo real do hospital` }),
   int_dias: sih({ rotulo: 'dias de permanência', definicao: 'soma dos dias de internação das AIH' }),
   int_obitos: sih({ rotulo: 'internações encerradas por óbito', definicao: 'AIH com saída por óbito (MORTE = 1)', ressalva: `${RESSALVA_SIH}; não é medida de qualidade do hospital` }),
   int_menores_5: sih({ rotulo: 'internações de menores de 5 anos', definicao: 'internações de residentes com menos de 5 anos de idade' }),
   int_60_mais: sih({ rotulo: 'internações de 60 anos ou mais', definicao: 'internações de residentes com 60 anos ou mais' }),
+  amb_registros: sia({ rotulo: 'linhas de produção ambulatorial', definicao: 'registros do SIA-PA (um por procedimento, estabelecimento, ocupação e competência), antes de somar as quantidades' }),
+  amb_qtd: sia({ rotulo: 'procedimentos ambulatoriais aprovados', definicao: 'quantidade aprovada de procedimentos (consultas, exames, sessões, cirurgias ambulatoriais), não de pessoas' }),
+  amb_valor: sia({ tipo: 'reais', rotulo: 'valor aprovado na produção ambulatorial (R$ correntes)', definicao: 'valor aprovado pela tabela de procedimentos do SUS, a preços do ano' }),
+  amb_valor_real: sia({ tipo: 'reais', rotulo: 'valor aprovado na produção ambulatorial (R$ de 2025)', definicao: 'amb_valor corrigido para reais de 2025 pelo IPCA médio do ano (gold/ipca.parquet, fator_real)' }),
+  amb_qtd_fora: sia({ rotulo: 'procedimentos aprovados de pacientes de outro município', definicao: 'quantidade aprovada em que o município de residência do paciente difere do do estabelecimento' }),
+  amb_valor_fora_real: sia({ tipo: 'reais', rotulo: 'valor aprovado de pacientes de outro município (R$ de 2025)', definicao: 'valor aprovado dos atendimentos de residentes em outro município, em reais de 2025' }),
+  ...Object.fromEntries(GRUPOS_SIA.flatMap(([nome, cod, desc]) => [
+    [`amb_${nome}_qtd`, sia({ rotulo: `procedimentos ambulatoriais: ${desc}`, definicao: `quantidade aprovada dos procedimentos do grupo ${cod} (${desc}) da tabela SIGTAP`, classificacao: 'grupo de procedimento (SIGTAP)' })],
+    [`amb_${nome}_valor_real`, sia({ tipo: 'reais', rotulo: `valor ambulatorial: ${desc} (R$ de 2025)`, definicao: `valor aprovado do grupo ${cod} (${desc}), em reais de 2025 pelo IPCA médio do ano`, classificacao: 'grupo de procedimento (SIGTAP)' })],
+  ])),
   int_atendidas: sih({ rotulo: 'internações atendidas no município', definicao: 'internações feitas em hospitais do município, de quem for residente', territorio: 'municípios onde fica o hospital' }),
   int_atendidas_de_fora: sih({ rotulo: 'internações atendidas de residentes de outros municípios', definicao: 'internações em hospitais do município de pessoas residentes em outro município', territorio: 'municípios onde fica o hospital' }),
   int_atendidas_valor_real: sih({ tipo: 'reais', rotulo: 'valor pago nas internações atendidas (R$ de 2025)', definicao: 'valor das AIH atendidas por hospitais do município, em reais de 2025 pelo IPCA médio do ano', territorio: 'municípios onde fica o hospital' }),
@@ -208,6 +222,7 @@ export function coberturaDaColuna(c: Coluna, cob?: Cobertura | null): string {
   if (c.cobertura === 'sim') return intervalo(cob?.sim);
   if (c.cobertura === 'sinasc') return intervalo(cob?.sinasc);
   if (c.cobertura === 'sih') return intervalo(cob?.sih);
+  if (c.cobertura === 'sia') return intervalo(cob?.sia);
   if (c.cobertura === 'cnes') return intervalo(cob?.cnes);
   if (c.cobertura === 'sinan') return intervalo(cob?.sinan);
   if (c.cobertura === 'siscan') return intervalo(cob?.siscan);
