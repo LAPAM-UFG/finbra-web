@@ -136,7 +136,7 @@ function coberturaDe(meta: Meta, microdados: boolean): Cobertura {
     siope: anos(f.siope?.anos), siopeRemuneracao: anos(f.siope?.remuneracao), siops: anos(f.siops?.anos),
     lrf: par(f.siconfi_lrf?.anos) && { ...par(f.siconfi_lrf?.anos)!, parciais: anos(f.siconfi_lrf?.parciais) }, bolsa: bolsa && { ...bolsa, mes: Number(f.bolsa_familia?.ultimo_mes) || bolsa.ate * 100 + 12 },
     inss: anos(f.inss?.exercicios),
-    sim: anos(f.sim?.anos), sinasc: anos(f.sinasc?.anos), sih: anos(f.sih?.anos), sia: anos(f.sia?.anos), cnes: anos(f.cnes?.anos), sinan: anos(f.sinan?.anos), siscan: anos(f.siscan?.anos), oncologia: anos(f.oncologia?.anos), resp: anos(f.resp?.anos), popSvs: anos(f.populacao_svs?.anos), munic: anos(f.munic?.anos), estadic: anos(f.estadic?.anos),
+    sim: anos(f.sim?.anos), sinasc: anos(f.sinasc?.anos), sih: anos(f.sih?.anos), sia: anos(f.sia?.anos), aps: anos(f.aps?.anos), cnes: anos(f.cnes?.anos), sinan: anos(f.sinan?.anos), siscan: anos(f.siscan?.anos), oncologia: anos(f.oncologia?.anos), resp: anos(f.resp?.anos), popSvs: anos(f.populacao_svs?.anos), munic: anos(f.munic?.anos), estadic: anos(f.estadic?.anos),
     clima: par(f.clima?.anos) && { de: par(f.clima?.anos)!.de, ate: Number(f.clima?.ate) || par(f.clima?.anos)!.ate * 100 + 12 },
   };
 }

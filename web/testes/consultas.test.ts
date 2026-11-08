@@ -2472,9 +2472,8 @@ describe('saúde (SIM, SINASC e população da SVS/MS)', () => {
       assert.ok(Number(r.int_fora) <= Number(r.int_total) && Number(r.int_obitos) <= Number(r.int_total), `fora e óbitos não passam do total em ${ano}`);
       assert.ok(Number(r.int_menores_5) + Number(r.int_60_mais) <= Number(r.int_total), `faixas etárias não passam do total em ${ano}`);
       assert.ok(Number(r.int_dias) >= Number(r.int_total) * 0, `dias de permanência presentes em ${ano}`);
-      // valor em reais de 2025 só onde há IPCA (de 2010 em diante); antes, sem valor (nunca zero)
-      if (Number(ano) < 2010) assert.ok(!r.int_valor_real, `sem valor real em ${ano}, antes do IPCA`);
-      else assert.ok(Number(r.int_valor_real) > 0, `valor real em ${ano}`);
+      // valor em reais de 2025 pelo IPCA, que começa em 2006: todo ano do SIH (2008 em diante) tem valor real
+      assert.ok(Number(r.int_valor_real) > 0, `valor real em ${ano}`);
     }
     // indicadores: razão das somas, como nos demais
     const r = sih.at(-1)!;

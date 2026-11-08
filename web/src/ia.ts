@@ -220,6 +220,7 @@ export function disponibilidadeNoAno(ano: number, paineis: Painel[], c: Cobertur
     if (c.sinasc?.length) marcar('SINASC', c.sinasc.includes(ano), faixa(c.sinasc));
     if (c.sih?.length) marcar('SIH', c.sih.includes(ano), faixa(c.sih));
     if (c.sia?.length) marcar('SIA', c.sia.includes(ano), faixa(c.sia));
+    if (c.aps?.length) marcar('Atenção primária', c.aps.includes(ano), faixa(c.aps));
     if (c.cnes?.length) marcar('CNES', c.cnes.includes(ano), faixa(c.cnes));
     if (c.sinan?.length) marcar('SINAN', c.sinan.includes(ano), faixa(c.sinan));
     if (c.siscan?.length) marcar('SISCAN', c.siscan.includes(ano), faixa(c.siscan));
@@ -280,7 +281,7 @@ export type Cobertura = {
   rais: number[]; caged: { de: number; ate: number } | null; microdados: boolean; dca: number[];
   pib?: { de: number; ate: number; setorial_ate?: number } | null; siope?: number[]; siopeRemuneracao?: number[]; siops?: number[];
   lrf?: { de: number; ate: number; parciais?: number[] } | null; bolsa?: { de: number; ate: number; mes: number } | null; inss?: number[];
-  sim?: number[]; sinasc?: number[]; sih?: number[]; sia?: number[]; cnes?: number[]; sinan?: number[]; siscan?: number[]; oncologia?: number[]; resp?: number[]; popSvs?: number[]; munic?: number[]; estadic?: number[]; clima?: { de: number; ate: number } | null;
+  sim?: number[]; sinasc?: number[]; sih?: number[]; sia?: number[]; aps?: number[]; cnes?: number[]; sinan?: number[]; siscan?: number[]; oncologia?: number[]; resp?: number[]; popSvs?: number[]; munic?: number[]; estadic?: number[]; clima?: { de: number; ate: number } | null;
 };
 /** Sugestão: título curto, a pergunta completa (que vai para o campo), o tema e as bases que a pergunta usa. */
 export type Sugestao = { titulo: string; tema: string; texto: string; paineis: Painel[]; nota?: string };
@@ -533,7 +534,7 @@ export function coberturaPorAno(c: Cobertura, paineis: Painel[]): Map<number, { 
   }
   if (paineis.includes('munic')) fechadas([...(c.munic ?? []), ...(c.estadic ?? [])]);
   if (paineis.includes('clima') && c.clima) mensal('Clima', c.clima.de * 100 + 1, c.clima.ate);
-  if (paineis.includes('saude')) fechadas([...(c.sim ?? []), ...(c.sinasc ?? []), ...(c.sih ?? []), ...(c.sia ?? []), ...(c.cnes ?? []), ...(c.sinan ?? []), ...(c.siscan ?? []), ...(c.oncologia ?? []), ...(c.resp ?? []), ...(c.popSvs ?? [])]);
+  if (paineis.includes('saude')) fechadas([...(c.sim ?? []), ...(c.sinasc ?? []), ...(c.sih ?? []), ...(c.sia ?? []), ...(c.aps ?? []), ...(c.cnes ?? []), ...(c.sinan ?? []), ...(c.siscan ?? []), ...(c.oncologia ?? []), ...(c.resp ?? []), ...(c.popSvs ?? [])]);
   return anos;
 }
 
@@ -605,6 +606,10 @@ export function descreverCobertura(paineis: Painel[], c: Cobertura): string[] {
   if (paineis.includes('saude') && c.sia?.length) {
     linhas.push(t(`SIA ${faixa(c.sia[0], c.sia.at(-1)!)}: produção ambulatorial do SUS (procedimentos aprovados e valor da tabela do SUS) por município do estabelecimento e grupo de procedimento (só o SUS, por ano de apresentação)`,
       `SIA ${faixa(c.sia[0], c.sia.at(-1)!)}: SUS outpatient output (approved procedures and SUS table value) by municipality of the facility and procedure group (SUS only, by submission year)`));
+  }
+  if (paineis.includes('saude') && c.aps?.length) {
+    linhas.push(t(`Atenção primária ${faixa(c.aps[0], c.aps.at(-1)!)}: cobertura das equipes de Saúde da Família e atenção primária e dos agentes comunitários por município, valor de dezembro (duas metodologias: até 2020 e de 2021 em diante, não comparáveis)`,
+      `Primary care ${faixa(c.aps[0], c.aps.at(-1)!)}: coverage by family health and primary care teams and community health agents by municipality, December value (two methodologies: up to 2020 and from 2021, not comparable)`));
   }
   if (paineis.includes('saude') && c.cnes?.length) {
     linhas.push(t(`CNES ${faixa(c.cnes[0], c.cnes.at(-1)!)}: estabelecimentos, leitos (existentes e SUS, por tipo) e profissionais (médicos, enfermeiros, dentistas) por município do estabelecimento, no retrato de dezembro de cada ano`,
@@ -897,6 +902,8 @@ const FONTES_TABELAS: [RegExp | ((sql: string) => boolean), () => string][] = [
     () => t('Ministério da Saúde/DATASUS: SINAN (agravos de notificação por município de residência)', 'Ministry of Health/DATASUS: SINAN (notifiable diseases by municipality of residence)')],
   [(s) => /\bsaude_municipios\b/.test(s) && /\bcnes_\w+\b/.test(s),
     () => t('Ministério da Saúde/DATASUS: CNES (estabelecimentos, leitos e profissionais por município do estabelecimento)', 'Ministry of Health/DATASUS: CNES (facilities, beds and staff by municipality of the facility)')],
+  [(s) => /\bsaude_municipios\b/.test(s) && /\b(ab|aps|acs)_(cobertura\w*|equipes_\w+|populacao|capacidade|agentes)\b/.test(s),
+    () => t('Ministério da Saúde/SAPS: relatórios públicos da atenção primária (cobertura das equipes e dos agentes comunitários)', 'Ministry of Health/SAPS: public primary care reports (coverage by teams and community health agents)')],
   [(s) => /\bsaude_municipios\b/.test(s) && /\bamb_\w+\b/.test(s),
     () => t('Ministério da Saúde/DATASUS: SIA (produção ambulatorial do SUS por município do estabelecimento)', 'Ministry of Health/DATASUS: SIA (SUS outpatient output by municipality of the facility)')],
   [(s) => /\bsaude_municipios\b/.test(s) && /\bint_\w+\b/.test(s),

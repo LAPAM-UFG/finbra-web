@@ -549,6 +549,61 @@ def resp(con, micro: Path):
     print("resp:", con.sql("SELECT ano, sum(resp_notificacoes), sum(resp_confirmadas), sum(resp_obitos) FROM resp GROUP BY 1 ORDER BY 1").fetchall())
 
 
+def atencao_primaria(con, brutos: Path, saida: Path | None = None):
+    """Atenção primária (relatórios públicos da APS, baixados por aps.py): cobertura por município.
+
+    aps_cobertura: mês × município (serie ab, jan/2008 a dez/2020, metodologia antiga; aps, jan/2021 em diante; acs, agentes
+    comunitários, jan/2008 em diante). As séries ab e aps NÃO são comparáveis: a portaria mudou a população coberta e a
+    capacidade das equipes. atencao_primaria: ano × município com o valor de dezembro de cada série (colunas ab_*, aps_*,
+    acs_*), que entra em municipios.parquet. A cobertura da série aps não é limitada a 100% (equipes acima da população).
+    Sem os arquivos de aps.py, cria as tabelas vazias."""
+    saida = saida or GOLD_S
+    base = brutos / "aps"
+    num = lambda c: f"TRY_CAST(replace({c}, ',', '') AS DOUBLE)"
+    leitura = lambda serie, cols: (
+        f"read_json('{base.as_posix()}/{serie}/*.json', format='array', records=true, maximum_object_size=67108864, "
+        f"columns={{{', '.join(f'{c}: ' + chr(39) + 'VARCHAR' + chr(39) for c in cols)}}})")
+    if not any((base / x).is_dir() for x in ("ab", "aps", "acs")):
+        con.execute("CREATE OR REPLACE TABLE aps_cobertura (serie VARCHAR, ano INTEGER, mes INTEGER, municipio INTEGER)")
+        con.execute("CREATE OR REPLACE TABLE atencao_primaria (ano INTEGER, municipio INTEGER)")
+        return
+    # nuComp vem como AAAAMM (ab, acs) ou MM/AAAA (aps)
+    ano = "TRY_CAST(CASE WHEN nuComp LIKE '%/%' THEN right(nuComp, 4) ELSE left(nuComp, 4) END AS INTEGER)"
+    mes = "TRY_CAST(CASE WHEN nuComp LIKE '%/%' THEN left(nuComp, 2) ELSE right(nuComp, 2) END AS INTEGER)"
+    partes = []
+    if (base / "ab").is_dir():
+        partes.append(f"""SELECT 'ab' AS serie, {ano} AS ano, {mes} AS mes, TRY_CAST(coMunicipioIbge AS INTEGER) AS municipio,
+               {num('pcCoberturaAb')} AS cobertura, {num('pcCoberturaSf')} AS cobertura_sf, {num('qtEsf')} AS equipes_esf,
+               NULL::DOUBLE AS equipes_eap, {num('qtPopulacao')} AS populacao, NULL::DOUBLE AS capacidade, NULL::DOUBLE AS agentes
+               FROM {leitura('ab', ['nuComp', 'coMunicipioIbge', 'pcCoberturaAb', 'pcCoberturaSf', 'qtEsf', 'qtPopulacao'])}""")
+    if (base / "aps").is_dir():
+        partes.append(f"""SELECT 'aps', {ano}, {mes}, TRY_CAST(coMunicipioIbge AS INTEGER),
+               {num('qtCobertura')}, NULL::DOUBLE, {num('qtEsf')}, coalesce({num('qtEap30')}, 0) + coalesce({num('qtEap20')}, 0),
+               {num('qtPopulacao')}, {num('qtCapacidadeEquipe')}, NULL::DOUBLE
+               FROM {leitura('aps', ['nuComp', 'coMunicipioIbge', 'qtCobertura', 'qtEsf', 'qtEap30', 'qtEap20', 'qtPopulacao', 'qtCapacidadeEquipe'])}""")
+    if (base / "acs").is_dir():
+        partes.append(f"""SELECT 'acs', {ano}, {mes}, TRY_CAST(coMunicipioIbge AS INTEGER),
+               {num('pcCoberturaAcsAb')}, NULL::DOUBLE, NULL::DOUBLE, NULL::DOUBLE, {num('qtPopulacao')}, NULL::DOUBLE, {num('qtAcsAtivoAb')}
+               FROM {leitura('acs', ['nuComp', 'coMunicipioIbge', 'pcCoberturaAcsAb', 'qtPopulacao', 'qtAcsAtivoAb'])}""")
+    con.execute("CREATE OR REPLACE TABLE aps_cobertura AS SELECT * FROM (" + " UNION ALL ".join(partes) +
+                ") WHERE municipio IS NOT NULL AND ano IS NOT NULL ORDER BY serie, ano, mes, municipio")
+    con.execute(f"COPY aps_cobertura TO '{saida / 'aps_cobertura.parquet'}' (FORMAT parquet, COMPRESSION zstd)")
+    # valor de dezembro de cada ano (a cobertura de um ano é a do fim dele, como o CNES)
+    con.execute("""
+        CREATE OR REPLACE TABLE atencao_primaria AS
+        SELECT ano, municipio,
+               max(cobertura) FILTER (WHERE serie = 'ab') AS ab_cobertura, max(cobertura_sf) FILTER (WHERE serie = 'ab') AS ab_cobertura_sf,
+               max(equipes_esf) FILTER (WHERE serie = 'ab') AS ab_equipes_esf, max(populacao) FILTER (WHERE serie = 'ab') AS ab_populacao,
+               max(cobertura) FILTER (WHERE serie = 'aps') AS aps_cobertura, max(equipes_esf) FILTER (WHERE serie = 'aps') AS aps_equipes_esf,
+               max(equipes_eap) FILTER (WHERE serie = 'aps') AS aps_equipes_eap, max(capacidade) FILTER (WHERE serie = 'aps') AS aps_capacidade,
+               max(populacao) FILTER (WHERE serie = 'aps') AS aps_populacao,
+               max(cobertura) FILTER (WHERE serie = 'acs') AS acs_cobertura, max(agentes) FILTER (WHERE serie = 'acs') AS acs_agentes,
+               max(populacao) FILTER (WHERE serie = 'acs') AS acs_populacao
+        FROM aps_cobertura WHERE mes = 12 GROUP BY ano, municipio ORDER BY ano, municipio""")
+    print("atencao_primaria:", con.sql("""SELECT ano, count(*), round(avg(ab_cobertura), 1), round(avg(aps_cobertura), 1), round(avg(acs_cobertura), 1)
+        FROM atencao_primaria WHERE ano IN (2008, 2015, 2020, 2021, 2025) GROUP BY 1 ORDER BY 1""").fetchall())
+
+
 def municipios(con):
     """Uma linha por ano e município de residência com população, óbitos, óbitos fetais e nascimentos."""
     s = SILVER.as_posix()
@@ -562,7 +617,7 @@ def municipios(con):
                         UNION SELECT ano, municipio FROM internacoes UNION SELECT ano, municipio FROM internacoes_atend
                         UNION SELECT ano, municipio FROM cnes UNION SELECT ano, municipio FROM sinan
                         UNION SELECT ano, municipio FROM siscan UNION SELECT ano, municipio FROM oncologia UNION SELECT ano, municipio FROM resp
-                        UNION SELECT ano, municipio FROM ambulatorial)
+                        UNION SELECT ano, municipio FROM ambulatorial UNION SELECT ano, municipio FROM atencao_primaria)
         SELECT k.ano, m.cod_ibge, k.municipio, coalesce(m.nome, 'Município ignorado') AS nome,
                coalesce(m.uf, e.uf) AS uf,
                p.* EXCLUDE (ano, municipio),
@@ -576,7 +631,8 @@ def municipios(con):
                sc.* EXCLUDE (ano, municipio, uf),
                oc.* EXCLUDE (ano, municipio, uf),
                rp.* EXCLUDE (ano, municipio, uf),
-               am.* EXCLUDE (ano, municipio, uf)
+               am.* EXCLUDE (ano, municipio, uf),
+               ap.* EXCLUDE (ano, municipio)
         FROM chaves k
         LEFT JOIN muni m ON m.municipio = k.municipio
         LEFT JOIN estados e ON e.cod = k.municipio // 10000
@@ -592,6 +648,7 @@ def municipios(con):
         LEFT JOIN oncologia oc ON oc.ano = k.ano AND oc.municipio = k.municipio
         LEFT JOIN resp rp ON rp.ano = k.ano AND rp.municipio = k.municipio
         LEFT JOIN ambulatorial am ON am.ano = k.ano AND am.municipio = k.municipio
+        LEFT JOIN atencao_primaria ap ON ap.ano = k.ano AND ap.municipio = k.municipio
         WHERE k.municipio IS NOT NULL
         ORDER BY k.ano, k.municipio""")
     con.execute(f"COPY municipios TO '{GOLD_S / 'municipios.parquet'}' (FORMAT parquet, COMPRESSION zstd)")
@@ -625,9 +682,15 @@ def fonte_saude(con) -> dict:
         if col in colunas:
             outros[chave] = {"anos": anos(col), "processado_em": quando, "url": url}
     sia_f = {"sia": {"anos": anos("amb_registros"), "processado_em": quando, "url": "https://datasus.saude.gov.br/transferencia-de-arquivos/"}} if "amb_registros" in colunas else {}
+    aps_f = {}
+    if "aps_cobertura" in colunas or "ab_cobertura" in colunas:
+        series = {nome: anos(col) for nome, col in (("ab", "ab_cobertura"), ("aps", "aps_cobertura"), ("acs", "acs_cobertura")) if col in colunas}
+        aps_f = {"aps": {"anos": sorted({a for v in series.values() for a in v}), "series": {k: [v[0], v[-1]] for k, v in series.items() if v},
+                         "processado_em": quando, "url": "https://relatorioaps.saude.gov.br/"}}
     return {
         **sih,
         **sia_f,
+        **aps_f,
         **cnes_f,
         **sinan_f,
         **outros,
@@ -665,6 +728,7 @@ def main():
     oncologia(con, Path(a.micro))
     resp(con, Path(a.micro))
     ambulatorial(con, Path(os.environ.get("SAUDE_SIA", Path(a.micro).parent / "sia")))
+    atencao_primaria(con, Path(a.brutos))
     municipios(con)
     atualizar_manifesto(con)
     # conferência: mortalidade infantil do Brasil (por mil nascidos vivos)

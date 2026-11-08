@@ -13,7 +13,7 @@ import type { Cobertura } from './ia';
 import type { TipoColuna } from './ia_formato';
 
 /** Fonte cujos anos (do manifesto) dão a cobertura temporal da coluna. */
-export type ChaveCobertura = 'dca' | 'pib' | 'rais' | 'sim' | 'sinasc' | 'sih' | 'sia' | 'cnes' | 'sinan' | 'siscan' | 'oncologia' | 'resp';
+export type ChaveCobertura = 'dca' | 'pib' | 'rais' | 'sim' | 'sinasc' | 'sih' | 'sia' | 'aps' | 'cnes' | 'sinan' | 'siscan' | 'oncologia' | 'resp';
 
 export type Coluna = {
   tipo: TipoColuna;
@@ -47,6 +47,9 @@ const SIA = 'Ministério da Saúde/DATASUS: SIA (produção ambulatorial do SUS,
 const RESSALVA_SIA = 'só o SUS; conta procedimentos aprovados (não pessoas) pelo município do estabelecimento, por ano de apresentação; valor da tabela do SUS (SIGTAP), não o custo nem o gasto do município';
 const sia = (x: Omit<Coluna, 'fonte' | 'tipo'> & { tipo?: TipoColuna }): Coluna => ({ tipo: 'contagem', fonte: SIA, tabelas: ['saude_municipios'], cobertura: 'sia', territorio: 'municípios onde fica o estabelecimento', ressalva: RESSALVA_SIA, ...x });
 const GRUPOS_SIA: [string, string, string][] = [['promocao', '01', 'promoção e prevenção em saúde'], ['diagnostico', '02', 'diagnóstico (exames e imagem)'], ['clinicos', '03', 'procedimentos clínicos (consultas e terapias)'], ['cirurgicos', '04', 'procedimentos cirúrgicos'], ['transplantes', '05', 'transplantes de órgãos, tecidos e células'], ['medicamentos', '06', 'medicamentos (componente especializado)'], ['orteses', '07', 'órteses, próteses e materiais especiais'], ['complementares', '08', 'ações complementares da atenção à saúde']];
+const APS_F = 'Ministério da Saúde/SAPS: relatórios públicos da atenção primária (cobertura das equipes e dos agentes comunitários, valor de dezembro)';
+const RESSALVA_APS = 'cobertura é capacidade das equipes cadastradas em relação à população, não a população atendida nem a qualidade; valor de dezembro; as séries ab (2008–2020) e aps (2021 em diante) usam metodologias diferentes e não se comparam';
+const aps = (x: Omit<Coluna, 'fonte' | 'tipo'> & { tipo?: TipoColuna }): Coluna => ({ tipo: 'contagem', fonte: APS_F, tabelas: ['saude_municipios'], cobertura: 'aps', territorio: 'municípios de residência', ressalva: RESSALVA_APS, ...x });
 const sih = (x: Omit<Coluna, 'fonte' | 'tipo'> & { tipo?: TipoColuna }): Coluna => ({ tipo: 'contagem', fonte: SIH, tabelas: ['saude_municipios'], cobertura: 'sih', territorio: 'municípios de residência', ressalva: RESSALVA_SIH, ...x });
 const CAP_SIH = ['infecciosas e parasitárias (A00–B99)', 'neoplasias (C00–D48)', 'sangue e imunidade (D50–D89)', 'endócrinas, nutricionais e metabólicas (E00–E90)', 'transtornos mentais (F00–F99)', 'sistema nervoso (G00–G99)', 'olho (H00–H59)', 'ouvido (H60–H95)', 'aparelho circulatório (I00–I99)', 'aparelho respiratório (J00–J99)', 'aparelho digestivo (K00–K93)', 'pele (L00–L99)', 'osteomuscular (M00–M99)', 'geniturinário (N00–N99)', 'gravidez, parto e puerpério (O00–O99)', 'afecções perinatais (P00–P96)', 'malformações congênitas (Q00–Q99)', 'mal definidas (R00–R99)', 'lesões e envenenamentos (S00–T98)', 'causas externas (V01–Y98)', 'fatores que influenciam o estado de saúde (Z00–Z99)', 'códigos especiais (U00–U99)'];
 const CNES_F = 'Ministério da Saúde/DATASUS: CNES (retrato de dezembro; município do estabelecimento)';
@@ -104,6 +107,18 @@ export const COLUNAS: Record<string, Coluna> = {
     [`amb_${nome}_qtd`, sia({ rotulo: `procedimentos ambulatoriais: ${desc}`, definicao: `quantidade aprovada dos procedimentos do grupo ${cod} (${desc}) da tabela SIGTAP`, classificacao: 'grupo de procedimento (SIGTAP)' })],
     [`amb_${nome}_valor_real`, sia({ tipo: 'reais', rotulo: `valor ambulatorial: ${desc} (R$ de 2025)`, definicao: `valor aprovado do grupo ${cod} (${desc}), em reais de 2025 pelo IPCA médio do ano`, classificacao: 'grupo de procedimento (SIGTAP)' })],
   ])),
+  ab_cobertura: aps({ tipo: 'percentual', rotulo: 'cobertura da atenção básica (metodologia antiga, 2008–2020)', definicao: 'percentual da população coberta pela atenção básica (equipes de Saúde da Família e atenção básica equivalente), limitado a 100%; valor de dezembro' }),
+  ab_cobertura_sf: aps({ tipo: 'percentual', rotulo: 'cobertura da Saúde da Família (2008–2020)', definicao: 'percentual da população coberta pela Estratégia Saúde da Família, metodologia antiga; valor de dezembro' }),
+  ab_equipes_esf: aps({ rotulo: 'equipes de Saúde da Família (2008–2020)', definicao: 'equipes de Saúde da Família no município em dezembro, metodologia antiga' }),
+  ab_populacao: aps({ rotulo: 'população considerada na cobertura da atenção básica', definicao: 'população da base oficial usada no cálculo da cobertura antiga (DOU/TCU), diferente da SVS/MS', ressalva: 'base oficial do ano de referência; use para ponderar a cobertura, não como população do município' }),
+  aps_cobertura: aps({ tipo: 'percentual', rotulo: 'cobertura da atenção primária (metodologia atual, 2021 em diante)', definicao: 'percentual da população coberta pelas equipes da atenção primária (capacidade das equipes ÷ população), SEM limite de 100%; valor de dezembro' }),
+  aps_equipes_esf: aps({ rotulo: 'equipes de Saúde da Família (2021 em diante)', definicao: 'equipes de Saúde da Família no município em dezembro, metodologia atual' }),
+  aps_equipes_eap: aps({ rotulo: 'equipes de Atenção Primária (2021 em diante)', definicao: 'equipes de Atenção Primária (eAP de 20 e 30 horas) no município em dezembro' }),
+  aps_capacidade: aps({ rotulo: 'população que as equipes podem cobrir', definicao: 'capacidade das equipes de atenção primária cadastradas, em pessoas' }),
+  aps_populacao: aps({ rotulo: 'população considerada na cobertura da atenção primária', definicao: 'população da base oficial usada no cálculo da cobertura atual (DOU), diferente da SVS/MS', ressalva: 'base oficial do ano de referência; use para ponderar a cobertura, não como população do município' }),
+  acs_cobertura: aps({ tipo: 'percentual', rotulo: 'cobertura de agentes comunitários de saúde', definicao: 'percentual da população coberta por agentes comunitários de saúde, limitado a 100%; valor de dezembro' }),
+  acs_agentes: aps({ rotulo: 'agentes comunitários de saúde ativos', definicao: 'agentes comunitários de saúde ativos no município em dezembro' }),
+  acs_populacao: aps({ rotulo: 'população considerada na cobertura de agentes comunitários', definicao: 'população da base oficial usada no cálculo da cobertura de agentes comunitários', ressalva: 'use para ponderar a cobertura, não como população do município' }),
   int_atendidas: sih({ rotulo: 'internações atendidas no município', definicao: 'internações feitas em hospitais do município, de quem for residente', territorio: 'municípios onde fica o hospital' }),
   int_atendidas_de_fora: sih({ rotulo: 'internações atendidas de residentes de outros municípios', definicao: 'internações em hospitais do município de pessoas residentes em outro município', territorio: 'municípios onde fica o hospital' }),
   int_atendidas_valor_real: sih({ tipo: 'reais', rotulo: 'valor pago nas internações atendidas (R$ de 2025)', definicao: 'valor das AIH atendidas por hospitais do município, em reais de 2025 pelo IPCA médio do ano', territorio: 'municípios onde fica o hospital' }),
@@ -223,6 +238,7 @@ export function coberturaDaColuna(c: Coluna, cob?: Cobertura | null): string {
   if (c.cobertura === 'sinasc') return intervalo(cob?.sinasc);
   if (c.cobertura === 'sih') return intervalo(cob?.sih);
   if (c.cobertura === 'sia') return intervalo(cob?.sia);
+  if (c.cobertura === 'aps') return intervalo(cob?.aps);
   if (c.cobertura === 'cnes') return intervalo(cob?.cnes);
   if (c.cobertura === 'sinan') return intervalo(cob?.sinan);
   if (c.cobertura === 'siscan') return intervalo(cob?.siscan);

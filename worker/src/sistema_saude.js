@@ -5,7 +5,7 @@
  */
 export const SAUDE = `# Painel de saúde
 
-Feito com os microdados públicos do SIM (Sistema de Informações sobre Mortalidade), do SINASC (Sistema de Informações sobre Nascidos Vivos), do SIH (Sistema de Informações Hospitalares do SUS), do SIA (Sistema de Informações Ambulatoriais do SUS), do CNES (Cadastro Nacional de Estabelecimentos de Saúde) do SINAN (Sistema de Informação de Agravos de Notificação), do SISCAN (controle do câncer do colo do útero e da mama), do Painel de Oncologia e do RESP (microcefalia), do Ministério da Saúde/DATASUS, e com as estimativas de população da SVS/MS. Os registros vêm somados por ano e município de residência: não há registros individuais.
+Feito com os microdados públicos do SIM (Sistema de Informações sobre Mortalidade), do SINASC (Sistema de Informações sobre Nascidos Vivos), do SIH (Sistema de Informações Hospitalares do SUS), do SIA (Sistema de Informações Ambulatoriais do SUS), do CNES, dos relatórios públicos da atenção primária (cobertura da APS, Ministério da Saúde) (Cadastro Nacional de Estabelecimentos de Saúde) do SINAN (Sistema de Informação de Agravos de Notificação), do SISCAN (controle do câncer do colo do útero e da mama), do Painel de Oncologia e do RESP (microcefalia), do Ministério da Saúde/DATASUS, e com as estimativas de população da SVS/MS. Os registros vêm somados por ano e município de residência: não há registros individuais.
 
 ## Tabela do painel de saúde
 
@@ -24,6 +24,10 @@ saude_municipios — uma linha por ano e município de residência
   Produção ambulatorial do SUS (SIA, grupo PA: procedimentos aprovados para pagamento, pelo ano e município DO ESTABELECIMENTO, não o de residência; ver "Dados disponíveis"):
     amb_registros (linhas de produção), amb_qtd (procedimentos aprovados, não pessoas), amb_valor (R$ correntes) e amb_valor_real (R$ de 2025 pelo IPCA médio do ano: use este para comparar anos); amb_qtd_fora e amb_valor_fora_real (parte de pacientes que moram em outro município)
     por grupo de procedimento (SIGTAP), amb_<grupo>_qtd e amb_<grupo>_valor_real: promocao (01, promoção e prevenção), diagnostico (02), clinicos (03), cirurgicos (04), transplantes (05), medicamentos (06), orteses (07), complementares (08)
+  Cobertura da atenção primária (relatórios públicos da APS, Ministério da Saúde; valor de dezembro de cada ano; município onde a população mora; ver "Dados disponíveis" para o período de cada série):
+    ab_* (metodologia antiga, 2008 a 2020): ab_cobertura (% da população coberta pela atenção básica, no máximo 100), ab_cobertura_sf (% pela Saúde da Família), ab_equipes_esf (equipes de Saúde da Família) e ab_populacao (população considerada)
+    aps_* (metodologia atual, de 2021 em diante): aps_cobertura (% da população coberta pelas equipes, SEM limite de 100: passa de 100 onde há mais capacidade que população), aps_equipes_esf (equipes de Saúde da Família), aps_equipes_eap (equipes de Atenção Primária), aps_capacidade (população que as equipes podem cobrir) e aps_populacao (população considerada)
+    acs_* (agentes comunitários de saúde, 2008 em diante): acs_cobertura (% da população coberta, no máximo 100), acs_agentes (agentes ativos) e acs_populacao
   Rede de saúde (CNES, retrato de dezembro de cada ano, pelo município ONDE FICA o estabelecimento, não o de residência de quem usa):
     cnes_estab (estabelecimentos), cnes_estab_sus (com vínculo SUS), cnes_hospitais (hospital geral ou especializado), cnes_ubs (posto de saúde e centro de saúde/unidade básica)
     leitos: cnes_leitos (existentes), cnes_leitos_sus, cnes_leitos_nao_sus e por tipo (cnes_leitos_cirurgicos, _clinicos, _complementares [inclui UTI e unidades intermediárias], _obstetricos, _pediatricos, _outras, _hospital_dia)
@@ -56,6 +60,7 @@ Em qualquer agregado (UF, Brasil, grupo de municípios, vários anos), a taxa é
 - Rede de saúde: leitos por mil habitantes = cnes_leitos ÷ populacao × 1.000 (SUS: cnes_leitos_sus); médicos e enfermeiros por mil habitantes = cnes_medicos (ou cnes_enfermeiros) ÷ populacao × 1.000; estabelecimentos por 10 mil habitantes = cnes_estab ÷ populacao × 10.000; participação do SUS nos leitos = cnes_leitos_sus ÷ cnes_leitos × 100.
 - Internações por mil habitantes = int_total ÷ populacao × 1.000; de idosos = int_60_mais ÷ pop_60_mais × 1.000; de menores de 5 = int_menores_5 ÷ pop_0_4 × 1.000.
 - Produção ambulatorial (SIA) por habitante = amb_qtd ÷ populacao (procedimentos por habitante) ou amb_valor_real ÷ populacao (R$ de 2025 por habitante); valor médio por procedimento (R$ de 2025) = amb_valor_real ÷ amb_qtd; atendimentos a pacientes de fora (%) = amb_qtd_fora ÷ amb_qtd × 100. A produção é do município do estabelecimento e a população é a de residência: polos regionais aparecem com valores por habitante altos.
+- Cobertura da atenção primária de uma UF ou do Brasil NUNCA é a média das coberturas dos municípios: ab: 100 * sum(ab_cobertura / 100 * ab_populacao) / sum(ab_populacao); aps: 100 * sum(least(aps_capacidade, aps_populacao)) / sum(aps_populacao) (os municípios acima de 100% entram limitados à própria população); agentes comunitários: 100 * sum(acs_cobertura / 100 * acs_populacao) / sum(acs_populacao). Habitantes por equipe de Saúde da Família = aps_populacao ÷ aps_equipes_esf.
 - Internações fora do município (%) = int_fora ÷ int_total × 100; mortalidade hospitalar (%) = int_obitos ÷ int_total × 100; permanência média (dias) = int_dias ÷ int_total; valor médio por internação (R$ de 2025) = int_valor_real ÷ int_total; valor por habitante = int_valor_real ÷ populacao.
 Em consultar, declare as taxas com unidade "razao" e rótulo com a base (ex.: "Mortalidade infantil (por mil nascidos vivos)"); proporções e participações em "percentual"; contagens em "contagem"; populacao em "habitantes".
 
@@ -80,6 +85,7 @@ Em consultar, declare as taxas com unidade "razao" e rótulo com a base (ex.: "M
 19. RESP: notificações de microcefalia e alterações do SNC (registro da emergência ligada ao vírus Zika, 2015–2016): notificação não é caso confirmado, e a vigilância mudou muito depois do pico de 2015–2016; compare confirmadas, não notificações, e lembre que os últimos anos ficam subestimados.
 15. CNES: a capacidade é do município do estabelecimento, enquanto a população é a de residência: municípios com hospital regional têm leitos, médicos e estabelecimentos por habitante altos porque atendem moradores de outros. Diga isso ao comparar municípios ou ao falar de "déficit". É retrato de dezembro, não média do ano; médicos e enfermeiros são pessoas (CNS), cada uma uma só vez no município do vínculo de maior carga horária: quem atende em vários municípios aparece só no principal, o que subestima municípios pequenos que dependem de profissionais itinerantes (para ver quem atua no município, cnes_medicos_no_municipio, sem somar por UF ou Brasil). Nos anos 2008 a 2012 uns 8 a 10% dos registros não têm CNS e a contagem de pessoas fica um pouco subestimada. Leitos SUS podem superar os existentes em municípios pequenos por inconsistência de cadastro. Não existe parâmetro único de "leitos ideais" nos dados: não invente um.
 20. SIA: conta procedimentos aprovados para pagamento pelo SUS (uma consulta, um exame, uma sessão), não pessoas atendidas nem consultas: um paciente gera vários procedimentos. O ano é o da apresentação (competência de processamento), e atendimentos de meses anteriores apresentados depois entram no ano da apresentação. O valor é o da tabela de procedimentos do SUS (SIGTAP), não o custo nem o gasto total em saúde do município: não some com a despesa das finanças como se fosse a mesma coisa. Não inclui a saúde suplementar e privada. Mudanças na tabela de procedimentos e na forma de registro (grupo 07 e 08, as órteses e as ações complementares, e o grupo 01, de promoção) alteram séries longas: ao comparar anos distantes, mostre o grupo. Municípios pequenos sem estabelecimento ficam NULL: o atendimento aparece no polo, não onde a pessoa mora.
+21. Cobertura da atenção primária: é capacidade das equipes cadastradas em relação à população, não a parcela da população que de fato usa ou é atendida pelo serviço, nem qualidade ou resolutividade. Duas metodologias: ab (2008 a 2020) e aps (de 2021 em diante) NÃO são comparáveis, porque o cálculo da população coberta e da capacidade das equipes mudou; não monte uma série única atravessando 2020/2021, mostre as duas separadas e diga isso. A população considerada é a da base oficial do ano de referência (DOU/TCU), diferente da SVS/MS de populacao. É o valor de dezembro, não a média do ano. Cobertura acima de 100% (série aps) não é erro: há mais capacidade que população, e só aparece em municípios pequenos.
 14. Números pequenos: nos rankings de internações use o mesmo mínimo do painel (taxas por mil habitantes: 5.000 habitantes; proporções e médias: 500 internações; por idade: 1.000 habitantes na faixa).`;
 
 const inteiros = (v) => (Array.isArray(v) ? v.filter((x) => Number.isInteger(x) && x > 1900 && x < 2100) : []);
@@ -93,6 +99,7 @@ export function contextoSaude(manifesto) {
   const pop = inteiros(f.populacao_svs?.anos);
   const sih = inteiros(f.sih?.anos);
   const sia = inteiros(f.sia?.anos);
+  const apsAnos = inteiros(f.aps?.anos);
   const cnes = inteiros(f.cnes?.anos);
   const siscan = inteiros(f.siscan?.anos);
   const onco = inteiros(f.oncologia?.anos);
@@ -100,6 +107,8 @@ export function contextoSaude(manifesto) {
   const ag = f.sinan?.agravos ?? {};
   const par = (v) => (Array.isArray(v) && v.length === 2 && v.every((x) => Number.isInteger(x)) ? `${v[0]} a ${v[1]}` : null);
   const sinan = ['dengue', 'chikungunya', 'tuberculose', 'hanseniase', 'violencia'].map((k) => (par(ag[k]) ? `${k} ${par(ag[k])}` : null)).filter(Boolean);
+  const apsSeries = f.aps?.series ?? {};
+  const apsTxt = ['ab', 'aps', 'acs'].map((k) => (par(apsSeries[k]) ? `${k} ${par(apsSeries[k])}` : null)).filter(Boolean);
   return [
     '# Dados disponíveis: saúde',
     sim.length ? `SIM (óbitos, inclusive fetais): ${intervalo(sim)}.` : 'SIM indisponível.',
@@ -111,6 +120,7 @@ export function contextoSaude(manifesto) {
     cnes.length ? `CNES (estabelecimentos, leitos e profissionais, retrato de dezembro): ${intervalo(cnes)}.` : 'CNES (rede de saúde) indisponível: não há colunas cnes_* nesta versão dos dados.',
     sih.length ? `SIH (internações do SUS, por ano de competência): ${intervalo(sih)}.` : 'SIH (internações) indisponível: não há colunas int_* nesta versão dos dados.',
     sia.length ? `SIA (produção ambulatorial do SUS, por ano de apresentação): ${intervalo(sia)}.` : 'SIA (produção ambulatorial) indisponível: não há colunas amb_* nesta versão dos dados.',
+    apsAnos.length ? `Cobertura da atenção primária (valor de dezembro): ${apsTxt.join('; ')}.` : 'Cobertura da atenção primária indisponível: não há colunas ab_*, aps_* e acs_* nesta versão dos dados.',
     pop.length ? `População da SVS/MS: ${intervalo(pop)} (taxas por habitante só a partir de ${pop[0]}).` : 'População indisponível: sem taxas por habitante.',
   ].join('\n');
 }
