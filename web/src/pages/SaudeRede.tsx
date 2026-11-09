@@ -11,7 +11,7 @@ import { num } from '../hooks';
 import { t } from '../idioma';
 import { anosDaColuna, condicaoDado, faixaAnos, fonteSaude, rotuloCondicao, type FontesMeta } from '../saude_comum';
 import { BlocoAps } from './SaudeAps';
-import { referencia, useSaude } from './SaudeDatasus';
+import { AvisoAno, referencia, useSaude } from './SaudeDatasus';
 
 const razao = (a: number | null, b: number | null) => (a === null || !b ? null : a / b);
 
@@ -56,10 +56,15 @@ export function SaudeRede() {
   const noCnes = (c: string) => { const a = refCol(c); return celula(c, num(dados.find((r) => Number(r.ano) === a)?.[c]), a, fontes); };
   const pctDe = (n: string, d: string) => (refSih === null ? t('fora da cobertura', 'outside coverage') : pct(razao(num(sih?.[n]), num(sih?.[d])), 1));
 
+  // em UF e Brasil os totais somam os municípios do recorte: os títulos dizem isso e as internações entre municípios da mesma UF também contam
+  const recorte = !municipio;
+  const tMoradores = recorte ? t('Moradores dos municípios do recorte', 'Residents of the scope’s municipalities') : t('Moradores do município', 'Residents of the municipality');
+  const tHospitais = recorte ? t('Hospitais dos municípios do recorte', 'Hospitals of the scope’s municipalities') : t('Hospitais do município', 'Hospitals of the municipality');
+
   const opcao = useMemo(() => linhas(anosS, [
     { nome: t('Internações de moradores', 'Admissions of residents'), valores: dados.map((r) => num(r.int_total)) },
-    { nome: t('Internações realizadas pelos hospitais do município', 'Admissions by the municipality’s hospitals'), valores: dados.map((r) => num(r.int_atendidas)) },
-  ], (v) => numero(v)), [serie.dados]); // eslint-disable-line react-hooks/exhaustive-deps
+    { nome: recorte ? t('Internações realizadas pelos hospitais dos municípios do recorte', 'Admissions by the hospitals of the scope’s municipalities') : t('Internações realizadas pelos hospitais do município', 'Admissions by the municipality’s hospitals'), valores: dados.map((r) => num(r.int_atendidas)) },
+  ], (v) => numero(v)), [serie.dados, recorte]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // médicos: só a medida por vínculo principal e a de vínculos somam em UF e Brasil; "atuam no município" é por município
   const medicosAtuam = municipio ? noCnes('cnes_medicos_no_municipio') : t('não se soma por UF ou Brasil', 'not summed by state or Brazil');
@@ -70,6 +75,7 @@ export function SaudeRede() {
       <h2 className="titulo-pagina">{t('Rede e acesso ao SUS', 'Network and access to SUS')}</h2>
       <p className="subtitulo">{rotulo} · {semAno ? t('último ano de cada fonte', 'latest year of each source') : ano} · SIH: {refSih ?? t('fora da cobertura', 'outside coverage')} · CNES: {refCnes ?? t('fora da cobertura', 'outside coverage')} <Dica rotulo={t('Fonte', 'Source')}>{fonteSaude()}</Dica></p>
       <BarraFiltros comUltimo ultimoPadrao />
+      <AvisoAno ano={ano} />
       <Estado carregando={serie.carregando} erro={serie.erro} tentarNovamente={serie.recarregar}
         vazio={!serie.carregando && !serie.dados?.length && t('Sem registros para este recorte.', 'No records for this scope.')} />
       {serie.dados && serie.dados.length > 0 && !('int_atendidas' in serie.dados[0]) && (
@@ -78,14 +84,18 @@ export function SaudeRede() {
       {serie.dados && serie.dados.length > 0 && 'int_atendidas' in serie.dados[0] && (
         <>
           <p className="nota-base"><strong>{t('Internações do SUS: onde moram × onde foram feitas', 'SUS admissions: where people live × where they were done')}</strong> · SIH {refSih ?? t('fora da cobertura', 'outside coverage')}{refSih === null ? ` (${faixaAnos(cobSih)})` : ''}</p>
+          {recorte && (
+            <p className="nota-base">{t('Em UF e Brasil, os números somam os municípios do recorte. Os deslocamentos entre municípios da mesma UF também contam: uma internação de morador de um município feita no hospital de outro conta como "feita fora do município" e como "de morador de outro município", ainda que os dois fiquem na mesma UF.',
+              'For a state or Brazil, the numbers add up the municipalities of the scope. Moves between municipalities of the same state also count: an admission of a resident of one municipality done in another municipality’s hospital counts as "done outside the municipality" and as "of a resident of another municipality", even if both are in the same state.')}</p>
+          )}
           <div className="grade-2">
-            <Painel titulo={t('Moradores do município', 'Residents of the municipality')}
+            <Painel titulo={tMoradores}
               dica={t('Internações pagas pelo SUS (AIH tipo 1) de pessoas que moram no município, onde quer que tenham sido internadas. Entram as feitas em hospitais de outros municípios.', 'SUS-paid admissions (type-1 AIH) of people who live in the municipality, wherever they were admitted. It includes those in hospitals of other municipalities.')}>
               <Kpi rotulo={t('Internações dos moradores', 'Admissions of residents')} valor={noSih('int_total')} nota={refSih ? `SIH ${refSih}` : undefined} />
               <Kpi rotulo={t('Feitas fora do município', 'Done outside the municipality')} valor={noSih('int_fora')}
                 nota={t(`${pctDe('int_fora', 'int_total')} das internações dos moradores`, `${pctDe('int_fora', 'int_total')} of residents’ admissions`)} />
             </Painel>
-            <Painel titulo={t('Hospitais do município', 'Hospitals of the municipality')}
+            <Painel titulo={tHospitais}
               dica={t('Internações feitas nos hospitais do município, de quem for morador. Para uma UF ou o Brasil, soma os hospitais dos municípios; "de outros municípios" inclui moradores de outros municípios da mesma UF.', 'Admissions done in the municipality’s hospitals, of any resident. For a state or Brazil, it adds up the hospitals of its municipalities; "from other municipalities" includes residents of other municipalities in the same state.')}>
               <Kpi rotulo={t('Internações realizadas pelos hospitais', 'Admissions done by the hospitals')} valor={noSih('int_atendidas')} nota={refSih ? `SIH ${refSih}` : undefined} />
               <Kpi rotulo={t('De moradores de outros municípios', 'Of residents of other municipalities')} valor={noSih('int_atendidas_de_fora')}
@@ -123,7 +133,7 @@ export function SaudeRede() {
       )}
       {temDados && <BlocoAps ano={ano} semAno={semAno} escopo={escopo} rotulo={rotulo} municipio={municipio} fontes={fontes} versao={meta.geradoEm} />}
       {serie.dados && serie.dados.length > 0 && (
-        <CartaoGrafico titulo={t('Internações: moradores × hospitais do município', 'Admissions: residents × municipality hospitals')} desc={`${rotulo} · ${t('SIH, por ano de competência', 'SIH, by competence year')}`}
+        <CartaoGrafico titulo={recorte ? t('Internações: moradores × hospitais dos municípios do recorte', 'Admissions: residents × hospitals of the scope’s municipalities') : t('Internações: moradores × hospitais do município', 'Admissions: residents × municipality hospitals')} desc={`${rotulo} · ${t('SIH, por ano de competência', 'SIH, by competence year')}`}
           tabela={<TabelaSerie nome="saude_rede_acesso" anos={anosS} colunas={[
             { titulo: t('Internações dos moradores', 'Admissions of residents'), valores: dados.map((r) => num(r.int_total)), formato: numero },
             { titulo: t('Moradores internados fora do município', 'Residents admitted outside'), valores: dados.map((r) => num(r.int_fora)), formato: numero },

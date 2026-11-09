@@ -9,7 +9,7 @@ import { numero, reais } from '../format';
 import { num } from '../hooks';
 import { t } from '../idioma';
 import { condicaoDado, faixaAnos, fonteSaude, rotuloCondicao } from '../saude_comum';
-import { numero1Local, referencia, useSaude } from './SaudeDatasus';
+import { AvisoAno, numero1Local, referencia, useSaude } from './SaudeDatasus';
 
 /** Grupos de procedimentos da tabela SIGTAP (os dois primeiros dígitos do procedimento) e a coluna de cada um. */
 const GRUPOS: [string, string, () => string][] = [
@@ -58,6 +58,7 @@ export function SaudeAmbulatorial() {
       <h2 className="titulo-pagina">{t('Produção ambulatorial do SUS', 'SUS outpatient output')}</h2>
       <p className="subtitulo">{rotulo} · SIA {ref ?? t('fora da cobertura', 'outside coverage')} · {t('procedimentos aprovados, pelo município do estabelecimento', 'approved procedures, by municipality of the facility')} <Dica rotulo={t('Fonte', 'Source')}>{fonteSaude()}</Dica></p>
       <BarraFiltros comUltimo ultimoPadrao anosCobertos={cobertos} />
+      <AvisoAno ano={ano} />
       <Estado carregando={serie.carregando} erro={serie.erro} tentarNovamente={serie.recarregar}
         vazio={!serie.carregando && !serie.dados?.length && t('Sem registros para este recorte.', 'No records for this scope.')} />
       {serie.dados && serie.dados.length > 0 && !('amb_qtd' in serie.dados[0]) && (

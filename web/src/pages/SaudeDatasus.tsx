@@ -64,7 +64,7 @@ function SemDados() {
   return <p className="vazio">{t('Os dados de saúde ainda não foram publicados.', 'Health data have not been published yet.')}</p>;
 }
 
-function AvisoAno({ ano }: { ano?: number }) {
+export function AvisoAno({ ano }: { ano?: number }) {
   const f = useFiltros();
   if (!f.anoForaDaBase || !ano) return null;
   return (
@@ -478,6 +478,7 @@ export function SaudeTabela() {
       <h2 className="titulo-pagina">{t('Saúde: tabela do indicador', 'Health: indicator table')}</h2>
       <p className="subtitulo">{rotulo} <Dica rotulo={t('Fonte', 'Source')}>{fonteCurta(ind)}. {fonteSaude()}</Dica></p>
       <BarraFiltros comUltimo ultimoPadrao />
+      <AvisoAno ano={ano} />
       <section className="cartao">
         <div className="filtros"><SeletorIndicador valor={ind.id} mudar={mudar} /></div>
         <p className="desc">{ind.nota()}</p>

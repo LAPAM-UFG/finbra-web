@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Navigate, NavLink, Route, Routes, useLocation } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Navigate, NavLink, Route, Routes, useLocation, useNavigationType } from 'react-router-dom';
 import { HistoricoIa } from './components/HistoricoIa';
 import { ProvedorDados } from './contexto';
 import { definirIdioma, t, useIdioma } from './idioma';
@@ -128,8 +128,17 @@ function AlternarIdioma() {
 
 export function App() {
   const idioma = useIdioma();
-  const { search, pathname } = useLocation();
+  const { search, pathname, hash } = useLocation();
+  const navegacao = useNavigationType();
   const area = areaDe(pathname);
+  // ao ir para outra página, ela abre no início; mudar só os filtros (mesmo caminho), seguir uma âncora (#...) e Voltar/Avançar
+  // (POP, em que o navegador restaura a posição) não mexem na rolagem
+  const caminhoAnterior = useRef(pathname);
+  useEffect(() => {
+    const mudou = caminhoAnterior.current !== pathname;
+    caminhoAnterior.current = pathname;
+    if (mudou && navegacao !== 'POP' && !hash) window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [pathname, navegacao, hash]);
   // o cabeçalho é fixo e muda de altura (uma linha, duas ou três, conforme a largura e o idioma): a rolagem até uma âncora desconta essa altura
   useEffect(() => {
     const topo = document.querySelector('header.topo');
