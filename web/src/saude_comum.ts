@@ -345,6 +345,12 @@ export const nomeContagem = (c: string): string => ({
   pop_mulheres_25_64: t('Mulheres de 25 a 64 anos', 'Women aged 25–64'), pop_mulheres_50_69: t('Mulheres de 50 a 69 anos', 'Women aged 50–69'),
   siscan_cito: t('Exames citopatológicos do colo', 'Cervical Pap smears'), siscan_cito_25_64: t('Citopatológicos em mulheres de 25 a 64 anos', 'Pap smears in women aged 25–64'),
   siscan_cito_alterados: t('Citopatológicos alterados', 'Abnormal Pap smears'), siscan_mamo_50_69: t('Mamografias em mulheres de 50 a 69 anos', 'Mammograms in women aged 50–69'),
+  siscan_mamo_50_74: t('Mamografias registradas em mulheres de 50 a 74 anos', 'Mammograms recorded in women aged 50–74'),
+  pop_mulheres_50_74: t('Mulheres de 50 a 74 anos', 'Women aged 50–74'),
+  sinan_tb_casos_novos_dx: t('Casos novos de tuberculose (por data do diagnóstico)', 'New tuberculosis cases (by diagnosis date)'),
+  cnes_ubs: t('Unidades básicas de saúde (UBS)', 'Primary care units (UBS)'), cnes_hospitais: t('Hospitais', 'Hospitals'),
+  cnes_medicos_sus: t('Médicos com vínculo SUS', 'Physicians with an SUS link'), cnes_dentistas: t('Dentistas', 'Dentists'),
+  cnes_medicos_vinculos: t('Vínculos médicos', 'Physician links'), cnes_medicos_no_municipio: t('Médicos que atuam no município', 'Physicians who work in the municipality'),
   onco_casos: t('Diagnósticos de câncer', 'Cancer diagnoses'), onco_trat_60d: t('Tratamentos iniciados em até 60 dias', 'Treatments started within 60 days'),
   onco_trat_validos: t('Diagnósticos com tratamento iniciado', 'Diagnoses with treatment started'),
   resp_notificacoes: t('Notificações de microcefalia (RESP)', 'Microcephaly notifications (RESP)'), resp_confirmadas: t('Confirmadas de microcefalia (RESP)', 'Confirmed microcephaly (RESP)'),
@@ -383,12 +389,16 @@ export const CAPITULOS = (): [string, string][] => [
 
 // ---------------- disponibilidade, fontes e metadados compartilhados ----------------
 
-export type FonteChave = 'sim' | 'sinasc' | 'populacao_svs' | 'sih' | 'sia' | 'cnes' | 'sinan' | 'siscan' | 'oncologia' | 'resp';
+export type FonteChave = 'sim' | 'sinasc' | 'populacao_svs' | 'sih' | 'sia' | 'cnes' | 'sinan' | 'siscan' | 'oncologia' | 'resp' | 'aps';
 /** O que o manifesto dos dados informa de cada fonte (gold/manifesto.json, fontes.*). */
 export type FonteMeta = {
   anos?: number[];
   /** SINAN: primeiro e último ano de cada agravo */
   agravos?: Record<string, [number, number]>;
+  /** CNES: anos de cada medida (estabelecimentos, leitos, profissionais); os profissionais só existem a partir de 2007 */
+  medidas?: Record<string, number[]>;
+  /** APS: primeiro e último ano de cada série (ab até 2020, aps de 2021 em diante, acs) */
+  series?: Record<string, [number, number]>;
   processado_em?: string;
   /** anos incluídos que a fonte ainda marca como preliminares (opcional) */
   preliminares?: number[];
@@ -397,11 +407,11 @@ export type FonteMeta = {
 };
 export type FontesMeta = Record<string, FonteMeta | undefined>;
 
-export const CHAVES_FONTES: FonteChave[] = ['sim', 'sinasc', 'populacao_svs', 'sih', 'sia', 'cnes', 'sinan', 'siscan', 'oncologia', 'resp'];
+export const CHAVES_FONTES: FonteChave[] = ['sim', 'sinasc', 'populacao_svs', 'sih', 'sia', 'cnes', 'sinan', 'siscan', 'oncologia', 'resp', 'aps'];
 
 export const NOME_FONTE: Record<FonteChave, () => string> = {
   sim: () => 'SIM', sinasc: () => 'SINASC', sih: () => 'SIH', sia: () => 'SIA', cnes: () => 'CNES', sinan: () => 'SINAN', siscan: () => 'SISCAN',
-  oncologia: () => t('Painel de Oncologia', 'Oncology Panel'), resp: () => 'RESP', populacao_svs: () => t('população da SVS/MS', 'SVS/MS population'),
+  oncologia: () => t('Painel de Oncologia', 'Oncology Panel'), resp: () => 'RESP', aps: () => t('atenção primária (SAPS)', 'primary care (SAPS)'), populacao_svs: () => t('população da SVS/MS', 'SVS/MS population'),
 };
 
 const NOME_AGRAVO: Record<string, () => string> = {
@@ -422,12 +432,20 @@ export function fonteDaColuna(c: string): FonteChave {
   if (c.startsWith('siscan_')) return 'siscan';
   if (c.startsWith('onco_')) return 'oncologia';
   if (c.startsWith('resp_')) return 'resp';
+  if (/^(ab|aps|acs)_/.test(c)) return 'aps';
   if (c === 'populacao' || c.startsWith('pop_')) return 'populacao_svs';
   if (COLUNAS_SINASC.test(c)) return 'sinasc';
   return 'sim';
 }
 
-/** Anos em que a fonte da coluna cobre o que ela mede (no SINAN, o intervalo do agravo da coluna). */
+/** Medida do CNES a que a coluna pertence: cada uma tem a sua cobertura (os profissionais começam em 2007, leitos e estabelecimentos em 2006). */
+export const medidaCnes = (c: string): 'profissionais' | 'leitos' | 'estabelecimentos' =>
+  /^cnes_(medicos|enfermeiros|dentistas)/.test(c) ? 'profissionais' : c.startsWith('cnes_leitos') ? 'leitos' : 'estabelecimentos';
+const PRIMEIRO_ANO_PROFISSIONAIS = 2007;
+/** Série da atenção primária a que a coluna pertence (ab_, aps_ ou acs_). */
+export const serieAps = (c: string): 'ab' | 'aps' | 'acs' => (c.startsWith('ab_') ? 'ab' : c.startsWith('aps_') ? 'aps' : 'acs');
+
+/** Anos em que a fonte da coluna cobre o que ela mede (no SINAN, o intervalo do agravo da coluna; no CNES, o da medida; na APS, o da série). */
 export function anosDaColuna(c: string, fontes: FontesMeta): number[] {
   const chave = fonteDaColuna(c);
   const f = fontes[chave];
@@ -435,6 +453,17 @@ export function anosDaColuna(c: string, fontes: FontesMeta): number[] {
   if (chave === 'sinan') {
     const ag = AGRAVO_DA_COLUNA.find(([re]) => re.test(c));
     const faixa = ag ? f?.agravos?.[ag[1]] : undefined;
+    return faixa ? anos.filter((a) => a >= faixa[0] && a <= faixa[1]) : anos;
+  }
+  if (chave === 'cnes' && c.startsWith('cnes_')) {
+    const m = medidaCnes(c);
+    const proprios = f?.medidas?.[m];
+    if (proprios) return proprios;
+    // manifesto sem as medidas: os profissionais (CNES, arquivos PF) só existem a partir de 2007
+    return m === 'profissionais' ? anos.filter((a) => a >= PRIMEIRO_ANO_PROFISSIONAIS) : anos;
+  }
+  if (chave === 'aps') {
+    const faixa = f?.series?.[serieAps(c)];
     return faixa ? anos.filter((a) => a >= faixa[0] && a <= faixa[1]) : anos;
   }
   return anos;

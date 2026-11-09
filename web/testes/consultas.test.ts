@@ -45,13 +45,14 @@ import {
 } from '../src/ia_continuidade';
 import { TRABALHO } from '../../worker/src/sistema_trabalho.js';
 import { SAUDE } from '../../worker/src/sistema_saude.js';
-import { anosDoIndicador, avisoPreliminarNaoIncluido, calcular, calcularJanela, condicaoDado, disponivelNosDados, faixaAnos, fonteCurta, formatar, indicador, INDICADORES, metadadosIndicador, type FontesMeta } from '../src/saude_comum';
+import { anosDaColuna, anosDoIndicador, avisoPreliminarNaoIncluido, calcular, calcularJanela, condicaoDado, disponivelNosDados, faixaAnos, fonteCurta, formatar, indicador, INDICADORES, metadadosIndicador, type FontesMeta } from '../src/saude_comum';
 import { cadastro, codigosDoMunicipio, conferirCodigos, executarLocalizacao, localizar, territoriosNasConsultas } from '../src/ia_territorio';
 import { crc32, paraCsv, paraXlsx, paraXlsxAbas } from '../src/exportar';
 import { ordenarBusca } from '../src/contexto';
 import { gravarEstadoEvolucao, lerEstadoEvolucao, MAX_COMPARADOS, posicaoRelativa, resumoTrajetoria, tabelaMudancas, tabelaTrajetorias, variacaoPct, variacaoPosicao } from '../src/posicoes';
 
 import { avisoDoContexto, chaveDoRastro, contaDoRastro, RASTRO, urlDemonstrativo, urlDemonstrativos, valorAnexo, type ChaveRastro } from '../src/lrf_rastro';
+import { periodoDe } from '../src/components/TabelaSerie';
 const require = createRequire(import.meta.url);
 const FETCH = globalThis.fetch; // alguns testes simulam o Worker trocando o fetch
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
@@ -4369,8 +4370,8 @@ describe('saúde: cobertura por indicador, triênio, rede e produção (municíp
     assert.equal(disponivelNosDados(indicador('dengue_incidencia'), sem), true);
     assert.equal(disponivelNosDados(indicador('mamo_50_74'), null), true, 'enquanto carrega, não esconde nada');
     const faltam = INDICADORES.filter((i) => !disponivelNosDados(i, colunas)).map((i) => i.id).sort();
-    // com o gold publicado hoje faltam só as colunas novas; com o gold reconstruído, nenhuma
-    assert.deepEqual(faltam, process.env.GOLD_PUBLICADO ? ['mamo_50_74'] : []);
+    // faltam só os indicadores cujas colunas a versão carregada não tem: num gold anterior à mamografia de 50 a 74 anos, ela; no atual, nenhum
+    assert.deepEqual(faltam, colunas.has('siscan_mamo_50_74') && colunas.has('pop_mulheres_50_74') ? [] : ['mamo_50_74']);
   });
 
   test('mamografias de 50 a 74 anos: numerador e denominador conferidos antes de entrar', { skip: semSaude }, async () => {
@@ -4390,6 +4391,93 @@ describe('saúde: cobertura por indicador, triênio, rede e produção (municíp
     const ampliada = Number(a.sinan_tb_casos_novos_dx);
     assert.ok(ampliada > 0.9 * restrita && ampliada < 1.15 * restrita, `${ampliada} vs ${restrita}`);
     assert.equal(br.find((r) => r.ano === 2020)!.sinan_tb_casos_novos_dx ?? null, null, 'nada depois de 2019');
+  });
+  test('cobertura por medida do CNES: médicos começam em 2007, leitos e estabelecimentos em 2006', { skip: semSaude }, async () => {
+    const f = await fontesDoManifesto();
+    const anos = (id: string) => anosDoIndicador(indicador(id), f);
+    assert.equal(anos('leitos_sus_mil')[0], 2006);
+    assert.equal(anos('estabelecimentos_10mil')[0], 2006);
+    for (const id of ['medicos_mil', 'enfermeiros_mil']) assert.equal(anos(id)[0], 2007, id);
+    assert.equal(condicaoDado('cnes_medicos', null, 2006, f), 'fora_cobertura');
+    assert.equal(condicaoDado('cnes_medicos_vinculos', 0, 2006, f), 'fora_cobertura');
+    assert.equal(condicaoDado('cnes_medicos_no_municipio', null, 2006, f), 'fora_cobertura');
+    assert.notEqual(condicaoDado('cnes_leitos_sus', 12, 2006, f), 'fora_cobertura');
+    assert.notEqual(condicaoDado('cnes_medicos', 12, 2007, f), 'fora_cobertura');
+    // o ranking anual obedece à mesma regra: 2006 não é oferecido para médicos, e é para leitos SUS
+    const med = await rota<number[]>('ranking_anos', { dominio: 'saude', ind: 'medicos_mil', min: 5000 });
+    const leitos = await rota<number[]>('ranking_anos', { dominio: 'saude', ind: 'leitos_sus_mil', min: 5000 });
+    assert.ok(!med.includes(2006) && med.includes(2007));
+    assert.ok(leitos.includes(2006));
+    // manifesto sem o campo das medidas (versão publicada antes): a mesma regra vem do primeiro ano dos profissionais
+    const antigo: FontesMeta = { cnes: { anos: f.cnes!.anos }, populacao_svs: f.populacao_svs };
+    assert.ok(!anosDaColuna('cnes_medicos', antigo).includes(2006) && anosDaColuna('cnes_leitos_sus', antigo).includes(2006));
+  });
+
+  test('Goiás, mortalidade infantil em 2024: a tabela do indicador traz 2 óbitos, 206 nascidos vivos e 9,7 por mil, mesmo fora do ranking', { skip: semSaude }, async () => {
+    const ind = indicador('mortalidade_infantil');
+    const g = (await rota<L[]>('saude_serie', { ente: GOIAS })).find((r) => r.ano === 2024)!;
+    assert.equal(g.infantis, 2);
+    assert.equal(g.nascidos, 206);
+    assert.equal(formatar(ind, calcular(ind, g)), formatar(ind, 9.708737864077669));
+    assert.match(formatar(ind, calcular(ind, g)), /9,7/);
+    assert.ok(Number(g.nascidos) < ind.minimo, 'abaixo do mínimo do ranking: a tabela mostra, o ranking não inclui');
+    const ranking = await rota<Classificacao>('ranking_posicoes', { dominio: 'saude', ind: ind.id, ordem: 'desc', de: 2024, ate: 2024, uf: 'GO', min: ind.minimo, lista: 1 });
+    assert.ok(!ranking.lista!.some((r) => r.cod_ibge === GOIAS));
+  });
+
+  test('atenção primária: município em dezembro de 2020 e 2021 confere com o gold e a cobertura não é emendada entre metodologias', { skip: semSaude }, async () => {
+    const colunas = new Set((await rota<L[]>('saude_colunas')).map((r) => String(r.column_name)));
+    if (!colunas.has('aps_capacidade')) return;
+    const f = await fontesDoManifesto();
+    assert.deepEqual(f.aps!.series!.ab, [2008, 2020]);
+    assert.equal(f.aps!.series!.aps![0], 2021);
+    assert.deepEqual(anosDaColuna('ab_cobertura', f).at(-1), 2020);
+    assert.deepEqual(anosDaColuna('aps_cobertura', f)[0], 2021);
+    const goiania = 5208707;
+    const aps = await rota<L[]>('saude_aps', { ente: goiania });
+    const em = (ano: number) => aps.find((r) => r.ano === ano)!;
+    const pct = (a: unknown, b: unknown) => (100 * Number(a)) / Number(b);
+    // valores de dezembro do relatório (gold/saude/aps_cobertura): AB 59,29; ACS 33,98 em 2020; APS 50,39 e ACS 33,46 em 2021
+    assert.ok(Math.abs(pct(em(2020).ab_cobertos, em(2020).ab_pop) - 59.29) < 0.01);
+    assert.ok(Math.abs(pct(em(2020).acs_cobertos, em(2020).acs_pop) - 33.98) < 0.01);
+    assert.equal(em(2020).aps_capacidade ?? null, null, 'a cobertura potencial não existe em 2020');
+    assert.equal(em(2021).ab_cobertos ?? null, null, 'a atenção básica não existe em 2021');
+    assert.ok(Math.abs(pct(em(2021).aps_capacidade, em(2021).aps_pop) - 50.39) < 0.01);
+    assert.equal(em(2021).aps_equipes_eap, 62);
+    assert.equal(em(2021).aps_equipes_esf, 190);
+    assert.ok(Math.abs(pct(em(2021).acs_cobertos, em(2021).acs_pop) - 33.46) < 0.01);
+  });
+
+  test('atenção primária em UF e Brasil: a cobertura vem de numeradores e denominadores compatíveis, não da soma de percentuais', { skip: semSaude }, async () => {
+    const colunas = new Set((await rota<L[]>('saude_colunas')).map((r) => String(r.column_name)));
+    if (!colunas.has('aps_capacidade')) return;
+    const porMunicipio = await rota<L[]>('saude_municipios', { uf: 'GO', ano: 2021 });
+    const comDado = porMunicipio.filter((r) => r.aps_capacidade !== null && Number(r.aps_populacao) > 0);
+    const cap = comDado.reduce((s, r) => s + Number(r.aps_capacidade), 0);
+    const pop = comDado.reduce((s, r) => s + Number(r.aps_populacao), 0);
+    const go = (await rota<L[]>('saude_aps', { uf: 'GO' })).find((r) => r.ano === 2021)!;
+    assert.equal(Number(go.aps_capacidade), cap);
+    assert.equal(Number(go.aps_pop), pop);
+    assert.equal(Number(go.aps_municipios), comDado.length);
+    const taxaGo = (100 * cap) / pop;
+    assert.ok(taxaGo > 40 && taxaGo < 100, `cobertura potencial de Goiás: ${taxaGo}`);
+    // a soma dos percentuais municipais seria um número sem sentido (acima de 100)
+    assert.ok(porMunicipio.reduce((s, r) => s + Number(r.aps_cobertura ?? 0), 0) > 1000);
+    const br = (await rota<L[]>('saude_aps')).find((r) => r.ano === 2021)!;
+    assert.ok(100 * Number(br.aps_capacidade) / Number(br.aps_pop) < 100 && Number(br.aps_municipios) > 5000);
+    assert.ok(Number(br.aps_municipios) <= Number(br.municipios) && Number(br.acs_municipios) <= Number(br.municipios), 'os com dado nunca passam do total do recorte');
+    // atenção básica em 2020: percentual limitado a 100% em cada município, derivado de população coberta ÷ população
+    const goAb = (await rota<L[]>('saude_aps', { uf: 'GO' })).find((r) => r.ano === 2020)!;
+    const abGo = (100 * Number(goAb.ab_cobertos)) / Number(goAb.ab_pop);
+    assert.ok(abGo > 50 && abGo <= 100, `atenção básica em Goiás: ${abGo}`);
+  });
+
+  test('gold sem as colunas de atenção primária: a rota não falha e devolve vazio, e as demais medidas seguem', { skip: semSaude }, async () => {
+    const colunas = new Set((await rota<L[]>('saude_colunas')).map((r) => String(r.column_name)));
+    const aps = await rota<L[]>('saude_aps', { uf: 'GO' });
+    if (colunas.has('aps_capacidade')) assert.ok(aps.length > 0);
+    else assert.deepEqual(aps, [], 'sem as colunas, nada a mostrar (a página diz "indisponível nesta versão dos dados")');
+    assert.ok((await rota<L[]>('saude_serie', { ente: GOIAS })).length > 0);
   });
 });
 
@@ -4462,5 +4550,17 @@ describe('LRF: rastreabilidade do indicador ao demonstrativo (Pontal/SP 3540200 
       assert.ok(c.rcl / rreo12[c.cod] < 0.07, `${c.nome}: RCL do RGF é ${(100 * c.rcl / rreo12[c.cod]).toFixed(1)}% da do RREO`);
       assert.ok(c.dtp / rreo12[c.cod] < 0.6, 'sobre a RCL de 12 meses do RREO, a despesa com pessoal ficaria abaixo de 60% (apenas referência, não é o indicador)');
     }
+  });
+});
+
+describe('exportações: período de uma primeira coluna de anos', () => {
+  test('anos com † (quebra de série da RAIS) entram no período; categorias e competências não viram período', () => {
+    assert.equal(periodoDe(['2010', '2011', '2022 †', '2023 †', '2025']), '2010–2025');
+    assert.equal(periodoDe([2000, 2001, 2014]), '2000–2014');
+    assert.equal(periodoDe(['2023 †']), '2023');
+    assert.equal(periodoDe(['01 · Promoção e prevenção', '02 · Diagnóstico']), undefined);
+    assert.equal(periodoDe(['01/2020', '02/2020']), undefined, 'competências mensais informam o período pelo próprio componente');
+    assert.equal(periodoDe(['2010', 'Total']), undefined, 'mistura de ano e rótulo: sem período inventado');
+    assert.equal(periodoDe([]), undefined);
   });
 });

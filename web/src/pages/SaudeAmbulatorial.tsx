@@ -116,18 +116,19 @@ function TabelaGrupos({ grupos, total, ref_, rotulo, versao }: {
   grupos: { k: string; cod: string; nome: string; qtd: number | null; valor: number | null }[]; total: number; ref_: number; rotulo: string; versao: string;
 }) {
   return (
-    <TabelaSerie nome={`saude_ambulatorial_grupos_${ref_}`} anos={grupos.map((g) => g.nome)} colunas={[
+    <TabelaSerie nome={`saude_ambulatorial_grupos_${ref_}`} anos={grupos.map((g) => g.nome)} primeiraColuna={t('Grupo SIGTAP', 'SIGTAP group')} semAnoSelecionado valoresReais
+      conteudo={t(`distribuição por grupo SIGTAP do ano exibido (${ref_})`, `distribution by SIGTAP group for the year shown (${ref_})`)} colunas={[
       { titulo: t('Procedimentos aprovados', 'Approved procedures'), valores: grupos.map((g) => g.qtd), formato: numero },
       { titulo: t('Participação nos procedimentos', 'Share of procedures'), valores: grupos.map((g) => (total && g.qtd !== null ? g.qtd / total : null)), formato: (v) => (v === null ? '–' : `${numero1Local(100 * v)}%`) },
       { titulo: t('Valor aprovado (R$ de 2025)', 'Approved value (R$ of 2025)'), valores: grupos.map((g) => g.valor), formato: (v) => reais(v) },
-    ]} metadados={[[t('Recorte', 'Scope'), rotulo], [t('Ano', 'Year'), String(ref_)], [t('Unidade', 'Unit'), t('procedimentos aprovados e reais de 2025', 'approved procedures and 2025 reais')],
+    ]} metadados={[[t('Recorte', 'Scope'), rotulo], [t('Ano exibido', 'Year shown'), String(ref_)], [t('Unidade', 'Unit'), t('procedimentos aprovados e reais de 2025', 'approved procedures and 2025 reais')],
       [t('Fonte', 'Source'), fonteSaude()], [t('Versão da base', 'Data version'), versao]]} />
   );
 }
 
 function TabelaAmb({ anos, dados, rotulo, cobertos, versao }: { anos: number[]; dados: Linha[]; rotulo: string; cobertos: number[]; versao: string }) {
   return (
-    <TabelaSerie nome="saude_ambulatorial" anos={anos} colunas={[
+    <TabelaSerie nome="saude_ambulatorial" anos={anos} valoresReais="parcial" colunas={[
       { titulo: t('Procedimentos aprovados', 'Approved procedures'), valores: dados.map((r) => num(r.amb_qtd)), formato: numero },
       { titulo: t('Valor aprovado (R$ de 2025)', 'Approved value (R$ of 2025)'), valores: dados.map((r) => num(r.amb_valor_real)), formato: (v) => reais(v) },
       { titulo: t('Valor aprovado (R$ correntes)', 'Approved value (current R$)'), valores: dados.map((r) => num(r.amb_valor)), formato: (v) => reais(v) },

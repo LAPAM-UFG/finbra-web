@@ -677,7 +677,9 @@ def fonte_saude(con) -> dict:
     quando = datetime.fromtimestamp(arq.stat().st_mtime, timezone.utc).isoformat(timespec="seconds")
     colunas = {r[0] for r in con.execute(f"DESCRIBE SELECT * FROM '{a}'").fetchall()}
     sih = {"sih": {"anos": anos("int_total"), "processado_em": quando, "url": "https://datasus.saude.gov.br/transferencia-de-arquivos/"}} if "int_total" in colunas else {}
-    cnes_f = {"cnes": {"anos": anos("cnes_estab"), "processado_em": quando, "url": "https://datasus.saude.gov.br/transferencia-de-arquivos/"}} if "cnes_estab" in colunas else {}
+    # cada medida do CNES tem a sua cobertura: os profissionais (arquivos PF) só começam em 2007; leitos e estabelecimentos, em 2006
+    medidas_cnes = {m: anos(c) for m, c in (("estabelecimentos", "cnes_estab"), ("leitos", "cnes_leitos"), ("profissionais", "cnes_medicos")) if c in colunas}
+    cnes_f = {"cnes": {"anos": anos("cnes_estab"), "medidas": medidas_cnes, "processado_em": quando, "url": "https://datasus.saude.gov.br/transferencia-de-arquivos/"}} if "cnes_estab" in colunas else {}
     sinan_f = {}
     if "sinan_dengue_provaveis" in colunas:
         # anos de cada agravo (as coberturas diferem: dengue 2000+, chikungunya 2014+, tuberculose até 2019, violência 2009+)

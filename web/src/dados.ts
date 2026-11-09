@@ -1082,6 +1082,57 @@ const rotasSaude: Record<string, (q: Params) => Promise<unknown>> = {
   },
 
   /**
+   * Atenção primária (relatórios da APS, valor de dezembro) do escopo, por ano, com os insumos da agregação. Somar o percentual de
+   * cobertura dos municípios não faz sentido; a cobertura de uma UF ou do Brasil é derivada de numeradores e denominadores
+   * compatíveis: população coberta ÷ população de referência, só dos municípios que têm o dado (`*_municipios`). Na atenção
+   * básica (até 2020) e nos agentes comunitários a população coberta é a cobertura municipal × a população de referência; na
+   * atenção primária (2021 em diante), a capacidade das equipes, sem limite de 100%. Grupos cuja coluna a versão dos dados
+   * não tem ficam de fora da resposta, e a página diz que a medida é indisponível.
+   */
+  async saude_aps(q) {
+    await tabelasSaude();
+    const tem = new Set((await consultar(`SELECT column_name FROM information_schema.columns WHERE table_name = 'saude_municipios'`)).map((r) => String(r.column_name)));
+    const p: Record<string, Valor> = {};
+    const e = escopoTrabalho(q, p);
+    const partes: string[] = [];
+    if (tem.has('ab_cobertura') && tem.has('ab_populacao')) {
+      partes.push(
+        `sum(ab_cobertura * ab_populacao / 100) FILTER (WHERE ab_cobertura IS NOT NULL AND ab_populacao > 0)::DOUBLE AS ab_cobertos`,
+        `sum(ab_populacao) FILTER (WHERE ab_cobertura IS NOT NULL AND ab_populacao > 0)::DOUBLE AS ab_pop`,
+        `sum(ab_cobertura_sf * ab_populacao / 100) FILTER (WHERE ab_cobertura_sf IS NOT NULL AND ab_populacao > 0)::DOUBLE AS ab_sf_cobertos`,
+        `sum(ab_populacao) FILTER (WHERE ab_cobertura_sf IS NOT NULL AND ab_populacao > 0)::DOUBLE AS ab_sf_pop`,
+        `sum(ab_equipes_esf)::DOUBLE AS ab_equipes_esf`,
+        `(count(*) FILTER (WHERE ab_cobertura IS NOT NULL AND ab_populacao > 0))::INTEGER AS ab_municipios`,
+      );
+    }
+    if (tem.has('aps_capacidade') && tem.has('aps_populacao')) {
+      partes.push(
+        `sum(aps_capacidade) FILTER (WHERE aps_capacidade IS NOT NULL AND aps_populacao > 0)::DOUBLE AS aps_capacidade`,
+        `sum(aps_populacao) FILTER (WHERE aps_capacidade IS NOT NULL AND aps_populacao > 0)::DOUBLE AS aps_pop`,
+        `sum(aps_equipes_esf)::DOUBLE AS aps_equipes_esf`,
+        `sum(aps_equipes_eap)::DOUBLE AS aps_equipes_eap`,
+        `(count(*) FILTER (WHERE aps_capacidade IS NOT NULL AND aps_populacao > 0))::INTEGER AS aps_municipios`,
+      );
+    }
+    if (tem.has('acs_cobertura') && tem.has('acs_populacao')) {
+      partes.push(
+        `sum(acs_cobertura * acs_populacao / 100) FILTER (WHERE acs_cobertura IS NOT NULL AND acs_populacao > 0)::DOUBLE AS acs_cobertos`,
+        `sum(acs_populacao) FILTER (WHERE acs_cobertura IS NOT NULL AND acs_populacao > 0)::DOUBLE AS acs_pop`,
+        `sum(acs_agentes)::DOUBLE AS acs_agentes`,
+        `(count(*) FILTER (WHERE acs_cobertura IS NOT NULL AND acs_populacao > 0))::INTEGER AS acs_municipios`,
+      );
+    }
+    if (!partes.length) return [];
+    // municípios do recorte: os do cadastro e os que só existem nos relatórios da APS (ex.: Fernando de Noronha, sem código no cadastro)
+    const temDado = ['ab_cobertura', 'aps_capacidade', 'acs_cobertura'].filter((c) => tem.has(c)).map((c) => `${c} IS NOT NULL`);
+    return consultar(
+      `SELECT ano, (count(*) FILTER (WHERE cod_ibge IS NOT NULL OR ${temDado.join(' OR ')}))::INTEGER AS municipios, ${partes.join(', ')}
+       FROM saude_municipios m WHERE ${e.onde} GROUP BY ano ORDER BY ano`,
+      p,
+    );
+  },
+
+  /**
    * Registros sem município válido (município ignorado, sem cod_ibge) da UF ou do Brasil, por ano: entram nos totais de
    * UF e Brasil de saude_serie, e aqui saem à parte para a página mostrá-los separados.
    */

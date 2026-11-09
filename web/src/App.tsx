@@ -12,7 +12,7 @@ import { ClimaMetodologia, ClimaRankings, ClimaVisaoGeral } from './pages/Clima'
 import { LrfDemonstrativos, LrfIndicadores } from './pages/Lrf';
 import { Deflatores, Qualidade } from './pages/Metodologia';
 import { Rankings } from './pages/Rankings';
-import { SaudeEvolucao, SaudeMetodologia, SaudeRankings, SaudeVisaoGeral } from './pages/SaudeDatasus';
+import { SaudeEvolucao, SaudeMetodologia, SaudeRankings, SaudeTabela, SaudeVisaoGeral } from './pages/SaudeDatasus';
 import { SaudeAmbulatorial } from './pages/SaudeAmbulatorial';
 import { SaudeRede } from './pages/SaudeRede';
 import { ReceitasEvolucao, ReceitasVisaoGeral } from './pages/Receitas';
@@ -130,6 +130,16 @@ export function App() {
   const idioma = useIdioma();
   const { search, pathname } = useLocation();
   const area = areaDe(pathname);
+  // o cabeçalho é fixo e muda de altura (uma linha, duas ou três, conforme a largura e o idioma): a rolagem até uma âncora desconta essa altura
+  useEffect(() => {
+    const topo = document.querySelector('header.topo');
+    if (!topo) return;
+    const medir = () => document.documentElement.style.setProperty('--altura-topo', `${Math.ceil(topo.getBoundingClientRect().height)}px`);
+    medir();
+    const o = new ResizeObserver(medir);
+    o.observe(topo);
+    return () => o.disconnect();
+  }, []);
   // só os filtros globais acompanham a navegação; as escolhas de cada página (anexo, indicador do ranking…) ficam nela
   const atuais = new URLSearchParams(search);
   const filtros = new URLSearchParams();
@@ -218,6 +228,7 @@ export function App() {
               <Route path="/datasus" element={<SaudeVisaoGeral />} />
               <Route path="/datasus/evolucao" element={<SaudeEvolucao />} />
               <Route path="/datasus/rankings" element={<SaudeRankings />} />
+              <Route path="/datasus/tabela" element={<SaudeTabela />} />
               <Route path="/datasus/rede" element={<SaudeRede />} />
               <Route path="/datasus/ambulatorial" element={<SaudeAmbulatorial />} />
               <Route path="/datasus/metodologia" element={<SaudeMetodologia />} />

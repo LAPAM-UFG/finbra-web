@@ -9,7 +9,8 @@ import { BarraFiltros } from '../contexto';
 import { numero, pct } from '../format';
 import { num } from '../hooks';
 import { t } from '../idioma';
-import { condicaoDado, faixaAnos, fonteSaude, rotuloCondicao, type FontesMeta } from '../saude_comum';
+import { anosDaColuna, condicaoDado, faixaAnos, fonteSaude, rotuloCondicao, type FontesMeta } from '../saude_comum';
+import { BlocoAps } from './SaudeAps';
 import { referencia, useSaude } from './SaudeDatasus';
 
 const razao = (a: number | null, b: number | null) => (a === null || !b ? null : a / b);
@@ -19,6 +20,7 @@ function celula(col: string, valor: number | null, ano: number | null, fontes: F
   if (ano === null) return t('fora da cobertura', 'outside coverage');
   const c = condicaoDado(col, valor, ano, fontes);
   if (c === 'ausente') return t('sem registro', 'no record');
+  if (c === 'fora_cobertura') return t('fora da cobertura', 'outside coverage');
   return c === 'zero_registrado' ? `${formato(0)} (${rotuloCondicao(c)})` : formato(valor as number);
 }
 
@@ -44,13 +46,14 @@ export function SaudeRede() {
   const refSih = referencia(fontes.sih?.anos ?? [], ano, semAno);
   const refCnes = referencia(fontes.cnes?.anos ?? [], ano, semAno);
   const sih = dados.find((r) => Number(r.ano) === refSih);
-  const cnes = dados.find((r) => Number(r.ano) === refCnes);
   const ign = (ignorados.dados ?? []).find((r) => Number(r.ano) === refSih);
   const anosS = dados.map((r) => Number(r.ano));
   const cobSih = fontes.sih?.anos ?? [];
   const cobCnes = fontes.cnes?.anos ?? [];
   const noSih = (c: string) => celula(c, num(sih?.[c]), refSih, fontes);
-  const noCnes = (c: string) => celula(c, num(cnes?.[c]), refCnes, fontes);
+  // cada medida do CNES tem a sua cobertura: médicos só desde 2007, leitos e estabelecimentos desde 2006
+  const refCol = (c: string) => referencia(anosDaColuna(c, fontes), ano, semAno);
+  const noCnes = (c: string) => { const a = refCol(c); return celula(c, num(dados.find((r) => Number(r.ano) === a)?.[c]), a, fontes); };
   const pctDe = (n: string, d: string) => (refSih === null ? t('fora da cobertura', 'outside coverage') : pct(razao(num(sih?.[n]), num(sih?.[d])), 1));
 
   const opcao = useMemo(() => linhas(anosS, [
@@ -118,6 +121,7 @@ export function SaudeRede() {
           <p className="nota-base">{t('A capacidade é do município onde fica o estabelecimento, enquanto as internações dos moradores são do município de residência: municípios com hospital regional têm leitos e médicos altos para a própria população porque atendem moradores de outros.', 'Capacity belongs to the municipality where the facility is, while residents’ admissions are by municipality of residence: municipalities with a regional hospital have high beds and physicians for their own population because they serve residents of others.')}</p>
         </>
       )}
+      {temDados && <BlocoAps ano={ano} semAno={semAno} escopo={escopo} rotulo={rotulo} municipio={municipio} fontes={fontes} versao={meta.geradoEm} />}
       {serie.dados && serie.dados.length > 0 && (
         <CartaoGrafico titulo={t('Internações: moradores × hospitais do município', 'Admissions: residents × municipality hospitals')} desc={`${rotulo} · ${t('SIH, por ano de competência', 'SIH, by competence year')}`}
           tabela={<TabelaSerie nome="saude_rede_acesso" anos={anosS} colunas={[
@@ -144,9 +148,10 @@ export function SaudeRede() {
         colunas: [t('Medida', 'Measure'), t('Ano', 'Year'), t('Valor', 'Value'), t('Condição do dado', 'Data condition')],
         linhas: ([['int_total', refSih], ['int_fora', refSih], ['int_atendidas', refSih], ['int_atendidas_de_fora', refSih], ['cnes_leitos_sus', refCnes], ['cnes_ubs', refCnes],
           ['cnes_medicos', refCnes], ['cnes_medicos_vinculos', refCnes], ...(municipio ? [['cnes_medicos_no_municipio', refCnes]] : [])] as [string, number | null][]).map(([c, a]) => {
-          const r = c.startsWith('cnes') ? cnes : sih;
+          const a2 = c.startsWith('cnes') ? refCol(c) : a;
+          const r = dados.find((x) => Number(x.ano) === a2);
           const v = num(r?.[c]);
-          return [c, a, v, a === null ? rotuloCondicao('fora_cobertura') : rotuloCondicao(condicaoDado(c, v, a, fontes))];
+          return [c, a2, v, a2 === null ? rotuloCondicao('fora_cobertura') : rotuloCondicao(condicaoDado(c, v, a2, fontes))];
         }),
         metadados: [[t('Recorte', 'Scope'), rotulo], [t('Fonte', 'Source'), fonteSaude()], [t('Versão da base', 'Data version'), meta.geradoEm]],
       })} />
