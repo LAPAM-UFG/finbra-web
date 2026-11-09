@@ -51,6 +51,7 @@ import { crc32, paraCsv, paraXlsx, paraXlsxAbas } from '../src/exportar';
 import { ordenarBusca } from '../src/contexto';
 import { gravarEstadoEvolucao, lerEstadoEvolucao, MAX_COMPARADOS, posicaoRelativa, resumoTrajetoria, tabelaMudancas, tabelaTrajetorias, variacaoPct, variacaoPosicao } from '../src/posicoes';
 
+import { chaveDoRastro, contaDoRastro, RASTRO, urlDemonstrativo, urlDemonstrativos, valorAnexo, type ChaveRastro } from '../src/lrf_rastro';
 const require = createRequire(import.meta.url);
 const FETCH = globalThis.fetch; // alguns testes simulam o Worker trocando o fetch
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
@@ -4389,5 +4390,68 @@ describe('saúde: cobertura por indicador, triênio, rede e produção (municíp
     const ampliada = Number(a.sinan_tb_casos_novos_dx);
     assert.ok(ampliada > 0.9 * restrita && ampliada < 1.15 * restrita, `${ampliada} vs ${restrita}`);
     assert.equal(br.find((r) => r.ano === 2020)!.sinan_tb_casos_novos_dx ?? null, null, 'nada depois de 2019');
+  });
+});
+
+describe('LRF: rastreabilidade do indicador ao demonstrativo (Pontal/SP 3540200 e Mariana Pimentel/RS 4311981, 2025)', () => {
+  const semLrf = !existsSync(onde('silver/lrf/exercicio=2025.parquet')) || !existsSync(onde('gold/lrf.parquet'));
+  const CASOS = [
+    { cod: 3540200, nome: 'Pontal', rgf: 'RGF (Q)', pessoal: 805.41, rcl: 13494039.69, dtp: 108682695.5, dclPct: 1333.33 },
+    { cod: 4311981, nome: 'Mariana Pimentel', rgf: 'RGF Simplificado (S)', pessoal: 857, rcl: 1621165.46, dtp: 13893374.86, dclPct: -49.73 },
+  ];
+
+  test('o link leva ao anexo do mesmo ente e exercício, e as contas em destaque existem nele', { skip: semLrf }, async () => {
+    for (const c of CASOS) {
+      for (const chave of ['pessoal', 'dcl', 'saude', 'mde', 'fundeb', 'primario', 'rreo14'] as ChaveRastro[]) {
+        const url = new URL(urlDemonstrativo(c.cod, 2025, chave), 'http://x');
+        assert.equal(url.pathname, '/lrf/demonstrativos');
+        assert.equal(url.searchParams.get('ente'), String(c.cod));
+        assert.equal(url.searchParams.get('ano'), '2025');
+        assert.equal(url.searchParams.get('anexo'), valorAnexo(RASTRO[chave]));
+        assert.equal(chaveDoRastro(url.searchParams.get('destaque')), chave);
+        const anexos = await rota<L[]>('lrf_anexos', { ente: c.cod, ano: 2025 });
+        assert.ok(anexos.some((x) => `${x.relatorio}|${x.anexo}` === valorAnexo(RASTRO[chave])), `${c.nome}: ${chave} → anexo existe`);
+      }
+      // as contas de pessoal e RCL do indicador estão no RGF anexo 1, com os valores exatos do gold
+      const rgf1 = await rota<L[]>('lrf_anexo', { ente: c.cod, ano: 2025, relatorio: 'RGF', anexo: 'RGF-Anexo 01' });
+      const destacadas = rgf1.filter((l) => contaDoRastro(String(l.cod_conta), 'pessoal'));
+      const valor = (conta: string, coluna: string) => destacadas.find((l) => l.cod_conta === conta && String(l.coluna).startsWith(coluna))?.valor;
+      assert.equal(valor('ReceitaCorrenteLiquidaAjustada', 'Valor'), c.rcl);
+      assert.equal(valor('DespesaComPessoalTotal', 'Valor'), c.dtp);
+      assert.equal(valor('DespesaComPessoalTotal', '% sobre a RCL'), c.pessoal);
+      // o gold repete o declarado, sem recálculo
+      const g = (await rota<L[]>('lrf_ente', { ente: c.cod })).find((r) => r.exercicio === 2025)!;
+      assert.equal(g.rcl_ajustada, c.rcl);
+      assert.equal(g.despesa_pessoal, c.dtp);
+      assert.equal(g.pessoal_rcl_pct, c.pessoal);
+      assert.equal(g.dcl_rcl_pct, c.dclPct);
+      assert.equal(g.rgf_tipo, c.rgf);
+    }
+  });
+
+  test('contas em destaque só valem no anexo a que pertencem; chave desconhecida é ignorada', () => {
+    assert.equal(chaveDoRastro('nao-existe'), null);
+    assert.equal(chaveDoRastro(null), null);
+    assert.equal(chaveDoRastro('__proto__'), null);
+    assert.ok(contaDoRastro('DespesaComPessoalTotal', 'pessoal') && !contaDoRastro('DespesaComPessoalTotal', 'dcl'));
+    assert.ok(contaDoRastro('MinimoAnualDoFUNDEBNaRemuneracaoComSufixo', 'fundeb'), 'o código do gold vale como prefixo');
+    assert.equal(RASTRO.dcl.anexo, 'RGF-Anexo 02');
+    // a RCL não tem anexo fixo (RGF 1, RGF 2 ou RREO 14, conforme o que o ente entregou): só o acesso genérico ao ente e ano
+    assert.ok(!('rcl' in RASTRO) && chaveDoRastro('rcl') === null);
+    const geral = new URL(urlDemonstrativos(3540200, 2025), 'http://x');
+    assert.equal(geral.pathname, '/lrf/demonstrativos');
+    assert.deepEqual([...geral.searchParams.keys()].sort(), ['ano', 'ente']);
+  });
+
+  test('a RCL do último período do RGF diverge da RCL de 12 meses do RREO nos dois casos (sinal, não correção)', { skip: semLrf }, async () => {
+    // RREO anexo 3, total dos últimos 12 meses: 209.571.785,24 (Pontal) e 32.591.953,45 (Mariana Pimentel). O gold fica com o declarado no RGF.
+    const rreo12 = { 3540200: 209571785.24, 4311981: 32591953.45 } as Record<number, number>;
+    for (const c of CASOS) {
+      const l = (await rota<L[]>('lrf_anexo', { ente: c.cod, ano: 2025, relatorio: 'RREO', anexo: 'RREO-Anexo 03' }))
+        .find((x) => x.cod_conta === 'RREO3ReceitaCorrenteLiquida' && String(x.coluna).startsWith('TOTAL'));
+      assert.equal(l?.valor, rreo12[c.cod]);
+      assert.ok(c.rcl / rreo12[c.cod] < 0.07, `${c.nome}: RCL do RGF é ${(100 * c.rcl / rreo12[c.cod]).toFixed(1)}% da do RREO`);
+      assert.ok(c.dtp / rreo12[c.cod] < 0.6, 'sobre a RCL de 12 meses do RREO, a despesa com pessoal ficaria abaixo de 60% (apenas referência, não é o indicador)');
+    }
   });
 });

@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useApi, type Linha } from '../api';
 import { Dica } from '../components/Dica';
 import { BotoesExportar } from '../components/Exportar';
@@ -9,6 +10,7 @@ import { BarraFiltros, useDados, useFiltros } from '../contexto';
 import { numero, pct, reais } from '../format';
 import { num } from '../hooks';
 import { local, t } from '../idioma';
+import { chaveDoRastro, contaDoRastro, RASTRO, urlDemonstrativo, urlDemonstrativos, type ChaveRastro } from '../lrf_rastro';
 
 const PRIMEIRO_ANO_LRF = 2015;
 const pctEixo = (v: number) => pct(v, 0);
@@ -86,6 +88,16 @@ function AvisoCobertura({ ano, fonte }: { ano: number | undefined; fonte: FonteL
   );
 }
 
+/** Link do indicador ao demonstrativo (relatório e anexo) do mesmo ente e exercício, com as contas dele em destaque. */
+function VerDemonstrativo({ ente, ano, chave }: { ente: number; ano: number; chave: ChaveRastro }) {
+  const r = RASTRO[chave];
+  return (
+    <Link to={urlDemonstrativo(ente, ano, chave)} title={t(`Abre ${r.anexo} (${r.relatorio}) de ${ano}, com as contas deste indicador em destaque`, `Opens ${r.anexo} (${r.relatorio}) for ${ano}, with this indicator’s accounts highlighted`)}>
+      {t('demonstrativo', 'statement')} {r.relatorio} {r.anexo.replace(/^.*Anexo 0?/, '')}
+    </Link>
+  );
+}
+
 export function LrfIndicadores() {
   const { meta } = useDados();
   const f = useFiltros();
@@ -152,25 +164,27 @@ function LrfEnte({ cod }: { cod: number }) {
           </p>
           <div className="kpis">
             <Kpi rotulo={t('Despesa com pessoal ÷ RCL', 'Personnel expenditure ÷ RCL')} valor={pct(fr(a.pessoal_rcl_pct))}
-              nota={`${t('Limite', 'Limit')} ${pct(fr(a.pessoal_limite_pct))} · ${situacao(num(a.pessoal_rcl_pct), num(a.pessoal_limite_pct), 'max')}`}
+              nota={<>{`${t('Limite', 'Limit')} ${pct(fr(a.pessoal_limite_pct))} · ${situacao(num(a.pessoal_rcl_pct), num(a.pessoal_limite_pct), 'max')}`} · <VerDemonstrativo ente={cod} ano={f.ano} chave="pessoal" /></>}
               dica={<Dica rotulo={t('Fórmula', 'Formula')}>{formulas.pessoal()}</Dica>} />
             <Kpi rotulo={t('Dívida consolidada líquida ÷ RCL', 'Net consolidated debt ÷ RCL')} valor={pct(fr(a.dcl_rcl_pct))}
-              nota={`${t('Limite', 'Limit')} ${pct(fr(a.lim_dcl), 0)} · ${situacao(num(a.dcl_rcl_pct), num(a.lim_dcl), 'max')}`}
+              nota={<>{`${t('Limite', 'Limit')} ${pct(fr(a.lim_dcl), 0)} · ${situacao(num(a.dcl_rcl_pct), num(a.lim_dcl), 'max')}`} · <VerDemonstrativo ente={cod} ano={f.ano} chave="dcl" /></>}
               dica={<Dica rotulo={t('Fórmula', 'Formula')}>{formulas.dcl()}</Dica>} />
             <Kpi rotulo={t('Aplicação em saúde', 'Health spending')} valor={pct(fr(a.saude_pct))}
-              nota={`${t('Mínimo', 'Minimum')} ${pct(fr(a.min_saude), 0)} · ${situacao(num(a.saude_pct), num(a.min_saude), 'min')}`}
+              nota={<>{`${t('Mínimo', 'Minimum')} ${pct(fr(a.min_saude), 0)} · ${situacao(num(a.saude_pct), num(a.min_saude), 'min')}`} · <VerDemonstrativo ente={cod} ano={f.ano} chave="saude" /></>}
               dica={<Dica rotulo={t('Fórmula', 'Formula')}>{formulas.saude()}</Dica>} />
             <Kpi rotulo={t('Aplicação em educação (MDE)', 'Education spending (MDE)')} valor={pct(fr(a.mde_pct))}
-              nota={`${t('Mínimo', 'Minimum')} 25% · ${situacao(num(a.mde_pct), 25, 'min')}`}
+              nota={<>{`${t('Mínimo', 'Minimum')} 25% · ${situacao(num(a.mde_pct), 25, 'min')}`} · <VerDemonstrativo ente={cod} ano={f.ano} chave="mde" /></>}
               dica={<Dica rotulo={t('Fórmula', 'Formula')}>{formulas.mde()}</Dica>} />
             <Kpi rotulo={t('FUNDEB na remuneração', 'FUNDEB on education pay')} valor={pct(fr(a.fundeb_pct))}
-              nota={`${t('Mínimo', 'Minimum')} ${pct(fr(a.min_fundeb), 0)} · ${situacao(num(a.fundeb_pct), num(a.min_fundeb), 'min')}`}
+              nota={<>{`${t('Mínimo', 'Minimum')} ${pct(fr(a.min_fundeb), 0)} · ${situacao(num(a.fundeb_pct), num(a.min_fundeb), 'min')}`} · <VerDemonstrativo ente={cod} ano={f.ano} chave="fundeb" /></>}
               dica={<Dica rotulo={t('Fórmula', 'Formula')}>{formulas.fundeb()}</Dica>} />
             <Kpi rotulo={t('Resultado primário', 'Primary balance')} valor={reais(num(a.resultado_primario))}
-              nota={`${t('Meta da LDO', 'LDO target')}: ${reais(num(a.meta_primario))}`}
+              nota={<>{`${t('Meta da LDO', 'LDO target')}: ${reais(num(a.meta_primario))}`} · <VerDemonstrativo ente={cod} ano={f.ano} chave="primario" /></>}
               dica={<Dica rotulo={t('Fórmula', 'Formula')}>{formulas.primario()}</Dica>} />
             <Kpi rotulo={t('Receita corrente líquida', 'Net current revenue')} valor={reais(num(a.rcl))}
-              nota={a.rcl_ajustada ? `${t('Ajustada', 'Adjusted')}: ${reais(num(a.rcl_ajustada))}` : undefined} />
+              nota={<>{num(a.rcl_ajustada) !== null ? `${t('Ajustada', 'Adjusted')}: ${reais(num(a.rcl_ajustada))} · ` : ''}
+                <Link to={urlDemonstrativos(cod, f.ano)} title={t(`Abre os demonstrativos RREO e RGF de ${f.ano} deste ente; a RCL pode vir de mais de um anexo`, `Opens this government’s ${f.ano} RREO and RGF statements; the RCL can come from more than one annex`)}>
+                  {t('demonstrativos do ente', 'government statements')}</Link></>} />
           </div>
         </>
       )}
@@ -332,6 +346,7 @@ function LrfGrupo({ esfera, uf, parciais }: { esfera: 'M' | 'E'; uf?: string; pa
                 <thead>
                   <tr>
                     <th>{t('Ente', 'Government')}</th>
+                    <th>{t('Demonstrativo', 'Statement')}</th>
                     {colunas.map((c) => (
                       <th key={c.campo} aria-sort={ordem.campo === c.campo ? (ordem.desc ? 'descending' : 'ascending') : 'none'}>
                         <button className="valor-exato" onClick={() => setOrdem({ campo: c.campo, desc: ordem.campo === c.campo ? !ordem.desc : true })}>
@@ -345,6 +360,13 @@ function LrfGrupo({ esfera, uf, parciais }: { esfera: 'M' | 'E'; uf?: string; pa
                   {visiveis.map((r) => (
                     <tr key={String(r.cod_ibge)}>
                       <td>{String(r.nome)}{esfera === 'M' ? ` (${r.uf})` : ''}</td>
+                      <td className="regra">
+                        {(['pessoal', 'dcl', 'rreo14'] as ChaveRastro[]).map((k, i) => (
+                          <span key={k}>{i ? ' · ' : ''}<Link to={urlDemonstrativo(Number(r.cod_ibge), f.ano, k)}
+                            title={t(`${String(r.nome)}: ${RASTRO[k].rotulo()}, ${RASTRO[k].anexo} de ${f.ano}`, `${String(r.nome)}: ${RASTRO[k].rotulo()}, ${RASTRO[k].anexo} for ${f.ano}`)}>
+                            {RASTRO[k].relatorio} {RASTRO[k].anexo.replace(/^.*Anexo 0?/, '')}</Link></span>
+                        ))}
+                      </td>
                       {colunas.map((c) => <td key={c.campo}>{c.formato(r[c.campo])}</td>)}
                     </tr>
                   ))}
@@ -384,9 +406,34 @@ export function LrfDemonstrativos() {
   const ano = anosLrf.includes(f.ano) ? f.ano : anosLrf.at(-1);
   const ente = f.alvo?.cod_ibge;
   const anexos = useApi<Anexo[]>(ente && ano ? 'lrf_anexos' : null, { ente, ano });
-  const [escolha, setEscolha] = useState('');
+  // o anexo e as contas em destaque vêm do endereço (link de um indicador): reabrir ou compartilhar mostra o mesmo demonstrativo
+  const [sp, setSp] = useSearchParams();
+  const escolha = sp.get('anexo') ?? '';
+  const chave = chaveDoRastro(sp.get('destaque'));
+  const [aviso, setAviso] = useState<string | null>(null);
   const lista = anexos.dados ?? [];
   const atual = lista.find((x) => `${x.relatorio}|${x.anexo}` === escolha) ?? lista[0];
+  const escolher = (v: string) => {
+    const novo = new URLSearchParams(sp);
+    novo.set('anexo', v);
+    novo.delete('destaque'); // as contas em destaque são de um anexo; outro anexo, outra leitura
+    setAviso(null);
+    setSp(novo, { replace: true });
+  };
+  // o anexo pedido não existe para este ente e exercício: o endereço é corrigido e a página avisa, sem aplicar outro em silêncio
+  useEffect(() => {
+    if (!escolha || !anexos.dados || anexos.carregando || anexos.dados.some((x) => `${x.relatorio}|${x.anexo}` === escolha)) return;
+    const mostrado = anexos.dados[0] ? `${anexos.dados[0].anexo}` : '';
+    setAviso(t(`${escolha.split('|')[1] ?? escolha} não consta no RREO/RGF de ${ano} deste ente${mostrado ? `: a página mostra ${mostrado}` : ''}.`,
+      `${escolha.split('|')[1] ?? escolha} is not in this government’s ${ano} RREO/RGF${mostrado ? `: the page shows ${mostrado}` : ''}.`));
+    const novo = new URLSearchParams(sp);
+    novo.delete('anexo');
+    novo.delete('destaque');
+    setSp(novo, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [escolha, anexos.dados, anexos.carregando]);
+  // as contas só ficam em destaque no anexo a que pertencem
+  const destacar = chave && atual && atual.relatorio === RASTRO[chave].relatorio && atual.anexo === RASTRO[chave].anexo ? chave : null;
   const dados = useApi<LinhaAnexo[]>(atual && ente ? 'lrf_anexo' : null, { ente, ano, relatorio: atual?.relatorio, anexo: atual?.anexo });
 
   // tabela larga: uma linha por conta (na ordem do relatório) e uma coluna por coluna do anexo
@@ -402,6 +449,32 @@ export function LrfDemonstrativos() {
     return { colunas: cols, contas: [...porConta.values()] };
   }, [dados.dados]);
   const mostrarRotulo = new Set(contas.map((c) => c.rotulo)).size > 1;
+  // com contas em destaque: as colunas que têm valor nelas (ex.: Valor e % sobre a RCL) são marcadas e levadas para junto da conta, que
+  // fica fixa à esquerda; todas as colunas continuam na tabela, é só rolar
+  const relevantes = useMemo(() => {
+    const r = new Set<string>();
+    if (destacar) for (const c of contas) if (contaDoRastro(c.cod, destacar)) for (const col of colunas) if (c.valores[col] !== null && c.valores[col] !== undefined) r.add(col);
+    return r;
+  }, [destacar, contas, colunas]);
+  const rolagem = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!destacar || !contas.length) return;
+    const caixa = rolagem.current;
+    const indices = colunas.map((c, i) => (relevantes.has(c) ? i : -1)).filter((i) => i >= 0);
+    if (caixa && indices.length && !mostrarRotulo) {
+      const ths = caixa.querySelectorAll('thead th');
+      const primeira = ths[indices[0] + 1] as HTMLElement | undefined;
+      const ultima = ths[indices[indices.length - 1] + 1] as HTMLElement | undefined;
+      const larguraConta = (caixa.querySelector('thead th.lrf-conta') as HTMLElement | null)?.offsetWidth ?? 0;
+      if (primeira && ultima) {
+        // a primeira coluna relevante fica junto da conta fixa; se as relevantes não cabem, vale a última (o período mais recente)
+        let alvo = primeira.offsetLeft - larguraConta;
+        if (ultima.offsetLeft + ultima.offsetWidth - alvo > caixa.clientWidth) alvo = ultima.offsetLeft + ultima.offsetWidth - caixa.clientWidth;
+        caixa.scrollLeft = Math.max(0, alvo);
+      }
+    }
+    document.querySelector('tr.destaque')?.scrollIntoView({ block: 'center', inline: 'nearest' });
+  }, [destacar, contas.length, relevantes, mostrarRotulo, colunas]);
   const formatar = (v: number | null | undefined, coluna: string) =>
     v === null || v === undefined ? '–' : v.toLocaleString(local(), { maximumFractionDigits: 2, minimumFractionDigits: /%/.test(coluna) ? 2 : 0 });
 
@@ -428,7 +501,7 @@ export function LrfDemonstrativos() {
               <div className="cabeca-cartao">
                 <div className="campo">
                   <label htmlFor="anexo-lrf">{t(`Anexo (${ano})`, `Annex (${ano})`)}</label>
-                  <select id="anexo-lrf" value={atual ? `${atual.relatorio}|${atual.anexo}` : ''} onChange={(e) => setEscolha(e.target.value)}>
+                  <select id="anexo-lrf" value={atual ? `${atual.relatorio}|${atual.anexo}` : ''} onChange={(e) => escolher(e.target.value)}>
                     {lista.map((x) => (
                       <option key={`${x.relatorio}|${x.anexo}`} value={`${x.relatorio}|${x.anexo}`}>
                         {x.anexo} · {x.tipo}{x.relatorio === 'RGF' ? ` (${x.periodicidade === 'S' ? t('semestral', 'six-month') : t('quadrimestral', 'four-month')})` : ''}
@@ -445,23 +518,30 @@ export function LrfDemonstrativos() {
                   })} />
                 )}
               </div>
+              {aviso && <p className="aviso" role="status">{aviso}</p>}
+              {destacar && (
+                <p className="nota-base" role="note">
+                  {t(`Em destaque: as contas que compõem “${RASTRO[destacar].rotulo()}”. O painel mostra os valores como o ente os entregou ao SICONFI e não os recalcula; a RCL de outro anexo, período ou versão (ajustada) pode diferir da exibida nos indicadores.`,
+                    `Highlighted: the accounts behind “${RASTRO[destacar].rotulo()}”. The panel shows the values as the government filed them with SICONFI and does not recalculate them; the RCL in another annex, period or version (adjusted) may differ from the one shown in the indicators.`)}
+                </p>
+              )}
               <Estado carregando={dados.carregando} erro={dados.erro} tentarNovamente={dados.recarregar} />
               {contas.length > 0 && (
-                <div className="rolagem">
-                  <table className="lrf-anexo">
+                <div className="rolagem" ref={rolagem}>
+                  <table className={`lrf-anexo${destacar && !mostrarRotulo ? ' com-destaque' : ''}`}>
                     <thead>
                       <tr>
                         {mostrarRotulo && <th>{t('Rótulo', 'Label')}</th>}
-                        <th>{t('Conta', 'Account')}</th>
-                        {colunas.map((c) => <th key={c} title={c}>{rotuloColuna(c)}</th>)}
+                        <th className="lrf-conta">{t('Conta', 'Account')}</th>
+                        {colunas.map((c) => <th key={c} title={c} className={relevantes.has(c) ? 'col-destaque' : undefined}>{rotuloColuna(c)}</th>)}
                       </tr>
                     </thead>
                     <tbody>
                       {contas.map((c, i) => (
-                        <tr key={i}>
+                        <tr key={i} className={destacar && contaDoRastro(c.cod, destacar) ? 'destaque' : undefined}>
                           {mostrarRotulo && <td className="regra">{c.rotulo}</td>}
                           <td className="lrf-conta" title={c.cod}>{c.conta}</td>
-                          {colunas.map((col) => <td key={col}>{formatar(c.valores[col], col)}</td>)}
+                          {colunas.map((col) => <td key={col} className={relevantes.has(col) ? 'col-destaque' : undefined}>{formatar(c.valores[col], col)}</td>)}
                         </tr>
                       ))}
                     </tbody>
