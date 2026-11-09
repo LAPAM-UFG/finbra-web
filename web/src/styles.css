@@ -623,6 +623,14 @@ figure.grafico { margin: 0; }
 /* demonstrativos RREO/RGF: conta larga à esquerda, valores à direita */
 .lrf-anexo td.lrf-conta { white-space: normal; text-align: left; min-width: 280px; max-width: 520px; }
 .lrf-anexo th { white-space: normal; min-width: 90px; }
+/* demonstrativo aberto por um indicador: a conta fica fixa à esquerda e as colunas com valor nas contas em destaque ganham um fundo leve */
+.lrf-anexo.com-destaque th.lrf-conta, .lrf-anexo.com-destaque td.lrf-conta { position: sticky; left: 0; z-index: 1; background: var(--superficie); box-shadow: 1px 0 0 var(--borda); }
+.lrf-anexo.com-destaque tr.destaque td.lrf-conta { background: color-mix(in srgb, var(--acento) 18%, var(--superficie)); }
+.lrf-anexo th.col-destaque { box-shadow: inset 0 -2px 0 var(--acento); }
+@media (max-width: 640px) {
+  /* em tela estreita a conta fixa fica curta, para sobrar espaço às colunas em destaque */
+  .lrf-anexo.com-destaque th.lrf-conta, .lrf-anexo.com-destaque td.lrf-conta { min-width: 120px; max-width: 120px; width: 120px; font-size: 11px; padding-left: 6px; padding-right: 6px; }
+}
 /* troca de área no topo: Finanças públicas | Mercado de trabalho */
 .areas { display: inline-flex; gap: 4px; margin-left: 18px; }
 .areas a { color: rgba(255, 255, 255, 0.8); text-decoration: none; padding: 4px 10px; border-radius: 6px; font-size: 13px; border: 1px solid transparent; }
