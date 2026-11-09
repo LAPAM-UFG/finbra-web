@@ -10,7 +10,7 @@ import { BarraFiltros, useDados, useFiltros } from '../contexto';
 import { numero, pct, reais } from '../format';
 import { num } from '../hooks';
 import { local, t } from '../idioma';
-import { chaveDoRastro, contaDoRastro, RASTRO, urlDemonstrativo, urlDemonstrativos, type ChaveRastro } from '../lrf_rastro';
+import { avisoDoContexto, chaveDoRastro, contaDoRastro, RASTRO, type AvisoAnexo, urlDemonstrativo, urlDemonstrativos, type ChaveRastro } from '../lrf_rastro';
 
 const PRIMEIRO_ANO_LRF = 2015;
 const pctEixo = (v: number) => pct(v, 0);
@@ -410,7 +410,11 @@ export function LrfDemonstrativos() {
   const [sp, setSp] = useSearchParams();
   const escolha = sp.get('anexo') ?? '';
   const chave = chaveDoRastro(sp.get('destaque'));
-  const [aviso, setAviso] = useState<string | null>(null);
+  // o aviso pertence ao ente e ao exercício em que o anexo pedido não existia: com outro ente ou exercício na tela, ele deixa de valer
+  // (a URL perde o anexo inválido na hora, então o anexo não serve de chave; ente e exercício, sim)
+  const [aviso, setAviso] = useState<AvisoAnexo | null>(null);
+  const avisoAtual = avisoDoContexto(aviso, ente, ano);
+  useEffect(() => { setAviso((a) => (a && (a.ente !== ente || a.ano !== ano) ? null : a)); }, [ente, ano]);
   const lista = anexos.dados ?? [];
   const atual = lista.find((x) => `${x.relatorio}|${x.anexo}` === escolha) ?? lista[0];
   const escolher = (v: string) => {
@@ -423,9 +427,10 @@ export function LrfDemonstrativos() {
   // o anexo pedido não existe para este ente e exercício: o endereço é corrigido e a página avisa, sem aplicar outro em silêncio
   useEffect(() => {
     if (!escolha || !anexos.dados || anexos.carregando || anexos.dados.some((x) => `${x.relatorio}|${x.anexo}` === escolha)) return;
+    if (!ente || !ano) return;
     const mostrado = anexos.dados[0] ? `${anexos.dados[0].anexo}` : '';
-    setAviso(t(`${escolha.split('|')[1] ?? escolha} não consta no RREO/RGF de ${ano} deste ente${mostrado ? `: a página mostra ${mostrado}` : ''}.`,
-      `${escolha.split('|')[1] ?? escolha} is not in this government’s ${ano} RREO/RGF${mostrado ? `: the page shows ${mostrado}` : ''}.`));
+    setAviso({ ente, ano, texto: t(`${escolha.split('|')[1] ?? escolha} não consta no RREO/RGF de ${ano} deste ente${mostrado ? `: a página mostra ${mostrado}` : ''}.`,
+      `${escolha.split('|')[1] ?? escolha} is not in this government’s ${ano} RREO/RGF${mostrado ? `: the page shows ${mostrado}` : ''}.`) });
     const novo = new URLSearchParams(sp);
     novo.delete('anexo');
     novo.delete('destaque');
@@ -518,7 +523,7 @@ export function LrfDemonstrativos() {
                   })} />
                 )}
               </div>
-              {aviso && <p className="aviso" role="status">{aviso}</p>}
+              {avisoAtual && <p className="aviso" role="status">{avisoAtual}</p>}
               {destacar && (
                 <p className="nota-base" role="note">
                   {t(`Em destaque: as contas que compõem “${RASTRO[destacar].rotulo()}”. O painel mostra os valores como o ente os entregou ao SICONFI e não os recalcula; a RCL de outro anexo, período ou versão (ajustada) pode diferir da exibida nos indicadores.`,

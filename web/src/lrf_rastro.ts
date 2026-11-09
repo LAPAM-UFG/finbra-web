@@ -50,5 +50,10 @@ export function urlDemonstrativo(ente: number, ano: number, chave: ChaveRastro):
  */
 export const urlDemonstrativos = (ente: number, ano: number) => `/lrf/demonstrativos?${new URLSearchParams({ ente: String(ente), ano: String(ano) })}`;
 
+/** Aviso de anexo indisponível: pertence ao ente e ao exercício em que foi gerado (o anexo some da URL na hora, então não serve de chave). */
+export type AvisoAnexo = { ente: number; ano: number; texto: string };
+export const avisoDoContexto = (a: AvisoAnexo | null, ente: number | undefined, ano: number | undefined): string | null =>
+  a && a.ente === ente && a.ano === ano ? a.texto : null;
+
 /** A conta (cod_conta) é uma das que compõem o indicador? Os códigos do gold valem como prefixo (a API acrescenta sufixos em alguns anos). */
 export const contaDoRastro = (cod: string, chave: ChaveRastro) => RASTRO[chave].contas.some((c) => cod === c || cod.startsWith(c));

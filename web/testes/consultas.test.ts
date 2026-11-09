@@ -51,7 +51,7 @@ import { crc32, paraCsv, paraXlsx, paraXlsxAbas } from '../src/exportar';
 import { ordenarBusca } from '../src/contexto';
 import { gravarEstadoEvolucao, lerEstadoEvolucao, MAX_COMPARADOS, posicaoRelativa, resumoTrajetoria, tabelaMudancas, tabelaTrajetorias, variacaoPct, variacaoPosicao } from '../src/posicoes';
 
-import { chaveDoRastro, contaDoRastro, RASTRO, urlDemonstrativo, urlDemonstrativos, valorAnexo, type ChaveRastro } from '../src/lrf_rastro';
+import { avisoDoContexto, chaveDoRastro, contaDoRastro, RASTRO, urlDemonstrativo, urlDemonstrativos, valorAnexo, type ChaveRastro } from '../src/lrf_rastro';
 const require = createRequire(import.meta.url);
 const FETCH = globalThis.fetch; // alguns testes simulam o Worker trocando o fetch
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
@@ -4441,6 +4441,15 @@ describe('LRF: rastreabilidade do indicador ao demonstrativo (Pontal/SP 3540200 
     const geral = new URL(urlDemonstrativos(3540200, 2025), 'http://x');
     assert.equal(geral.pathname, '/lrf/demonstrativos');
     assert.deepEqual([...geral.searchParams.keys()].sort(), ['ano', 'ente']);
+  });
+
+  test('o aviso de anexo indisponível só vale no ente e no exercício em que foi gerado', () => {
+    const aviso = { ente: 3540200, ano: 2025, texto: 'RGF-Anexo 99 não consta…' };
+    assert.equal(avisoDoContexto(aviso, 3540200, 2025), aviso.texto, 'mesmo contexto: o aviso explica o que aconteceu');
+    assert.equal(avisoDoContexto(aviso, 3540259, 2025), null, 'outro município');
+    assert.equal(avisoDoContexto(aviso, 3540200, 2024), null, 'outro exercício');
+    assert.equal(avisoDoContexto(aviso, undefined, undefined), null, 'sem ente escolhido');
+    assert.equal(avisoDoContexto(null, 3540200, 2025), null);
   });
 
   test('a RCL do último período do RGF diverge da RCL de 12 meses do RREO nos dois casos (sinal, não correção)', { skip: semLrf }, async () => {
