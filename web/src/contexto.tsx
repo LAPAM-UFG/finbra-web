@@ -5,6 +5,7 @@ import { Dica } from './components/Dica';
 import { Estado } from './components/Kpi';
 import { numero, pct, reais } from './format';
 import { dado, local, t } from './idioma';
+import { anosSaude, type FontesMeta } from './saude_comum';
 
 type Contexto = { meta: Meta; entes: Ente[]; porCodigo: Map<number, Ente> };
 const Ctx = createContext<Contexto | null>(null);
@@ -54,12 +55,17 @@ export function useFiltros() {
   const trabalho = caminho.startsWith('/trabalho');
   const saude = caminho.startsWith('/datasus');
   const anosRais = (meta.fontes.rais as { anos?: number[] } | undefined)?.anos;
-  const anosSim = (meta.fontes.sim as { anos?: number[] } | undefined)?.anos;
-  const anos = trabalho && anosRais?.length ? anosRais : saude && anosSim?.length ? anosSim : meta.anos;
-  const anoUrl = Number(busca.get('ano'));
+  // saúde: os anos de qualquer fonte; cada página mostra a disponibilidade efetiva do que pede (fonte do numerador e do denominador)
+  const anosDasFontes = anosSaude(meta.fontes as FontesMeta);
+  const anos = trabalho && anosRais?.length ? anosRais : saude && anosDasFontes.length ? anosDasFontes : meta.anos;
+  const anoBruto = busca.get('ano');
+  /** ano=ultimo (só na saúde): o último ano disponível de cada fonte, em vez de um ano comum */
+  const ultimo = saude && anoBruto === 'ultimo';
+  const anoUrl = Number(anoBruto);
   const ano = anos.includes(anoUrl) ? anoUrl : anos.at(-1)!;
   /** Ano pedido na URL que não está na base (ex.: 2026 vindo das finanças): a página avisa a troca. */
-  const anoForaDaBase = busca.get('ano') && !anos.includes(anoUrl) ? anoUrl : null;
+  const anoForaDaBase = anoBruto && !ultimo && !anos.includes(anoUrl) ? anoUrl : null;
+  const semAnoUrl = !anoBruto;
   const ente = porCodigo.get(Number(busca.get('ente'))) ?? null;
   const ufUrl = UFS.includes(busca.get('uf') ?? '') ? busca.get('uf')! : null;
   const uf = ente?.uf ?? ufUrl;
@@ -68,7 +74,7 @@ export function useFiltros() {
   const enteDaUf = !ente && uf && UF_SEM_MUNICIPIOS.has(uf) ? entes.find((e) => e.uf === uf && e.esfera === 'D') ?? null : null;
   const alvo = ente ?? enteDaUf;
 
-  const definir = (novo: { ano?: number; uf?: string | null; ente?: number | null }) => {
+  const definir = (novo: { ano?: number | 'ultimo'; uf?: string | null; ente?: number | null }) => {
     const p = new URLSearchParams(busca);
     for (const [k, v] of Object.entries(novo)) {
       if (v === null || v === undefined || v === '') p.delete(k);
@@ -102,7 +108,7 @@ export function useFiltros() {
       : null;
 
   return {
-    ano, uf, ente, alvo, definir, limpar, escopo, rotulo, rotuloComparador, escopoComparador, tratamento, anos, anoForaDaBase,
+    ano, uf, ente, alvo, definir, limpar, escopo, rotulo, rotuloComparador, escopoComparador, tratamento, anos, anoForaDaBase, ultimo, semAnoUrl,
     temFiltros: !!(busca.get('ano') || busca.get('uf') || busca.get('ente')),
   };
 }
@@ -127,7 +133,15 @@ export const rotuloCategoria = (c: Alerta['categoria']) =>
   })[c];
 
 /** semAno e semBuscaEnte: a página tem o próprio seletor (ex.: evolução das posições, com o período e o município). */
-type Opcoes = { semAno?: boolean; semEnte?: string; semBuscaEnte?: boolean };
+type Opcoes = {
+  semAno?: boolean; semEnte?: string; semBuscaEnte?: boolean;
+  /** saúde: oferece "o último ano de cada fonte" no seletor de ano */
+  comUltimo?: boolean;
+  /** com comUltimo: é o que vale quando a URL não traz ano */
+  ultimoPadrao?: boolean;
+  /** anos em que o dado pedido existe: os demais aparecem marcados como fora da cobertura */
+  anosCobertos?: number[];
+};
 
 export function BarraFiltros(opcoes: Opcoes = {}) {
   const f = useFiltros();
@@ -158,7 +172,7 @@ export function BarraFiltros(opcoes: Opcoes = {}) {
   );
 }
 
-function Filtros({ semAno, semEnte, semBuscaEnte }: Opcoes) {
+function Filtros({ semAno, semEnte, semBuscaEnte, comUltimo, ultimoPadrao, anosCobertos }: Opcoes) {
   const { entes } = useDados();
   const f = useFiltros();
   const caminho = useLocation().pathname;
@@ -169,9 +183,11 @@ function Filtros({ semAno, semEnte, semBuscaEnte }: Opcoes) {
       {!semAno && (
         <div className="campo">
           <label htmlFor="f-ano">{trabalho ? t('Ano da RAIS', 'RAIS year') : saude ? t('Ano', 'Year') : t('Exercício', 'Fiscal year')}</label>
-          <select id="f-ano" value={f.ano} onChange={(e) => f.definir({ ano: Number(e.target.value) })}>
+          <select id="f-ano" value={comUltimo && (f.ultimo || (ultimoPadrao && f.semAnoUrl)) ? 'ultimo' : f.ano}
+            onChange={(e) => f.definir({ ano: e.target.value === 'ultimo' ? 'ultimo' : Number(e.target.value) })}>
+            {comUltimo && <option value="ultimo">{t('Último ano de cada fonte', 'Latest year of each source')}</option>}
             {[...f.anos].reverse().map((a) => (
-              <option key={a}>{a}</option>
+              <option key={a} value={a}>{anosCobertos && !anosCobertos.includes(a) ? `${a} (${t('fora da cobertura', 'outside coverage')})` : a}</option>
             ))}
           </select>
         </div>

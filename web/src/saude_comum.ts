@@ -4,7 +4,7 @@
  * somas (Σ numerador ÷ Σ denominador), nunca a média das taxas dos municípios.
  */
 import type { Linha } from './api';
-import { numero1, pct } from './format';
+import { numero1, pct, reais } from './format';
 import { t } from './idioma';
 
 // o mesmo num() de hooks.ts, aqui para a camada de dados (dados.ts) poder usar os indicadores sem importar React
@@ -24,6 +24,10 @@ export type Indicador = {
   /** Denominador mínimo para entrar no ranking por padrão (números pequenos oscilam muito). */
   minimo: number;
   nota: () => string;
+  /** Valor em reais (R$ de 2025): formatado como moeda; o total em reais vai no cartão. */
+  monetario?: boolean;
+  /** Ressalva curta que acompanha o cartão (série curta, recorte histórico, definição restrita). */
+  alerta?: () => string;
 };
 
 const G_MORT = () => t('Mortalidade', 'Mortality');
@@ -170,16 +174,16 @@ export const INDICADORES: Indicador[] = [
     nota: () => t('Soma dos dias de permanência ÷ internações dos residentes (SIH).', 'Sum of days of stay ÷ residents’ admissions (SIH).'),
   },
   {
-    id: 'valor_por_internacao', grupo: G_INT, nome: () => t('Valor médio pago por internação', 'Average amount paid per admission'),
+    id: 'valor_por_internacao', monetario: true, grupo: G_INT, nome: () => t('Valor médio pago por internação', 'Average amount paid per admission'),
     unidade: () => t('R$ de 2025 por internação', 'R$ of 2025 per admission'), numerador: 'int_valor_real', denominador: 'int_total', fator: 1, tipo: 'taxa', minimo: 500,
-    nota: () => t('Valor total das AIH pagas pelo SUS (serviços hospitalares e profissionais) ÷ internações dos residentes, em reais de 2025 pelo IPCA médio do ano (de 2010 em diante; antes, sem valor). É o valor da tabela do SUS, não o custo real do hospital.',
-      'Total value of AIH paid by SUS (hospital and professional services) ÷ residents’ admissions, in 2025 reais using the average-year IPCA (from 2010 onward; earlier years have no value). It is the SUS table value, not the hospital’s actual cost.'),
+    nota: () => t('Valor total das AIH pagas pelo SUS (serviços hospitalares e profissionais) ÷ internações dos residentes, em reais de 2025 pelo IPCA acumulado (dez/dez) (todo o período do SIH, de 2008 em diante: o IPCA da base começa em 2006). É o valor da tabela do SUS, não o custo real do hospital.',
+      'Total value of AIH paid by SUS (hospital and professional services) ÷ residents’ admissions, in 2025 reais using the accumulated IPCA (Dec/Dec) (the whole SIH period, from 2008 on: the IPCA in the data starts in 2006). It is the SUS table value, not the hospital’s actual cost.'),
   },
   {
-    id: 'valor_por_habitante', grupo: G_INT, nome: () => t('Valor pago em internações por habitante', 'Amount paid for admissions per inhabitant'),
+    id: 'valor_por_habitante', monetario: true, grupo: G_INT, nome: () => t('Valor pago em internações por habitante', 'Amount paid for admissions per inhabitant'),
     unidade: () => t('R$ de 2025 por habitante', 'R$ of 2025 per inhabitant'), numerador: 'int_valor_real', denominador: 'populacao', fator: 1, tipo: 'taxa', minimo: 5000,
-    nota: () => t('Valor total das AIH pagas pelo SUS aos residentes ÷ população residente, em reais de 2025 (de 2010 em diante). Reflete o que o SUS pagou, não o gasto da prefeitura.',
-      'Total value of AIH paid by SUS for residents ÷ resident population, in 2025 reais (from 2010 onward). It reflects what SUS paid, not municipal spending.'),
+    nota: () => t('Valor total das AIH pagas pelo SUS aos residentes ÷ população residente, em reais de 2025 (de 2008 em diante). Reflete o que o SUS pagou, não o gasto da prefeitura.',
+      'Total value of AIH paid by SUS for residents ÷ resident population, in 2025 reais (from 2008 on). It reflects what SUS paid, not municipal spending.'),
   },
   // rede de saúde (CNES): retrato de dezembro, pelo município do estabelecimento
   {
@@ -236,7 +240,7 @@ export const INDICADORES: Indicador[] = [
     nota: () => t(`Casos de chikungunya com classificação final confirmada ÷ população residente × 100.000 (de 2014 em diante). ${RESSALVA_SINAN()}`, `Chikungunya cases with a confirmed final classification ÷ resident population × 100,000 (from 2014). ${RESSALVA_SINAN()}`),
   },
   {
-    id: 'tb_incidencia', grupo: G_AGRAVOS, nome: () => t('Tuberculose: casos novos', 'Tuberculosis: new cases'),
+    id: 'tb_incidencia', grupo: G_AGRAVOS, alerta: () => t('série até 2019, com a definição restrita (só a entrada "caso novo")', 'series up to 2019, with the narrower definition (only the "new case" entry)'), nome: () => t('Tuberculose: casos novos', 'Tuberculosis: new cases'),
     unidade: () => t('por 100 mil habitantes', 'per 100,000 inhabitants'), numerador: 'sinan_tb_casos_novos', denominador: 'populacao', fator: 100000, tipo: 'taxa', minimo: 5000,
     nota: () => t(`Notificações com tipo de entrada "caso novo" (sem recidiva, reingresso após abandono, transferência nem diagnóstico pós-óbito) ÷ população residente × 100.000. Os arquivos finais do SINAN só vão até 2019; depois disso a tuberculose passou a outro sistema. ${RESSALVA_SINAN()}`,
       `Notifications with entry type "new case" (no relapse, return after default, transfer or post-mortem diagnosis) ÷ resident population × 100,000. The final SINAN files only go to 2019; afterwards tuberculosis moved to another system. ${RESSALVA_SINAN()}`),
@@ -254,10 +258,10 @@ export const INDICADORES: Indicador[] = [
   },
   // câncer: rastreamento (SISCAN) e diagnósticos (Painel de Oncologia), por município de residência
   {
-    id: 'cito_25_64', grupo: G_CANCER, nome: () => t('Colo do útero: exames citopatológicos em mulheres de 25 a 64 anos', 'Cervical cancer: Pap smears in women aged 25–64'),
+    id: 'cito_25_64', grupo: G_CANCER, alerta: () => t('volume de exames citopatológicos registrados; o SUS está em transição para o teste de DNA-HPV', 'volume of Pap smears recorded; the SUS is moving to the DNA-HPV test'), nome: () => t('Colo do útero: exames citopatológicos em mulheres de 25 a 64 anos', 'Cervical cancer: Pap smears in women aged 25–64'),
     unidade: () => t('por 100 mulheres de 25 a 64 anos', 'per 100 women aged 25–64'), numerador: 'siscan_cito_25_64', denominador: 'pop_mulheres_25_64', fator: 100, tipo: 'taxa', minimo: 2000,
-    nota: () => t(`Exames citopatológicos do colo do útero liberados no ano (SISCAN) em mulheres de 25 a 64 anos residentes ÷ mulheres dessa faixa × 100. É o número de exames no ano, não a cobertura: a diretriz é um exame a cada três anos depois de dois normais seguidos. ${RESSALVA_SISCAN()}`,
-      `Pap smears released in the year (SISCAN) in women aged 25–64 resident in the municipality ÷ women in that age band × 100. It is the number of tests in the year, not coverage: the guideline is one test every three years after two consecutive normal ones. ${RESSALVA_SISCAN()}`),
+    nota: () => t(`Exames citopatológicos do colo do útero liberados no ano (SISCAN) em mulheres de 25 a 64 anos residentes ÷ mulheres dessa faixa × 100. É o número de exames no ano, não a cobertura: a diretriz é um exame a cada três anos depois de dois normais seguidos. O SUS está em transição do exame citopatológico para o teste de DNA-HPV oncogênico (incorporação decidida em 2024, com implantação gradual): esta série é o volume de exames citopatológicos registrados, não a cobertura do rastreamento. ${RESSALVA_SISCAN()}`,
+      `Pap smears released in the year (SISCAN) in women aged 25–64 resident in the municipality ÷ women in that age band × 100. It is the number of tests in the year, not coverage: the guideline is one test every three years after two consecutive normal ones. The SUS is moving from the Pap smear to the oncogenic DNA-HPV test (incorporation decided in 2024, with gradual rollout): this series is the volume of Pap smears recorded, not screening coverage. ${RESSALVA_SISCAN()}`),
   },
   {
     id: 'cito_alterados', grupo: G_CANCER, nome: () => t('Colo do útero: exames citopatológicos alterados', 'Cervical cancer: abnormal Pap smears'),
@@ -266,10 +270,16 @@ export const INDICADORES: Indicador[] = [
       `Tests flagged as abnormal in SISCAN ÷ cervical Pap smears released. Abnormal is not cancer: it ranges from mild cell changes to high-grade lesions. ${RESSALVA_SISCAN()}`),
   },
   {
-    id: 'mamo_50_69', grupo: G_CANCER, nome: () => t('Mama: mamografias em mulheres de 50 a 69 anos', 'Breast cancer: mammograms in women aged 50–69'),
-    unidade: () => t('por 100 mulheres de 50 a 69 anos', 'per 100 women aged 50–69'), numerador: 'siscan_mamo_50_69', denominador: 'pop_mulheres_50_69', fator: 100, tipo: 'taxa', minimo: 1000,
-    nota: () => t(`Mamografias (de rastreamento e diagnósticas) liberadas no ano no SISCAN em mulheres de 50 a 69 anos residentes ÷ mulheres dessa faixa × 100. A diretriz é um exame a cada dois anos: valores perto de 50 equivaleriam à cobertura plena só pelo SISCAN. ${RESSALVA_SISCAN()}`,
-      `Mammograms (screening and diagnostic) released in the year in SISCAN in women aged 50–69 resident in the municipality ÷ women in that age band × 100. The guideline is one test every two years: values near 50 would mean full coverage through SISCAN alone. ${RESSALVA_SISCAN()}`),
+    id: 'mamo_50_69', grupo: G_CANCER, alerta: () => t('recorte histórico (50 a 69 anos); volume de exames registrados', 'historical band (aged 50–69); volume of tests recorded'), nome: () => t('Mama: mamografias registradas em mulheres de 50 a 69 anos (recorte histórico)', 'Breast cancer: mammograms recorded in women aged 50–69 (historical band)'),
+    unidade: () => t('mamografias registradas por 100 mulheres de 50 a 69 anos', 'mammograms recorded per 100 women aged 50–69'), numerador: 'siscan_mamo_50_69', denominador: 'pop_mulheres_50_69', fator: 100, tipo: 'taxa', minimo: 1000,
+    nota: () => t(`Mamografias (de rastreamento e diagnósticas) liberadas no ano no SISCAN em mulheres de 50 a 69 anos residentes ÷ mulheres dessa faixa × 100. O recorte de 50 a 69 anos é o histórico da série (veja também o de 50 a 74 anos, na nota técnica nº 626/2025 do Ministério da Saúde). A diretriz é um exame a cada dois anos: valores perto de 50 equivaleriam à cobertura plena só pelo SISCAN. ${RESSALVA_SISCAN()}`,
+      `Mammograms (screening and diagnostic) released in the year in SISCAN in women aged 50–69 resident in the municipality ÷ women in that age band × 100. The 50–69 band is the historical one of the series (see also the 50–74 band, in Ministry of Health technical note no. 626/2025). The guideline is one test every two years: values near 50 would mean full coverage through SISCAN alone. ${RESSALVA_SISCAN()}`),
+  },
+  {
+    id: 'mamo_50_74', grupo: G_CANCER, nome: () => t('Mama: mamografias registradas em mulheres de 50 a 74 anos', 'Breast cancer: mammograms recorded in women aged 50–74'),
+    unidade: () => t('mamografias registradas por 100 mulheres de 50 a 74 anos', 'mammograms recorded per 100 women aged 50–74'), numerador: 'siscan_mamo_50_74', denominador: 'pop_mulheres_50_74', fator: 100, tipo: 'taxa', minimo: 1000,
+    nota: () => t(`Mamografias (de rastreamento e diagnósticas) liberadas no ano no SISCAN em mulheres de 50 a 74 anos residentes ÷ mulheres dessa faixa × 100. Recorte de 50 a 74 anos, a cada dois anos, conforme a orientação do Ministério da Saúde e do INCA (nota técnica nº 626/2025; INCA, 29/09/2025); a série de 50 a 69 anos segue como recorte histórico. É o volume de exames registrados, não a cobertura do rastreamento. ${RESSALVA_SISCAN()}`,
+      `Mammograms (screening and diagnostic) released in the year in SISCAN in women aged 50–74 resident in the municipality ÷ women in that age band × 100. 50–74 band, every two years, following the Ministry of Health and INCA guidance (technical note no. 626/2025; INCA, 29 Sep 2025); the 50–69 series remains as the historical band. It is the volume of tests recorded, not screening coverage. ${RESSALVA_SISCAN()}`),
   },
   {
     id: 'cancer_registros', grupo: G_CANCER, nome: () => t('Câncer: diagnósticos registrados no Painel de Oncologia', 'Cancer: diagnoses recorded in the Oncology Panel'),
@@ -340,11 +350,11 @@ export const nomeContagem = (c: string): string => ({
   resp_notificacoes: t('Notificações de microcefalia (RESP)', 'Microcephaly notifications (RESP)'), resp_confirmadas: t('Confirmadas de microcefalia (RESP)', 'Confirmed microcephaly (RESP)'),
 }[c] ?? c);
 
-export const formatar = (ind: Indicador, v: number | null | undefined) => (ind.tipo === 'proporcao' ? pct(v) : numero1(v));
+export const formatar = (ind: Indicador, v: number | null | undefined) => (ind.monetario ? reais(v) : ind.tipo === 'proporcao' ? pct(v) : numero1(v));
 
 export const fonteSaude = () => t(
-  'SIM (Sistema de Informações sobre Mortalidade), SINASC (Sistema de Informações sobre Nascidos Vivos), SIH (Sistema de Informações Hospitalares do SUS), CNES (Cadastro Nacional de Estabelecimentos de Saúde), SINAN (agravos de notificação), SISCAN (controle do câncer do colo do útero e da mama), Painel de Oncologia e RESP (microcefalia), Ministério da Saúde/DATASUS, microdados públicos por município de residência; população: estimativas da SVS/MS por município, sexo e idade (2000 em diante). Processamento: LAPAM/UFG.',
-  'SIM (Mortality Information System), SINASC (Live Birth Information System), SIH (SUS Hospital Information System), CNES (National Registry of Health Facilities), SINAN (notifiable diseases), SISCAN (cervical and breast cancer control), Oncology Panel and RESP (microcephaly), Ministry of Health/DATASUS, public microdata by municipality of residence; population: SVS/MS estimates by municipality, sex and age (2000 onwards). Processing: LAPAM/UFG.',
+  'SIM (Sistema de Informações sobre Mortalidade), SINASC (Sistema de Informações sobre Nascidos Vivos), SIH (Sistema de Informações Hospitalares do SUS), CNES (Cadastro Nacional de Estabelecimentos de Saúde), SINAN (agravos de notificação), SISCAN (controle do câncer do colo do útero e da mama), Painel de Oncologia e RESP (microcefalia), SIA (produção ambulatorial, por município do estabelecimento), cobertura da atenção primária (relatórios públicos da APS), Ministério da Saúde/DATASUS e SAPS, microdados públicos por município de residência (a produção ambulatorial e a rede do CNES seguem o município do estabelecimento); população: estimativas da SVS/MS por município, sexo e idade (2000 em diante). Processamento: LAPAM/UFG.',
+  'SIM (Mortality Information System), SINASC (Live Birth Information System), SIH (SUS Hospital Information System), CNES (National Registry of Health Facilities), SINAN (notifiable diseases), SISCAN (cervical and breast cancer control), Oncology Panel and RESP (microcephaly), SIA (outpatient output, by municipality of the facility), primary care coverage (public APS reports), Ministry of Health/DATASUS and SAPS, public microdata by municipality of residence (outpatient output and the CNES network follow the municipality of the facility); population: SVS/MS estimates by municipality, sex and age (2000 onwards). Processing: LAPAM/UFG.',
 );
 
 /** Capítulos da CID-10 (causa básica do óbito), na ordem das colunas cap01…cap22. */
@@ -370,3 +380,177 @@ export const CAPITULOS = (): [string, string][] => [
   ['cap20', t('XX. Causas externas', 'XX. External causes')],
   ['cap22', t('XXII. Códigos especiais (inclui COVID-19)', 'XXII. Special codes (incl. COVID-19)')],
 ];
+
+// ---------------- disponibilidade, fontes e metadados compartilhados ----------------
+
+export type FonteChave = 'sim' | 'sinasc' | 'populacao_svs' | 'sih' | 'sia' | 'cnes' | 'sinan' | 'siscan' | 'oncologia' | 'resp';
+/** O que o manifesto dos dados informa de cada fonte (gold/manifesto.json, fontes.*). */
+export type FonteMeta = {
+  anos?: number[];
+  /** SINAN: primeiro e último ano de cada agravo */
+  agravos?: Record<string, [number, number]>;
+  processado_em?: string;
+  /** anos incluídos que a fonte ainda marca como preliminares (opcional) */
+  preliminares?: number[];
+  /** anos que o DATASUS só publica como preliminares e que o painel não usa (só arquivos finais) */
+  preliminar_nao_incluido?: number[];
+};
+export type FontesMeta = Record<string, FonteMeta | undefined>;
+
+export const CHAVES_FONTES: FonteChave[] = ['sim', 'sinasc', 'populacao_svs', 'sih', 'sia', 'cnes', 'sinan', 'siscan', 'oncologia', 'resp'];
+
+export const NOME_FONTE: Record<FonteChave, () => string> = {
+  sim: () => 'SIM', sinasc: () => 'SINASC', sih: () => 'SIH', sia: () => 'SIA', cnes: () => 'CNES', sinan: () => 'SINAN', siscan: () => 'SISCAN',
+  oncologia: () => t('Painel de Oncologia', 'Oncology Panel'), resp: () => 'RESP', populacao_svs: () => t('população da SVS/MS', 'SVS/MS population'),
+};
+
+const NOME_AGRAVO: Record<string, () => string> = {
+  dengue: () => t('dengue', 'dengue'), chikungunya: () => 'chikungunya', tuberculose: () => t('tuberculose', 'tuberculosis'),
+  hanseniase: () => t('hanseníase', 'leprosy'), violencia: () => t('violência', 'violence'),
+};
+const AGRAVO_DA_COLUNA: [RegExp, string][] = [
+  [/^sinan_dengue_/, 'dengue'], [/^sinan_chik_/, 'chikungunya'], [/^sinan_tb_/, 'tuberculose'], [/^sinan_hans_/, 'hanseniase'], [/^sinan_viol_/, 'violencia'],
+];
+const COLUNAS_SINASC = /^(nascidos|baixo_peso|peso_informado|prematuros|gestacao_informada|cesareos|parto_informado|consultas_\w+|sem_consulta|maes_\w+|idade_mae_informada)$/;
+
+/** Fonte de uma coluna do gold/saude (numerador ou denominador): a que dá a cobertura de anos dela. */
+export function fonteDaColuna(c: string): FonteChave {
+  if (c.startsWith('int_')) return 'sih';
+  if (c.startsWith('amb_')) return 'sia';
+  if (c.startsWith('cnes_')) return 'cnes';
+  if (c.startsWith('sinan_')) return 'sinan';
+  if (c.startsWith('siscan_')) return 'siscan';
+  if (c.startsWith('onco_')) return 'oncologia';
+  if (c.startsWith('resp_')) return 'resp';
+  if (c === 'populacao' || c.startsWith('pop_')) return 'populacao_svs';
+  if (COLUNAS_SINASC.test(c)) return 'sinasc';
+  return 'sim';
+}
+
+/** Anos em que a fonte da coluna cobre o que ela mede (no SINAN, o intervalo do agravo da coluna). */
+export function anosDaColuna(c: string, fontes: FontesMeta): number[] {
+  const chave = fonteDaColuna(c);
+  const f = fontes[chave];
+  const anos = f?.anos ?? [];
+  if (chave === 'sinan') {
+    const ag = AGRAVO_DA_COLUNA.find(([re]) => re.test(c));
+    const faixa = ag ? f?.agravos?.[ag[1]] : undefined;
+    return faixa ? anos.filter((a) => a >= faixa[0] && a <= faixa[1]) : anos;
+  }
+  return anos;
+}
+
+/** Disponibilidade efetiva do indicador: os anos cobertos ao mesmo tempo pelas fontes do numerador e do denominador. */
+export function anosDoIndicador(ind: Indicador, fontes: FontesMeta): number[] {
+  const d = new Set(anosDaColuna(ind.denominador, fontes));
+  return anosDaColuna(ind.numerador, fontes).filter((a) => d.has(a));
+}
+
+/** Todos os anos de qualquer fonte de saúde: o que os seletores de ano da área oferecem. */
+export const anosSaude = (fontes: FontesMeta): number[] =>
+  [...new Set(CHAVES_FONTES.flatMap((k) => fontes[k]?.anos ?? []))].sort((a, b) => a - b);
+
+export const faixaAnos = (a: number[]) => (a.length ? (a.length === 1 ? String(a[0]) : `${a[0]}–${a.at(-1)}`) : '–');
+
+const nomeDaColuna = (c: string): string => {
+  const k = fonteDaColuna(c);
+  if (k === 'sinan') {
+    const ag = AGRAVO_DA_COLUNA.find(([re]) => re.test(c));
+    return ag ? `SINAN (${NOME_AGRAVO[ag[1]]()})` : 'SINAN';
+  }
+  return NOME_FONTE[k]();
+};
+
+/** Fonte do indicador em poucas palavras: a do numerador e a do denominador (ex.: "SINAN (dengue) e população da SVS/MS"). */
+export function fonteCurta(ind: Indicador): string {
+  const n = nomeDaColuna(ind.numerador);
+  const d = nomeDaColuna(ind.denominador);
+  return n === d ? n : t(`${n} e ${d}`, `${n} and ${d}`);
+}
+
+/** Recorte territorial dos registros do indicador. */
+export function territorioDoIndicador(ind: Indicador): string {
+  if (ind.numerador.startsWith('cnes_')) return t('município onde fica o estabelecimento (retrato de dezembro)', 'municipality where the facility is (December snapshot)');
+  if (ind.numerador.startsWith('amb_')) return t('município onde fica o estabelecimento', 'municipality where the facility is');
+  return t('município de residência', 'municipality of residence');
+}
+
+/** Quando a fonte do numerador foi processada (o rodapé usa a data da fonte do indicador, não a do SIM). */
+export const processadoEm = (ind: Indicador, fontes: FontesMeta) => fontes[fonteDaColuna(ind.numerador)]?.processado_em;
+
+/**
+ * Metadados de um indicador, os mesmos nas telas e nas exportações: indicador, fórmula, unidade, recorte territorial,
+ * período de cobertura e fonte. Uma definição só, para que tela e arquivo não divirjam.
+ */
+export function metadadosIndicador(ind: Indicador, fontes: FontesMeta, escopo?: string): [string, string][] {
+  const anos = anosDoIndicador(ind, fontes);
+  return [
+    [t('Indicador', 'Indicator'), ind.nome()],
+    [t('Fórmula', 'Formula'), ind.nota()],
+    [t('Unidade', 'Unit'), ind.unidade()],
+    [t('Recorte territorial', 'Territorial scope'), escopo ? `${territorioDoIndicador(ind)} · ${escopo}` : territorioDoIndicador(ind)],
+    [t('Período de cobertura', 'Coverage period'), faixaAnos(anos)],
+    [t('Fonte', 'Source'), `${fonteCurta(ind)}. ${fonteSaude()}`],
+  ];
+}
+
+// ---------------- condição do dado ----------------
+
+export type CondicaoDado = 'registrado' | 'zero_registrado' | 'ausente' | 'fora_cobertura' | 'preliminar';
+
+/**
+ * Distingue o que um número ausente ou zero quer dizer. Fora dos anos da fonte: período fora da cobertura. Dentro
+ * dela: sem valor = ausência de registro (nenhum registro do local no ano); 0 = zero registrado; ano que a fonte ainda
+ * marca como preliminar = dado preliminar.
+ */
+export function condicaoDado(coluna: string, valor: number | null | undefined, ano: number | null | undefined, fontes: FontesMeta): CondicaoDado {
+  if (ano !== null && ano !== undefined && !anosDaColuna(coluna, fontes).includes(ano)) return 'fora_cobertura';
+  if (valor === null || valor === undefined || Number.isNaN(valor)) return 'ausente';
+  if (ano !== null && ano !== undefined && fontes[fonteDaColuna(coluna)]?.preliminares?.includes(ano)) return 'preliminar';
+  return valor === 0 ? 'zero_registrado' : 'registrado';
+}
+
+export const rotuloCondicao = (c: CondicaoDado): string => ({
+  registrado: t('registrado', 'recorded'),
+  zero_registrado: t('zero registrado', 'recorded zero'),
+  ausente: t('sem registro no ano (dentro da cobertura da fonte)', 'no record in the year (within the source coverage)'),
+  fora_cobertura: t('fora da cobertura da fonte', 'outside the source coverage'),
+  preliminar: t('dado preliminar', 'preliminary data'),
+})[c];
+
+/** Texto para o que não é um valor: "–" com a razão, ou o próprio número formatado. */
+export function textoValor(c: CondicaoDado, formatado: string): string {
+  if (c === 'ausente') return t('sem registro', 'no record');
+  if (c === 'fora_cobertura') return t('fora da cobertura', 'outside coverage');
+  return formatado;
+}
+
+/** Aviso de ano que o DATASUS só publica como preliminar e o painel não usa. */
+export function avisoPreliminarNaoIncluido(coluna: string, ano: number, fontes: FontesMeta): string | null {
+  const k = fonteDaColuna(coluna);
+  return fontes[k]?.preliminar_nao_incluido?.includes(ano)
+    ? t(`${NOME_FONTE[k]()} ${ano}: o DATASUS publica este ano só como preliminar e o painel usa apenas arquivos finais.`, `${NOME_FONTE[k]()} ${ano}: DATASUS publishes this year only as preliminary and the panel uses final files only.`)
+    : null;
+}
+
+/** Soma de uma coluna entre os anos de uma janela; null se algum ano da janela não tem valor (a janela não fecha). */
+export const somaJanela = (linhas: Linha[], coluna: string, de: number, ate: number): number | null => {
+  let total = 0;
+  for (let a = de; a <= ate; a++) {
+    const v = num(linhas.find((r) => Number(r.ano) === a)?.[coluna]);
+    if (v === null) return null;
+    total += v;
+  }
+  return total;
+};
+
+/** Valor do indicador numa janela de anos (razão das somas do período, não média das taxas dos anos). */
+export function calcularJanela(ind: Indicador, linhas: Linha[], de: number, ate: number): { valor: number | null; numerador: number | null; denominador: number | null } {
+  const numerador = somaJanela(linhas, ind.numerador, de, ate);
+  const denominador = somaJanela(linhas, ind.denominador, de, ate);
+  return { valor: numerador === null || !denominador ? null : (numerador / denominador) * ind.fator, numerador, denominador };
+}
+
+
+/** O indicador tem as colunas do numerador e do denominador na versão carregada dos dados? (null: ainda carregando, vale como sim) */
+export const disponivelNosDados = (ind: Indicador, colunas: Set<string> | null) => colunas === null || (colunas.has(ind.numerador) && colunas.has(ind.denominador));

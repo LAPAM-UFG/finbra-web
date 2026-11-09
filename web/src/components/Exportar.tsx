@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useDados, useFiltros } from '../contexto';
 import { exportar, type Celula, type Tabela } from '../exportar';
 import { idioma, t } from '../idioma';
@@ -7,6 +8,22 @@ import { idioma, t } from '../idioma';
 export function useMetadados() {
   const { meta } = useDados();
   const f = useFiltros();
+  const saude = useLocation().pathname.startsWith('/datasus');
+  // saúde: a fonte, a unidade e o período vêm dos metadados de cada tabela (saude_comum); só o que é comum entra aqui
+  if (saude) {
+    return (extra: [string, string][] = []): [string, string][] => {
+      const base: [string, string][] = [
+        [t('Recorte', 'Scope'), f.rotulo],
+        [t('Ano selecionado', 'Selected year'), f.ultimo || f.semAnoUrl ? t('último ano de cada fonte', 'latest year of each source') : String(f.ano)],
+        [t('Preços dos valores reais', 'Prices of real values'), t(`R$ de dezembro de ${meta.baseIpca} (IPCA dez/dez)`, `December ${meta.baseIpca} R$ (Dec/Dec IPCA)`)],
+        [t('Dados processados em', 'Data processed on'), meta.geradoEm],
+        [t('Exportado em', 'Exported on'), new Date().toISOString()],
+      ];
+      // o que a tabela informa (recorte, fonte, unidade) vale mais que o padrão: sem chave repetida
+      const dela = new Set(extra.map(([k]) => k));
+      return [...base.filter(([k]) => !dela.has(k)), ...extra];
+    };
+  }
   return (extra: [string, string][] = []): [string, string][] => [
     [t('Fonte', 'Source'), t('SICONFI/Tesouro Nacional (DCA); IBGE (PIB); Banco Central (IPCA). Processamento: LAPAM/UFG', 'SICONFI/National Treasury (DCA); IBGE (GDP); Central Bank of Brazil (IPCA). Processing: LAPAM/UFG')],
     [t('Recorte', 'Scope'), f.rotulo],

@@ -45,7 +45,7 @@ import {
 } from '../src/ia_continuidade';
 import { TRABALHO } from '../../worker/src/sistema_trabalho.js';
 import { SAUDE } from '../../worker/src/sistema_saude.js';
-import { calcular, indicador } from '../src/saude_comum';
+import { anosDoIndicador, avisoPreliminarNaoIncluido, calcular, calcularJanela, condicaoDado, disponivelNosDados, faixaAnos, fonteCurta, formatar, indicador, INDICADORES, metadadosIndicador, type FontesMeta } from '../src/saude_comum';
 import { cadastro, codigosDoMunicipio, conferirCodigos, executarLocalizacao, localizar, territoriosNasConsultas } from '../src/ia_territorio';
 import { crc32, paraCsv, paraXlsx, paraXlsxAbas } from '../src/exportar';
 import { ordenarBusca } from '../src/contexto';
@@ -57,7 +57,10 @@ const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const DATA = path.resolve(AQUI, '..', '..', '..', process.env.DATA_DIR ?? 'data').replaceAll('\\', '/');
 // microdados da RAIS (pipeline/microdados.py), fora do projeto
 const MICRO = (process.env.TRABALHO_MICRO ?? 'E:/finbra/micro').replaceAll('\\', '/');
-const onde = (c: string) => (c.startsWith('silver/trabalho/micro/') ? `${MICRO}/${c}` : `${DATA}/${c}`);
+// GOLD_PUBLICADO: pasta com a cópia do gold hoje publicado (gold/saude, manifesto e ipca); roda o código atual contra os dados antigos
+const GOLD_PUBLICADO = process.env.GOLD_PUBLICADO?.replaceAll('\\', '/');
+const doGoldPublicado = (c: string) => !!GOLD_PUBLICADO && /^gold\/(saude\/|manifesto\.json$|ipca\.parquet$)/.test(c);
+const onde = (c: string) => (c.startsWith('silver/trabalho/micro/') ? `${MICRO}/${c}` : doGoldPublicado(c) ? `${GOLD_PUBLICADO}/${c}` : `${DATA}/${c}`);
 const rota = <T>(caminho: string, params: Record<string, string | number | undefined> = {}) => executar(caminho, params) as Promise<T>;
 type L = Record<string, number | string | null | boolean>;
 
@@ -93,12 +96,12 @@ before(async () => {
   await db.instantiate();
   db.open({ query: { castBigIntToDouble: true, castDecimalToDouble: true } }); // como no site (src/dados.ts)
   const { db: adb, con } = adaptar(db);
-  const manifesto = JSON.parse(await readFile(`${DATA}/gold/manifesto.json`, 'utf8'));
+  const manifesto = JSON.parse(await readFile(onde('gold/manifesto.json'), 'utf8'));
   for (const [nome, arq] of Object.entries({
     entes: 'silver/entes.parquet', indicadores: 'gold/indicadores.parquet', escopos: 'gold/escopos.parquet',
     alertas: 'gold/alertas.parquet', faixas: 'gold/faixas.parquet', ipca: 'gold/ipca.parquet',
   })) {
-    await con.query(`CREATE TABLE ${nome} AS SELECT * FROM read_parquet('${DATA}/${arq}')`);
+    await con.query(`CREATE TABLE ${nome} AS SELECT * FROM read_parquet('${onde(arq)}')`);
   }
   await con.query(SQL_IPCA_BASE);
   usarMotorDeTeste(adb as any, con as any, manifesto, onde, async (c) => new Uint8Array(await readFile(onde(c))));
@@ -2441,7 +2444,7 @@ describe('IA: pedido de conferência pelo especialista RAIS (conferencia-rais/1)
 });
 
 describe('saúde (SIM, SINASC e população da SVS/MS)', () => {
-  const semSaude = !existsSync(`${DATA}/gold/saude/municipios.parquet`);
+  const semSaude = !existsSync(onde('gold/saude/municipios.parquet'));
 
   test('Brasil 2019 bate com os totais oficiais; taxas como razão das somas', { skip: semSaude }, async () => {
     const serie = await rota<L[]>('saude_serie');
@@ -3231,7 +3234,7 @@ describe('evolução das posições (classificação comum dos rankings)', () =>
     assert.ok(v.serie.find((x) => x.ano === anos[1])!.posicao_br! >= 1);
   });
 
-  const semSaude = !existsSync(`${DATA}/gold/saude/municipios.parquet`);
+  const semSaude = !existsSync(onde('gold/saude/municipios.parquet'));
   test('cobertura real: crescimento dos vínculos sem o 1º ano da RAIS; homicídios só com população (2000+); trajetória no período efetivo', { skip: semRais || semSaude }, async () => {
     const raisAnos = (await rota<L[]>('trab_serie', { uf: 'GO' })).map((r) => Number(r.ano));
     const cresc = await rota<number[]>('ranking_anos', { dominio: 'trabalho', ind: 'var_empregos', min: 0 });
@@ -4197,5 +4200,194 @@ describe('IA: afirmações de tendência contra as séries calculadas', () => {
     // sem série anual para conferir, ou sem a afirmação, nada a apontar
     assert.deepEqual(tendenciasSemSuporte('Houve crescimento contínuo.', [{ rotulo: 'C1', colunas: ['uf', 'n'], linhas: [['GO', 1], ['MG', 2], ['SP', 3]] }]), []);
     assert.deepEqual(tendenciasSemSuporte('Os vínculos oscilaram.', serie([10, 9, 11])), []);
+  });
+});
+
+describe('saúde: cobertura por indicador, triênio, rede e produção (município de Goiás, 5208905)', () => {
+  const semSaude = !existsSync(onde('gold/saude/municipios.parquet'));
+  const GOIAS = 5208905;
+  const fontesDoManifesto = async () => (await rota<{ fontes: unknown }>('meta')).fontes as FontesMeta;
+
+  test('disponibilidade efetiva: os anos cobertos pela fonte do numerador e do denominador de cada indicador', { skip: semSaude }, async () => {
+    const f = await fontesDoManifesto();
+    const ultimo = (id: string) => anosDoIndicador(indicador(id), f).at(-1);
+    const primeiro = (id: string) => anosDoIndicador(indicador(id), f)[0];
+    // SIM e SINASC (finais) terminam antes do SINAN, do SIH e do CNES; a dengue chega a 2025
+    assert.ok(ultimo('mortalidade_infantil')! < ultimo('dengue_incidencia')!, 'mortalidade infantil termina antes da dengue');
+    assert.equal(ultimo('dengue_incidencia'), f.sinan!.agravos!.dengue[1]);
+    assert.equal(ultimo('tb_incidencia'), 2019, 'a tuberculose termina em 2019');
+    assert.equal(primeiro('chik_incidencia'), 2014);
+    assert.ok(primeiro('cito_25_64') >= 2014 && primeiro('cancer_60_dias') >= 2019, 'SISCAN e oncologia começam depois');
+    assert.equal(primeiro('valor_por_internacao'), 2008, 'o valor real do SIH cobre todo o período, de 2008 em diante');
+    // população da SVS/MS (2000 em diante) limita as taxas por habitante, não as por nascidos vivos
+    assert.ok(primeiro('homicidios') >= 2000);
+    assert.equal(primeiro('mortalidade_infantil'), 1996);
+  });
+
+  test('condição do dado: fora da cobertura, sem registro, zero registrado e dado preliminar são coisas diferentes', () => {
+    const f: FontesMeta = { sim: { anos: [2022, 2023, 2024], preliminares: [2024], preliminar_nao_incluido: [2025] }, populacao_svs: { anos: [2000, 2025] } };
+    assert.equal(condicaoDado('obitos', 5, 2023, f), 'registrado');
+    assert.equal(condicaoDado('obitos', 0, 2023, f), 'zero_registrado');
+    assert.equal(condicaoDado('obitos', null, 2023, f), 'ausente');
+    assert.equal(condicaoDado('obitos', null, 2025, f), 'fora_cobertura', 'mesmo sem valor, o ano fora da fonte não é ausência de registro');
+    assert.equal(condicaoDado('obitos', 0, 2021, f), 'fora_cobertura');
+    assert.equal(condicaoDado('obitos', 7, 2024, f), 'preliminar');
+    assert.ok(avisoPreliminarNaoIncluido('obitos', 2025, f)!.includes('preliminar'));
+    assert.equal(avisoPreliminarNaoIncluido('obitos', 2024, f), null);
+  });
+
+  test('dengue em 2025: 320 casos prováveis e a mesma posição no ranking anual e na evolução da posição', { skip: semSaude }, async () => {
+    const serie = await rota<L[]>('saude_serie', { ente: GOIAS });
+    const g = serie.find((r) => r.ano === 2025)!;
+    assert.equal(g.sinan_dengue_provaveis, 320);
+    const params = { dominio: 'saude', ind: 'dengue_incidencia', ordem: 'desc', de: 2025, ate: 2025, uf: 'GO', min: 5000 };
+    const anual = await rota<Classificacao>('ranking_posicoes', { ...params, lista: 1 });
+    const evolucao = await rota<Classificacao>('ranking_posicoes', { ...params, entes: String(GOIAS) });
+    const noAnual = anual.lista!.find((r) => r.cod_ibge === GOIAS)!;
+    const naEvolucao = evolucao.serie.find((r) => r.ano === 2025)!;
+    assert.ok(noAnual && naEvolucao, 'Goiás está no ranking de 2025');
+    assert.equal(noAnual.posicao_uf, naEvolucao.posicao_uf);
+    assert.equal(noAnual.posicao_br, naEvolucao.posicao_br);
+    assert.equal(noAnual.total_uf, naEvolucao.total_uf, 'o mesmo universo');
+    // a cobertura do indicador (ranking_anos) inclui 2025: o ranking anual não pode parar no último ano do SIM
+    assert.ok((await rota<number[]>('ranking_anos', { dominio: 'saude', ind: 'dengue_incidencia', min: 5000 })).includes(2025));
+  });
+
+  test('ano coberto sem municípios elegíveis não é o mesmo que ano fora da cobertura', { skip: semSaude }, async () => {
+    const f = await fontesDoManifesto();
+    const ind = indicador('mortalidade_infantil');
+    // 2025 está fora da cobertura do SIM/SINASC finais
+    assert.ok(!anosDoIndicador(ind, f).includes(2025));
+    assert.deepEqual(await rota<number[]>('ranking_anos', { dominio: 'saude', ind: ind.id, min: 1000 }).then((a) => a.includes(2025)), false);
+    // 2024 está coberto; com um mínimo impossível não há elegíveis, e a cobertura (anos) segue sendo a da fonte
+    assert.ok(anosDoIndicador(ind, f).includes(2024));
+    const semElegiveis = await rota<Classificacao>('ranking_posicoes', { dominio: 'saude', ind: ind.id, ordem: 'desc', de: 2024, ate: 2024, min: 100000000, lista: 1 });
+    assert.equal(semElegiveis.lista!.length, 0);
+    assert.deepEqual(semElegiveis.anos, [], 'sem elegíveis, mesmo num ano coberto pela fonte');
+  });
+
+  test('mortalidade infantil: 2 óbitos em 206 nascidos em 2024 (9,7‰) e 8 em 684 no triênio 2022–2024 (11,7‰)', { skip: semSaude }, async () => {
+    const serie = await rota<L[]>('saude_serie', { ente: GOIAS });
+    const a24 = serie.find((r) => r.ano === 2024)!;
+    assert.equal(a24.infantis, 2);
+    assert.equal(a24.nascidos, 206);
+    assert.equal(Number(calcular(indicador('mortalidade_infantil'), a24)!.toFixed(1)), 9.7);
+    const tri = calcularJanela(indicador('mortalidade_infantil'), serie, 2022, 2024);
+    assert.equal(tri.numerador, 8);
+    assert.equal(tri.denominador, 684);
+    assert.equal(Number(tri.valor!.toFixed(1)), 11.7);
+    // razão das somas, não a média das três taxas
+    const media = [2022, 2023, 2024].map((a) => calcular(indicador('mortalidade_infantil'), serie.find((r) => r.ano === a)!)!).reduce((s, v) => s + v, 0) / 3;
+    assert.notEqual(Number(media.toFixed(1)), Number(tri.valor!.toFixed(1)));
+    // a rota de janela entrega as somas e os anos com valor, e o município de Goiás fecha com a série
+    const janela = await rota<L[]>('saude_janela', { uf: 'GO', de: 2022, ate: 2024, colunas: 'infantis,nascidos' });
+    const g = janela.find((r) => r.cod_ibge === GOIAS)!;
+    assert.equal(g.infantis, 8);
+    assert.equal(g.nascidos, 684);
+    assert.equal(g.n_infantis, 3);
+    assert.equal(g.n_nascidos, 3);
+    // janela inválida ou sem colunas: vazio, nunca erro de SQL
+    assert.deepEqual(await rota<L[]>('saude_janela', { uf: 'GO', de: 2024, ate: 2022, colunas: 'infantis' }), []);
+    assert.deepEqual(await rota<L[]>('saude_janela', { uf: 'GO', de: 2022, ate: 2024, colunas: 'x; drop table saude_municipios' }), []);
+  });
+
+  test('internações de 2024: 1.876 de moradores, 1.013 fora do município (54,0%); moradores e hospitais são pontos de vista distintos', { skip: semSaude }, async () => {
+    const serie = await rota<L[]>('saude_serie', { ente: GOIAS });
+    const a = serie.find((r) => r.ano === 2024)!;
+    assert.equal(a.int_total, 1876);
+    assert.equal(a.int_fora, 1013);
+    assert.equal(Number(calcular(indicador('internacoes_fora'), a)!.toFixed(3)), 0.54);
+    assert.equal(formatar(indicador('internacoes_fora'), calcular(indicador('internacoes_fora'), a)), '54,0%');
+    // hospitais do município: outro ponto de vista, outro total
+    assert.ok(Number(a.int_atendidas) > 0 && a.int_atendidas !== a.int_total);
+    assert.ok(Number(a.int_atendidas_de_fora) <= Number(a.int_atendidas));
+    // valores monetários: média e total em reais, não em "casos"
+    const medio = indicador('valor_por_internacao');
+    assert.ok(medio.monetario);
+    assert.match(formatar(medio, calcular(medio, a)), /^R\$/);
+    assert.match(formatar(indicador('valor_por_habitante'), calcular(indicador('valor_por_habitante'), a)), /^R\$/);
+  });
+
+  test('município ignorado sai à parte em UF e Brasil e já está nos totais da série', { skip: semSaude }, async () => {
+    const br = await rota<L[]>('saude_serie');
+    const ign = await rota<L[]>('saude_ignorados');
+    const a24 = br.find((r) => r.ano === 2024)!;
+    const i24 = ign.find((r) => r.ano === 2024);
+    assert.ok(i24, 'há internações de residentes sem município válido em 2024');
+    assert.ok(Number(i24!.int_total) > 0 && Number(i24!.int_total) < Number(a24.int_total));
+  });
+
+  test('oncologia em 2025: 95,8% acompanhados de 23 de 24 registros com datas válidas', { skip: semSaude }, async () => {
+    const serie = await rota<L[]>('saude_serie', { ente: GOIAS });
+    const a = serie.find((r) => r.ano === 2025)!;
+    assert.equal(a.onco_trat_validos, 24);
+    assert.equal(a.onco_trat_60d, 23);
+    assert.equal(formatar(indicador('cancer_60_dias'), calcular(indicador('cancer_60_dias'), a)), '95,8%');
+    // o funil é coerente: com datas válidas ≤ com tratamento ≤ diagnósticos; em até 60 dias ≤ com datas válidas
+    assert.ok(Number(a.onco_trat_60d) <= Number(a.onco_trat_validos) && Number(a.onco_trat_validos) <= Number(a.onco_tratados) && Number(a.onco_tratados) <= Number(a.onco_casos));
+  });
+
+  test('produção ambulatorial: procedimentos por grupo fecham com o total; valor real vem de 2008', { skip: semSaude }, async () => {
+    const f = await fontesDoManifesto();
+    assert.ok(f.sia!.anos!.includes(2008) && f.sia!.anos!.includes(2025));
+    const br = await rota<L[]>('saude_serie');
+    const a = br.find((r) => r.ano === 2024)!;
+    const grupos = ['promocao', 'diagnostico', 'clinicos', 'cirurgicos', 'transplantes', 'medicamentos', 'orteses', 'complementares'];
+    const soma = grupos.reduce((s, g) => s + Number(a[`amb_${g}_qtd`] ?? 0), 0);
+    quase(soma, Number(a.amb_qtd), 1e-9);
+    assert.ok(Number(br.find((r) => r.ano === 2008)!.amb_valor_real) > 0, 'valor real de 2008 existe: o IPCA da base começa em 2006');
+    assert.ok(Number(br.find((r) => r.ano === 2008)!.int_valor_real) > 0, 'e o do SIH também');
+  });
+
+  test('médicos: "atuam no município" não é somável; vínculo principal e vínculos são medidas à parte', { skip: semSaude }, async () => {
+    const serie = await rota<L[]>('saude_serie', { ente: GOIAS });
+    const a = serie.find((r) => r.ano === 2024)!;
+    assert.ok(Number(a.cnes_medicos_no_municipio) >= Number(a.cnes_medicos), 'quem atua no município inclui os do vínculo principal');
+    assert.ok(Number(a.cnes_medicos_vinculos) >= Number(a.cnes_medicos), 'vínculos ≥ pessoas');
+    const br = (await rota<L[]>('saude_serie')).find((r) => r.ano === 2024)!;
+    // somar "atuam no município" por UF ou Brasil passa do número de pessoas distintas do vínculo principal
+    assert.ok(Number(br.cnes_medicos_no_municipio) > Number(br.cnes_medicos));
+  });
+
+  test('metadados compartilhados: fonte, unidade, recorte e período do indicador, os mesmos nas telas e nas exportações', { skip: semSaude }, async () => {
+    const f = await fontesDoManifesto();
+    const m = new Map(metadadosIndicador(indicador('dengue_incidencia'), f, 'Goiás'));
+    assert.equal(fonteCurta(indicador('dengue_incidencia')), 'SINAN (dengue) e população da SVS/MS');
+    assert.match(m.get('Fonte')!, /SINAN \(dengue\) e população da SVS\/MS/);
+    assert.match(m.get('Recorte territorial')!, /residência/);
+    assert.equal(m.get('Período de cobertura'), faixaAnos(anosDoIndicador(indicador('dengue_incidencia'), f)));
+    assert.match(new Map(metadadosIndicador(indicador('leitos_sus_mil'), f)).get('Recorte territorial')!, /estabelecimento/);
+  });
+
+  test('versão dos dados sem as colunas novas: o indicador fica indisponível, o resto segue', { skip: semSaude }, async () => {
+    const colunas = new Set((await rota<L[]>('saude_colunas')).map((r) => String(r.column_name)));
+    assert.ok(colunas.has('populacao') && colunas.has('obitos'));
+    const sem = new Set(colunas);
+    sem.delete('siscan_mamo_50_74');
+    assert.equal(disponivelNosDados(indicador('mamo_50_74'), sem), false);
+    assert.equal(disponivelNosDados(indicador('dengue_incidencia'), sem), true);
+    assert.equal(disponivelNosDados(indicador('mamo_50_74'), null), true, 'enquanto carrega, não esconde nada');
+    const faltam = INDICADORES.filter((i) => !disponivelNosDados(i, colunas)).map((i) => i.id).sort();
+    // com o gold publicado hoje faltam só as colunas novas; com o gold reconstruído, nenhuma
+    assert.deepEqual(faltam, process.env.GOLD_PUBLICADO ? ['mamo_50_74'] : []);
+  });
+
+  test('mamografias de 50 a 74 anos: numerador e denominador conferidos antes de entrar', { skip: semSaude }, async () => {
+    const br = await rota<L[]>('saude_serie');
+    const a = br.find((r) => r.ano === 2024)!;
+    if (a.siscan_mamo_50_74 === undefined) return; // gold anterior à coluna
+    assert.ok(Number(a.siscan_mamo_50_74) >= Number(a.siscan_mamo_50_69), '50–74 contém 50–69');
+    assert.ok(Number(a.siscan_mamo_50_74) <= Number(a.siscan_mamografias), 'e cabe no total de mamografias');
+    assert.ok(Number(a.pop_mulheres_50_74) > Number(a.pop_mulheres_50_69), 'população de 50–74 contém a de 50–69');
+  });
+
+  test('tuberculose pelo ano de diagnóstico: a definição ampliada fica perto da série restrita e termina em 2019', { skip: semSaude }, async () => {
+    const br = await rota<L[]>('saude_serie');
+    const a = br.find((r) => r.ano === 2015)!;
+    if (a.sinan_tb_casos_novos_dx === undefined) return; // gold anterior à coluna
+    const restrita = Number(a.sinan_tb_casos_novos);
+    const ampliada = Number(a.sinan_tb_casos_novos_dx);
+    assert.ok(ampliada > 0.9 * restrita && ampliada < 1.15 * restrita, `${ampliada} vs ${restrita}`);
+    assert.equal(br.find((r) => r.ano === 2020)!.sinan_tb_casos_novos_dx ?? null, null, 'nada depois de 2019');
   });
 });

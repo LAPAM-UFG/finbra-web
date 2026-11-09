@@ -55,6 +55,7 @@ Uso:
 import argparse
 import json
 import os
+import re
 import tempfile
 import zipfile
 from datetime import datetime, timezone
@@ -135,7 +136,8 @@ def populacao(con, brutos: Path):
                sum(pop) FILTER (WHERE idade >= 60) AS pop_60_mais,
                sum(pop) FILTER (WHERE sexo = '2' AND idade BETWEEN 10 AND 49) AS pop_mulheres_10_49,
                sum(pop) FILTER (WHERE sexo = '2' AND idade BETWEEN 25 AND 64) AS pop_mulheres_25_64,
-               sum(pop) FILTER (WHERE sexo = '2' AND idade BETWEEN 50 AND 69) AS pop_mulheres_50_69
+               sum(pop) FILTER (WHERE sexo = '2' AND idade BETWEEN 50 AND 69) AS pop_mulheres_50_69,
+               sum(pop) FILTER (WHERE sexo = '2' AND idade BETWEEN 50 AND 74) AS pop_mulheres_50_74
         FROM p GROUP BY ALL ORDER BY ano, cod_ibge""")
     con.execute(f"COPY populacao TO '{GOLD_S / 'populacao.parquet'}' (FORMAT parquet, COMPRESSION zstd)")
     print("populacao:", con.sql("SELECT min(ano), max(ano), count(*), sum(populacao) FILTER (WHERE ano = 2024) FROM populacao").fetchall()[0])
@@ -422,17 +424,25 @@ def sinan(con, micro: Path):
         tube AS (
             SELECT ano, municipio, count(*) FILTER (WHERE TRATAMENTO = '1') AS sinan_tb_casos_novos
             FROM ({ler('TUBE', ', TRATAMENTO')}) GROUP BY ano, municipio),
+        -- definição do Caderno de indicadores da tuberculose: entrada "caso novo" (1), "não sabe" (4) ou "pós-óbito" (6), pelo ano do
+        -- diagnóstico (DT_DIAG, AAAAMMDD) e município de residência; os arquivos finais já não trazem "mudança de diagnóstico"
+        tubd AS (
+            SELECT year(strptime(DT_DIAG, '%Y%m%d')) AS ano, municipio, count(*) AS sinan_tb_casos_novos_dx
+            FROM ({ler('TUBE', ', TRATAMENTO, DT_DIAG')})
+            WHERE TRATAMENTO IN ('1', '4', '6') AND TRY_STRPTIME(DT_DIAG, '%Y%m%d') IS NOT NULL
+              AND year(TRY_STRPTIME(DT_DIAG, '%Y%m%d')) BETWEEN 2001 AND 2019 GROUP BY 1, 2),
         hans AS (
             SELECT ano, municipio, count(*) FILTER (WHERE MODOENTR = '1') AS sinan_hans_casos_novos
             FROM ({ler('HANS', ', MODOENTR')}) GROUP BY ano, municipio),
         viol AS (
             SELECT ano, municipio, count(*) AS sinan_viol_notificacoes FROM ({ler('VIOL')}) GROUP BY ano, municipio),
         chaves AS (SELECT ano, municipio FROM deng UNION SELECT ano, municipio FROM chik UNION SELECT ano, municipio FROM tube
-                   UNION SELECT ano, municipio FROM hans UNION SELECT ano, municipio FROM viol),
+                   UNION SELECT ano, municipio FROM hans UNION SELECT ano, municipio FROM viol UNION SELECT ano, municipio FROM tubd),
         j AS (
             SELECT k.ano, k.municipio, k.municipio // 10000 AS uf, d.* EXCLUDE (ano, municipio), c.* EXCLUDE (ano, municipio),
-                   t.* EXCLUDE (ano, municipio), h.* EXCLUDE (ano, municipio), v.* EXCLUDE (ano, municipio)
+                   t.* EXCLUDE (ano, municipio), td.* EXCLUDE (ano, municipio), h.* EXCLUDE (ano, municipio), v.* EXCLUDE (ano, municipio)
             FROM chaves k LEFT JOIN deng d USING (ano, municipio) LEFT JOIN chik c USING (ano, municipio) LEFT JOIN tube t USING (ano, municipio)
+                 LEFT JOIN tubd td USING (ano, municipio)
                  LEFT JOIN hans h USING (ano, municipio) LEFT JOIN viol v USING (ano, municipio)
             WHERE k.municipio IS NOT NULL AND k.ano BETWEEN 2000 AND 2025)
         -- agravo ausente do ano (arquivo inexistente ou sem a coluna) fica nulo, nunca zero: sem nenhum registro no país, não há dado
@@ -445,10 +455,10 @@ def sinan(con, micro: Path):
 
 
 SINAN_COLUNAS = ["sinan_dengue_provaveis", "sinan_dengue_confirmados", "sinan_dengue_graves", "sinan_dengue_obitos",
-                 "sinan_chik_notificacoes", "sinan_chik_confirmados", "sinan_tb_casos_novos", "sinan_hans_casos_novos", "sinan_viol_notificacoes"]
+                 "sinan_chik_notificacoes", "sinan_chik_confirmados", "sinan_tb_casos_novos", "sinan_tb_casos_novos_dx", "sinan_hans_casos_novos", "sinan_viol_notificacoes"]
 
 
-SISCAN_COLUNAS = ["siscan_cito", "siscan_cito_25_64", "siscan_cito_alterados", "siscan_mamografias", "siscan_mamo_50_69",
+SISCAN_COLUNAS = ["siscan_cito", "siscan_cito_25_64", "siscan_cito_alterados", "siscan_mamografias", "siscan_mamo_50_69", "siscan_mamo_50_74",
                    "siscan_histo_colo", "siscan_histo_mama"]
 
 
@@ -481,6 +491,7 @@ def siscan(con, brutos: Path):
                 SELECT TRY_CAST(CO_MUN_RESIDENCIA AS INTEGER) AS municipio,
                        count(*) AS siscan_mamografias,
                        count(*) FILTER (WHERE SG_SEXO = 'F' AND {idade('CO_IDADE_PACIENTE')} BETWEEN 50 AND 69) AS siscan_mamo_50_69,
+                       count(*) FILTER (WHERE SG_SEXO = 'F' AND {idade('CO_IDADE_PACIENTE')} BETWEEN 50 AND 74) AS siscan_mamo_50_74,
                        count(*) FILTER (WHERE NU_ANO_COMPETENCIA != '{ano}') AS fora_ano_m
                 FROM {ler(mamo.name)} GROUP BY 1),
             hc AS (SELECT TRY_CAST(CO_MUN_RESIDENCIA AS INTEGER) AS municipio, count(*) AS siscan_histo_colo FROM {ler(hc.name)} GROUP BY 1),
@@ -681,6 +692,17 @@ def fonte_saude(con) -> dict:
                             ("resp", "resp_notificacoes", "https://datasus.saude.gov.br/transferencia-de-arquivos/")):
         if col in colunas:
             outros[chave] = {"anos": anos(col), "processado_em": quando, "url": url}
+    # anos que o DATASUS só publica como preliminares (pasta PRELIM do SIM e do SINASC): o painel usa só arquivos finais
+    micro = Path(os.environ.get("SAUDE_MICRO", "E:/finbra/micro/saude/dbc"))
+    prelim = {}
+    for chave, pasta, prefixo in (("sim", "SIM/PRELIM/DORES", "DO"), ("sinasc", "SINASC/PRELIM/DNRES", "DN")):
+        d = micro / pasta
+        if d.is_dir():
+            anos_prelim = sorted({int(m.group(1)) for p in d.glob(f"{prefixo}*.parquet") if (m := re.search(r"(\d{4})\.parquet$", p.name))})
+            ultimo_final = max(anos(("obitos" if chave == "sim" else "nascidos")), default=0)
+            novos = [a for a in anos_prelim if a > ultimo_final]
+            if novos:
+                prelim[chave] = novos
     sia_f = {"sia": {"anos": anos("amb_registros"), "processado_em": quando, "url": "https://datasus.saude.gov.br/transferencia-de-arquivos/"}} if "amb_registros" in colunas else {}
     aps_f = {}
     if "aps_cobertura" in colunas or "ab_cobertura" in colunas:
@@ -694,8 +716,8 @@ def fonte_saude(con) -> dict:
         **cnes_f,
         **sinan_f,
         **outros,
-        "sim": {"anos": anos("obitos"), "processado_em": quando, "url": "https://datasus.saude.gov.br/transferencia-de-arquivos/"},
-        "sinasc": {"anos": anos("nascidos"), "processado_em": quando, "url": "https://datasus.saude.gov.br/transferencia-de-arquivos/"},
+        "sim": {"anos": anos("obitos"), "processado_em": quando, "url": "https://datasus.saude.gov.br/transferencia-de-arquivos/", **({"preliminar_nao_incluido": prelim["sim"]} if "sim" in prelim else {})},
+        "sinasc": {"anos": anos("nascidos"), "processado_em": quando, "url": "https://datasus.saude.gov.br/transferencia-de-arquivos/", **({"preliminar_nao_incluido": prelim["sinasc"]} if "sinasc" in prelim else {})},
         "populacao_svs": {"anos": anos("populacao"), "processado_em": quando,
                           "url": "ftp://ftp.datasus.gov.br/dissemin/publicos/IBGE/POPSVS/"},
     }

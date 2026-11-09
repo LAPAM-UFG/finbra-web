@@ -1075,6 +1075,47 @@ const rotasSaude: Record<string, (q: Params) => Promise<unknown>> = {
     );
   },
 
+  /** Colunas da tabela de saúde carregada: as telas escondem o que a versão dos dados ainda não traz. */
+  async saude_colunas() {
+    await tabelasSaude();
+    return consultar(`SELECT column_name FROM information_schema.columns WHERE table_name = 'saude_municipios' ORDER BY ordinal_position`);
+  },
+
+  /**
+   * Registros sem município válido (município ignorado, sem cod_ibge) da UF ou do Brasil, por ano: entram nos totais de
+   * UF e Brasil de saude_serie, e aqui saem à parte para a página mostrá-los separados.
+   */
+  async saude_ignorados(q) {
+    await tabelasSaude();
+    const p: Record<string, Valor> = {};
+    const e = escopoTrabalho({ uf: q.uf }, p);
+    return consultar(
+      `SELECT ano, sum(COLUMNS(* EXCLUDE (${CHAVES_SAUDE})))::DOUBLE
+       FROM saude_municipios m WHERE ${e.onde} AND m.cod_ibge IS NULL GROUP BY ano ORDER BY ano`,
+      p,
+    );
+  },
+
+  /**
+   * Municípios com a soma das colunas pedidas numa janela de anos [de, ate] (ex.: o triênio): a razão do período é a
+   * razão das somas. Cada coluna vem com n_<coluna>, os anos da janela com valor, para a página só aceitar quem tem todos.
+   */
+  async saude_janela(q) {
+    await tabelasSaude();
+    const de = inteiro(q.de);
+    const ate = inteiro(q.ate);
+    const colunas = String(q.colunas ?? '').split(',').filter((c) => /^[a-z][a-z0-9_]*$/.test(c)).slice(0, 8);
+    if (!de || !ate || ate < de || !colunas.length) return [];
+    const p: Record<string, Valor> = { de, ate };
+    const e = escopoTrabalho({ uf: q.uf }, p);
+    return consultar(
+      `SELECT cod_ibge, nome, uf, ${colunas.map((c) => `sum(${c})::DOUBLE AS ${c}, count(${c})::INTEGER AS n_${c}`).join(', ')}
+       FROM saude_municipios m WHERE ${e.onde} AND m.cod_ibge IS NOT NULL AND m.ano BETWEEN $de::INTEGER AND $ate::INTEGER
+       GROUP BY cod_ibge, nome, uf ORDER BY nome`,
+      p,
+    );
+  },
+
   /** Municípios de uma UF (ou do Brasil) num ano, com as contagens; os indicadores saem na página. */
   async saude_municipios(q) {
     await tabelasSaude();

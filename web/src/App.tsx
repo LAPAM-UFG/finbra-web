@@ -13,6 +13,8 @@ import { LrfDemonstrativos, LrfIndicadores } from './pages/Lrf';
 import { Deflatores, Qualidade } from './pages/Metodologia';
 import { Rankings } from './pages/Rankings';
 import { SaudeEvolucao, SaudeMetodologia, SaudeRankings, SaudeVisaoGeral } from './pages/SaudeDatasus';
+import { SaudeAmbulatorial } from './pages/SaudeAmbulatorial';
+import { SaudeRede } from './pages/SaudeRede';
 import { ReceitasEvolucao, ReceitasVisaoGeral } from './pages/Receitas';
 import { Educacao, RemuneracaoEducacao, Saude } from './pages/SaudeEducacao';
 import { Socioeconomico } from './pages/Socioeconomico';
@@ -51,7 +53,8 @@ const menuTrabalho = (): [string, [string, string][]][] => [
 /** Área de saúde (SIM, SINASC e população da SVS/MS), em /datasus; o /saude das finanças é o SIOPS. */
 const menuSaude = (): [string, [string, string][]][] => [
   [t('Indicadores de saúde', 'Health indicators'), [['/datasus', t('Visão geral', 'Overview')], ['/datasus/evolucao', t('Evolução', 'Trends')],
-    ['/datasus/rankings', 'Rankings']]],
+    ['/datasus/rankings', 'Rankings'], ['/datasus/rede', t('Rede e acesso', 'Network and access')],
+    ['/datasus/ambulatorial', t('Produção ambulatorial', 'Outpatient output')]]],
   [t('Metodologia', 'Methodology'), [['/datasus/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
 ];
 
@@ -215,6 +218,8 @@ export function App() {
               <Route path="/datasus" element={<SaudeVisaoGeral />} />
               <Route path="/datasus/evolucao" element={<SaudeEvolucao />} />
               <Route path="/datasus/rankings" element={<SaudeRankings />} />
+              <Route path="/datasus/rede" element={<SaudeRede />} />
+              <Route path="/datasus/ambulatorial" element={<SaudeAmbulatorial />} />
               <Route path="/datasus/metodologia" element={<SaudeMetodologia />} />
               <Route path="/munic" element={<MunicVisaoGeral />} />
               <Route path="/munic/evolucao" element={<MunicEvolucao />} />
