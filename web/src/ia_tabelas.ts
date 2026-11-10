@@ -432,7 +432,7 @@ const NOME_TIPO = (): Partial<Record<TipoColuna, string>> => ({
 export function tabelaExportavel(tab: TabelaAnalitica, extras: [string, string][] = [], cobertura?: Cobertura | null) {
   // definição, fonte, cobertura, filtros e classificação das colunas do catálogo (as calculadas na consulta não têm)
   const fichas = [...new Set(tab.nomes ?? [])].flatMap((n) => {
-    const f = fichaDaColuna(n, cobertura);
+    const f = fichaDaColuna(n, cobertura, tab.sql);
     return f ? [[`${t('Definição', 'Definition')}: ${n}`, f] as [string, string]] : [];
   });
   return {

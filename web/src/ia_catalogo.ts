@@ -13,7 +13,7 @@ import type { Cobertura } from './ia';
 import type { TipoColuna } from './ia_formato';
 
 /** Fonte cujos anos (do manifesto) dão a cobertura temporal da coluna. */
-export type ChaveCobertura = 'dca' | 'pib' | 'rais' | 'sim' | 'sinasc' | 'sih' | 'icsap' | 'sia' | 'aps' | 'cnes' | 'sinan' | 'siscan' | 'oncologia' | 'resp';
+export type ChaveCobertura = 'dca' | 'pib' | 'rais' | 'sim' | 'sinasc' | 'sih' | 'icsap' | 'sia' | 'aps' | 'cnes' | 'sinan' | 'siscan' | 'oncologia' | 'resp' | 'vacinacao';
 
 export type Coluna = {
   tipo: TipoColuna;
@@ -87,6 +87,9 @@ const ONCO_F = 'Ministério da Saúde/DATASUS: Painel de Oncologia (diagnóstico
 const onco = (x: Omit<Coluna, 'fonte' | 'tipo'>): Coluna => ({ tipo: 'contagem', fonte: ONCO_F, tabelas: ['saude_municipios'], cobertura: 'oncologia', territorio: 'municípios de residência', ressalva: 'registro de diagnósticos nos sistemas do SUS, não incidência; antes de 2019 o painel cobria bem menos casos; os últimos anos ainda recebem registros', ...x });
 const RESP_F = 'Ministério da Saúde/DATASUS: RESP (microcefalia e alterações do sistema nervoso central, por município de residência e ano da notificação)';
 const resp = (x: Omit<Coluna, 'fonte' | 'tipo'>): Coluna => ({ tipo: 'contagem', fonte: RESP_F, tabelas: ['saude_municipios'], cobertura: 'resp', territorio: 'municípios de residência', ressalva: 'notificação não é caso confirmado; a vigilância mudou muito depois de 2016', ...x });
+const VAC_F = 'Ministério da Saúde, PNI / InfoMS: cobertura vacinal do calendário nacional por município de residência (denominador: nascidos vivos do SINASC)';
+const RESSALVA_VAC = 'até 2022 o método é por tipo de dose e de 2023 em diante por indivíduo: as séries não são comparáveis; o catálogo de imunobiológicos varia por ano; cobertura é razão de 0 a 1 e pode passar de 100%; UF e Brasil são os totalizadores oficiais (saude_vacinacao_territorios), nunca a média dos municípios; vacinas diferentes não se somam';
+const vac = (x: Omit<Coluna, 'fonte' | 'tipo'> & { tipo?: TipoColuna }): Coluna => ({ tipo: 'contagem', fonte: VAC_F, tabelas: ['saude_vacinacao', 'saude_vacinacao_territorios'], cobertura: 'vacinacao', territorio: 'município de residência (saude_vacinacao); Brasil, regiões e UFs oficiais (saude_vacinacao_territorios)', ressalva: RESSALVA_VAC, ...x });
 const FUNCOES = 'função de governo 04 (Portaria MOG 42/1999)';
 
 const TERR_DCA = 'municípios e estados (com o DF) que entregaram a DCA do exercício';
@@ -132,6 +135,8 @@ export const COLUNAS: Record<string, Coluna> = {
     [`amb_${nome}_qtd`, sia({ rotulo: `procedimentos ambulatoriais: ${desc}`, definicao: `quantidade aprovada dos procedimentos do grupo ${cod} (${desc}) da tabela SIGTAP`, classificacao: 'grupo de procedimento (SIGTAP)' })],
     [`amb_${nome}_valor_real`, sia({ tipo: 'reais', rotulo: `valor ambulatorial: ${desc} (R$ de 2025)`, definicao: `valor aprovado do grupo ${cod} (${desc}), em reais de 2025 pelo IPCA acumulado (dez/dez)`, classificacao: 'grupo de procedimento (SIGTAP)' })],
   ])),
+  cobertura_fonte: vac({ tipo: 'razao', rotulo: 'cobertura vacinal como veio da fonte', definicao: 'valor original da fonte, inclusive a sentinela 0,0000001 que ela devolve com numerador positivo e denominador zero; não é cobertura verdadeira (use cobertura)' }),
+  imunobiologico: vac({ tipo: 'texto', rotulo: 'imunobiológico', definicao: 'identificador estável do rótulo oficial da vacina (ex.: bcg, triplice_viral_1_dose); o catálogo varia por ano e rótulos parecidos de métodos diferentes não são emendados', classificacao: 'catálogo oficial do ano (saude_vacinacao_catalogo)' }),
   ab_cobertura: aps({ tipo: 'percentual', rotulo: 'cobertura da atenção básica (metodologia antiga, 2008–2020)', definicao: 'percentual da população coberta pela atenção básica (equipes de Saúde da Família e atenção básica equivalente), limitado a 100%; valor de dezembro' }),
   ab_cobertura_sf: aps({ tipo: 'percentual', rotulo: 'cobertura da Saúde da Família (2008–2020)', definicao: 'percentual da população coberta pela Estratégia Saúde da Família, metodologia antiga; valor de dezembro' }),
   ab_equipes_esf: aps({ rotulo: 'equipes de Saúde da Família (2008–2020)', definicao: 'equipes de Saúde da Família no município em dezembro, metodologia antiga' }),
@@ -276,15 +281,34 @@ export function coberturaDaColuna(c: Coluna, cob?: Cobertura | null): string {
   if (c.cobertura === 'siscan') return intervalo(cob?.siscan);
   if (c.cobertura === 'oncologia') return intervalo(cob?.oncologia);
   if (c.cobertura === 'resp') return intervalo(cob?.resp);
+  if (c.cobertura === 'vacinacao') return intervalo(cob?.vacinacao);
   return c.cobertura ?? '';
+}
+
+/**
+ * Nomes genéricos (numerador, denominador, cobertura, metodo) que, nas tabelas de vacinação, têm o sentido da cobertura vacinal, mas em outras
+ * tabelas (óbitos ÷ nascidos, por exemplo) significam outra coisa: só valem quando a consulta lê uma tabela de vacinação (colunaDaConsulta).
+ */
+const TABELAS_VACINACAO = /\bsaude_vacinacao(_territorios|_catalogo)?\b/i;
+const COLUNAS_SO_VACINACAO: Record<string, Coluna> = {
+  numerador: vac({ rotulo: 'numerador da cobertura vacinal', definicao: 'doses aplicadas (método por tipo de dose, até 2022) ou pessoas vacinadas, cada uma contada uma vez (método por indivíduo, 2023 em diante); valor oficial, sem transformação', oficial: 'InfoMS / PNI' }),
+  denominador: vac({ rotulo: 'denominador da cobertura vacinal', definicao: 'nascidos vivos do SINASC (coortes de mais de um ano usam o SINASC do ano de nascimento da coorte); não é a população da SVS/MS nem do IBGE', oficial: 'InfoMS / PNI' }),
+  cobertura: vac({ tipo: 'razao', rotulo: 'cobertura vacinal (razão de 0 a 1)', definicao: 'numerador ÷ denominador como a fonte oficial entrega (0,72 = 72%), sem limite de 100%; vazia quando o denominador é zero (não calculável)', oficial: 'InfoMS / PNI' }),
+  metodo: vac({ tipo: 'texto', rotulo: 'método de cálculo da cobertura', definicao: "'tipo_de_dose' (até 2022) ou 'individuo' (2023 em diante), conforme a Nota Técnica nº 84/2026-DPNI/SVSA/MS" }),
+};
+
+/** Coluna do catálogo; as genéricas de vacinação só quando o SQL lê uma tabela de vacinação. */
+export function colunaDaConsulta(nome: string, sql?: string): Coluna | undefined {
+  const k = nome.toLowerCase();
+  return COLUNAS[k] ?? (sql && TABELAS_VACINACAO.test(sql) ? COLUNAS_SO_VACINACAO[k] : undefined);
 }
 
 /**
  * Ficha de uma coluna do catálogo para a exportação e para a tela: definição, fonte, cobertura, filtros,
  * classificação, se é valor oficial ou recalculado e ressalvas. Colunas calculadas na consulta não têm ficha.
  */
-export function fichaDaColuna(nome: string, cob?: Cobertura | null): string | null {
-  const c = COLUNAS[nome.toLowerCase()];
+export function fichaDaColuna(nome: string, cob?: Cobertura | null, sql?: string): string | null {
+  const c = colunaDaConsulta(nome, sql);
   if (!c || c.fonte === REG) return null;
   const anos = coberturaDaColuna(c, cob);
   return [
@@ -387,6 +411,12 @@ export const CONCEITOS: Conceito[] = [
     pedido: /v[ií]nculos?\s+(da|na|das)\s+prefeitura|servidores?\s+(municipais|da\s+prefeitura)|emprego\s+p[úu]blico\s+municipal|funcionalismo\s+municipal/i,
     atende: /\bnatureza_juridica\b/i,
     orientacao: 'a prefeitura é identificada pela natureza jurídica municipal (1031, 1244, 1120, 1155), só nos microdados (rais_vinculos); a divisão 84 da CNAE (empregos_adm_publica) é a atividade e inclui órgãos estaduais e federais no município. Sem os microdados, diga isso e não use a CNAE 84 como resposta',
+  },
+  {
+    id: 'cobertura_vacinal', nome: 'cobertura vacinal',
+    pedido: /cobertura\s+vacinal|coberturas?\s+de\s+vacina|vacina[çc][ãa]o|imuniza[çc][ãa]o|vacinas?\s+(em\s+dia|aplicadas)/i,
+    atende: /\bsaude_vacinacao(_territorios)?\b/i,
+    orientacao: 'use saude_vacinacao (município) ou saude_vacinacao_territorios (Brasil, regiões e UFs oficiais); cobertura é razão de 0 a 1 (nunca multiplique duas vezes), denominador zero é não calculável, acima de 100% é valor observado; o método muda em 2023 (séries separadas), o catálogo varia por ano, vacinas diferentes não se somam e UF/Brasil não são a média dos municípios',
   },
   {
     id: 'mortalidade_infantil', nome: 'mortalidade infantil',

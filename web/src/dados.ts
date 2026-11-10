@@ -1180,6 +1180,103 @@ const rotasSaude: Record<string, (q: Params) => Promise<unknown>> = {
   },
 };
 
+// ---------------- saúde: cobertura vacinal oficial por residência (PNI / InfoMS) ----------------
+
+/**
+ * Três tabelas independentes de saude_municipios (pipeline/vacinacao.py), baixadas só quando a página de vacinação ou a IA pedem:
+ * saude_vacinacao (ano × município × imunobiológico, ~10 MB), saude_vacinacao_territorios (Brasil, regiões e UFs: totalizadores
+ * oficiais) e saude_vacinacao_catalogo (rótulo, método e meta de cada imunobiológico por ano). A cobertura é razão (0–1) e só existe
+ * com denominador positivo; UF e Brasil vêm dos totalizadores oficiais, nunca da média dos municípios. O nome do município vem do cadastro.
+ */
+let vacinacaoCarregada: Promise<void> | null = null;
+export function tabelasVacinacao() {
+  vacinacaoCarregada ??= (async () => {
+    const { con } = await iniciar();
+    const arquivos = [['saude_vacinacao', 'vacinacao'], ['saude_vacinacao_territorios', 'vacinacao_territorios'], ['saude_vacinacao_catalogo', 'vacinacao_catalogo']] as const;
+    // primeiro baixa TUDO: uma falha em qualquer arquivo não deixa tabela instalada pela metade
+    const dados = await Promise.all(arquivos.map(async ([tabela, arquivo]) => [tabela, await baixar(`gold/saude/${arquivo}.parquet`)] as const));
+    // CREATE OR REPLACE só nestas três tabelas: refazer a inicialização depois de uma falha é seguro e não toca em outros domínios
+    for (const [tabela, bytes] of dados) {
+      await db.registerFileBuffer(`${tabela}.parquet`, bytes);
+      await con.query(tabela === 'saude_vacinacao'
+        ? `CREATE OR REPLACE TABLE saude_vacinacao AS SELECT v.*, e.nome FROM read_parquet('saude_vacinacao.parquet') v
+           LEFT JOIN entes e ON e.cod_ibge = v.cod_ibge AND e.esfera = 'M' ORDER BY v.ano, v.imunobiologico, v.municipio`
+        : `CREATE OR REPLACE TABLE ${tabela} AS SELECT * FROM read_parquet('${tabela}.parquet')`);
+    }
+  })();
+  vacinacaoCarregada.catch(() => (vacinacaoCarregada = null));
+  return vacinacaoCarregada;
+}
+
+/** Só testes: troca a leitura de arquivos e apaga as tabelas de vacinação para exercitar a carga do zero. */
+export function usarLeituraNoTeste(ler: (caminho: string) => Promise<Uint8Array>) {
+  lerLocal = ler;
+}
+export async function reiniciarVacinacaoNoTeste() {
+  const { con } = await iniciar();
+  for (const t of ['saude_vacinacao', 'saude_vacinacao_territorios', 'saude_vacinacao_catalogo']) await con.query(`DROP TABLE IF EXISTS ${t}`);
+  vacinacaoCarregada = null;
+}
+
+/** Escopo da vacinação: município (tabela municipal), UF ou Brasil (totalizadores oficiais, nunca a soma ou a média dos municípios). */
+function escopoVacinacao(q: Params, p: Record<string, Valor>) {
+  const ente = inteiro(q.ente);
+  if (ente) {
+    p.ente = ente === 53 ? 5300108 : ente;
+    return { tipo: 'municipio' as const, de: 'saude_vacinacao t', onde: 't.cod_ibge = $ente::INTEGER' };
+  }
+  const uf = UFS.has(String(q.uf)) ? String(q.uf) : null;
+  if (uf) {
+    p.uf = uf;
+    return { tipo: 'uf' as const, de: 'saude_vacinacao_territorios t', onde: `t.nivel = 'UF' AND t.codigo = $uf` };
+  }
+  return { tipo: 'br' as const, de: 'saude_vacinacao_territorios t', onde: `t.nivel = 'BR'` };
+}
+
+const COLUNAS_VACINACAO = `t.ano::INTEGER AS ano, t.imunobiologico, c.rotulo, t.metodo, t.numerador::DOUBLE AS numerador, t.denominador::DOUBLE AS denominador,
+  t.cobertura, t.cobertura_fonte, t.status, c.meta`;
+const JUNCAO_CATALOGO = 'JOIN saude_vacinacao_catalogo c ON c.ano = t.ano AND c.imunobiologico = t.imunobiologico';
+
+const rotasVacinacao: Record<string, (q: Params) => Promise<unknown>> = {
+  /** Imunobiológicos de cada ano (rótulo original, método e meta oficial confirmada): o catálogo varia por ano e não se emenda. */
+  async vacinacao_catalogo() {
+    await tabelasVacinacao();
+    return consultar(`SELECT ano::INTEGER AS ano, imunobiologico, rotulo, metodo, ordem::INTEGER AS ordem, municipios::INTEGER AS municipios,
+      municipios_calculaveis::INTEGER AS municipios_calculaveis, meta, meta_fonte FROM saude_vacinacao_catalogo ORDER BY ano, ordem`);
+  },
+
+  /** Série de um imunobiológico no escopo (município, UF ou Brasil), uma linha por ano com dado; o método vem em cada linha. */
+  async vacinacao_serie(q) {
+    await tabelasVacinacao();
+    const p: Record<string, Valor> = { imuno: String(q.imuno ?? '') };
+    const e = escopoVacinacao(q, p);
+    return consultar(`SELECT ${COLUNAS_VACINACAO} FROM ${e.de} ${JUNCAO_CATALOGO} WHERE ${e.onde} AND t.imunobiologico = $imuno ORDER BY t.ano`, p);
+  },
+
+  /** Todos os imunobiológicos do escopo num ano, na ordem do catálogo. */
+  async vacinacao_ano(q) {
+    await tabelasVacinacao();
+    const p: Record<string, Valor> = { ano: inteiro(q.ano) };
+    const e = escopoVacinacao(q, p);
+    return consultar(`SELECT ${COLUNAS_VACINACAO} FROM ${e.de} ${JUNCAO_CATALOGO} WHERE ${e.onde} AND t.ano = $ano::INTEGER ORDER BY c.ordem`, p);
+  },
+
+  /** Municípios (da UF ou do Brasil) com a cobertura de um imunobiológico num ano; só os do cadastro (os demais ficam à parte, contados). */
+  async vacinacao_municipios(q) {
+    await tabelasVacinacao();
+    const p: Record<string, Valor> = { ano: inteiro(q.ano), imuno: String(q.imuno ?? '') };
+    const uf = UFS.has(String(q.uf)) ? String(q.uf) : null;
+    if (uf) p.uf = uf;
+    return consultar(
+      `SELECT t.cod_ibge, t.municipio, t.nome, t.uf, t.numerador::DOUBLE AS numerador, t.denominador::DOUBLE AS denominador, t.cobertura, t.cobertura_fonte, t.status,
+              count(*) FILTER (WHERE t.cod_ibge IS NULL) OVER ()::INTEGER AS sem_cadastro
+       FROM saude_vacinacao t WHERE t.ano = $ano::INTEGER AND t.imunobiologico = $imuno ${uf ? 'AND t.uf = $uf' : ''}
+       ORDER BY t.nome NULLS LAST, t.municipio`,
+      p,
+    );
+  },
+};
+
 // ---------------- MUNIC e ESTADIC (IBGE): gestão pública dos municípios e dos estados ----------------
 
 /**
@@ -2375,7 +2472,7 @@ export async function consultaLivre(sql: string, limite: number, sinal?: AbortSi
 }
 
 export async function executar(caminho: string, params: Params): Promise<unknown> {
-  const rota = rotas[caminho] ?? rotasLrf[caminho] ?? rotasSaudeEducacao[caminho] ?? rotasTrabalho[caminho] ?? rotasConsulta[caminho] ?? rotasSaude[caminho] ?? rotasMunic[caminho] ?? rotasClima[caminho]
+  const rota = rotas[caminho] ?? rotasLrf[caminho] ?? rotasSaudeEducacao[caminho] ?? rotasTrabalho[caminho] ?? rotasConsulta[caminho] ?? rotasSaude[caminho] ?? rotasVacinacao[caminho] ?? rotasMunic[caminho] ?? rotasClima[caminho]
     ?? rotasPosicoes[caminho];
   if (!rota) throw new Error(`rota desconhecida: ${caminho}`);
   return rota(params);

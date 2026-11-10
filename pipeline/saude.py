@@ -32,6 +32,11 @@ gold/saude/icsap.parquet       ano × município de residência: internações p
                                (internações de residentes sem partos, CID-10 O80–O84) e os 19 grupos (icsap.py); entra em
                                municipios.parquet (icsap_*)
 
+gold/saude/vacinacao*.parquet  cobertura vacinal oficial por residência (PNI / InfoMS, 2015–2025): vacinacao (ano × município × imunobiológico),
+                               vacinacao_territorios (Brasil, regiões e UFs oficiais) e vacinacao_catalogo. NÃO entram em
+                               municipios.parquet: vêm de brutos próprios (vacinacao_baixar.py, vacinacao.py) e o manifesto
+                               guarda a fonte (fontes.vacinacao) através de fonte_saude
+
 gold/saude/cnes.parquet        ano × município do estabelecimento: retrato de dezembro do CNES (2006–2025) com estabelecimentos
                                (total, com vínculo SUS, hospitais e unidades básicas), leitos (existentes, SUS e por tipo)
                                e profissionais (médicos, enfermeiros e dentistas, de 2007 em diante, cada pessoa uma só vez no
@@ -721,9 +726,15 @@ def fonte_saude(con) -> dict:
         series = {nome: anos(col) for nome, col in (("ab", "ab_cobertura"), ("aps", "aps_cobertura"), ("acs", "acs_cobertura")) if col in colunas}
         aps_f = {"aps": {"anos": sorted({a for v in series.values() for a in v}), "series": {k: [v[0], v[-1]] for k, v in series.items() if v},
                          "processado_em": quando, "url": "https://relatorioaps.saude.gov.br/"}}
+    vac_arq = GOLD_S / "vacinacao.parquet"
+    vac_f = {}
+    if vac_arq.exists():  # independente de municipios.parquet: sem isto, refazer o gold apagaria a fonte do manifesto
+        from vacinacao import fonte_vacinacao
+        vac_f = {"vacinacao": fonte_vacinacao(con, vac_arq)}
     return {
         **sih,
         **sia_f,
+        **vac_f,
         **aps_f,
         **icsap_f,
         **cnes_f,

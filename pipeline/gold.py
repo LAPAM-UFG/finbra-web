@@ -432,7 +432,7 @@ def fontes(con):
 
 
 def fonte_datasus(con):
-    """SIM, SINASC e população da SVS (saude.py): sem isto, refazer o gold apagaria essas fontes do manifesto."""
+    """SIM, SINASC, população da SVS e vacinação (saude.py, vacinacao.py): sem isto, refazer o gold apagaria essas fontes do manifesto."""
     from saude import fonte_saude
 
     return fonte_saude(con)

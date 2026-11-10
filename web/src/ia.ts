@@ -12,7 +12,7 @@
  * confere os códigos de território (conferirCodigos); lugares citados pelo nome passam pela ferramenta
  * "localizar", que usa o cadastro de entes.
  */
-import { abandonarConsultaIa, consultaLivre, prepararResultadosIa, contextoTrabalhoIa, manifestoDados, tabelaDespesaFuncao, tabelaLrf, tabelasEducacaoSaude, tabelasIaClima, tabelasIaMunic, tabelasIaTrabalho, tabelasSaude } from './dados';
+import { abandonarConsultaIa, consultaLivre, prepararResultadosIa, contextoTrabalhoIa, manifestoDados, tabelaDespesaFuncao, tabelaLrf, tabelasEducacaoSaude, tabelasIaClima, tabelasVacinacao, tabelasIaMunic, tabelasIaTrabalho, tabelasSaude } from './dados';
 import { t } from './idioma';
 import {
   catalogoDeResultados, citadasNoSql, compactarParaEnvio, tendenciasSemSuporte, descreverParcial, dicaDoErro, executarPartida, incoerenciasDoRecorte, lerParticao, nomeTabela, resultadosReaproveitaveis,
@@ -227,6 +227,7 @@ export function disponibilidadeNoAno(ano: number, paineis: Painel[], c: Cobertur
     if (c.siscan?.length) marcar('SISCAN', c.siscan.includes(ano), faixa(c.siscan));
     if (c.oncologia?.length) marcar('Painel de Oncologia', c.oncologia.includes(ano), faixa(c.oncologia));
     if (c.resp?.length) marcar('RESP', c.resp.includes(ano), faixa(c.resp));
+    if (c.vacinacao?.length) marcar('Vacinação (cobertura por residência)', c.vacinacao.includes(ano), faixa(c.vacinacao));
     if (c.popSvs?.length) marcar('população da SVS/MS', c.popSvs.includes(ano), faixa(c.popSvs));
   }
   if (paineis.includes('munic')) {
@@ -282,7 +283,7 @@ export type Cobertura = {
   rais: number[]; caged: { de: number; ate: number } | null; microdados: boolean; dca: number[];
   pib?: { de: number; ate: number; setorial_ate?: number } | null; siope?: number[]; siopeRemuneracao?: number[]; siops?: number[];
   lrf?: { de: number; ate: number; parciais?: number[] } | null; bolsa?: { de: number; ate: number; mes: number } | null; inss?: number[];
-  sim?: number[]; sinasc?: number[]; sih?: number[]; icsap?: number[]; sia?: number[]; aps?: number[]; cnes?: number[]; sinan?: number[]; siscan?: number[]; oncologia?: number[]; resp?: number[]; popSvs?: number[]; munic?: number[]; estadic?: number[]; clima?: { de: number; ate: number } | null;
+  sim?: number[]; sinasc?: number[]; sih?: number[]; icsap?: number[]; sia?: number[]; aps?: number[]; cnes?: number[]; sinan?: number[]; siscan?: number[]; oncologia?: number[]; resp?: number[]; vacinacao?: number[]; popSvs?: number[]; munic?: number[]; estadic?: number[]; clima?: { de: number; ate: number } | null;
 };
 /** Sugestão: título curto, a pergunta completa (que vai para o campo), o tema e as bases que a pergunta usa. */
 export type Sugestao = { titulo: string; tema: string; texto: string; paineis: Painel[]; nota?: string };
@@ -535,7 +536,7 @@ export function coberturaPorAno(c: Cobertura, paineis: Painel[]): Map<number, { 
   }
   if (paineis.includes('munic')) fechadas([...(c.munic ?? []), ...(c.estadic ?? [])]);
   if (paineis.includes('clima') && c.clima) mensal('Clima', c.clima.de * 100 + 1, c.clima.ate);
-  if (paineis.includes('saude')) fechadas([...(c.sim ?? []), ...(c.sinasc ?? []), ...(c.sih ?? []), ...(c.icsap ?? []), ...(c.sia ?? []), ...(c.aps ?? []), ...(c.cnes ?? []), ...(c.sinan ?? []), ...(c.siscan ?? []), ...(c.oncologia ?? []), ...(c.resp ?? []), ...(c.popSvs ?? [])]);
+  if (paineis.includes('saude')) fechadas([...(c.sim ?? []), ...(c.sinasc ?? []), ...(c.sih ?? []), ...(c.icsap ?? []), ...(c.sia ?? []), ...(c.aps ?? []), ...(c.cnes ?? []), ...(c.sinan ?? []), ...(c.siscan ?? []), ...(c.oncologia ?? []), ...(c.resp ?? []), ...(c.vacinacao ?? []), ...(c.popSvs ?? [])]);
   return anos;
 }
 
@@ -635,6 +636,10 @@ export function descreverCobertura(paineis: Painel[], c: Cobertura): string[] {
   if (paineis.includes('saude') && c.resp?.length) {
     linhas.push(t(`RESP ${faixa(c.resp[0], c.resp.at(-1)!)}: notificações e confirmações de microcefalia e alterações do sistema nervoso central, por município de residência`,
       `RESP ${faixa(c.resp[0], c.resp.at(-1)!)}: notifications and confirmations of microcephaly and central nervous system changes, by municipality of residence`));
+  }
+  if (paineis.includes('saude') && c.vacinacao?.length) {
+    linhas.push(t(`Vacinação ${faixa(c.vacinacao[0], c.vacinacao.at(-1)!)}: cobertura vacinal oficial do calendário nacional (Ministério da Saúde, PNI) por município de residência e imunobiológico, em tabelas próprias (saude_vacinacao*); por tipo de dose até 2022 e por indivíduo de 2023 em diante, séries não comparáveis; denominador do SINASC`,
+      `Vaccination ${faixa(c.vacinacao[0], c.vacinacao.at(-1)!)}: official national-schedule vaccination coverage (Ministry of Health, PNI) by municipality of residence and immunobiological, in their own tables (saude_vacinacao*); by dose type up to 2022 and per individual from 2023, non-comparable series; SINASC denominator`));
   }
   if (paineis.includes('saude') && c.popSvs?.length) {
     linhas.push(t(`População da SVS/MS ${faixa(c.popSvs[0], c.popSvs.at(-1)!)}: estimativas por município, sexo e idade, denominador das taxas de saúde`,
@@ -897,6 +902,8 @@ const FONTES_TABELAS: [RegExp | ((sql: string) => boolean), () => string][] = [
     () => t('Ministério da Saúde/DATASUS: SIM (óbitos por município de residência)', 'Ministry of Health/DATASUS: SIM (deaths by municipality of residence)')],
   [(s) => /\bsaude_municipios\b/.test(s) && /\b(nascidos|baixo_peso|peso_informado|prematuros|gestacao_informada|cesareos|parto_informado|consultas_\w+|sem_consulta|maes_\w+|idade_mae_informada)\b/.test(s),
     () => t('Ministério da Saúde/DATASUS: SINASC (nascidos vivos por município de residência da mãe)', 'Ministry of Health/DATASUS: SINASC (live births by mother’s municipality of residence)')],
+  [/\bsaude_vacinacao(_territorios|_catalogo)?\b/,
+    () => t('Ministério da Saúde, PNI / InfoMS: cobertura vacinal do calendário nacional por município de residência (denominador: nascidos vivos do SINASC)', 'Ministry of Health, PNI / InfoMS: national-schedule vaccination coverage by municipality of residence (denominator: SINASC live births)')],
   [(s) => /\bsaude_municipios\b/.test(s) && /\bsiscan_\w+\b/.test(s),
     () => t('Ministério da Saúde/DATASUS: SISCAN (exames de rastreamento do câncer do colo do útero e da mama por município de residência)', 'Ministry of Health/DATASUS: SISCAN (cervical and breast cancer screening tests by municipality of residence)')],
   [(s) => /\bsaude_municipios\b/.test(s) && /\bonco_\w+\b/.test(s),
@@ -1129,6 +1136,7 @@ export function coberturaDaFonte(sql: string, c?: Cobertura | null): CoberturaFo
   const s = sql.toLowerCase();
   if (/\btrab_caged/.test(s)) return c.caged ? { nome: 'Novo CAGED', meses: c.caged } : null;
   if (/\brais_(uf|mun|esc_porte|vinculos)\b|\btrab_(municipios|setores|setores_uf|grandes_setores)\b/.test(s)) return { nome: 'RAIS', anos: c.rais };
+  if (/\bsaude_vacinacao(_territorios|_catalogo)?\b/.test(s) && c.vacinacao?.length) return { nome: 'Vacinação (cobertura por residência)', anos: c.vacinacao };
   if (/\bsaude_municipios\b/.test(s) && /\bsiscan_\w+\b/.test(s) && c.siscan?.length) return { nome: 'SISCAN', anos: c.siscan };
   if (/\bsaude_municipios\b/.test(s) && /\bonco_\w+\b/.test(s) && c.oncologia?.length) return { nome: 'Painel de Oncologia', anos: c.oncologia };
   if (/\bsaude_municipios\b/.test(s) && /\bresp_\w+\b/.test(s) && c.resp?.length) return { nome: 'RESP', anos: c.resp };
@@ -1947,6 +1955,7 @@ async function consultaSemLimite(entrada: unknown, paineis: Painel[], sinal: Abo
     if (paineis.includes('financas') && /\bsiop[es]_/i.test(todas)) await tabelasEducacaoSaude();
     if (paineis.includes('financas') && /\bdespesa_funcao\b/i.test(todas)) await tabelaDespesaFuncao();
     if (paineis.includes('saude') && /\bsaude_municipios\b/i.test(todas)) await tabelasSaude();
+    if (paineis.includes('saude') && /\bsaude_vacinacao\w*/i.test(todas)) await tabelasVacinacao();
     if (paineis.includes('munic') && /\bmunic_\w+/i.test(todas)) await tabelasIaMunic();
     if (paineis.includes('clima') && /\bclima_\w+/i.test(todas)) await tabelasIaClima();
     // resultados já apurados na conversa, lidos como tabelas (res_C1…): só os completos, da mesma versão dos dados e desta conversa

@@ -44,7 +44,7 @@ import {
   tendenciasSemSuporte,
 } from '../src/ia_continuidade';
 import { TRABALHO } from '../../worker/src/sistema_trabalho.js';
-import { SAUDE } from '../../worker/src/sistema_saude.js';
+import { SAUDE, contextoSaude as contextoSaudeDoWorker } from '../../worker/src/sistema_saude.js';
 import { anosDaColuna, anosDoIndicador, avisoPreliminarNaoIncluido, calcular, calcularJanela, colunaGrupoIcsap, condicaoDado, disponivelNosDados, faixaAnos, fonteCurta, fonteDaColuna, formatar, GRUPOS_ICSAP, indicador, INDICADORES, metadadosIndicador, motivoSemValor, textoMotivo, textosMotivo, type FontesMeta } from '../src/saude_comum';
 import { cadastro, codigosDoMunicipio, conferirCodigos, executarLocalizacao, localizar, territoriosNasConsultas } from '../src/ia_territorio';
 import { crc32, paraCsv, paraXlsx, paraXlsxAbas } from '../src/exportar';
@@ -53,6 +53,7 @@ import { gravarEstadoEvolucao, lerEstadoEvolucao, MAX_COMPARADOS, posicaoRelativ
 
 import { avisoDoContexto, chaveDoRastro, contaDoRastro, RASTRO, urlDemonstrativo, urlDemonstrativos, valorAnexo, type ChaveRastro } from '../src/lrf_rastro';
 import { periodoDe } from '../src/components/TabelaSerie';
+import { anosDoImunobiologico, contraMeta, metodoDoAno, paraCatalogo, paraLinhaVac, pctRazao, razaoDasSomas, separarPorMetodo, situacao, textoCobertura, type LinhaVac } from '../src/vacinacao_comum';
 const require = createRequire(import.meta.url);
 const FETCH = globalThis.fetch; // alguns testes simulam o Worker trocando o fetch
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
@@ -62,7 +63,9 @@ const MICRO = (process.env.TRABALHO_MICRO ?? 'E:/finbra/micro').replaceAll('\\',
 // GOLD_PUBLICADO: pasta com a cópia do gold hoje publicado (gold/saude, manifesto e ipca); roda o código atual contra os dados antigos
 const GOLD_PUBLICADO = process.env.GOLD_PUBLICADO?.replaceAll('\\', '/');
 const doGoldPublicado = (c: string) => !!GOLD_PUBLICADO && /^gold\/(saude\/|manifesto\.json$|ipca\.parquet$)/.test(c);
-const onde = (c: string) => (c.startsWith('silver/trabalho/micro/') ? `${MICRO}/${c}` : doGoldPublicado(c) ? `${GOLD_PUBLICADO}/${c}` : `${DATA}/${c}`);
+// VACINACAO_CANDIDATO: pasta do candidato da cobertura vacinal (gold/saude/vacinacao*.parquet), enquanto não for publicada
+const VACINACAO_CANDIDATO = process.env.VACINACAO_CANDIDATO?.replaceAll('\\', '/');
+const onde = (c: string) => (c.startsWith('silver/trabalho/micro/') ? `${MICRO}/${c}` : VACINACAO_CANDIDATO && c.startsWith('gold/saude/vacinacao') ? `${VACINACAO_CANDIDATO}/${c}` : doGoldPublicado(c) ? `${GOLD_PUBLICADO}/${c}` : `${DATA}/${c}`);
 const rota = <T>(caminho: string, params: Record<string, string | number | undefined> = {}) => executar(caminho, params) as Promise<T>;
 type L = Record<string, number | string | null | boolean>;
 
@@ -4922,5 +4925,209 @@ describe('saúde: ICSAP (Lista Brasileira, Portaria SAS/MS nº 221/2008)', () =>
     assert.equal(dz.en.valor, 'undefined');
     assert.match(dz.en.nota, /zero denominator/);
     assert.match(textosMotivo('denominador_ausente', taxa).pt.nota, /população residente/);
+  });
+});
+
+describe('saúde: cobertura vacinal oficial por residência (PNI / InfoMS)', () => {
+  const semVacinacao = !existsSync(onde('gold/saude/vacinacao.parquet'));
+  const GOIANIA = 5208707;
+  const serie = async (q: Record<string, string | number>, imuno = 'bcg') => (await rota<L[]>('vacinacao_serie', { ...q, imuno })).map(paraLinhaVac);
+
+  test('amostras oficiais (BCG, residência): Goiânia 2015, 2024 e 2025, Goiás 2024 e Brasil 2024', { skip: semVacinacao }, async () => {
+    const go = await serie({ ente: GOIANIA });
+    const em = (ano: number) => go.find((r) => r.ano === ano)!;
+    assert.deepEqual([em(2015).numerador, em(2015).denominador], [24227, 21983]);
+    quase(100 * em(2015).cobertura!, 110.2079, 1e-6);
+    assert.deepEqual([em(2024).numerador, em(2024).denominador], [12918, 17937]);
+    quase(100 * em(2024).cobertura!, 72.0187, 1e-5);
+    assert.deepEqual([em(2025).numerador, em(2025).denominador], [18302, 17937]);
+    quase(100 * em(2025).cobertura!, 102.0349, 1e-5);
+    const goias = (await serie({ uf: 'GO' })).find((r) => r.ano === 2024)!;
+    assert.deepEqual([goias.numerador, goias.denominador], [77422, 88862]);
+    quase(100 * goias.cobertura!, 87.1261, 1e-5);
+    const brasil = (await serie({})).find((r) => r.ano === 2024)!;
+    assert.deepEqual([brasil.numerador, brasil.denominador], [2365381, 2389271]);
+    quase(100 * brasil.cobertura!, 99.0001, 1e-5);
+  });
+
+  test('cobertura é razão: mostrada em % uma única vez, sem limite de 100%', { skip: semVacinacao }, async () => {
+    const go = (await serie({ ente: GOIANIA })).find((r) => r.ano === 2015)!;
+    assert.ok(go.cobertura! > 1 && go.cobertura! < 2, 'a razão da fonte não vem multiplicada por 100');
+    assert.equal(pctRazao(go.cobertura, 2), '110,21%');
+    assert.equal(situacao(go, true), 'acima_100');
+    assert.equal(textoCobertura(go, true, 2), '110,21%', 'acima de 100% é preservado, não limitado');
+  });
+
+  test('método separado: até 2022 por tipo de dose, de 2023 em diante por indivíduo; as séries não se emendam', { skip: semVacinacao }, async () => {
+    const brasil = await serie({});
+    assert.deepEqual(brasil.map((r) => r.ano), [2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]);
+    for (const r of brasil) assert.equal(r.metodo, metodoDoAno(r.ano));
+    const por = separarPorMetodo(brasil);
+    assert.equal(por.tipo_de_dose.at(-1)!.ano, 2022);
+    assert.equal(por.individuo[0].ano, 2023);
+    assert.ok(por.tipo_de_dose.every((r) => r.ano <= 2022) && por.individuo.every((r) => r.ano >= 2023));
+  });
+
+  test('catálogo varia por ano (14, 22, 21), rótulos originais preservados e sem emenda de nomes parecidos', { skip: semVacinacao }, async () => {
+    const cat = (await rota<L[]>('vacinacao_catalogo')).map(paraCatalogo);
+    const conta = (a: number) => cat.filter((c) => c.ano === a).length;
+    assert.deepEqual([2015, 2022, 2023, 2024, 2025].map(conta), [14, 14, 22, 22, 21]);
+    const pneumo = anosDoImunobiologico(cat, 'pneumo_10');
+    assert.ok(pneumo.tipo_de_dose.length > 0 && pneumo.individuo.length === 0, 'Pneumo 10 só existe até 2022');
+    const conj = anosDoImunobiologico(cat, 'pneumococica_conjugada');
+    assert.ok(conj.individuo.length > 0 && conj.tipo_de_dose.length === 0, 'Pneumocócica Conjugada só de 2023 em diante');
+    assert.equal(cat.find((c) => c.ano === 2024 && c.imunobiologico === 'hepatite_b_le_30_dias')!.rotulo, 'Hepatite B (<= 30 dias)');
+    assert.equal(cat.find((c) => c.ano === 2020 && c.imunobiologico === 'hepatite_b_lt_30_dias')!.rotulo, 'Hepatite B (< 30 dias)');
+    assert.ok(!cat.some((c) => c.ano === 2024 && c.imunobiologico === 'hepatite_b_lt_30_dias'));
+    assert.ok(!cat.some((c) => c.ano === 2025 && c.imunobiologico === 'poliomielite_2_reforco'), 'ausência no catálogo do ano não vira zero');
+  });
+
+  test('metas só onde a regra oficial foi confirmada; nunca 95% como regra universal', { skip: semVacinacao }, async () => {
+    const cat = (await rota<L[]>('vacinacao_catalogo')).map(paraCatalogo);
+    const meta = (id: string, ano = 2024) => cat.find((c) => c.ano === ano && c.imunobiologico === id)?.meta;
+    assert.equal(meta('bcg'), 0.9);
+    assert.equal(meta('rotavirus'), 0.9);
+    assert.equal(meta('penta_dtp_hepb_hib'), 0.95);
+    for (const ano of [2023, 2024, 2025]) {
+      for (const id of ['hepatite_b_le_30_dias', 'febre_amarela', 'dtp_1_reforco', 'varicela', 'poliomielite_1_reforco', 'hepatite_a_infantil']) assert.equal(meta(id, ano), 0.95, `${ano}: ${id}`);
+      for (const id of ['hepatite_b_le_1_dia', 'hepatite_b_le_2_dias']) assert.equal(meta(id, ano), null, `${ano}: oportunidade sem meta`);
+    }
+    assert.equal(meta('febre_amarela', 2015), null, 'não projetar a meta atual na série histórica');
+    assert.ok(cat.some((c) => c.meta === null) && cat.some((c) => c.meta === 0.95));
+    const brasil = (await serie({}, 'bcg')).find((r) => r.ano === 2024)!;
+    assert.equal(contraMeta(brasil), 'atingida');
+    assert.equal(contraMeta({ ...brasil, meta: null }), null, 'sem meta confirmada, sem comparação');
+    assert.equal(contraMeta({ ...brasil, cobertura: null }), null, 'sem cobertura calculável, sem comparação');
+  });
+
+  test('denominador zero não vira cobertura (nem a sentinela 0,0000001 da fonte); ausência não é zero', { skip: semVacinacao }, async () => {
+    const r = await consultaLivre(`SELECT count(*) FILTER (status = 'denominador_zero') AS zeros,
+        count(*) FILTER (status = 'denominador_zero' AND cobertura IS NOT NULL) AS zeros_com_cobertura,
+        count(*) FILTER (cobertura_fonte < 0.000001 AND cobertura_fonte > 0 AND cobertura IS NOT NULL) AS sentinela_aceita,
+        count(*) FILTER (cobertura IS NOT NULL AND denominador > 0 AND abs(cobertura - numerador::DOUBLE / denominador) > 1e-6) AS divergentes
+      FROM saude_vacinacao`, 5);
+    assert.ok((r.linhas[0][0] as number) > 0, 'há linhas de denominador zero para testar');
+    assert.deepEqual(r.linhas[0].slice(1), [0, 0, 0]);
+    const zero = (await consultaLivre(`SELECT municipio, ano, imunobiologico FROM saude_vacinacao WHERE status = 'denominador_zero' LIMIT 1`, 1)).linhas[0];
+    const linha = (await rota<L[]>('vacinacao_municipios', { ano: Number(zero[1]), imuno: String(zero[2]) })).find((x) => x.municipio === zero[0])!;
+    assert.equal(linha.cobertura, null);
+    const lv = { ano: Number(zero[1]), imunobiologico: String(zero[2]), rotulo: 'x', metodo: metodoDoAno(Number(zero[1])), numerador: Number(linha.numerador), denominador: 0, cobertura: null, cobertura_fonte: Number(linha.cobertura_fonte), status: 'denominador_zero', meta: null } as LinhaVac;
+    assert.equal(situacao(lv, true), 'denominador_zero');
+    assert.match(textoCobertura(lv, true), /não calculável/);
+    assert.equal(situacao(undefined, true), 'sem_registro');
+    assert.equal(situacao(undefined, false), 'fora_do_catalogo');
+  });
+
+  test('Brasil e UF são os totalizadores oficiais = soma de numeradores e denominadores dos municípios (nunca média dos percentuais)', { skip: semVacinacao }, async () => {
+    const r = await consultaLivre(`WITH uf AS (SELECT ano, imunobiologico, uf, sum(numerador) n, sum(denominador) d FROM saude_vacinacao GROUP BY ALL)
+      SELECT count(*) FILTER (u.n <> t.numerador OR u.d <> t.denominador) AS uf_divergente,
+             (SELECT count(*) FROM saude_vacinacao_territorios b JOIN (SELECT ano, imunobiologico, sum(numerador) n, sum(denominador) d FROM saude_vacinacao_territorios WHERE nivel = 'UF' GROUP BY ALL) s
+               USING (ano, imunobiologico) WHERE b.nivel = 'BR' AND (b.numerador <> s.n OR b.denominador <> s.d)) AS br_divergente
+      FROM uf u JOIN saude_vacinacao_territorios t ON t.nivel = 'UF' AND t.codigo = u.uf AND t.ano = u.ano AND t.imunobiologico = u.imunobiologico`, 5);
+    assert.deepEqual(r.linhas[0], [0, 0]);
+    const go = (await rota<L[]>('vacinacao_municipios', { uf: 'GO', ano: 2024, imuno: 'bcg' })).filter((x) => x.cod_ibge !== null);
+    assert.equal(go.length, 246);
+    assert.equal(go.reduce((s, x) => s + Number(x.numerador), 0), 77422);
+    assert.equal(go.reduce((s, x) => s + Number(x.denominador), 0), 88862);
+    const media = go.reduce((s, x) => s + Number(x.cobertura), 0) / go.length;
+    assert.ok(Math.abs(media - 0.8712610564595) > 1e-3, 'a média dos percentuais municipais não é o total da UF');
+  });
+
+  test('vacinas diferentes nunca se somam; anos diferentes também não', { skip: semVacinacao }, async () => {
+    const ano = await rota<L[]>('vacinacao_ano', { uf: 'GO', ano: 2024 });
+    assert.equal(ano.length, 22);
+    const linhas = ano.map(paraLinhaVac);
+    assert.throws(() => razaoDasSomas(linhas), /vacinas diferentes/);
+    const bcg = await serie({ uf: 'GO' });
+    assert.throws(() => razaoDasSomas(bcg), /anos diferentes/);
+    assert.equal(razaoDasSomas([bcg.find((r) => r.ano === 2024)!]).denominador, 88862);
+  });
+
+  test('município fora do cadastro (código de 6 dígitos sem IBGE de 7) fica com o código original e não entra no ranking', { skip: semVacinacao }, async () => {
+    const r = await consultaLivre(`SELECT municipio, cod_ibge, uf FROM saude_vacinacao WHERE cod_ibge IS NULL GROUP BY ALL`, 20);
+    assert.deepEqual(r.linhas, [[260545, null, 'PE']]);
+    const rank = await rota<L[]>('vacinacao_municipios', { uf: 'PE', ano: 2024, imuno: 'bcg' });
+    assert.equal(rank[0].sem_cadastro, 1);
+    assert.equal(rank.filter((x) => x.cod_ibge !== null).length, rank.length - 1);
+    assert.equal((await consultaLivre(`SELECT cod_ibge FROM saude_vacinacao WHERE municipio = 520870 LIMIT 1`, 1)).linhas[0][0], GOIANIA);
+  });
+
+  test('o ano de 2026 não entra e o escopo DF usa Brasília', { skip: semVacinacao }, async () => {
+    assert.deepEqual((await consultaLivre(`SELECT min(ano), max(ano) FROM saude_vacinacao`, 1)).linhas[0], [2015, 2025]);
+    const df = await serie({ ente: 53 });
+    assert.ok(df.length > 0, 'ente 53 (DF) lê Brasília');
+  });
+
+  test('IA: instruções, cobertura, fonte e conceito de vacinação', { skip: semVacinacao }, () => {
+    for (const trecho of ['saude_vacinacao_territorios', 'RAZÃO de 0 a 1', 'NÃO são comparáveis', 'sentinela', 'NUNCA some nem tire a média', 'Nunca aplique 95% como regra geral', 'SINASC']) {
+      assert.ok(SAUDE.includes(trecho), trecho);
+    }
+    const sql = "SELECT cobertura FROM saude_vacinacao_territorios WHERE nivel = 'UF'";
+    assert.equal(coberturaDaFonte(sql, { vacinacao: [2015, 2025] } as any)?.nome, 'Vacinação (cobertura por residência)');
+    assert.ok(fontesConsultadas([sql]).some((f) => /PNI \/ InfoMS/.test(f)));
+    assert.ok(!fontesConsultadas([sql]).some((f) => /SIM|SINASC \(nascidos/.test(f)));
+    const conceito = CONCEITOS.find((c) => c.id === 'cobertura_vacinal')!;
+    assert.ok(conceito.pedido.test('Qual a cobertura vacinal de Goiás?'));
+    assert.ok(atendeConceito(conceito, sql));
+    assert.ok(!atendeConceito(conceito, 'SELECT obitos FROM saude_municipios'));
+    assert.match(fichaDaColuna('cobertura', { vacinacao: [2015, 2025] } as any, sql) ?? '', /2015 a 2025/);
+    assert.match(fichaDaColuna('cobertura_fonte') ?? '', /sentinela/);
+    assert.match(contextoSaudeDoWorker({ fontes: { vacinacao: { anos: [2015, 2025] } } }), /Vacinação .* 2015 a 2025/);
+    assert.match(contextoSaudeDoWorker({ fontes: {} }), /Vacinação indisponível/);
+  });
+
+  test('rótulos e fichas de vacinação só valem para consultas às tabelas de vacinação (SIM/SINASC com os mesmos aliases ficam intactos)', () => {
+    const cob = { vacinacao: [2015, 2025], sim: [2000, 2024], sinasc: [1996, 2024] } as unknown as Cobertura;
+    const montar = (sql: string, colunas: string[], linhas: (string | number)[][]) => {
+      const m = montarTabela(espec({ tipo: 'tabela', grupo: '', periodo: '', valor: '', colunas, total: false, participacao: false }), { rotulo: 'C1', sql, resultado: { colunas: ['ano', ...colunas], linhas, total: linhas.length } });
+      assert.ok(m.ok);
+      return m.ok ? new Map(tabelaExportavel(m.tabela, [], cob).metadados) : new Map<string, string>();
+    };
+    const sim = montar('SELECT ano, sum(infantis) AS numerador, sum(nascidos) AS denominador FROM saude_municipios WHERE ano = 2024 GROUP BY ano', ['numerador', 'denominador'], [[2024, 10, 1000]]);
+    for (const c of ['numerador', 'denominador']) assert.equal(sim.get(`Definição: ${c}`), undefined, `${c} fora da vacinação não tem ficha de vacina`);
+    const textoSim = [...sim.values()].join(' ');
+    assert.ok(!/doses|vacinad|PNI|InfoMS|2023 em diante/i.test(textoSim), textoSim.slice(0, 300));
+    assert.equal(fichaDaColuna('cobertura', cob), null);
+    assert.equal(fichaDaColuna('metodo', cob, 'SELECT metodo FROM trab_municipios'), null);
+    const vac = montar("SELECT ano, numerador, denominador, cobertura FROM saude_vacinacao_territorios WHERE nivel = 'BR'", ['numerador', 'denominador', 'cobertura'], [[2024, 1, 2, 0.5]]);
+    assert.match(vac.get('Definição: numerador')!, /doses aplicadas|pessoas vacinadas/);
+    assert.match(vac.get('Definição: cobertura')!, /2015 a 2025/);
+    assert.match(vac.get('Definição: denominador')!, /nascidos vivos/);
+  });
+
+  test('carga das tabelas de vacinação é recuperável: falha no 2º arquivo, nova tentativa instala as três sem "already exists"', { skip: semVacinacao }, async () => {
+    const { tabelasVacinacao, usarLeituraNoTeste, reiniciarVacinacaoNoTeste } = await import('../src/dados');
+    await reiniciarVacinacaoNoTeste();
+    let falhar = true;
+    const lidas: string[] = [];
+    usarLeituraNoTeste(async (c: string) => {
+      lidas.push(c);
+      if (falhar && c.endsWith('vacinacao_territorios.parquet')) throw new Error('HTTP 503');
+      return new Uint8Array(await readFile(onde(c)));
+    });
+    try {
+      await assert.rejects(tabelasVacinacao(), /503/);
+      const antes = (await consultaLivre(`SELECT count(*) FROM information_schema.tables WHERE table_name LIKE 'saude_vacinacao%'`, 1)).linhas[0][0];
+      assert.equal(antes, 0, 'falha no download não deixa tabela instalada pela metade');
+      falhar = false;
+      await tabelasVacinacao();
+      await tabelasVacinacao();
+      const r = await consultaLivre(`SELECT (SELECT count(*) FROM saude_vacinacao), (SELECT count(*) FROM saude_vacinacao_territorios), (SELECT count(*) FROM saude_vacinacao_catalogo)`, 1);
+      assert.ok(r.linhas[0].every((x) => Number(x) > 0));
+      assert.ok((await rota<L[]>('vacinacao_serie', { uf: 'GO', imuno: 'bcg' })).length > 0, 'a rota usa as tabelas recuperadas');
+    } finally {
+      usarLeituraNoTeste(async (c: string) => new Uint8Array(await readFile(onde(c))));
+      await reiniciarVacinacaoNoTeste();
+      await tabelasVacinacao();
+    }
+  });
+
+  test('IA lê as tabelas de vacinação (carregadas sob demanda) e junta com o cadastro', { skip: semVacinacao }, async () => {
+    await rota('vacinacao_catalogo');
+    const r = await consultaLivre(`SELECT m.nome, v.numerador, v.denominador, v.cobertura FROM saude_vacinacao v
+      JOIN saude_vacinacao_catalogo c USING (ano, imunobiologico) JOIN entes m ON m.cod_ibge = v.cod_ibge
+      WHERE v.ano = 2024 AND v.imunobiologico = 'bcg' AND v.cod_ibge = 5208707`, 5);
+    assert.equal(r.linhas.length, 1);
+    assert.deepEqual(r.linhas[0].slice(1, 3), [12918, 17937]);
   });
 });

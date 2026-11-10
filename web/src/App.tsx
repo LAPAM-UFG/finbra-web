@@ -14,6 +14,7 @@ import { Deflatores, Qualidade } from './pages/Metodologia';
 import { Rankings } from './pages/Rankings';
 import { SaudeEvolucao, SaudeMetodologia, SaudeRankings, SaudeTabela, SaudeVisaoGeral } from './pages/SaudeDatasus';
 import { SaudeAmbulatorial } from './pages/SaudeAmbulatorial';
+import { SaudeVacinacao } from './pages/SaudeVacinacao';
 import { SaudeRede } from './pages/SaudeRede';
 import { ReceitasEvolucao, ReceitasVisaoGeral } from './pages/Receitas';
 import { Educacao, RemuneracaoEducacao, Saude } from './pages/SaudeEducacao';
@@ -54,7 +55,8 @@ const menuTrabalho = (): [string, [string, string][]][] => [
 const menuSaude = (): [string, [string, string][]][] => [
   [t('Indicadores de saúde', 'Health indicators'), [['/datasus', t('Visão geral', 'Overview')], ['/datasus/evolucao', t('Evolução', 'Trends')],
     ['/datasus/rankings', 'Rankings'], ['/datasus/rede', t('Rede e acesso', 'Network and access')],
-    ['/datasus/ambulatorial', t('Produção ambulatorial', 'Outpatient output')]]],
+    ['/datasus/ambulatorial', t('Produção ambulatorial', 'Outpatient output')],
+    ['/datasus/vacinacao', t('Vacinação', 'Vaccination')]]],
   [t('Metodologia', 'Methodology'), [['/datasus/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
 ];
 
@@ -240,6 +242,7 @@ export function App() {
               <Route path="/datasus/tabela" element={<SaudeTabela />} />
               <Route path="/datasus/rede" element={<SaudeRede />} />
               <Route path="/datasus/ambulatorial" element={<SaudeAmbulatorial />} />
+              <Route path="/datasus/vacinacao" element={<SaudeVacinacao />} />
               <Route path="/datasus/metodologia" element={<SaudeMetodologia />} />
               <Route path="/munic" element={<MunicVisaoGeral />} />
               <Route path="/munic/evolucao" element={<MunicEvolucao />} />
