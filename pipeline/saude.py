@@ -27,6 +27,11 @@ gold/saude/internacoes_atend.parquet  ano × município do hospital: internaçõ
                                municípios (quem recebe pacientes)
                                Ambas entram em municipios.parquet (colunas int_*)
 
+gold/saude/icsap.parquet       ano × município de residência: internações por condições sensíveis à atenção primária (Lista
+                               Brasileira, Portaria SAS/MS nº 221/2008, pelo diagnóstico principal), o denominador da proporção
+                               (internações de residentes sem partos, CID-10 O80–O84) e os 19 grupos (icsap.py); entra em
+                               municipios.parquet (icsap_*)
+
 gold/saude/cnes.parquet        ano × município do estabelecimento: retrato de dezembro do CNES (2006–2025) com estabelecimentos
                                (total, com vínculo SUS, hospitais e unidades básicas), leitos (existentes, SUS e por tipo)
                                e profissionais (médicos, enfermeiros e dentistas, de 2007 em diante, cada pessoa uma só vez no
@@ -65,6 +70,7 @@ import duckdb
 import pyarrow as pa
 
 from config import GOLD, SILVER
+from icsap import agregar_icsap
 
 GOLD_S = GOLD / "saude"
 
@@ -628,7 +634,8 @@ def municipios(con):
                         UNION SELECT ano, municipio FROM internacoes UNION SELECT ano, municipio FROM internacoes_atend
                         UNION SELECT ano, municipio FROM cnes UNION SELECT ano, municipio FROM sinan
                         UNION SELECT ano, municipio FROM siscan UNION SELECT ano, municipio FROM oncologia UNION SELECT ano, municipio FROM resp
-                        UNION SELECT ano, municipio FROM ambulatorial UNION SELECT ano, municipio FROM atencao_primaria)
+                        UNION SELECT ano, municipio FROM ambulatorial UNION SELECT ano, municipio FROM atencao_primaria
+                        UNION SELECT ano, municipio FROM icsap)
         SELECT k.ano, m.cod_ibge, k.municipio, coalesce(m.nome, 'Município ignorado') AS nome,
                coalesce(m.uf, e.uf) AS uf,
                p.* EXCLUDE (ano, municipio),
@@ -643,7 +650,8 @@ def municipios(con):
                oc.* EXCLUDE (ano, municipio, uf),
                rp.* EXCLUDE (ano, municipio, uf),
                am.* EXCLUDE (ano, municipio, uf),
-               ap.* EXCLUDE (ano, municipio)
+               ap.* EXCLUDE (ano, municipio),
+               ic.* EXCLUDE (ano, municipio, uf)
         FROM chaves k
         LEFT JOIN muni m ON m.municipio = k.municipio
         LEFT JOIN estados e ON e.cod = k.municipio // 10000
@@ -660,6 +668,7 @@ def municipios(con):
         LEFT JOIN resp rp ON rp.ano = k.ano AND rp.municipio = k.municipio
         LEFT JOIN ambulatorial am ON am.ano = k.ano AND am.municipio = k.municipio
         LEFT JOIN atencao_primaria ap ON ap.ano = k.ano AND ap.municipio = k.municipio
+        LEFT JOIN icsap ic ON ic.ano = k.ano AND ic.municipio = k.municipio
         WHERE k.municipio IS NOT NULL
         ORDER BY k.ano, k.municipio""")
     con.execute(f"COPY municipios TO '{GOLD_S / 'municipios.parquet'}' (FORMAT parquet, COMPRESSION zstd)")
@@ -706,6 +715,7 @@ def fonte_saude(con) -> dict:
             if novos:
                 prelim[chave] = novos
     sia_f = {"sia": {"anos": anos("amb_registros"), "processado_em": quando, "url": "https://datasus.saude.gov.br/transferencia-de-arquivos/"}} if "amb_registros" in colunas else {}
+    icsap_f = {"icsap": {"anos": anos("icsap_int"), "processado_em": quando, "url": "https://bvsms.saude.gov.br/bvs/saudelegis/sas/2008/prt0221_17_04_2008.html"}} if "icsap_int" in colunas else {}
     aps_f = {}
     if "aps_cobertura" in colunas or "ab_cobertura" in colunas:
         series = {nome: anos(col) for nome, col in (("ab", "ab_cobertura"), ("aps", "aps_cobertura"), ("acs", "acs_cobertura")) if col in colunas}
@@ -715,6 +725,7 @@ def fonte_saude(con) -> dict:
         **sih,
         **sia_f,
         **aps_f,
+        **icsap_f,
         **cnes_f,
         **sinan_f,
         **outros,
@@ -746,6 +757,7 @@ def main():
     obitos(con, Path(a.micro))
     nascimentos(con, Path(a.micro))
     internacoes(con, Path(a.micro))
+    agregar_icsap(con, Path(a.micro), GOLD_S)
     cnes(con, Path(a.micro))
     sinan(con, Path(a.micro))
     siscan(con, Path(a.brutos))

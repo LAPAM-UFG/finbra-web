@@ -11,6 +11,7 @@ import { num } from '../hooks';
 import { t } from '../idioma';
 import { anosDaColuna, condicaoDado, faixaAnos, fonteSaude, rotuloCondicao, type FontesMeta } from '../saude_comum';
 import { BlocoAps } from './SaudeAps';
+import { BlocoIcsap } from './SaudeIcsap';
 import { AvisoAno, referencia, useSaude } from './SaudeDatasus';
 
 const razao = (a: number | null, b: number | null) => (a === null || !b ? null : a / b);
@@ -132,6 +133,7 @@ export function SaudeRede() {
         </>
       )}
       {temDados && <BlocoAps ano={ano} semAno={semAno} escopo={escopo} rotulo={rotulo} municipio={municipio} fontes={fontes} versao={meta.geradoEm} />}
+      {temDados && <BlocoIcsap serieDados={serie.dados} ano={ano} semAno={semAno} rotulo={rotulo} municipio={municipio} fontes={fontes} versao={meta.geradoEm} />}
       {serie.dados && serie.dados.length > 0 && (
         <CartaoGrafico titulo={recorte ? t('Internações: moradores × hospitais dos municípios do recorte', 'Admissions: residents × hospitals of the scope’s municipalities') : t('Internações: moradores × hospitais do município', 'Admissions: residents × municipality hospitals')} desc={`${rotulo} · ${t('SIH, por ano de competência', 'SIH, by competence year')}`}
           tabela={<TabelaSerie nome="saude_rede_acesso" anos={anosS} colunas={[

@@ -5,7 +5,7 @@
  */
 import type { Linha } from './api';
 import { numero1, pct, reais } from './format';
-import { t } from './idioma';
+import { idioma, t } from './idioma';
 
 // o mesmo num() de hooks.ts, aqui para a camada de dados (dados.ts) poder usar os indicadores sem importar React
 const num = (v: unknown) => (typeof v === 'number' ? v : null);
@@ -35,10 +35,13 @@ const G_NASC = () => t('Nascimentos', 'Births');
 const G_CAUSAS = () => t('Causas de morte', 'Causes of death');
 
 const G_INT = () => t('Internações (SIH/SUS)', 'Hospital admissions (SIH/SUS)');
+const G_ICSAP = () => t('Internações por condições sensíveis à atenção primária (ICSAP)', 'Ambulatory care-sensitive hospitalisations (ICSAP)');
 const G_REDE = () => t('Rede de saúde (CNES)', 'Health network (CNES)');
 const G_AGRAVOS = () => t('Agravos notificados (SINAN)', 'Notifiable diseases (SINAN)');
 const G_CANCER = () => t('Câncer: rastreamento e diagnóstico (SISCAN, Painel de Oncologia)', 'Cancer: screening and diagnosis (SISCAN, Oncology Panel)');
 const G_RESP = () => t('Microcefalia e alterações do sistema nervoso central (RESP)', 'Microcephaly and central nervous system changes (RESP)');
+const RESSALVA_ICSAP = () => t('Medida indireta, relacionada à atenção primária e ao uso hospitalar: não avalia, isoladamente, a qualidade da gestão nem estabelece causa. Depende também da idade da população, da oferta de leitos, de como o diagnóstico é registrado e do acesso ao SUS; só conta internações pagas pelo SUS.',
+  'An indirect measure related to primary care and hospital use: on its own it neither assesses management quality nor establishes cause. It also depends on population age, bed supply, how the diagnosis is recorded and access to SUS; it only counts SUS-paid admissions.');
 const RESSALVA_SISCAN = () => t('Só traz o que foi lançado no SISCAN, sistema do SUS: exames feitos em plano de saúde ou clínica particular, quando não lançados, não aparecem, então valores baixos não significam falta de rastreamento. Conta exames, não mulheres: quem repete o exame no ano entra mais de uma vez.',
   'It only holds what was entered in SISCAN, a SUS system: tests done under private insurance or clinics, when not entered, do not appear, so low values do not mean absence of screening. It counts tests, not women: someone tested more than once in the year counts more than once.');
 const RESSALVA_SINAN = () => t('Notificação depende da vigilância local: onde se notifica menos, aparece menos (subnotificação), e surtos fazem os números oscilar muito de um ano para outro. Pode diferir dos boletins do Ministério, que aplicam exclusões e atualizações próprias.',
@@ -172,6 +175,21 @@ export const INDICADORES: Indicador[] = [
     id: 'permanencia_media', grupo: G_INT, nome: () => t('Tempo médio de permanência', 'Average length of stay'),
     unidade: () => t('dias por internação', 'days per admission'), numerador: 'int_dias', denominador: 'int_total', fator: 1, tipo: 'taxa', minimo: 500,
     nota: () => t('Soma dos dias de permanência ÷ internações dos residentes (SIH).', 'Sum of days of stay ÷ residents’ admissions (SIH).'),
+  },
+  // ICSAP: Lista Brasileira (Portaria SAS/MS nº 221/2008) sobre o diagnóstico principal da AIH; colunas icsap_* (icsap.py)
+  {
+    id: 'icsap_taxa', grupo: G_ICSAP, nome: () => t('Internações por condições sensíveis à atenção primária (taxa)', 'Ambulatory care-sensitive hospitalisations (rate)'),
+    unidade: () => t('por 10 mil habitantes', 'per 10,000 inhabitants'), numerador: 'icsap_int', denominador: 'populacao', fator: 10000, tipo: 'taxa', minimo: 5000,
+    alerta: RESSALVA_ICSAP,
+    nota: () => t('Internações pagas pelo SUS (AIH tipo 1) de residentes cujo diagnóstico principal consta na Lista Brasileira de ICSAP (Portaria SAS/MS nº 221/2008, 19 grupos) ÷ população residente (estimativa da SVS/MS) × 10.000, por ano de competência da AIH. Em UF e Brasil, a razão das somas. Não é padronizada por idade.',
+      'SUS-paid admissions (type-1 AIH) of residents whose principal diagnosis is on the Brazilian ICSAP List (Ordinance SAS/MS 221/2008, 19 groups) ÷ resident population (SVS/MS estimate) × 10,000, by AIH competence year. For states and Brazil, the ratio of sums. Not age-standardised.'),
+  },
+  {
+    id: 'icsap_proporcao', grupo: G_ICSAP, nome: () => t('Participação das ICSAP nas internações', 'Share of ambulatory care-sensitive admissions'),
+    unidade: () => t('% das internações dos residentes, exceto partos', '% of residents’ admissions, excluding deliveries'), numerador: 'icsap_int', denominador: 'icsap_base', fator: 1, tipo: 'proporcao', minimo: 500,
+    alerta: RESSALVA_ICSAP,
+    nota: () => t('Internações por ICSAP ÷ total de internações pagas pelo SUS (AIH tipo 1) de residentes, excluídas as por partos (CID-10 O80–O84), como na ficha do indicador do PROADESS/Fiocruz. Em UF e Brasil, a razão das somas.',
+      'ICSAP admissions ÷ all SUS-paid admissions (type-1 AIH) of residents, excluding deliveries (ICD-10 O80–O84), as in the PROADESS/Fiocruz indicator sheet. For states and Brazil, the ratio of sums.'),
   },
   {
     id: 'valor_por_internacao', monetario: true, grupo: G_INT, nome: () => t('Valor médio pago por internação', 'Average amount paid per admission'),
@@ -318,6 +336,52 @@ export function calcular(ind: Indicador, r: Linha | undefined): number | null {
   return (n / d) * ind.fator;
 }
 
+export type MotivoSemValor = 'sem_registro' | 'denominador_ausente' | 'denominador_zero';
+type TextoMotivo = { valor: string; nota: string; rotulo: string };
+
+/**
+ * Por que um indicador não tem valor, quando o cálculo dá nulo: numerador ausente (sem registro no ano: nenhuma AIH), denominador
+ * ausente (o numerador existe, mas falta o denominador) ou denominador zero (a razão é indefinida; o numerador pode ser 0).
+ * Devolve null quando há valor. A taxa de um município sem AIH e a participação de um município só com partos não são a mesma coisa.
+ */
+export function motivoSemValor(ind: Indicador, r: Linha | undefined): MotivoSemValor | null {
+  const n = num(r?.[ind.numerador]);
+  const d = num(r?.[ind.denominador]);
+  if (n === null) return 'sem_registro';
+  if (d === null) return 'denominador_ausente';
+  if (d === 0) return 'denominador_zero';
+  return null;
+}
+
+const DENOMINADORES: Record<string, [string, string]> = {
+  populacao: ['população residente', 'resident population'],
+  icsap_base: ['internações de residentes, exceto partos', 'residents’ admissions, excluding deliveries'],
+};
+
+/** Textos de cada motivo nos dois idiomas (valor do cartão, nota e rótulo curto para arquivos exportados). */
+export function textosMotivo(m: MotivoSemValor, ind: Indicador): { pt: TextoMotivo; en: TextoMotivo } {
+  const [dpt, den] = DENOMINADORES[ind.denominador] ?? [ind.denominador, ind.denominador];
+  if (m === 'sem_registro') {
+    return {
+      pt: { valor: 'sem registro', nota: 'numerador ausente: nenhuma internação do SIH neste ano e recorte', rotulo: 'sem registro no ano (numerador ausente)' },
+      en: { valor: 'no record', nota: 'numerator missing: no SIH admissions in this year and scope', rotulo: 'no record in the year (numerator missing)' },
+    };
+  }
+  if (m === 'denominador_ausente') {
+    return {
+      pt: { valor: 'indisponível', nota: `denominador ausente: ${dpt}`, rotulo: 'denominador ausente' },
+      en: { valor: 'unavailable', nota: `denominator missing: ${den}`, rotulo: 'denominator missing' },
+    };
+  }
+  return {
+    pt: { valor: 'indefinida', nota: `denominador zero: ${dpt} = 0`, rotulo: 'indefinida (denominador zero)' },
+    en: { valor: 'undefined', nota: `zero denominator: ${den} = 0`, rotulo: 'undefined (zero denominator)' },
+  };
+}
+
+/** O texto do motivo no idioma atual. */
+export const textoMotivo = (m: MotivoSemValor, ind: Indicador): TextoMotivo => textosMotivo(m, ind)[idioma() === 'en' ? 'en' : 'pt'];
+
 /** Nome legível de cada contagem usada como numerador ou denominador (rótulos de tabela e filtros). */
 export const nomeContagem = (c: string): string => ({
   populacao: t('População', 'Population'), pop_30_69: t('População de 30 a 69 anos', 'Population aged 30–69'),
@@ -331,6 +395,7 @@ export const nomeContagem = (c: string): string => ({
   cesareos: t('Nascidos de cesárea', 'Caesarean births'), parto_informado: t('Nascidos com parto informado', 'Births with delivery recorded'),
   consultas_7_mais: t('Nascidos com 7+ consultas', 'Births with 7+ visits'), consultas_informadas: t('Nascidos com consultas informadas', 'Births with visits recorded'),
   maes_10_19: t('Nascidos de mães de 10–19 anos', 'Births to mothers aged 10–19'), idade_mae_informada: t('Nascidos com idade da mãe informada', 'Births with mother’s age recorded'),
+  icsap_int: t('Internações por ICSAP', 'ICSAP admissions'), icsap_base: t('Internações de residentes, exceto partos', 'Residents’ admissions, excluding deliveries'),
   int_total: t('Internações', 'Admissions'), int_fora: t('Internações fora do município', 'Admissions outside the municipality'),
   int_obitos: t('Internações com óbito', 'Admissions ending in death'), int_dias: t('Dias de internação', 'Days of stay'),
   int_60_mais: t('Internações de 60 anos ou mais', 'Admissions aged 60+'), int_menores_5: t('Internações de menores de 5', 'Admissions under 5'),
@@ -359,8 +424,8 @@ export const nomeContagem = (c: string): string => ({
 export const formatar = (ind: Indicador, v: number | null | undefined) => (ind.monetario ? reais(v) : ind.tipo === 'proporcao' ? pct(v) : numero1(v));
 
 export const fonteSaude = () => t(
-  'SIM (Sistema de Informações sobre Mortalidade), SINASC (Sistema de Informações sobre Nascidos Vivos), SIH (Sistema de Informações Hospitalares do SUS), CNES (Cadastro Nacional de Estabelecimentos de Saúde), SINAN (agravos de notificação), SISCAN (controle do câncer do colo do útero e da mama), Painel de Oncologia e RESP (microcefalia), SIA (produção ambulatorial, por município do estabelecimento), cobertura da atenção primária (relatórios públicos da APS), Ministério da Saúde/DATASUS e SAPS, microdados públicos por município de residência (a produção ambulatorial e a rede do CNES seguem o município do estabelecimento); população: estimativas da SVS/MS por município, sexo e idade (2000 em diante). Processamento: LAPAM/UFG.',
-  'SIM (Mortality Information System), SINASC (Live Birth Information System), SIH (SUS Hospital Information System), CNES (National Registry of Health Facilities), SINAN (notifiable diseases), SISCAN (cervical and breast cancer control), Oncology Panel and RESP (microcephaly), SIA (outpatient output, by municipality of the facility), primary care coverage (public APS reports), Ministry of Health/DATASUS and SAPS, public microdata by municipality of residence (outpatient output and the CNES network follow the municipality of the facility); population: SVS/MS estimates by municipality, sex and age (2000 onwards). Processing: LAPAM/UFG.',
+  'SIM (Sistema de Informações sobre Mortalidade), SINASC (Sistema de Informações sobre Nascidos Vivos), SIH (Sistema de Informações Hospitalares do SUS) e as internações por condições sensíveis à atenção primária (ICSAP, Lista Brasileira da Portaria SAS/MS nº 221/2008), CNES (Cadastro Nacional de Estabelecimentos de Saúde), SINAN (agravos de notificação), SISCAN (controle do câncer do colo do útero e da mama), Painel de Oncologia e RESP (microcefalia), SIA (produção ambulatorial, por município do estabelecimento), cobertura da atenção primária (relatórios públicos da APS), Ministério da Saúde/DATASUS e SAPS, microdados públicos por município de residência (a produção ambulatorial e a rede do CNES seguem o município do estabelecimento); população: estimativas da SVS/MS por município, sexo e idade (2000 em diante). Processamento: LAPAM/UFG.',
+  'SIM (Mortality Information System), SINASC (Live Birth Information System), SIH (SUS Hospital Information System) and ambulatory care-sensitive hospitalisations (ICSAP, Brazilian List of Ordinance SAS/MS 221/2008), CNES (National Registry of Health Facilities), SINAN (notifiable diseases), SISCAN (cervical and breast cancer control), Oncology Panel and RESP (microcephaly), SIA (outpatient output, by municipality of the facility), primary care coverage (public APS reports), Ministry of Health/DATASUS and SAPS, public microdata by municipality of residence (outpatient output and the CNES network follow the municipality of the facility); population: SVS/MS estimates by municipality, sex and age (2000 onwards). Processing: LAPAM/UFG.',
 );
 
 /** Capítulos da CID-10 (causa básica do óbito), na ordem das colunas cap01…cap22. */
@@ -389,7 +454,7 @@ export const CAPITULOS = (): [string, string][] => [
 
 // ---------------- disponibilidade, fontes e metadados compartilhados ----------------
 
-export type FonteChave = 'sim' | 'sinasc' | 'populacao_svs' | 'sih' | 'sia' | 'cnes' | 'sinan' | 'siscan' | 'oncologia' | 'resp' | 'aps';
+export type FonteChave = 'sim' | 'sinasc' | 'populacao_svs' | 'sih' | 'icsap' | 'sia' | 'cnes' | 'sinan' | 'siscan' | 'oncologia' | 'resp' | 'aps';
 /** O que o manifesto dos dados informa de cada fonte (gold/manifesto.json, fontes.*). */
 export type FonteMeta = {
   anos?: number[];
@@ -407,10 +472,10 @@ export type FonteMeta = {
 };
 export type FontesMeta = Record<string, FonteMeta | undefined>;
 
-export const CHAVES_FONTES: FonteChave[] = ['sim', 'sinasc', 'populacao_svs', 'sih', 'sia', 'cnes', 'sinan', 'siscan', 'oncologia', 'resp', 'aps'];
+export const CHAVES_FONTES: FonteChave[] = ['sim', 'sinasc', 'populacao_svs', 'sih', 'icsap', 'sia', 'cnes', 'sinan', 'siscan', 'oncologia', 'resp', 'aps'];
 
 export const NOME_FONTE: Record<FonteChave, () => string> = {
-  sim: () => 'SIM', sinasc: () => 'SINASC', sih: () => 'SIH', sia: () => 'SIA', cnes: () => 'CNES', sinan: () => 'SINAN', siscan: () => 'SISCAN',
+  sim: () => 'SIM', sinasc: () => 'SINASC', sih: () => 'SIH', icsap: () => t('ICSAP (SIH)', 'ICSAP (SIH)'), sia: () => 'SIA', cnes: () => 'CNES', sinan: () => 'SINAN', siscan: () => 'SISCAN',
   oncologia: () => t('Painel de Oncologia', 'Oncology Panel'), resp: () => 'RESP', aps: () => t('atenção primária (SAPS)', 'primary care (SAPS)'), populacao_svs: () => t('população da SVS/MS', 'SVS/MS population'),
 };
 
@@ -425,6 +490,7 @@ const COLUNAS_SINASC = /^(nascidos|baixo_peso|peso_informado|prematuros|gestacao
 
 /** Fonte de uma coluna do gold/saude (numerador ou denominador): a que dá a cobertura de anos dela. */
 export function fonteDaColuna(c: string): FonteChave {
+  if (c.startsWith('icsap_')) return 'icsap';
   if (c.startsWith('int_')) return 'sih';
   if (c.startsWith('amb_')) return 'sia';
   if (c.startsWith('cnes_')) return 'cnes';
@@ -583,3 +649,27 @@ export function calcularJanela(ind: Indicador, linhas: Linha[], de: number, ate:
 
 /** O indicador tem as colunas do numerador e do denominador na versão carregada dos dados? (null: ainda carregando, vale como sim) */
 export const disponivelNosDados = (ind: Indicador, colunas: Set<string> | null) => colunas === null || (colunas.has(ind.numerador) && colunas.has(ind.denominador));
+
+/** Os 19 grupos da Lista Brasileira de ICSAP (Portaria SAS/MS nº 221/2008): número e nome; a coluna do gold é icsap_gNN. */
+export const GRUPOS_ICSAP: [number, () => string][] = [
+  [1, () => t('Doenças preveníveis por imunização e condições sensíveis', 'Vaccine-preventable diseases and related conditions')],
+  [2, () => t('Gastroenterites infecciosas e complicações', 'Infectious gastroenteritis and complications')],
+  [3, () => t('Anemia', 'Anaemia')],
+  [4, () => t('Deficiências nutricionais', 'Nutritional deficiencies')],
+  [5, () => t('Infecções de ouvido, nariz e garganta', 'Ear, nose and throat infections')],
+  [6, () => t('Pneumonias bacterianas', 'Bacterial pneumonias')],
+  [7, () => t('Asma', 'Asthma')],
+  [8, () => t('Doenças pulmonares', 'Lung diseases')],
+  [9, () => t('Hipertensão', 'Hypertension')],
+  [10, () => t('Angina', 'Angina')],
+  [11, () => t('Insuficiência cardíaca', 'Heart failure')],
+  [12, () => t('Doenças cerebrovasculares', 'Cerebrovascular diseases')],
+  [13, () => t('Diabetes mellitus', 'Diabetes mellitus')],
+  [14, () => t('Epilepsias', 'Epilepsies')],
+  [15, () => t('Infecção no rim e trato urinário', 'Kidney and urinary tract infection')],
+  [16, () => t('Infecção da pele e tecido subcutâneo', 'Skin and subcutaneous tissue infection')],
+  [17, () => t('Doença inflamatória dos órgãos pélvicos femininos', 'Female pelvic inflammatory disease')],
+  [18, () => t('Úlcera gastrointestinal', 'Gastrointestinal ulcer')],
+  [19, () => t('Doenças relacionadas ao pré-natal e parto', 'Prenatal and childbirth-related conditions')],
+];
+export const colunaGrupoIcsap = (n: number) => `icsap_g${String(n).padStart(2, '0')}`;

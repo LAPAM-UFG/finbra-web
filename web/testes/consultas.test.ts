@@ -45,7 +45,7 @@ import {
 } from '../src/ia_continuidade';
 import { TRABALHO } from '../../worker/src/sistema_trabalho.js';
 import { SAUDE } from '../../worker/src/sistema_saude.js';
-import { anosDaColuna, anosDoIndicador, avisoPreliminarNaoIncluido, calcular, calcularJanela, condicaoDado, disponivelNosDados, faixaAnos, fonteCurta, formatar, indicador, INDICADORES, metadadosIndicador, type FontesMeta } from '../src/saude_comum';
+import { anosDaColuna, anosDoIndicador, avisoPreliminarNaoIncluido, calcular, calcularJanela, colunaGrupoIcsap, condicaoDado, disponivelNosDados, faixaAnos, fonteCurta, fonteDaColuna, formatar, GRUPOS_ICSAP, indicador, INDICADORES, metadadosIndicador, motivoSemValor, textoMotivo, textosMotivo, type FontesMeta } from '../src/saude_comum';
 import { cadastro, codigosDoMunicipio, conferirCodigos, executarLocalizacao, localizar, territoriosNasConsultas } from '../src/ia_territorio';
 import { crc32, paraCsv, paraXlsx, paraXlsxAbas } from '../src/exportar';
 import { ordenarBusca } from '../src/contexto';
@@ -4371,7 +4371,8 @@ describe('saúde: cobertura por indicador, triênio, rede e produção (municíp
     assert.equal(disponivelNosDados(indicador('mamo_50_74'), null), true, 'enquanto carrega, não esconde nada');
     const faltam = INDICADORES.filter((i) => !disponivelNosDados(i, colunas)).map((i) => i.id).sort();
     // faltam só os indicadores cujas colunas a versão carregada não tem: num gold anterior à mamografia de 50 a 74 anos, ela; no atual, nenhum
-    assert.deepEqual(faltam, colunas.has('siscan_mamo_50_74') && colunas.has('pop_mulheres_50_74') ? [] : ['mamo_50_74']);
+    const esperado = [...(colunas.has('siscan_mamo_50_74') && colunas.has('pop_mulheres_50_74') ? [] : ['mamo_50_74']), ...(colunas.has('icsap_int') && colunas.has('icsap_base') ? [] : ['icsap_proporcao', 'icsap_taxa'])].sort();
+    assert.deepEqual(faltam, esperado);
   });
 
   test('mamografias de 50 a 74 anos: numerador e denominador conferidos antes de entrar', { skip: semSaude }, async () => {
@@ -4562,5 +4563,176 @@ describe('exportações: período de uma primeira coluna de anos', () => {
     assert.equal(periodoDe(['01/2020', '02/2020']), undefined, 'competências mensais informam o período pelo próprio componente');
     assert.equal(periodoDe(['2010', 'Total']), undefined, 'mistura de ano e rótulo: sem período inventado');
     assert.equal(periodoDe([]), undefined);
+  });
+});
+
+describe('saúde: ICSAP (Lista Brasileira, Portaria SAS/MS nº 221/2008)', () => {
+  const semSaude = !existsSync(onde('gold/saude/municipios.parquet'));
+  const GOIAS_MUN = 5208905;
+  const COLUNAS_ICSAP = ['icsap_int', 'icsap_base', ...GRUPOS_ICSAP.map(([n]) => colunaGrupoIcsap(n))];
+  const fontesDoManifesto = async () => (await rota<{ fontes: unknown }>('meta')).fontes as FontesMeta;
+  /** gold sem as colunas icsap_* (o publicado antes deste lote): os testes de dados saem, os de compatibilidade rodam */
+  const temIcsap = async () => (await rota<L[]>('saude_colunas')).some((r) => r.column_name === 'icsap_int');
+
+  test('os 19 grupos somam o total de ICSAP e a base do denominador cabe no total de internações (município, UF e Brasil, todos os anos)', { skip: semSaude }, async () => {
+    if (!(await temIcsap())) return;
+    assert.equal(GRUPOS_ICSAP.length, 19);
+    for (const q of [{}, { uf: 'GO' }, { ente: GOIAS_MUN }]) {
+      const serie = await rota<L[]>('saude_serie', q);
+      const comIcsap = serie.filter((r) => r.icsap_int !== null);
+      assert.ok(comIcsap.length >= 10, 'a série tem vários anos de ICSAP');
+      for (const r of comIcsap) {
+        const soma = GRUPOS_ICSAP.reduce((s, [n]) => s + Number(r[colunaGrupoIcsap(n)] ?? 0), 0);
+        assert.equal(soma, r.icsap_int, `${JSON.stringify(q)} ${r.ano}: grupos ≠ total`);
+        assert.ok(Number(r.icsap_int) <= Number(r.icsap_base), `${r.ano}: ICSAP maior que a base`);
+        assert.ok(Number(r.icsap_base) <= Number(r.int_total), `${r.ano}: base maior que as internações`);
+        assert.ok(Number(r.icsap_base) > 0.5 * Number(r.int_total), `${r.ano}: base sem partos implausível`);
+      }
+    }
+  });
+
+  test('UF e Brasil somam numeradores e denominadores antes de calcular: a razão das somas, nunca a média das taxas', { skip: semSaude }, async () => {
+    if (!(await temIcsap())) return;
+    const br = (await rota<L[]>('saude_serie', {})).find((r) => r.ano === 2024)!;
+    const ufs = ['AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MG', 'MS', 'MT', 'PA', 'PB', 'PE', 'PI', 'PR', 'RJ', 'RN', 'RO', 'RR', 'RS', 'SC', 'SE', 'SP', 'TO'];
+    const linhasUf = await Promise.all(ufs.map(async (uf) => (await rota<L[]>('saude_serie', { uf })).find((r) => r.ano === 2024)!));
+    const soma = (c: string) => linhasUf.reduce((s, r) => s + Number(r[c]), 0);
+    assert.equal(soma('icsap_int'), br.icsap_int);
+    assert.equal(soma('icsap_base'), br.icsap_base);
+    const taxa = indicador('icsap_taxa');
+    const prop = indicador('icsap_proporcao');
+    assert.equal(calcular(taxa, br), (Number(br.icsap_int) / Number(br.populacao)) * 10000);
+    assert.equal(calcular(prop, br), Number(br.icsap_int) / Number(br.icsap_base));
+    const mediaTaxas = linhasUf.reduce((s, r) => s + calcular(taxa, r)!, 0) / linhasUf.length;
+    assert.notEqual(mediaTaxas, calcular(taxa, br), 'a média das taxas das UFs não é a taxa do Brasil');
+    assert.ok(calcular(prop, br)! > 0.1 && calcular(prop, br)! < 0.3, 'participação do Brasil em 2024 entre 10% e 30%');
+  });
+
+  test('cobertura, ausência e zero: fora da cobertura, sem registro e zero registrado são coisas diferentes', { skip: semSaude }, async () => {
+    const f: FontesMeta = { icsap: { anos: [2008, 2009, 2010] }, populacao_svs: { anos: [2000, 2008, 2009, 2010] } };
+    assert.equal(condicaoDado('icsap_int', 0, 2009, f), 'zero_registrado');
+    assert.equal(condicaoDado('icsap_g03', null, 2009, f), 'ausente');
+    assert.equal(condicaoDado('icsap_int', null, 2007, f), 'fora_cobertura');
+    assert.equal(condicaoDado('icsap_g19', 0, 2011, f), 'fora_cobertura');
+    assert.equal(condicaoDado('icsap_int', 25, 2010, f), 'registrado');
+    assert.equal(fonteDaColuna('icsap_int'), 'icsap');
+    assert.equal(fonteDaColuna('icsap_g19'), 'icsap');
+    assert.equal(fonteDaColuna('int_total'), 'sih', 'os indicadores do SIH seguem na fonte SIH');
+    assert.deepEqual(anosDoIndicador(indicador('icsap_taxa'), f), [2008, 2009, 2010], 'cobertura = anos do ICSAP ∩ população');
+    assert.deepEqual(anosDoIndicador(indicador('icsap_proporcao'), f), [2008, 2009, 2010]);
+    // manifesto sem a fonte (publicado antes deste lote): nenhum ano coberto, nunca zero
+    assert.deepEqual(anosDaColuna('icsap_int', { populacao_svs: f.populacao_svs }), []);
+    assert.deepEqual(anosDoIndicador(indicador('icsap_taxa'), { populacao_svs: f.populacao_svs }), []);
+    // município sem nenhuma AIH no ano não tem valor: nulo, e a taxa nula (nunca 0)
+    assert.equal(calcular(indicador('icsap_taxa'), { ano: 2024, icsap_int: null, populacao: 1000 }), null);
+    assert.equal(calcular(indicador('icsap_proporcao'), { ano: 2024, icsap_int: 0, icsap_base: 0 }), null, 'denominador zero: indisponível, não 0');
+    assert.equal(calcular(indicador('icsap_proporcao'), { ano: 2024, icsap_int: 0, icsap_base: 40 }), 0, 'há internações e nenhuma é ICSAP: zero real');
+  });
+
+  test('versão dos dados sem colunas ICSAP: indicadores indisponíveis, o resto segue, sem zeros nem erro', { skip: semSaude }, async () => {
+    const colunas = new Set((await rota<L[]>('saude_colunas')).map((r) => String(r.column_name)));
+    const sem = new Set(colunas);
+    for (const c of COLUNAS_ICSAP) sem.delete(c);
+    assert.equal(disponivelNosDados(indicador('icsap_taxa'), sem), false);
+    assert.equal(disponivelNosDados(indicador('icsap_proporcao'), sem), false);
+    assert.equal(disponivelNosDados(indicador('internacoes_mil'), sem), true, 'os indicadores de internações existentes seguem');
+    assert.equal(disponivelNosDados(indicador('icsap_taxa'), null), true, 'enquanto carrega, não esconde nada');
+    if (!(await temIcsap())) {
+      const serie = await rota<L[]>('saude_serie', { uf: 'GO' });
+      assert.ok(serie.length > 0 && serie.every((r) => !('icsap_int' in r)), 'sem colunas ICSAP na série, nenhuma coluna inventada');
+    }
+  });
+
+  test('metadados, nota e alerta do indicador: Portaria, denominador explícito, leitura indireta e cobertura do manifesto', { skip: semSaude }, async () => {
+    const f = await fontesDoManifesto();
+    for (const id of ['icsap_taxa', 'icsap_proporcao']) {
+      const ind = indicador(id);
+      const m = new Map(metadadosIndicador(ind, f, 'Goiás'));
+      assert.match(m.get('Fórmula')!, /Portaria SAS\/MS nº 221\/2008|PROADESS/);
+      assert.match(m.get('Recorte territorial')!, /residência/);
+      assert.match(m.get('Fonte')!, /ICSAP/);
+      assert.match(ind.alerta!(), /medida indireta/i);
+      assert.match(ind.alerta!(), /não avalia, isoladamente, a qualidade da gestão/);
+    }
+    assert.match(indicador('icsap_proporcao').nota(), /excluídas as por partos/);
+    assert.match(indicador('icsap_proporcao').nota(), /O80–O84/);
+    assert.equal(indicador('icsap_taxa').fator, 10000);
+    if (await temIcsap()) {
+      assert.equal(f.icsap!.anos![0], 2008);
+      assert.equal(f.icsap!.anos!.at(-1), f.sih!.anos!.at(-1), 'ICSAP vai até o mesmo ano do SIH');
+      assert.equal(new Map(metadadosIndicador(indicador('icsap_taxa'), f)).get('Período de cobertura'), faixaAnos(anosDoIndicador(indicador('icsap_taxa'), f)));
+    }
+  });
+
+  test('tabela e ranking do indicador funcionam para ICSAP (Goiás, 2024)', { skip: semSaude }, async () => {
+    if (!(await temIcsap())) return;
+    const prop = indicador('icsap_proporcao');
+    const ranking = await rota<Classificacao>('ranking_posicoes', { dominio: 'saude', ind: prop.id, ordem: 'desc', de: 2024, ate: 2024, uf: 'GO', min: prop.minimo, lista: 1 });
+    assert.ok(ranking.lista!.length > 100, 'Goiás tem mais de 100 municípios acima do mínimo');
+    // `valor` é o numerador (internações por ICSAP) e `indicador`, a participação; a posição na UF segue o indicador, do maior para o menor
+    const porPosicao = [...ranking.lista!].filter((r) => r.posicao_uf !== null).sort((a, b) => a.posicao_uf! - b.posicao_uf!);
+    const ordenado = porPosicao.map((r) => Number(r.indicador));
+    assert.deepEqual(ordenado, [...ordenado].sort((a, b) => b - a), 'posição 1 é a maior participação');
+    const g = (await rota<L[]>('saude_serie', { ente: GOIAS_MUN })).find((r) => r.ano === 2024)!;
+    const goiania = ranking.lista!.find((r) => r.cod_ibge === GOIAS_MUN);
+    if (goiania) {
+      quase(Number(goiania.indicador), calcular(prop, g)!);
+      assert.equal(goiania.valor, g.icsap_int, 'o numerador do ranking é o total de ICSAP do município');
+      assert.equal(goiania.denominador, g.icsap_base, 'e o denominador, a base sem partos');
+    }
+    const anos = await rota<number[]>('ranking_anos', { dominio: 'saude', ind: 'icsap_taxa', min: 5000 });
+    assert.ok(anos.includes(2008) && anos.includes(2025) && !anos.includes(2007));
+  });
+
+  test('sem valor por três motivos: numerador ausente, denominador ausente e denominador zero (Boa Esperança do Norte/MT 2025 e Mojuí dos Campos/PA 2013)', { skip: semSaude }, async () => {
+    const taxa = indicador('icsap_taxa');
+    const prop = indicador('icsap_proporcao');
+    if (await temIcsap()) {
+      // Boa Esperança do Norte/MT, 2025: tem população, mas nenhuma AIH (numerador e base nulos): sem registro, nas duas medidas
+      const boa = (await rota<L[]>('saude_serie', { ente: 5101837 })).find((r) => r.ano === 2025)!;
+      assert.equal(boa.populacao, 5877);
+      assert.equal(boa.icsap_int, null);
+      assert.equal(boa.icsap_base, null);
+      assert.equal(motivoSemValor(taxa, boa), 'sem_registro');
+      assert.equal(motivoSemValor(prop, boa), 'sem_registro');
+      assert.equal(calcular(taxa, boa), null);
+      assert.equal(calcular(prop, boa), null);
+      assert.equal(textoMotivo('sem_registro', taxa).valor, 'sem registro');
+      // Mojuí dos Campos/PA, 2013: 5 internações, todas partos (base 0) e nenhuma ICSAP (numerador 0): a taxa é um zero real, a participação é indefinida
+      const moju = (await rota<L[]>('saude_serie', { ente: 1504752 })).find((r) => r.ano === 2013)!;
+      assert.equal(moju.icsap_int, 0);
+      assert.equal(moju.icsap_base, 0);
+      assert.ok(Number(moju.populacao) > 0 && Number(moju.int_total) > 0);
+      assert.equal(motivoSemValor(prop, moju), 'denominador_zero');
+      assert.equal(calcular(prop, moju), null);
+      assert.equal(motivoSemValor(taxa, moju), null, 'a taxa tem população: zero ICSAP é um valor');
+      assert.equal(calcular(taxa, moju), 0);
+      assert.equal(textoMotivo('denominador_zero', prop).valor, 'indefinida');
+    }
+    // denominador ausente: o numerador existe, mas falta a população (ou a base)
+    assert.equal(motivoSemValor(taxa, { ano: 2024, icsap_int: 3, populacao: null }), 'denominador_ausente');
+    assert.equal(motivoSemValor(prop, { ano: 2024, icsap_int: 3, icsap_base: null }), 'denominador_ausente');
+    assert.equal(motivoSemValor(prop, { ano: 2024, icsap_int: null, icsap_base: null }), 'sem_registro', 'numerador ausente vence: não se culpa o denominador');
+    assert.equal(motivoSemValor(taxa, { ano: 2024, icsap_int: 3, populacao: 100 }), null);
+    assert.equal(motivoSemValor(taxa, undefined), 'sem_registro', 'sem linha do ano: sem registro');
+    assert.equal(motivoSemValor(taxa, { ano: 2024, icsap_int: 0, populacao: 0 }), 'denominador_zero');
+    // os três textos, em português e em inglês, são distintos entre si
+    for (const ind of [taxa, prop]) {
+      const textos = (['sem_registro', 'denominador_ausente', 'denominador_zero'] as const).map((m) => textosMotivo(m, ind));
+      for (const idi of ['pt', 'en'] as const) {
+        assert.equal(new Set(textos.map((x) => x[idi].valor)).size, 3, `${ind.id} ${idi}: valores distintos`);
+        assert.equal(new Set(textos.map((x) => x[idi].nota)).size, 3, `${ind.id} ${idi}: notas distintas`);
+        assert.equal(new Set(textos.map((x) => x[idi].rotulo)).size, 3, `${ind.id} ${idi}: rótulos distintos`);
+      }
+    }
+    const [sr, da, dz] = (['sem_registro', 'denominador_ausente', 'denominador_zero'] as const).map((m) => textosMotivo(m, prop));
+    assert.match(sr.en.valor, /no record/);
+    assert.match(sr.en.nota, /numerator missing/);
+    assert.match(da.pt.nota, /denominador ausente: internações de residentes, exceto partos/);
+    assert.match(da.en.nota, /denominator missing: residents’ admissions, excluding deliveries/);
+    assert.match(dz.pt.nota, /denominador zero/);
+    assert.equal(dz.en.valor, 'undefined');
+    assert.match(dz.en.nota, /zero denominator/);
+    assert.match(textosMotivo('denominador_ausente', taxa).pt.nota, /população residente/);
   });
 });
