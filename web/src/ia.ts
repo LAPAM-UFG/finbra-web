@@ -219,6 +219,7 @@ export function disponibilidadeNoAno(ano: number, paineis: Painel[], c: Cobertur
     if (c.sim?.length) marcar('SIM', c.sim.includes(ano), faixa(c.sim));
     if (c.sinasc?.length) marcar('SINASC', c.sinasc.includes(ano), faixa(c.sinasc));
     if (c.sih?.length) marcar('SIH', c.sih.includes(ano), faixa(c.sih));
+    if (c.icsap?.length) marcar('ICSAP (SIH)', c.icsap.includes(ano), faixa(c.icsap));
     if (c.sia?.length) marcar('SIA', c.sia.includes(ano), faixa(c.sia));
     if (c.aps?.length) marcar('Atenção primária', c.aps.includes(ano), faixa(c.aps));
     if (c.cnes?.length) marcar('CNES', c.cnes.includes(ano), faixa(c.cnes));
@@ -281,7 +282,7 @@ export type Cobertura = {
   rais: number[]; caged: { de: number; ate: number } | null; microdados: boolean; dca: number[];
   pib?: { de: number; ate: number; setorial_ate?: number } | null; siope?: number[]; siopeRemuneracao?: number[]; siops?: number[];
   lrf?: { de: number; ate: number; parciais?: number[] } | null; bolsa?: { de: number; ate: number; mes: number } | null; inss?: number[];
-  sim?: number[]; sinasc?: number[]; sih?: number[]; sia?: number[]; aps?: number[]; cnes?: number[]; sinan?: number[]; siscan?: number[]; oncologia?: number[]; resp?: number[]; popSvs?: number[]; munic?: number[]; estadic?: number[]; clima?: { de: number; ate: number } | null;
+  sim?: number[]; sinasc?: number[]; sih?: number[]; icsap?: number[]; sia?: number[]; aps?: number[]; cnes?: number[]; sinan?: number[]; siscan?: number[]; oncologia?: number[]; resp?: number[]; popSvs?: number[]; munic?: number[]; estadic?: number[]; clima?: { de: number; ate: number } | null;
 };
 /** Sugestão: título curto, a pergunta completa (que vai para o campo), o tema e as bases que a pergunta usa. */
 export type Sugestao = { titulo: string; tema: string; texto: string; paineis: Painel[]; nota?: string };
@@ -534,7 +535,7 @@ export function coberturaPorAno(c: Cobertura, paineis: Painel[]): Map<number, { 
   }
   if (paineis.includes('munic')) fechadas([...(c.munic ?? []), ...(c.estadic ?? [])]);
   if (paineis.includes('clima') && c.clima) mensal('Clima', c.clima.de * 100 + 1, c.clima.ate);
-  if (paineis.includes('saude')) fechadas([...(c.sim ?? []), ...(c.sinasc ?? []), ...(c.sih ?? []), ...(c.sia ?? []), ...(c.aps ?? []), ...(c.cnes ?? []), ...(c.sinan ?? []), ...(c.siscan ?? []), ...(c.oncologia ?? []), ...(c.resp ?? []), ...(c.popSvs ?? [])]);
+  if (paineis.includes('saude')) fechadas([...(c.sim ?? []), ...(c.sinasc ?? []), ...(c.sih ?? []), ...(c.icsap ?? []), ...(c.sia ?? []), ...(c.aps ?? []), ...(c.cnes ?? []), ...(c.sinan ?? []), ...(c.siscan ?? []), ...(c.oncologia ?? []), ...(c.resp ?? []), ...(c.popSvs ?? [])]);
   return anos;
 }
 
@@ -602,6 +603,10 @@ export function descreverCobertura(paineis: Painel[], c: Cobertura): string[] {
   if (paineis.includes('saude') && c.sih?.length) {
     linhas.push(t(`SIH ${faixa(c.sih[0], c.sih.at(-1)!)}: internações hospitalares pagas pelo SUS por município de residência e do hospital, com valor pago, permanência, óbitos e capítulo da CID-10 (só o SUS, por ano de competência)`,
       `SIH ${faixa(c.sih[0], c.sih.at(-1)!)}: SUS-paid hospital admissions by municipality of residence and of the hospital, with amount paid, length of stay, deaths and ICD-10 chapter (SUS only, by competence year)`));
+  }
+  if (paineis.includes('saude') && c.icsap?.length) {
+    linhas.push(t(`ICSAP ${faixa(c.icsap[0], c.icsap.at(-1)!)}: internações por condições sensíveis à atenção primária (Lista Brasileira, Portaria SAS/MS nº 221/2008, 19 grupos) de residentes, calculadas sobre o SIH (só o SUS, por ano de competência), com a base sem partos para a participação nas internações`,
+      `ICSAP ${faixa(c.icsap[0], c.icsap.at(-1)!)}: ambulatory care-sensitive admissions (Brazilian List, Ordinance SAS/MS 221/2008, 19 groups) of residents, computed on the SIH (SUS only, by competence year), with the delivery-free base for the share of admissions`));
   }
   if (paineis.includes('saude') && c.sia?.length) {
     linhas.push(t(`SIA ${faixa(c.sia[0], c.sia.at(-1)!)}: produção ambulatorial do SUS (procedimentos aprovados e valor da tabela do SUS) por município do estabelecimento e grupo de procedimento (só o SUS, por ano de apresentação)`,
@@ -906,6 +911,8 @@ const FONTES_TABELAS: [RegExp | ((sql: string) => boolean), () => string][] = [
     () => t('Ministério da Saúde/SAPS: relatórios públicos da atenção primária (cobertura das equipes e dos agentes comunitários)', 'Ministry of Health/SAPS: public primary care reports (coverage by teams and community health agents)')],
   [(s) => /\bsaude_municipios\b/.test(s) && /\bamb_\w+\b/.test(s),
     () => t('Ministério da Saúde/DATASUS: SIA (produção ambulatorial do SUS por município do estabelecimento)', 'Ministry of Health/DATASUS: SIA (SUS outpatient output by municipality of the facility)')],
+  [(s) => /\bsaude_municipios\b/.test(s) && /\bicsap_\w+\b/.test(s),
+    () => t('Ministério da Saúde/DATASUS: SIH classificado pela Lista Brasileira de ICSAP (Portaria SAS/MS nº 221/2008; internações por condições sensíveis à atenção primária, por município de residência)', 'Ministry of Health/DATASUS: SIH classified by the Brazilian ICSAP List (Ordinance SAS/MS 221/2008; ambulatory care-sensitive admissions, by municipality of residence)')],
   [(s) => /\bsaude_municipios\b/.test(s) && /\bint_\w+\b/.test(s),
     () => t('Ministério da Saúde/DATASUS: SIH (internações hospitalares do SUS por município de residência ou do hospital)', 'Ministry of Health/DATASUS: SIH (SUS hospital admissions by municipality of residence or of the hospital)')],
   [(s) => /\bsaude_municipios\b/.test(s) && /\b(populacao|pop_\w+)\b/.test(s),
@@ -1127,6 +1134,7 @@ export function coberturaDaFonte(sql: string, c?: Cobertura | null): CoberturaFo
   if (/\bsaude_municipios\b/.test(s) && /\bresp_\w+\b/.test(s) && c.resp?.length) return { nome: 'RESP', anos: c.resp };
   if (/\bsaude_municipios\b/.test(s) && /\bsinan_\w+\b/.test(s) && c.sinan?.length) return { nome: 'SINAN', anos: c.sinan };
   if (/\bsaude_municipios\b/.test(s) && /\bcnes_\w+\b/.test(s) && c.cnes?.length) return { nome: 'CNES', anos: c.cnes };
+  if (/\bsaude_municipios\b/.test(s) && /\bicsap_\w+\b/.test(s) && c.icsap?.length) return { nome: 'ICSAP (SIH)', anos: c.icsap };
   if (/\bsaude_municipios\b/.test(s) && /\bint_\w+\b/.test(s) && c.sih?.length) return { nome: 'SIH', anos: c.sih };
   if (/\bsaude_municipios\b/.test(s)) return c.sim?.length ? { nome: 'SIM/SINASC', anos: c.sim } : null;
   if (/\bsiops_/.test(s)) return c.siops ? { nome: 'SIOPS', anos: c.siops } : null;

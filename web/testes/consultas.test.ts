@@ -35,7 +35,7 @@ import {
   type ApiConversas, type Conversa,
 } from '../src/ia_historico';
 import { pedidoConferencia } from '../src/ia_conferencia';
-import { atendeConceito, CONCEITOS, fichaDaColuna } from '../src/ia_catalogo';
+import { atendeConceito, CONCEITOS, conceitosPedidos, fichaDaColuna } from '../src/ia_catalogo';
 import { mqo, pBilateral } from '../src/ia_estatistica';
 import { contextoDosDados, FINANCAS } from '../../worker/src/sistema.js';
 import { validar as validarHistorico } from '../../worker/src/ia.js';
@@ -2771,6 +2771,162 @@ describe('IA: confiabilidade (população, variável pedida, unidades e estatís
   };
   const PERGUNTA_F04 = 'Faça uma regressão entre FPM per capita e despesa administrativa per capita (Função 04 – Administração) nos municípios goianos em 2025.';
 
+  test('ICSAP pedida: sinônimos em português e inglês, taxa e participação com o denominador certo, grupos e agregação', () => {
+    const ids = (p: string) => conceitosPedidos(p).map((c) => c.id).filter((i) => i.startsWith('icsap'));
+    const rev = (sql: string, pergunta: string) => revisarMetodo(pronta({ tabelaSql: sql }), { pergunta }).filter((p) => /ICSAP|condições sensíveis/.test(p));
+    // sinônimos
+    for (const p of ['Qual a taxa de ICSAP em Goiânia?', 'internações por condições sensíveis à atenção primária no Brasil', 'internações sensíveis à atenção básica (ICSAB)', 'hospitalizações evitáveis em Goiás', 'ambulatory care-sensitive admissions in Brazil', 'ACSC hospitalisations by state', 'primary care sensitive conditions']) {
+      assert.ok(ids(p).includes('icsap'), p);
+    }
+    assert.deepEqual(ids('Qual a mortalidade infantil de Goiânia?'), []);
+    assert.deepEqual(ids('Quantas internações houve em Goiânia em 2024?'), [], 'internações em geral não são ICSAP');
+    assert.deepEqual(ids('Quais capítulos da CID-10 mais internam em Goiás?'), []);
+    // taxa × participação × grupo
+    assert.deepEqual(ids('Qual a taxa de ICSAP por 10 mil habitantes em Goiânia em 2024?'), ['icsap', 'icsap_taxa']);
+    assert.deepEqual(ids('ICSAP rate per 10,000 inhabitants in Goiânia'), ['icsap', 'icsap_taxa']);
+    assert.deepEqual(ids('Qual a participação das ICSAP nas internações de Goiânia?'), ['icsap', 'icsap_participacao']);
+    assert.deepEqual(ids('Share of ambulatory care-sensitive admissions in total admissions'), ['icsap', 'icsap_participacao']);
+    assert.deepEqual(ids('Qual a participação de cada grupo nas ICSAP?'), ['icsap', 'icsap_grupo_participacao'], 'participação por grupo: não é a do total');
+    assert.deepEqual(ids('ICSAP por diabetes e hipertensão em Goiás'), ['icsap', 'icsap_g09', 'icsap_g13']);
+    assert.deepEqual(ids('ICSAP por pré-natal e parto, AVC e infecção urinária'), ['icsap', 'icsap_g12', 'icsap_g15', 'icsap_g19']);
+    const T = 'Qual a taxa de ICSAP por 10 mil habitantes no Brasil?';
+    const P = 'Qual a participação das ICSAP nas internações no Brasil?';
+    // SQL correto passa
+    const taxaOk = 'SELECT ano, 10000.0 * sum(icsap_int) / sum(populacao) AS valor FROM saude_municipios WHERE ano = 2024 GROUP BY ano';
+    const partOk = 'SELECT ano, 100.0 * sum(icsap_int) / nullif(sum(icsap_base), 0) AS valor FROM saude_municipios WHERE ano = 2024 GROUP BY ano';
+    assert.deepEqual(rev(taxaOk, T), []);
+    assert.deepEqual(rev(partOk, P), []);
+    assert.deepEqual(rev('SELECT ano, sum(icsap_g13) AS valor FROM saude_municipios GROUP BY ano', 'ICSAP por diabetes no Brasil'), []);
+    // SQL incorreto volta ao modelo: a variável do SIH em geral no lugar da ICSAP
+    assert.ok(rev('SELECT ano, 10000.0 * sum(int_total) / sum(populacao) AS valor FROM saude_municipios GROUP BY ano', T).some((p) => /Não apresente outra variável/.test(p) && /icsap_int/.test(p)));
+    assert.ok(rev('SELECT ano, 10000.0 * sum(int_cap09) / sum(populacao) AS valor FROM saude_municipios GROUP BY ano', T).length > 0, 'capítulo da CID-10 não é ICSAP');
+    // taxa com a base de internações no denominador (é a participação), sem população
+    assert.ok(rev('SELECT ano, 10000.0 * sum(icsap_int) / sum(icsap_base) AS valor FROM saude_municipios GROUP BY ano', T).some((p) => /taxa de ICSAP/.test(p) && /populacao/.test(p)));
+    // participação com int_total (inclui partos) no denominador
+    const semBase = rev('SELECT ano, 100.0 * sum(icsap_int) / sum(int_total) AS valor FROM saude_municipios GROUP BY ano', P);
+    assert.ok(semBase.some((p) => /participação das ICSAP/.test(p) && /icsap_base/.test(p) && /partos/.test(p)), semBase.join('\n'));
+    // grupo errado: pediu diabetes (g13) e a consulta traz hipertensão (g09)
+    assert.ok(rev('SELECT ano, sum(icsap_g09) AS valor FROM saude_municipios GROUP BY ano', 'ICSAP por diabetes no Brasil').some((p) => /grupo 13/.test(p)));
+    // ICSAP pedida e a consulta nem toca nas colunas icsap_*
+    assert.ok(rev('SELECT ano, sum(obitos) AS valor FROM saude_municipios GROUP BY ano', 'Evolução das ICSAP no Brasil').length > 0);
+    // os literais não valem: o nome da coluna numa string não atende
+    assert.ok(rev("SELECT ano, sum(int_total) AS valor, 'icsap_int' AS nota FROM saude_municipios GROUP BY ano", 'Evolução das ICSAP no Brasil').length > 0);
+    // cobertura e fonte: icsap_* tem o manifesto do ICSAP (2008–2025), não o do SIM/SINASC nem o do SIH
+    const anos = (de: number, ate: number) => Array.from({ length: ate - de + 1 }, (_, i) => de + i);
+    const cob: Cobertura = { rais: anos(2010, 2025), caged: null, microdados: false, dca: anos(2013, 2025), sim: anos(1996, 2024), sinasc: anos(1996, 2024), sih: anos(2008, 2025), icsap: anos(2008, 2025), popSvs: anos(2000, 2025) };
+    assert.deepEqual(coberturaDaFonte(taxaOk, cob), { nome: 'ICSAP (SIH)', anos: anos(2008, 2025) });
+    assert.equal(coberturaDaFonte('SELECT sum(int_total) FROM saude_municipios', cob)?.nome, 'SIH');
+    assert.equal(coberturaDaFonte(taxaOk, { ...cob, icsap: undefined })?.nome, 'SIM/SINASC', 'manifesto sem ICSAP: nada é inventado para a coluna');
+    assert.match(fichaDaColuna('icsap_int', cob) ?? '', /Portaria SAS\/MS nº 221\/2008[\s\S]*Cobertura: 2008 a 2025; municípios de residência[\s\S]*nulo \(não é zero\)/);
+    assert.match(fichaDaColuna('icsap_base', cob) ?? '', /exceto partos|excluídas as por partos/);
+    assert.match(fichaDaColuna('icsap_g13', cob) ?? '', /grupo 13[\s\S]*diabetes mellitus/);
+    assert.match(descreverCobertura(['saude'], cob).join('\n'), /ICSAP 2008–2025: internações por condições sensíveis/);
+    assert.match(disponibilidadeNoAno(2026, ['saude'], { ...cob, icsap: anos(2008, 2025) }), /ICSAP \(SIH\) \(2008–2025\)/);
+    assert.ok(fontesConsultadas([taxaOk]).some((f) => /Lista Brasileira de ICSAP/.test(f)));
+    assert.ok(!fontesConsultadas([taxaOk]).some((f) => /SIH \(internações hospitalares do SUS por município de residência ou do hospital\)/.test(f)));
+    // unidade: a contagem ICSAP é contagem; a taxa declarada como razão
+    assert.equal(tipoColuna('icsap_int', [10030, 12], undefined), 'contagem');
+    assert.equal(tipoColuna('icsap_g13', [1, 2], undefined), 'contagem');
+  });
+
+  test('ICSAP total × por grupo × vários grupos: a revisão aceita o SQL certo de cada medida e recusa a troca (fluxo conceitosPedidos → atendeConceito → revisarMetodo)', () => {
+    const ids = (p: string) => conceitosPedidos(p).map((c) => c.id).filter((i) => i.startsWith('icsap'));
+    const rev = (sql: string, pergunta: string) => revisarMetodo(pronta({ tabelaSql: sql }), { pergunta }).filter((p) => /ICSAP|condições sensíveis/.test(p));
+    const FROM = ' FROM saude_municipios WHERE ano = 2024';
+    const taxa = (col: string) => `SELECT 10000.0 * sum(${col}) / sum(populacao) AS valor${FROM}`;
+    const part = (col: string, den: string) => `SELECT 100.0 * sum(${col}) / nullif(sum(${den}), 0) AS valor${FROM}`;
+    // 1) taxa por grupo (português e inglês): o grupo certo com a população passa; o total, o grupo errado ou outro denominador voltam
+    for (const p of ['Taxa de ICSAP por asma por 10 mil habitantes', 'Asthma ICSAP rate per 10,000 inhabitants']) {
+      assert.deepEqual(ids(p), ['icsap', 'icsap_grupo_taxa', 'icsap_g07'], p);
+      assert.deepEqual(rev(taxa('icsap_g07'), p), [], `${p}: SQL correto recusado`);
+      assert.ok(rev(taxa('icsap_int'), p).some((m) => /asma/.test(m)), `${p}: o total no lugar do grupo`);
+      assert.ok(rev(taxa('icsap_g13'), p).some((m) => /grupo 7/.test(m)), `${p}: grupo errado`);
+      assert.ok(rev(`SELECT 10000.0 * sum(icsap_g07) / sum(icsap_int) AS valor${FROM}`, p).some((m) => /taxa de ICSAP de um grupo/.test(m) && /populacao/.test(m)), `${p}: denominador errado`);
+    }
+    // 2) participação de um grupo, sem a palavra "grupo": nas ICSAP (base icsap_int) ou nas internações sem partos (base icsap_base)
+    for (const p of ['Participação da asma nas ICSAP', 'Share of asthma in ICSAP admissions']) {
+      assert.deepEqual(ids(p), ['icsap', 'icsap_grupo_participacao', 'icsap_g07'], p);
+      assert.deepEqual(rev(part('icsap_g07', 'icsap_int'), p), [], `${p}: SQL correto recusado`);
+      assert.deepEqual(rev(part('icsap_g07', 'icsap_base'), p), [], `${p}: base sem partos também vale`);
+      assert.ok(rev(part('icsap_g07', 'int_total'), p).some((m) => /participação de um grupo/.test(m) && /partos/.test(m)), `${p}: int_total inclui partos`);
+      assert.ok(rev(part('icsap_g09', 'icsap_int'), p).some((m) => /grupo 7/.test(m)), `${p}: grupo errado`);
+    }
+    // com a palavra "grupo" o resultado é o mesmo
+    assert.deepEqual(rev(part('icsap_g07', 'icsap_int'), 'Participação do grupo asma nas ICSAP'), []);
+    // 3) o total continua exigindo o total e o denominador certo, mesmo que a consulta traga a asma
+    const T = 'Taxa de ICSAP por 10 mil habitantes no Brasil';
+    const P = 'Participação das ICSAP nas internações do Brasil';
+    assert.deepEqual(ids(T), ['icsap', 'icsap_taxa']);
+    assert.deepEqual(ids(P), ['icsap', 'icsap_participacao']);
+    assert.ok(rev(taxa('icsap_g07'), T).length > 0, 'taxa TOTAL não aceita só a asma');
+    assert.ok(rev(part('icsap_g07', 'icsap_int'), P).length > 0, 'participação TOTAL não aceita só a asma');
+    assert.ok(rev(part('icsap_int', 'icsap_int'), P).some((m) => /icsap_base/.test(m)), 'participação geral exige a base sem partos');
+    assert.ok(rev(part('icsap_int', 'int_total'), P).some((m) => /icsap_base/.test(m)));
+    assert.deepEqual(rev(part('icsap_int', 'icsap_base'), P), []);
+    assert.deepEqual(rev(taxa('icsap_int'), T), []);
+    // 4) vários grupos: cada um precisa aparecer (diabetes e hipertensão)
+    for (const p of ['Taxa de ICSAP por diabetes e hipertensão por 10 mil habitantes', 'ICSAP rate per 10,000 inhabitants for diabetes and hypertension']) {
+      assert.deepEqual(ids(p), ['icsap', 'icsap_grupo_taxa', 'icsap_g09', 'icsap_g13'], p);
+      const dois = `SELECT 10000.0 * sum(icsap_g13) / sum(populacao) AS dm, 10000.0 * sum(icsap_g09) / sum(populacao) AS has${FROM}`;
+      assert.deepEqual(rev(dois, p), [], `${p}: SQL correto recusado`);
+      assert.ok(rev(taxa('icsap_g13'), p).some((m) => /grupo 9/.test(m)), `${p}: faltou hipertensão`);
+      assert.ok(rev(taxa('icsap_int'), p).length > 0, `${p}: o total no lugar dos grupos`);
+    }
+    const pdois = 'Participação de diabetes e hipertensão nas ICSAP';
+    assert.deepEqual(ids(pdois), ['icsap', 'icsap_grupo_participacao', 'icsap_g09', 'icsap_g13']);
+    assert.deepEqual(rev(`SELECT 100.0 * sum(icsap_g13) / nullif(sum(icsap_int), 0) AS dm, 100.0 * sum(icsap_g09) / nullif(sum(icsap_int), 0) AS has${FROM}`, pdois), []);
+    assert.ok(rev(part('icsap_g09', 'icsap_int'), pdois).some((m) => /grupo 13/.test(m)));
+    // 5) total + grupo, quando a pergunta pede os dois de forma explícita: precisa do total e do grupo
+    const TG = 'Taxa total de ICSAP e a taxa de ICSAP por asma, por 10 mil habitantes';
+    assert.deepEqual(ids(TG), ['icsap', 'icsap_taxa', 'icsap_grupo_taxa', 'icsap_g07']);
+    const ambos = `SELECT 10000.0 * sum(icsap_int) / sum(populacao) AS total, 10000.0 * sum(icsap_g07) / sum(populacao) AS asma${FROM}`;
+    assert.deepEqual(rev(ambos, TG), []);
+    assert.ok(rev(taxa('icsap_g07'), TG).length > 0, 'faltou o total');
+    assert.ok(rev(taxa('icsap_int'), TG).length > 0, 'faltou a asma');
+    const PG = 'Participação geral das ICSAP nas internações e participação da asma nas ICSAP';
+    assert.deepEqual(ids(PG), ['icsap', 'icsap_participacao', 'icsap_grupo_participacao', 'icsap_g07']);
+    assert.deepEqual(rev(`SELECT 100.0 * sum(icsap_int) / nullif(sum(icsap_base), 0) AS geral, 100.0 * sum(icsap_g07) / nullif(sum(icsap_int), 0) AS asma${FROM}`, PG), []);
+    assert.ok(rev(part('icsap_g07', 'icsap_int'), PG).length > 0, 'faltou a participação geral com a base sem partos');
+  });
+
+  test('ICSAP: "all ACSC" como denominador não é pedido de total; pedido misto (taxa total + contagem do grupo) não impõe taxa ao grupo', () => {
+    const ids = (p: string) => conceitosPedidos(p).map((c) => c.id).filter((i) => i.startsWith('icsap'));
+    const FROM = ' FROM saude_municipios WHERE ano = 2024';
+    // várias consultas principais, uma tabela por consulta (como na resposta do modelo)
+    const revVarias = (sqls: string[], pergunta: string) => {
+      const consultas = sqls.map((sql, i) => feita(`C${i + 1}`, sql, { colunas: ['valor'], linhas: [[1]], total: 1 }));
+      const r = lerResposta({ resposta: respostaBase({
+        conclusao: 'Resultado.', explicacao: '', aprofundar: [],
+        tabelas: sqls.map((_, i) => ({ consulta: `C${i + 1}`, papel: 'principal', tipo: 'serie', titulo: 'T', grupo: 'grupo', periodo: 'ano', valor: 'valor', colunas: [], de: '2024', ate: '2025', total: false, participacao: false, formato: 'reais', unidade: '', nota: '' })),
+      }) })!;
+      return revisarMetodo(prepararResposta(r, new Map(consultas)), { pergunta }).filter((m) => /ICSAP|condições sensíveis/.test(m));
+    };
+    const pAsma = 'SELECT 100.0 * sum(icsap_g07) / nullif(sum(icsap_int), 0) AS valor' + FROM;
+    const tTotal = 'SELECT 10000.0 * sum(icsap_int) / sum(populacao) AS valor' + FROM;
+    const cAsma = 'SELECT sum(icsap_g07) AS valor' + FROM;
+    // A) "all ACSC" é o denominador: pergunta de grupo, não do total
+    for (const p of ['Share of asthma in all ACSC admissions', 'Share of asthma in overall ICSAP admissions', 'Participação da asma em todas as ICSAP']) {
+      assert.deepEqual(ids(p), ['icsap', 'icsap_grupo_participacao', 'icsap_g07'], p);
+      assert.deepEqual(revVarias([pAsma], p), [], `${p}: SQL correto recusado`);
+      assert.ok(revVarias(['SELECT 100.0 * sum(icsap_g09) / nullif(sum(icsap_int), 0) AS valor' + FROM], p).some((m) => /grupo 7/.test(m)), `${p}: grupo errado`);
+    }
+    // o total explícito segue valendo
+    assert.ok(ids('Overall ICSAP rate and asthma rate per 10,000 inhabitants').includes('icsap_taxa'));
+    assert.deepEqual(ids('Total ACSC share and asthma share of ICSAP'), ['icsap', 'icsap_participacao', 'icsap_grupo_participacao', 'icsap_g07']);
+    // B) pedido misto: taxa total + contagem do grupo (duas consultas principais corretas)
+    for (const p of ['Taxa total de ICSAP e contagem de ICSAP por asma', 'Total ICSAP rate and count of asthma ICSAP']) {
+      assert.deepEqual(ids(p).filter((i) => i !== 'icsap_g07' && i !== 'icsap'), ['icsap_taxa'], `${p}: só a taxa do total`);
+      assert.deepEqual(revVarias([tTotal, cAsma], p), [], `${p}: consultas corretas recusadas`);
+      assert.ok(revVarias([tTotal], p).some((m) => /asma|grupo 7/.test(m)), `${p}: faltou o grupo`);
+      assert.ok(revVarias([cAsma], p).length > 0, `${p}: faltou a taxa do total`);
+      assert.ok(revVarias(['SELECT 10000.0 * sum(int_total) / sum(populacao) AS valor' + FROM, cAsma], p).length > 0, `${p}: total trocado por int_total`);
+    }
+    // sem pedido misto, o grupo com taxa segue exigindo população
+    const pt = 'Taxa de ICSAP por asma por 10 mil habitantes';
+    assert.deepEqual(ids(pt), ['icsap', 'icsap_grupo_taxa', 'icsap_g07']);
+    assert.ok(revVarias([cAsma], pt).some((m) => /populacao/.test(m)));
+  });
+
   test('Função 04 pedida: substituir pela despesa total volta ao modelo; despesa_administracao ou F04 atendem', () => {
     const trocada = revisarMetodo(pronta({ tabelaSql: 'SELECT ano, nome AS grupo, despesa_empenhada_sem_intra / populacao_ibge AS valor FROM indicadores' }), { pergunta: PERGUNTA_F04 });
     assert.ok(trocada.some((p) => /Função 04/.test(p) && /Não apresente outra variável/.test(p)), trocada.join('\n'));
@@ -4627,6 +4783,38 @@ describe('saúde: ICSAP (Lista Brasileira, Portaria SAS/MS nº 221/2008)', () =>
     assert.equal(calcular(indicador('icsap_taxa'), { ano: 2024, icsap_int: null, populacao: 1000 }), null);
     assert.equal(calcular(indicador('icsap_proporcao'), { ano: 2024, icsap_int: 0, icsap_base: 0 }), null, 'denominador zero: indisponível, não 0');
     assert.equal(calcular(indicador('icsap_proporcao'), { ano: 2024, icsap_int: 0, icsap_base: 40 }), 0, 'há internações e nenhuma é ICSAP: zero real');
+  });
+
+  test('IA: consultas com as colunas icsap_* dão os números conferidos (Goiânia e Brasil 2024; nulo, zero e ausência)', { skip: semSaude }, async () => {
+    if (!(await temIcsap())) return;
+    const exec = async (sql: string) => {
+      const r = await executarConsulta({ sql }, ['saude']);
+      assert.ok(!('erro' in r), JSON.stringify(r));
+      return 'erro' in r ? [] : r.linhas;
+    };
+    // Goiânia 2024: 10.030 ICSAP, base de 71.212 internações sem partos, população de 1.494.599
+    const [go] = await exec('SELECT sum(icsap_int), sum(icsap_base), sum(populacao), 10000.0 * sum(icsap_int) / sum(populacao), 100.0 * sum(icsap_int) / nullif(sum(icsap_base), 0) FROM saude_municipios WHERE cod_ibge = 5208707 AND ano = 2024');
+    assert.deepEqual(go.slice(0, 3).map(Number), [10030, 71212, 1494599]);
+    quase(Number(go[3]), (10030 / 1494599) * 10000);
+    quase(Number(go[4]), (100 * 10030) / 71212);
+    // Brasil 2024 pela razão das somas
+    const [br] = await exec('SELECT sum(icsap_int), sum(icsap_base), sum(populacao) FROM saude_municipios WHERE ano = 2024');
+    assert.deepEqual(br.map(Number), [2175413, 12965494, 212583750]);
+    // os 19 grupos somam o total do município
+    const [g] = await exec(`SELECT sum(icsap_int) - (${GRUPOS_ICSAP.map(([n]) => `sum(${colunaGrupoIcsap(n)})`).join(' + ')}) FROM saude_municipios WHERE cod_ibge = 5208707 AND ano = 2024`);
+    assert.equal(Number(g[0]), 0);
+    // Mojuí dos Campos 2013: zero registrado (ICSAP 0, base 0), participação indefinida (nula), taxa 0
+    const [mo] = await exec('SELECT icsap_int, icsap_base, populacao, 100.0 * icsap_int / nullif(icsap_base, 0), 10000.0 * icsap_int / populacao FROM saude_municipios WHERE cod_ibge = 1504752 AND ano = 2013');
+    assert.deepEqual(mo.slice(0, 3).map(Number), [0, 0, 16408]);
+    assert.equal(mo[3], null, 'base zero: participação nula, não 0%');
+    assert.equal(Number(mo[4]), 0);
+    // Boa Esperança do Norte 2025: sem registro de ICSAP (sem linha, ou linha com valor nulo), nunca zero
+    const sem = await exec('SELECT icsap_int, icsap_base FROM saude_municipios WHERE cod_ibge = 5101837 AND ano = 2025');
+    assert.ok(sem.every((l) => l[0] === null && l[1] === null), JSON.stringify(sem));
+    // fora da cobertura (antes de 2008) o valor é nulo, nunca zero
+    const [antes] = await exec('SELECT count(*) FILTER (icsap_int IS NOT NULL), count(*) FROM saude_municipios WHERE ano < 2008');
+    assert.equal(Number(antes[0]), 0);
+    assert.ok(Number(antes[1]) > 0);
   });
 
   test('versão dos dados sem colunas ICSAP: indicadores indisponíveis, o resto segue, sem zeros nem erro', { skip: semSaude }, async () => {

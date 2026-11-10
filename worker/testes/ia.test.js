@@ -179,6 +179,40 @@ describe('instruções', () => {
     assert.deepEqual(paineisDoPedido(['saude', 'financas']), ['financas', 'saude']);
   });
 
+  test('saúde: ICSAP descrita nas instruções (colunas, grupos, fórmulas, residência, base sem partos, ausência) e compatível com dados sem ICSAP', () => {
+    const base = { gerado_em: 'x', anos: [2013, 2025], base_ipca: 2025 };
+    const com = { ...base, fontes: { sih: { anos: [2008, 2025] }, icsap: { anos: [2008, 2025] }, populacao_svs: { anos: [2000, 2025] } } };
+    const sem = { ...base, fontes: { sih: { anos: [2008, 2025] }, populacao_svs: { anos: [2000, 2025] } } };
+    const texto = (m) => instrucoes(['saude'], { manifesto: m, contextoTrabalho: {} }).map((b) => b.text).join('\n');
+    const t = texto(com);
+    assert.match(t, /ICSAP \(internações por condições sensíveis à atenção primária, sobre o SIH, por ano de competência\): 2008 a 2025; fora desses anos icsap_\* é NULL/);
+    assert.match(t, /Portaria SAS\/MS nº 221\/2008: 19 grupos, 105 entradas/);
+    for (let n = 1; n <= 19; n++) assert.match(t, new RegExp(`icsap_g${String(n).padStart(2, '0')} \\(`), `grupo ${n}`);
+    assert.match(t, /icsap_g13 \(diabetes mellitus\)/);
+    assert.match(t, /icsap_base \(internações de residentes EXCETO partos, CID-10 O80–O84[^)]*NÃO é int_total/);
+    assert.match(t, /icsap_int ÷ populacao × 10\.000/);
+    assert.match(t, /icsap_int ÷ icsap_base × 100/);
+    assert.match(t, /nunca a média das taxas dos municípios/);
+    assert.match(t, /10000\.0 \* sum\(icsap_int\) \/ sum\(populacao\)/);
+    assert.match(t, /100\.0 \* sum\(icsap_int\) \/ nullif\(sum\(icsap_base\), 0\)/);
+    assert.match(t, /22\. ICSAP[\s\S]*RESIDENTES[\s\S]*ano de competência[\s\S]*não é uma medida causal isolada[\s\S]*não padronizada por idade/);
+    assert.match(t, /icsap_base zero deixa a participação indefinida, nunca 0%/);
+    assert.match(t, /NULL, que é ausência de dado e não zero \(não use COALESCE/);
+    assert.match(t, /ICSAP 0 e base 0[\s\S]*sem participação calculável/);
+    assert.match(t, /taxa, 5\.000 habitantes; participação, 500 internações/);
+    assert.match(t, /ICSAB, ACSC ou "ambulatory care-sensitive"/);
+    // o conteúdo anterior segue
+    assert.match(t, /int_cap01 a int_cap22/);
+    assert.match(t, /SIH \(internações do SUS, por ano de competência\): 2008 a 2025/);
+    // manifesto sem a fonte (dados anteriores): a instrução diz que está indisponível, sem inventar anos
+    const s = texto(sem);
+    assert.match(s, /ICSAP \(internações por condições sensíveis à atenção primária\) indisponível: não há colunas icsap_\* nesta versão dos dados\./);
+    assert.doesNotMatch(s, /fora desses anos icsap_\*/);
+    assert.match(s, /SIH \(internações do SUS, por ano de competência\): 2008 a 2025/);
+    // outros painéis não recebem o conceito
+    assert.doesNotMatch(instrucoes(['financas'], { manifesto: com, contextoTrabalho: {} }).map((b) => b.text).join('\n'), /icsap_int/);
+  });
+
   test('saúde: seção própria, anos do manifesto e regras de cruzamento só dos painéis marcados', () => {
     const manifesto = { gerado_em: 'x', anos: [2013, 2025], base_ipca: 2025, fontes: { sim: { anos: [1996, 2024] }, sinasc: { anos: [1996, 2024] }, populacao_svs: { anos: [2000, 2025] } } };
     const texto = (p) => instrucoes(p, { manifesto, contextoTrabalho: {} }).map((b) => b.text).join('\n');

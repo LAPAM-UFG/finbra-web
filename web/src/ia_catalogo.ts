@@ -13,7 +13,7 @@ import type { Cobertura } from './ia';
 import type { TipoColuna } from './ia_formato';
 
 /** Fonte cujos anos (do manifesto) dão a cobertura temporal da coluna. */
-export type ChaveCobertura = 'dca' | 'pib' | 'rais' | 'sim' | 'sinasc' | 'sih' | 'sia' | 'aps' | 'cnes' | 'sinan' | 'siscan' | 'oncologia' | 'resp';
+export type ChaveCobertura = 'dca' | 'pib' | 'rais' | 'sim' | 'sinasc' | 'sih' | 'icsap' | 'sia' | 'aps' | 'cnes' | 'sinan' | 'siscan' | 'oncologia' | 'resp';
 
 export type Coluna = {
   tipo: TipoColuna;
@@ -43,6 +43,31 @@ const SINASC = 'Ministério da Saúde/DATASUS: SINASC (nascidos vivos por munic�
 const sim = (x: Omit<Coluna, 'fonte' | 'tipo'>): Coluna => ({ tipo: 'contagem', fonte: SIM, tabelas: ['saude_municipios'], cobertura: 'sim', territorio: 'municípios de residência', ...x });
 const SIH = 'Ministério da Saúde/DATASUS: SIH (internações hospitalares pagas pelo SUS, AIH tipo 1, por município de residência)';
 const RESSALVA_SIH = 'só internações pagas pelo SUS (não inclui a saúde suplementar nem a privada); por ano de competência da AIH';
+const ICSAP_F = 'Ministério da Saúde/DATASUS: SIH (AIH tipo 1, por município de residência e ano de competência), classificada pela Lista Brasileira de Internações por Condições Sensíveis à Atenção Primária (Portaria SAS/MS nº 221/2008, 19 grupos) sobre o diagnóstico principal';
+const RESSALVA_ICSAP = 'medida indireta, relacionada à atenção primária e ao uso hospitalar: não avalia, isoladamente, a qualidade da gestão nem estabelece causa, e a taxa por habitante não é padronizada por idade; só internações pagas pelo SUS; fora do período coberto o valor é nulo (não é zero)';
+const icsap = (x: Omit<Coluna, 'fonte' | 'tipo'>): Coluna => ({ tipo: 'contagem', fonte: ICSAP_F, tabelas: ['saude_municipios'], cobertura: 'icsap', territorio: 'municípios de residência', ressalva: RESSALVA_ICSAP, ...x });
+/** Os 19 grupos da Lista Brasileira (Portaria SAS/MS nº 221/2008): nome e os termos com que a pergunta os chama. */
+const GRUPOS_ICSAP_IA: [string, RegExp][] = [
+  ['doenças preveníveis por imunização e condições sensíveis', /imuniza[çc][ãa]o|preven[ií]veis\s+por\s+vacina|vaccine/i],
+  ['gastroenterites infecciosas e complicações', /gastroenterite|diarr[ée]ia|diarrh/i],
+  ['anemia', /anemia|anaemia/i],
+  ['deficiências nutricionais', /defici[êe]ncias?\s+nutricion|desnutri|nutritional/i],
+  ['infecções de ouvido, nariz e garganta', /ouvido|garganta|otite|amigdal|ear,?\s+nose|throat/i],
+  ['pneumonias bacterianas', /pneumonia/i],
+  ['asma', /\basma\b|asthma/i],
+  ['doenças pulmonares', /doen[çc]as?\s+pulmonares?|dpoc|bronquite|enfisema|lung\s+disease|copd/i],
+  ['hipertensão', /hipertens|hypertens/i],
+  ['angina', /angina/i],
+  ['insuficiência cardíaca', /insufici[êe]ncia\s+card[ií]aca|heart\s+failure/i],
+  ['doenças cerebrovasculares', /cerebrovascular|\bavc\b|acidente\s+vascular|stroke/i],
+  ['diabetes mellitus', /diabet/i],
+  ['epilepsias', /epilep/i],
+  ['infecção no rim e trato urinário', /infec[çc][ãa]o\s+urin[áa]ria|trato\s+urin[áa]rio|\bitu\b|infec[çc][ãa]o\s+(no|do)\s+rim|urinary|kidney\s+infection/i],
+  ['infecção da pele e tecido subcutâneo', /infec[çc][ãa]o\s+(da|de)\s+pele|tecido\s+subcut|skin\s+infection/i],
+  ['doença inflamatória dos órgãos pélvicos femininos', /p[ée]lvic|inflamat[óo]ria\s+p[ée]lvica/i],
+  ['úlcera gastrointestinal', /[úu]lcera|ulcer/i],
+  ['doenças relacionadas ao pré-natal e parto', /pr[ée]-?natal|prenatal|childbirth/i],
+];
 const SIA = 'Ministério da Saúde/DATASUS: SIA (produção ambulatorial do SUS, grupo PA: procedimentos aprovados, por município do estabelecimento)';
 const RESSALVA_SIA = 'só o SUS; conta procedimentos aprovados (não pessoas) pelo município do estabelecimento, por ano de apresentação; valor da tabela do SUS (SIGTAP), não o custo nem o gasto do município';
 const sia = (x: Omit<Coluna, 'fonte' | 'tipo'> & { tipo?: TipoColuna }): Coluna => ({ tipo: 'contagem', fonte: SIA, tabelas: ['saude_municipios'], cobertura: 'sia', territorio: 'municípios onde fica o estabelecimento', ressalva: RESSALVA_SIA, ...x });
@@ -122,6 +147,9 @@ export const COLUNAS: Record<string, Coluna> = {
   int_atendidas: sih({ rotulo: 'internações atendidas no município', definicao: 'internações feitas em hospitais do município, de quem for residente', territorio: 'municípios onde fica o hospital' }),
   int_atendidas_de_fora: sih({ rotulo: 'internações atendidas de residentes de outros municípios', definicao: 'internações em hospitais do município de pessoas residentes em outro município', territorio: 'municípios onde fica o hospital' }),
   int_atendidas_valor_real: sih({ tipo: 'reais', rotulo: 'valor pago nas internações atendidas (R$ de 2025)', definicao: 'valor das AIH atendidas por hospitais do município, em reais de 2025 pelo IPCA acumulado (dez/dez)', territorio: 'municípios onde fica o hospital' }),
+  icsap_int: icsap({ rotulo: 'internações por condições sensíveis à atenção primária (ICSAP)', definicao: 'AIH tipo 1 pagas pelo SUS de residentes do município cujo diagnóstico principal consta na Lista Brasileira de ICSAP (Portaria SAS/MS nº 221/2008), por ano de competência; é a soma dos 19 grupos icsap_g01 a icsap_g19' }),
+  icsap_base: icsap({ rotulo: 'internações de residentes, exceto partos (base da participação das ICSAP)', definicao: 'AIH tipo 1 pagas pelo SUS de residentes, excluídas as por partos (CID-10 O80–O84); é o denominador da participação das ICSAP nas internações e não é int_total, que inclui os partos' }),
+  ...Object.fromEntries(GRUPOS_ICSAP_IA.map(([nome], i) => [`icsap_g${String(i + 1).padStart(2, '0')}`, icsap({ rotulo: `ICSAP: grupo ${String(i + 1).padStart(2, '0')}, ${nome}`, definicao: `internações por condições sensíveis à atenção primária do grupo ${i + 1} da Lista Brasileira (${nome})`, classificacao: 'Lista Brasileira de ICSAP (Portaria SAS/MS nº 221/2008), CID-10 do diagnóstico principal' })])),
   ...Object.fromEntries(CAP_SIH.map((nome, i) => [`int_cap${String(i + 1).padStart(2, '0')}`, sih({ rotulo: `internações: ${nome}`, definicao: `internações cujo diagnóstico principal é do capítulo ${nome} da CID-10`, classificacao: 'CID-10, diagnóstico principal' })])),
   cnes_estab: cnes({ rotulo: 'estabelecimentos de saúde', definicao: 'estabelecimentos distintos cadastrados no CNES no município (qualquer tipo, com ou sem vínculo SUS)' }),
   cnes_estab_sus: cnes({ rotulo: 'estabelecimentos com vínculo SUS', definicao: 'estabelecimentos do CNES com vínculo ao SUS (VINC_SUS = 1)' }),
@@ -240,6 +268,7 @@ export function coberturaDaColuna(c: Coluna, cob?: Cobertura | null): string {
   if (c.cobertura === 'sim') return intervalo(cob?.sim);
   if (c.cobertura === 'sinasc') return intervalo(cob?.sinasc);
   if (c.cobertura === 'sih') return intervalo(cob?.sih);
+  if (c.cobertura === 'icsap') return intervalo(cob?.icsap);
   if (c.cobertura === 'sia') return intervalo(cob?.sia);
   if (c.cobertura === 'aps') return intervalo(cob?.aps);
   if (c.cobertura === 'cnes') return intervalo(cob?.cnes);
@@ -293,6 +322,26 @@ export type Conceito = {
   atende: RegExp;
   /** o que dizer ao modelo quando a resposta não o usa */
   orientacao: string;
+};
+
+/** Como a pergunta chama as ICSAP (português e inglês). */
+const ICSAP_TERMO = /\bicsap\b|\bicsab\b|\bacsc\b|condi[çc][õo]es\s+sens[ií]veis|sens[ií]veis\s+[àa]\s+aten[çc][ãa]o\s+(?:prim[áa]ria|b[áa]sica)|ambulatory[\s-]+care[\s-]+sensitive|primary[\s-]+care[\s-]+sensitive|(?:interna[çc][õo]es|hospitaliza[çc][õo]es)\s+evit[áa]veis|(?:avoidable|preventable)\s+(?:hospitali[sz]ations?|admissions?)/i;
+/** A pergunta tem os dois termos (em qualquer ordem). */
+const ambos = (a: RegExp, b: RegExp) => new RegExp(`(?=[\\s\\S]*(?:${a.source}))(?=[\\s\\S]*(?:${b.source}))`, 'i');
+
+const TAXA_TERMO = /\btaxas?\b|por\s+(?:1?0?0?\s*mil|dez\s+mil|cem\s+mil)\s+(?:habitantes|hab\b)|per\s+(?:10,?000|100,?000|1,?000)\s+(?:inhabitants|population)|per\s+capita|por\s+habitante|\brates?\b/i;
+const PARTICIPACAO_TERMO = /participa[çc][ãa]o|propor[çc][ãa]o|percentual|porcentagem|\bshare\b|proportion|%\s+d[ao]s\s+interna|quanto\s+d[ao]s\s+interna/i;
+/** A pergunta cita um grupo da lista (pelo nome ou pela palavra grupo). */
+const GRUPO_CITADO = new RegExp(`\\b(?:grupos?|groups?)\\b|${GRUPOS_ICSAP_IA.map(([, t]) => t.source).join('|')}`, 'i');
+/** A pergunta pede o total de forma explícita, mesmo citando um grupo ("taxa total", "ICSAP geral", "overall"). */
+const TOTAL_EXPLICITO = /\b(?:taxa|participa[çc][ãa]o|propor[çc][ãa]o)\s+(?:total|geral)\b|\b(?:rate|share|proportion)\s+(?:total|overall)\b|\b(?:total|overall)\s+(?:icsap|acsc)\s+(?:rate|share|proportion)\b/i;
+/** Medida do total: a pergunta não cita grupo, ou pede o total explicitamente. */
+const medidaDoTotal = (medida: RegExp) => new RegExp(`^(?:(?![\\s\\S]*(?:${GRUPO_CITADO.source}))|(?=[\\s\\S]*(?:${TOTAL_EXPLICITO.source})))${ambos(ICSAP_TERMO, medida).source}`, 'i');
+/** Medida de um grupo: a pergunta cita um grupo. */
+const medidaDoGrupo = (medida: RegExp) => {
+  // a medida citada só para o total ("taxa total", "participação geral", "total ACSC rate") não é a do grupo (pedido misto)
+  const dela = `(?<!(?:total|overall|geral)\\s+(?:de\\s+)?(?:icsap|icsab|acsc)\\s+)(?:${medida.source})(?!\\s+(?:total|geral|overall)\\b)`;
+  return new RegExp(`^(?=[\\s\\S]*(?:${GRUPO_CITADO.source}))${ambos(ICSAP_TERMO, new RegExp(dela)).source}`, 'i');
 };
 
 export const CONCEITOS: Conceito[] = [
@@ -352,6 +401,49 @@ export const CONCEITOS: Conceito[] = [
     atende: /\bmaternos\b/i,
     orientacao: 'use saude_municipios.maternos; a razão de mortalidade materna é 100000.0 * sum(maternos) / sum(nascidos), por 100 mil nascidos vivos',
   },
+  {
+    id: 'icsap', nome: 'internações por condições sensíveis à atenção primária (ICSAP)',
+    pedido: ICSAP_TERMO,
+    // as ICSAP são as colunas icsap_*; int_total e int_cap* (capítulos da CID-10) não são a Lista Brasileira
+    atende: /\bicsap_int\b|\bicsap_base\b|\bicsap_g\d{2}\b/i,
+    orientacao: 'use saude_municipios.icsap_int (AIH tipo 1 de residentes, diagnóstico principal na Lista Brasileira da Portaria SAS/MS nº 221/2008, 19 grupos icsap_g01 a icsap_g19), não int_total nem os capítulos int_cap*; os anos fora de fontes.icsap são nulos',
+  },
+  {
+    id: 'icsap_taxa', nome: 'taxa de ICSAP por habitantes',
+    // taxa do TOTAL: sem grupo na pergunta, ou com o total dito de forma explícita ("taxa total", "ICSAP geral")
+    pedido: medidaDoTotal(TAXA_TERMO),
+    atende: /^(?=[\s\S]*\bicsap_int\b)(?=[\s\S]*\bpopulacao\b)/i,
+    orientacao: 'use saude_municipios: 10000.0 * sum(icsap_int) / sum(populacao), ICSAP por 10 mil habitantes (razão das somas em UF, Brasil e períodos, nunca a média das taxas); o denominador é a população residente, não int_total nem icsap_base; a taxa é bruta, sem padronização por idade',
+  },
+  {
+    id: 'icsap_participacao', nome: 'participação das ICSAP nas internações',
+    // participação do TOTAL nas internações: a base é icsap_base; a de um grupo tem outra base (conceito abaixo)
+    pedido: medidaDoTotal(PARTICIPACAO_TERMO),
+    atende: /^(?=[\s\S]*\bicsap_int\b)(?=[\s\S]*\bicsap_base\b)/i,
+    orientacao: 'use saude_municipios: 100.0 * sum(icsap_int) / nullif(sum(icsap_base), 0); o denominador é icsap_base (internações de residentes exceto partos, CID-10 O80–O84), não int_total, que inclui os partos; razão das somas em UF, Brasil e períodos; base zero é indefinida (nula), nunca 0%',
+  },
+  {
+    id: 'icsap_grupo_taxa', nome: 'taxa de ICSAP de um grupo da lista por habitantes',
+    pedido: medidaDoGrupo(TAXA_TERMO),
+    atende: /^(?=[\s\S]*\bicsap_g\d{2}\b)(?=[\s\S]*\bpopulacao\b)/i,
+    orientacao: 'use saude_municipios: 10000.0 * sum(icsap_gNN) / sum(populacao), com a coluna do grupo pedido (ex.: icsap_g07, asma); o denominador é a população residente, não icsap_int nem icsap_base',
+  },
+  {
+    id: 'icsap_grupo_participacao', nome: 'participação de um grupo da lista nas ICSAP ou nas internações',
+    pedido: medidaDoGrupo(PARTICIPACAO_TERMO),
+    // nas ICSAP, a base é icsap_int; nas internações de residentes (sem partos), icsap_base
+    atende: /^(?=[\s\S]*\bicsap_g\d{2}\b)(?=[\s\S]*\b(?:icsap_int|icsap_base)\b)/i,
+    orientacao: 'use saude_municipios: 100.0 * sum(icsap_gNN) / nullif(sum(icsap_int), 0) para a participação do grupo nas ICSAP, ou / nullif(sum(icsap_base), 0) para a participação nas internações de residentes sem partos (nunca int_total, que inclui os partos); razão das somas; base zero é indefinida (nula)',
+  },
+  ...GRUPOS_ICSAP_IA.map(([nome, termo], i): Conceito => {
+    const col = `icsap_g${String(i + 1).padStart(2, '0')}`;
+    return {
+      id: col, nome: `ICSAP do grupo ${i + 1} (${nome})`,
+      pedido: ambos(ICSAP_TERMO, termo),
+      atende: new RegExp(`\\b${col}\\b`, 'i'),
+      orientacao: `use saude_municipios.${col} (grupo ${i + 1} da Lista Brasileira: ${nome}); os 19 grupos icsap_g01 a icsap_g19 somam icsap_int`,
+    };
+  }),
 ];
 
 /** Texto da consulta sem os literais, salvo os códigos de função ('F04'), que identificam a variável. */
