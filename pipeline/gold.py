@@ -428,6 +428,7 @@ def fontes(con):
         **fonte_trabalho(con),
         **fonte_educacao_saude(con),
         **fonte_datasus(con),
+        **fonte_fns(con),
     }
 
 
@@ -436,6 +437,13 @@ def fonte_datasus(con):
     from saude import fonte_saude
 
     return fonte_saude(con)
+
+
+def fonte_fns(con):
+    """Repasses fundo a fundo do FNS (fns.py): lidos de gold/saude/fns_*.parquet; sem isto, refazer o gold apagaria a fonte do manifesto."""
+    from fns import fonte_fns as _fonte
+
+    return _fonte(con, GOLD / "saude")
 
 
 def fonte_populacao(con):

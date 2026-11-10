@@ -1208,7 +1208,7 @@ export function tabelasVacinacao() {
   return vacinacaoCarregada;
 }
 
-/** Só testes: troca a leitura de arquivos e apaga as tabelas de vacinação para exercitar a carga do zero. */
+/** Só testes: troca o leitor compartilhado; cada domínio tem seu próprio reset abaixo. */
 export function usarLeituraNoTeste(ler: (caminho: string) => Promise<Uint8Array>) {
   lerLocal = ler;
 }
@@ -1273,6 +1273,106 @@ const rotasVacinacao: Record<string, (q: Params) => Promise<unknown>> = {
        FROM saude_vacinacao t WHERE t.ano = $ano::INTEGER AND t.imunobiologico = $imuno ${uf ? 'AND t.uf = $uf' : ''}
        ORDER BY t.nome NULLS LAST, t.municipio`,
       p,
+    );
+  },
+};
+
+// ---------------- FNS: repasses federais fundo a fundo (pipeline/fns.py) ----------------
+
+/**
+ * fns_municipios (ano × município, ~3 MB) e fns_anos (auditoria por ano, pequena) ficam em memória; fns_composicao (bloco, grupo e
+ * estratégia por município e ano, ~19 MB, ordenada por ano e município) é lida por Range: cada consulta pede um ano. Fonte própria,
+ * fora de saude_municipios: a população do ano aparece uma vez por município em fns_municipios e os valores nunca se somam à
+ * receita (SICONFI) nem à despesa (SIOPS).
+ */
+let fnsCarregada: Promise<void> | null = null;
+/** Só testes: reinicia apenas o domínio FNS para exercitar a carga e a retomada. */
+export async function reiniciarFnsNoTeste() {
+  const { con } = await iniciar();
+  await con.query('DROP VIEW IF EXISTS fns_composicao');
+  for (const nome of ['fns_municipios', 'fns_anos']) await con.query(`DROP TABLE IF EXISTS ${nome}`);
+  fnsCarregada = null;
+}
+export function tabelasFns() {
+  fnsCarregada ??= (async () => {
+    const { con } = await iniciar();
+    const nomes = ['municipios', 'anos'];
+    const arquivos = await Promise.all(nomes.map((nome) => baixar(`gold/saude/fns_${nome}.parquet`)));
+    for (const [i, nome] of nomes.entries()) {
+      await db.registerFileBuffer(`fns_${nome}.parquet`, arquivos[i]);
+      await con.query(`CREATE OR REPLACE TABLE fns_${nome} AS SELECT * FROM read_parquet('fns_${nome}.parquet')`);
+    }
+    await con.query(`CREATE OR REPLACE VIEW fns_composicao AS SELECT * FROM read_parquet(${arq('gold/saude/fns_composicao.parquet')})`);
+  })();
+  fnsCarregada.catch(() => (fnsCarregada = null));
+  return fnsCarregada;
+}
+
+const rotasFns: Record<string, (q: Params) => Promise<unknown>> = {
+  /**
+   * Série anual do escopo (município, UF ou Brasil). Sem repasse no ano, bruto e líquido saem nulos (nunca zero). O per capita usa só os
+   * municípios com população SVS/MS no ano (liquido_com_pop ÷ pop_com_repasse), e a cobertura (pop_com_repasse ÷ pop_total) e o valor
+   * sem população correspondente (liquido_sem_pop) vão junto, para a página mostrar o que o denominador não alcança.
+   */
+  async fns_serie(q) {
+    await tabelasFns();
+    const p: Record<string, Valor> = {};
+    const e = escopoTrabalho(q, p);
+    return consultar(
+      `SELECT ano, count(*)::INTEGER AS municipios, (count(*) FILTER (WHERE linhas IS NOT NULL))::INTEGER AS municipios_com_repasse,
+              sum(bruto)::DOUBLE AS bruto, sum(liquido)::DOUBLE AS liquido, sum(liquido_real)::DOUBLE AS liquido_real,
+              sum(liquido) FILTER (WHERE populacao > 0)::DOUBLE AS liquido_com_pop, sum(liquido_real) FILTER (WHERE populacao > 0)::DOUBLE AS liquido_real_com_pop,
+              sum(populacao) FILTER (WHERE linhas IS NOT NULL AND populacao > 0)::DOUBLE AS pop_com_repasse, sum(populacao)::DOUBLE AS pop_total,
+              sum(liquido) FILTER (WHERE populacao IS NULL OR populacao <= 0)::DOUBLE AS liquido_sem_pop,
+              sum(liquido) FILTER (WHERE destino = 'distrital')::DOUBLE AS liquido_distrital, sum(linhas)::INTEGER AS linhas
+       FROM fns_municipios m WHERE ${e.onde} GROUP BY ano ORDER BY ano`,
+      p,
+    );
+  },
+
+  /** Composição do ano (bloco, grupo, estratégia, com os nomes da fonte naquele ano) no escopo; só nominal. */
+  async fns_composicao(q) {
+    await tabelasFns();
+    const p: Record<string, Valor> = { ano: inteiro(q.ano) };
+    const ente = inteiro(q.ente);
+    const uf = UFS.has(String(q.uf)) ? String(q.uf) : null;
+    let onde = 'true';
+    if (ente) {
+      p.municipio = Math.floor((ente === 53 ? 5300108 : ente) / 10);
+      onde = 'c.municipio = $municipio::INTEGER';
+    } else if (uf) {
+      p.uf = uf;
+      onde = 'c.uf = $uf';
+    }
+    return consultar(
+      `SELECT c.bloco, c.grupo, c.estrategia, sum(c.bruto)::DOUBLE AS bruto, sum(c.liquido)::DOUBLE AS liquido, sum(c.linhas)::INTEGER AS linhas
+       FROM fns_composicao c WHERE c.ano = $ano::INTEGER AND ${onde} GROUP BY ALL ORDER BY liquido DESC, c.bloco, c.grupo, c.estrategia`,
+      p,
+    );
+  },
+
+  /** Municípios com repasse no ano (da UF, ou do Brasil), com a população do ano; per capita e ordem saem na página. */
+  async fns_municipios(q) {
+    await tabelasFns();
+    const p: Record<string, Valor> = { ano: inteiro(q.ano) };
+    const e = escopoTrabalho({ uf: q.uf }, p);
+    return consultar(
+      `SELECT m.cod_ibge, m.municipio, m.nome, m.uf, m.destino, m.bruto::DOUBLE AS bruto, m.liquido::DOUBLE AS liquido, m.liquido_real::DOUBLE AS liquido_real,
+              m.populacao::DOUBLE AS populacao, m.linhas::INTEGER AS linhas
+       FROM fns_municipios m WHERE ${e.onde} AND m.ano = $ano::INTEGER AND m.linhas IS NOT NULL ORDER BY m.nome, m.municipio`,
+      p,
+    );
+  },
+
+  /** Auditoria por ano: linhas lidas, incluídas, excluídas e em quarentena, e o que ficou fora do universo (fundos estaduais, DF não comprovado). */
+  async fns_anos() {
+    await tabelasFns();
+    return consultar(
+      `SELECT ano, linhas_arquivo::INTEGER AS linhas_arquivo, linhas_municipais::INTEGER AS linhas_municipais, linhas_distritais::INTEGER AS linhas_distritais,
+              linhas_excluidas::INTEGER AS linhas_excluidas, linhas_quarentena::INTEGER AS linhas_quarentena, linhas_conflito_de_classe::INTEGER AS linhas_conflito_de_classe,
+              bruto::DOUBLE AS bruto, liquido::DOUBLE AS liquido, liquido_distrital::DOUBLE AS liquido_distrital,
+              liquido_df_nao_comprovado::DOUBLE AS liquido_df_nao_comprovado, liquido_estadual::DOUBLE AS liquido_estadual
+       FROM fns_anos ORDER BY ano`,
     );
   },
 };
@@ -2472,7 +2572,7 @@ export async function consultaLivre(sql: string, limite: number, sinal?: AbortSi
 }
 
 export async function executar(caminho: string, params: Params): Promise<unknown> {
-  const rota = rotas[caminho] ?? rotasLrf[caminho] ?? rotasSaudeEducacao[caminho] ?? rotasTrabalho[caminho] ?? rotasConsulta[caminho] ?? rotasSaude[caminho] ?? rotasVacinacao[caminho] ?? rotasMunic[caminho] ?? rotasClima[caminho]
+  const rota = rotas[caminho] ?? rotasLrf[caminho] ?? rotasSaudeEducacao[caminho] ?? rotasTrabalho[caminho] ?? rotasConsulta[caminho] ?? rotasSaude[caminho] ?? rotasVacinacao[caminho] ?? rotasFns[caminho] ?? rotasMunic[caminho] ?? rotasClima[caminho]
     ?? rotasPosicoes[caminho];
   if (!rota) throw new Error(`rota desconhecida: ${caminho}`);
   return rota(params);

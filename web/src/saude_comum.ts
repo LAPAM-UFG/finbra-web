@@ -454,7 +454,7 @@ export const CAPITULOS = (): [string, string][] => [
 
 // ---------------- disponibilidade, fontes e metadados compartilhados ----------------
 
-export type FonteChave = 'sim' | 'sinasc' | 'populacao_svs' | 'sih' | 'icsap' | 'sia' | 'cnes' | 'sinan' | 'siscan' | 'oncologia' | 'resp' | 'aps';
+export type FonteChave = 'sim' | 'sinasc' | 'populacao_svs' | 'sih' | 'icsap' | 'sia' | 'cnes' | 'sinan' | 'siscan' | 'oncologia' | 'resp' | 'aps' | 'fns';
 /** O que o manifesto dos dados informa de cada fonte (gold/manifesto.json, fontes.*). */
 export type FonteMeta = {
   anos?: number[];
@@ -469,14 +469,18 @@ export type FonteMeta = {
   preliminares?: number[];
   /** anos que o DATASUS só publica como preliminares e que o painel não usa (só arquivos finais) */
   preliminar_nao_incluido?: number[];
+  /** FNS: primeiro e último ano com valor real (o IPCA do painel só começa em 2006) */
+  anos_reais?: [number, number] | null;
+  /** FNS: universo dos repasses, em texto */
+  universo?: string;
 };
 export type FontesMeta = Record<string, FonteMeta | undefined>;
 
-export const CHAVES_FONTES: FonteChave[] = ['sim', 'sinasc', 'populacao_svs', 'sih', 'icsap', 'sia', 'cnes', 'sinan', 'siscan', 'oncologia', 'resp', 'aps'];
+export const CHAVES_FONTES: FonteChave[] = ['sim', 'sinasc', 'populacao_svs', 'sih', 'icsap', 'sia', 'cnes', 'sinan', 'siscan', 'oncologia', 'resp', 'aps', 'fns'];
 
 export const NOME_FONTE: Record<FonteChave, () => string> = {
   sim: () => 'SIM', sinasc: () => 'SINASC', sih: () => 'SIH', icsap: () => t('ICSAP (SIH)', 'ICSAP (SIH)'), sia: () => 'SIA', cnes: () => 'CNES', sinan: () => 'SINAN', siscan: () => 'SISCAN',
-  oncologia: () => t('Painel de Oncologia', 'Oncology Panel'), resp: () => 'RESP', aps: () => t('atenção primária (SAPS)', 'primary care (SAPS)'), populacao_svs: () => t('população da SVS/MS', 'SVS/MS population'),
+  oncologia: () => t('Painel de Oncologia', 'Oncology Panel'), resp: () => 'RESP', fns: () => t('FNS (repasses federais)', 'FNS (federal transfers)'), aps: () => t('atenção primária (SAPS)', 'primary care (SAPS)'), populacao_svs: () => t('população da SVS/MS', 'SVS/MS population'),
 };
 
 const NOME_AGRAVO: Record<string, () => string> = {

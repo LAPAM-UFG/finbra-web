@@ -16,6 +16,7 @@ import { SaudeEvolucao, SaudeMetodologia, SaudeRankings, SaudeTabela, SaudeVisao
 import { SaudeAmbulatorial } from './pages/SaudeAmbulatorial';
 import { SaudeVacinacao } from './pages/SaudeVacinacao';
 import { SaudeRede } from './pages/SaudeRede';
+import { SaudeFinanciamento } from './pages/SaudeFinanciamento';
 import { ReceitasEvolucao, ReceitasVisaoGeral } from './pages/Receitas';
 import { Educacao, RemuneracaoEducacao, Saude } from './pages/SaudeEducacao';
 import { Socioeconomico } from './pages/Socioeconomico';
@@ -56,7 +57,8 @@ const menuSaude = (): [string, [string, string][]][] => [
   [t('Indicadores de saúde', 'Health indicators'), [['/datasus', t('Visão geral', 'Overview')], ['/datasus/evolucao', t('Evolução', 'Trends')],
     ['/datasus/rankings', 'Rankings'], ['/datasus/rede', t('Rede e acesso', 'Network and access')],
     ['/datasus/ambulatorial', t('Produção ambulatorial', 'Outpatient output')],
-    ['/datasus/vacinacao', t('Vacinação', 'Vaccination')]]],
+    ['/datasus/vacinacao', t('Vacinação', 'Vaccination')],
+    ['/datasus/financiamento', t('Financiamento federal', 'Federal funding')]]],
   [t('Metodologia', 'Methodology'), [['/datasus/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
 ];
 
@@ -243,6 +245,7 @@ export function App() {
               <Route path="/datasus/rede" element={<SaudeRede />} />
               <Route path="/datasus/ambulatorial" element={<SaudeAmbulatorial />} />
               <Route path="/datasus/vacinacao" element={<SaudeVacinacao />} />
+              <Route path="/datasus/financiamento" element={<SaudeFinanciamento />} />
               <Route path="/datasus/metodologia" element={<SaudeMetodologia />} />
               <Route path="/munic" element={<MunicVisaoGeral />} />
               <Route path="/munic/evolucao" element={<MunicEvolucao />} />

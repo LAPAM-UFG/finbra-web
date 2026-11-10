@@ -12,7 +12,8 @@
  * confere os códigos de território (conferirCodigos); lugares citados pelo nome passam pela ferramenta
  * "localizar", que usa o cadastro de entes.
  */
-import { abandonarConsultaIa, consultaLivre, prepararResultadosIa, contextoTrabalhoIa, manifestoDados, tabelaDespesaFuncao, tabelaLrf, tabelasEducacaoSaude, tabelasIaClima, tabelasVacinacao, tabelasIaMunic, tabelasIaTrabalho, tabelasSaude } from './dados';
+import { abandonarConsultaIa, consultaLivre, prepararResultadosIa, contextoTrabalhoIa, manifestoDados, tabelaDespesaFuncao, tabelaLrf, tabelasEducacaoSaude, tabelasFns, tabelasIaClima, tabelasVacinacao, tabelasIaMunic, tabelasIaTrabalho, tabelasSaude } from './dados';
+import { guardaFns } from './ia_fns';
 import { t } from './idioma';
 import {
   catalogoDeResultados, citadasNoSql, compactarParaEnvio, tendenciasSemSuporte, descreverParcial, dicaDoErro, executarPartida, incoerenciasDoRecorte, lerParticao, nomeTabela, resultadosReaproveitaveis,
@@ -229,6 +230,7 @@ export function disponibilidadeNoAno(ano: number, paineis: Painel[], c: Cobertur
     if (c.resp?.length) marcar('RESP', c.resp.includes(ano), faixa(c.resp));
     if (c.vacinacao?.length) marcar('Vacinação (cobertura por residência)', c.vacinacao.includes(ano), faixa(c.vacinacao));
     if (c.popSvs?.length) marcar('população da SVS/MS', c.popSvs.includes(ano), faixa(c.popSvs));
+    if (c.fns?.length) marcar('FNS', c.fns.includes(ano), faixa(c.fns));
   }
   if (paineis.includes('munic')) {
     const faixa = (a?: number[]) => (a?.length ? ` (${a[0]}–${a.at(-1)})` : '');
@@ -283,7 +285,7 @@ export type Cobertura = {
   rais: number[]; caged: { de: number; ate: number } | null; microdados: boolean; dca: number[];
   pib?: { de: number; ate: number; setorial_ate?: number } | null; siope?: number[]; siopeRemuneracao?: number[]; siops?: number[];
   lrf?: { de: number; ate: number; parciais?: number[] } | null; bolsa?: { de: number; ate: number; mes: number } | null; inss?: number[];
-  sim?: number[]; sinasc?: number[]; sih?: number[]; icsap?: number[]; sia?: number[]; aps?: number[]; cnes?: number[]; sinan?: number[]; siscan?: number[]; oncologia?: number[]; resp?: number[]; vacinacao?: number[]; popSvs?: number[]; munic?: number[]; estadic?: number[]; clima?: { de: number; ate: number } | null;
+  sim?: number[]; sinasc?: number[]; sih?: number[]; icsap?: number[]; sia?: number[]; aps?: number[]; cnes?: number[]; sinan?: number[]; siscan?: number[]; oncologia?: number[]; resp?: number[]; vacinacao?: number[]; popSvs?: number[]; fns?: number[]; munic?: number[]; estadic?: number[]; clima?: { de: number; ate: number } | null;
 };
 /** Sugestão: título curto, a pergunta completa (que vai para o campo), o tema e as bases que a pergunta usa. */
 export type Sugestao = { titulo: string; tema: string; texto: string; paineis: Painel[]; nota?: string };
@@ -536,7 +538,7 @@ export function coberturaPorAno(c: Cobertura, paineis: Painel[]): Map<number, { 
   }
   if (paineis.includes('munic')) fechadas([...(c.munic ?? []), ...(c.estadic ?? [])]);
   if (paineis.includes('clima') && c.clima) mensal('Clima', c.clima.de * 100 + 1, c.clima.ate);
-  if (paineis.includes('saude')) fechadas([...(c.sim ?? []), ...(c.sinasc ?? []), ...(c.sih ?? []), ...(c.icsap ?? []), ...(c.sia ?? []), ...(c.aps ?? []), ...(c.cnes ?? []), ...(c.sinan ?? []), ...(c.siscan ?? []), ...(c.oncologia ?? []), ...(c.resp ?? []), ...(c.vacinacao ?? []), ...(c.popSvs ?? [])]);
+  if (paineis.includes('saude')) fechadas([...(c.sim ?? []), ...(c.sinasc ?? []), ...(c.sih ?? []), ...(c.icsap ?? []), ...(c.sia ?? []), ...(c.aps ?? []), ...(c.cnes ?? []), ...(c.sinan ?? []), ...(c.siscan ?? []), ...(c.oncologia ?? []), ...(c.resp ?? []), ...(c.vacinacao ?? []), ...(c.popSvs ?? []), ...(c.fns ?? [])]);
   return anos;
 }
 
@@ -644,6 +646,10 @@ export function descreverCobertura(paineis: Painel[], c: Cobertura): string[] {
   if (paineis.includes('saude') && c.popSvs?.length) {
     linhas.push(t(`População da SVS/MS ${faixa(c.popSvs[0], c.popSvs.at(-1)!)}: estimativas por município, sexo e idade, denominador das taxas de saúde`,
       `SVS/MS population ${faixa(c.popSvs[0], c.popSvs.at(-1)!)}: estimates by municipality, sex and age, the denominator of health rates`));
+  }
+  if (paineis.includes('saude') && c.fns?.length) {
+    linhas.push(t(`FNS ${faixa(c.fns[0], c.fns.at(-1)!)}: repasses federais fundo a fundo do Fundo Nacional de Saúde a destinatários municipais (e, no DF, à Secretaria e ao Fundo de Saúde), bruto e líquido por município e ano do arquivo, com composição por bloco, grupo e estratégia (nomes da fonte em cada ano); o valor real vale de 2006 em diante e não se soma à receita nem à despesa dos outros painéis`,
+      `FNS ${faixa(c.fns[0], c.fns.at(-1)!)}: federal fund-to-fund transfers from the National Health Fund to municipal recipients (and, in the DF, to the Health Department and Fund), gross and net by municipality and file year, with composition by block, group and strategy (source names in each year); real values hold from 2006 on and are not added to the revenue or spending of the other panels`));
   }
   if (paineis.includes('munic') && c.munic?.length) {
     linhas.push(t(`MUNIC ${anosLista(c.munic)}: perguntas que as prefeituras respondem ao IBGE sobre a estrutura e as políticas do município (uma edição por vez; os temas se alternam)`,
@@ -890,6 +896,7 @@ const FONTES_TABELAS: [RegExp | ((sql: string) => boolean), () => string][] = [
   [lidaComoTabela('lrf'), () => t('SICONFI/Tesouro Nacional: RREO e RGF', 'SICONFI/National Treasury: RREO and RGF')],
   [/\bsiope_[a-z_]+/, () => t('FNDE: SIOPE (declarações de educação)', 'FNDE: SIOPE (education filings)')],
   [/\bsiops_[a-z_]+/, () => t('Ministério da Saúde: SIOPS (declarações de saúde)', 'Ministry of Health: SIOPS (health filings)')],
+  [lidaComoTabela('fns_municipios|fns_composicao|fns_anos'), () => t('Ministério da Saúde/FNS: repasses federais fundo a fundo', 'Ministry of Health/FNS: federal fund-to-fund transfers')],
   [/\b(pib|vab_[a-z_]+)\b/, () => t('IBGE: PIB dos municípios', 'IBGE: municipal GDP')],
   // as duas populações têm fontes diferentes: a de indicadores e lrf é a declarada pelo ente; a do IBGE é
   // populacao_ibge (e a de trab_municipios)
@@ -922,14 +929,14 @@ const FONTES_TABELAS: [RegExp | ((sql: string) => boolean), () => string][] = [
     () => t('Ministério da Saúde/DATASUS: SIH classificado pela Lista Brasileira de ICSAP (Portaria SAS/MS nº 221/2008; internações por condições sensíveis à atenção primária, por município de residência)', 'Ministry of Health/DATASUS: SIH classified by the Brazilian ICSAP List (Ordinance SAS/MS 221/2008; ambulatory care-sensitive admissions, by municipality of residence)')],
   [(s) => /\bsaude_municipios\b/.test(s) && /\bint_\w+\b/.test(s),
     () => t('Ministério da Saúde/DATASUS: SIH (internações hospitalares do SUS por município de residência ou do hospital)', 'Ministry of Health/DATASUS: SIH (SUS hospital admissions by municipality of residence or of the hospital)')],
-  [(s) => /\bsaude_municipios\b/.test(s) && /\b(populacao|pop_\w+)\b/.test(s),
+  [(s) => /\b(saude_municipios|fns_municipios)\b/.test(s) && /\b(populacao|pop_\w+)\b/.test(s),
     () => t('SVS/MS: estimativas de população por município, sexo e idade', 'SVS/MS: population estimates by municipality, sex and age')],
   [/\bclima_(anual|mensal|agregado|normal)\b/, () => t('CHIRPS v3 (chuva) e ERA5-Land (demais variáveis), agregados por município', 'CHIRPS v3 (rainfall) and ERA5-Land (other variables), aggregated by municipality')],
   [/\bmunic_(agregados|respostas)\b/,
     () => t('IBGE: MUNIC (Pesquisa de Informações Básicas Municipais) e ESTADIC (Estaduais), autodeclaradas', 'IBGE: MUNIC (Municipal Basic Information Survey) and ESTADIC (State), self-reported')],
   [/\bbolsa_familia_[a-z]+/, () => t('Portal da Transparência: Bolsa Família', 'Transparency Portal: Bolsa Família')],
   [/\binss_[a-z]+/, () => t('Previdência Social: benefícios do INSS', 'Social Security: INSS benefits')],
-  [(s) => lidaComoTabela('ipca|ipca_base')(s), () => t('IPCA (Banco Central, SGS 433)', 'IPCA (Central Bank of Brazil, SGS 433)')],
+  [(s) => lidaComoTabela('ipca|ipca_base')(s) || (lidaComoTabela('fns_municipios')(s) && /\bliquido_real\b/.test(s)), () => t('IPCA (Banco Central, SGS 433)', 'IPCA (Central Bank of Brazil, SGS 433)')],
   [lidaComoTabela('alertas|escopos'), () => t('LAPAM/UFG: avaliação de qualidade das declarações', 'LAPAM/UFG: quality review of filings')],
   [lidaComoTabela('faixas'), () => t('LAPAM/UFG: faixas populacionais', 'LAPAM/UFG: population brackets')],
   [lidaComoTabela('entes'), () => t('SICONFI: cadastro de entes', 'SICONFI: registry of governments')],
@@ -1137,6 +1144,7 @@ export function coberturaDaFonte(sql: string, c?: Cobertura | null): CoberturaFo
   if (/\btrab_caged/.test(s)) return c.caged ? { nome: 'Novo CAGED', meses: c.caged } : null;
   if (/\brais_(uf|mun|esc_porte|vinculos)\b|\btrab_(municipios|setores|setores_uf|grandes_setores)\b/.test(s)) return { nome: 'RAIS', anos: c.rais };
   if (/\bsaude_vacinacao(_territorios|_catalogo)?\b/.test(s) && c.vacinacao?.length) return { nome: 'Vacinação (cobertura por residência)', anos: c.vacinacao };
+  if (/\bfns_(municipios|composicao|anos)\b/.test(s) && c.fns?.length) return { nome: 'FNS', anos: c.fns };
   if (/\bsaude_municipios\b/.test(s) && /\bsiscan_\w+\b/.test(s) && c.siscan?.length) return { nome: 'SISCAN', anos: c.siscan };
   if (/\bsaude_municipios\b/.test(s) && /\bonco_\w+\b/.test(s) && c.oncologia?.length) return { nome: 'Painel de Oncologia', anos: c.oncologia };
   if (/\bsaude_municipios\b/.test(s) && /\bresp_\w+\b/.test(s) && c.resp?.length) return { nome: 'RESP', anos: c.resp };
@@ -1948,6 +1956,10 @@ async function consultaSemLimite(entrada: unknown, paineis: Painel[], sinal: Abo
       if (codigos) return { erro: codigos, bloqueada: true };
     }
     const todas = [e.sql, ...extras].join('\n');
+    for (const s of [e.sql, ...extras]) {
+      const fnsGuarda = guardaFns(s);
+      if (fnsGuarda) return { erro: fnsGuarda, bloqueada: true };
+    }
     // as tabelas do trabalho (trab_*, rais_*) só são preparadas quando alguma consulta as lê
     if (paineis.includes('trabalho') && /\b(trab_\w+|rais_\w+)/i.test(todas)) await tabelasIaTrabalho();
     // a tabela da LRF só é baixada quando alguma consulta a usa; as do SIOPE e do SIOPS, idem
@@ -1956,6 +1968,7 @@ async function consultaSemLimite(entrada: unknown, paineis: Painel[], sinal: Abo
     if (paineis.includes('financas') && /\bdespesa_funcao\b/i.test(todas)) await tabelaDespesaFuncao();
     if (paineis.includes('saude') && /\bsaude_municipios\b/i.test(todas)) await tabelasSaude();
     if (paineis.includes('saude') && /\bsaude_vacinacao\w*/i.test(todas)) await tabelasVacinacao();
+    if (paineis.includes('saude') && /\bfns_(municipios|composicao|anos)\b/i.test(todas)) await tabelasFns();
     if (paineis.includes('munic') && /\bmunic_\w+/i.test(todas)) await tabelasIaMunic();
     if (paineis.includes('clima') && /\bclima_\w+/i.test(todas)) await tabelasIaClima();
     // resultados já apurados na conversa, lidos como tabelas (res_C1…): só os completos, da mesma versão dos dados e desta conversa

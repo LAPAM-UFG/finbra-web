@@ -157,6 +157,7 @@ const FONTES_DE_FATO: [RegExp, string][] = [
   [/^bolsa_familia_\w+$/, 'Bolsa Família'],
   [/^inss_\w+$/, 'INSS'],
   [/^saude_municipios$/, 'SIM/SINASC'],
+  [/^fns_(municipios|composicao|anos)$/, 'FNS'],
   [/^munic_(agregados|respostas)$/, 'MUNIC/ESTADIC'],
   [/^clima_(anual|mensal|agregado|normal)$/, 'CHIRPS/ERA5-Land'],
 ];

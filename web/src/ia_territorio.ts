@@ -18,6 +18,14 @@ import { sqlSemTextos, type Valor } from './ia_formato';
 
 export type EnteCadastro = { cod: number; nome: string; uf: string; esfera: string };
 export type Cadastro = { porCodigo: Map<number, EnteCadastro>; porRais: Map<number, EnteCadastro>; municipios: EnteCadastro[] };
+// Distrito estadual presente no FNS, ausente do cadastro de declarantes do SICONFI.
+const NORONHA: EnteCadastro = { cod: 2605459, nome: 'Fernando de Noronha', uf: 'PE', esfera: 'M' };
+const comNoronhaFns = (cad: Cadastro) => montarCadastro([...cad.porCodigo.values(), NORONHA]);
+const consultaSoFns = (sql: string) => {
+  const tabelas = [...sql.matchAll(/\b(?:from|join)\s+(?:\w+\.)?(\w+)\b/g)].map((m) => m[1]);
+  const ctes = new Set([...sql.matchAll(/\b(\w+)\s+as\s*(?:not\s+materialized\s*)?\(/g)].map((m) => m[1]));
+  return tabelas.some((n) => /^fns_(municipios|composicao|anos)$/.test(n)) && tabelas.every((n) => /^fns_(municipios|composicao|anos)$/.test(n) || ctes.has(n));
+};
 
 /** Nome e preposição de cada UF ("em Goiás", "no Pará", "na Bahia"). */
 export const UF_NOMES: Record<string, [string, 'em' | 'no' | 'na']> = {
@@ -64,7 +72,7 @@ const emLista = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')
 /** Os códigos de um município em cada tabela dos painéis marcados, para o modelo. */
 export function codigosDoMunicipio(cod: number, paineis: Paineis): string {
   const tabelas7 = [...(comTrabalho(paineis) ? ['trab_municipios', 'trab_grandes_setores', 'trab_setores', 'trab_caged', 'trab_caged_anual'] : []),
-    ...(comSaude(paineis) ? ['saude_municipios'] : []), 'entes', ...(comFinancas(paineis) ? ['indicadores', 'alertas', 'lrf'] : [])];
+    ...(comSaude(paineis) ? ['saude_municipios', 'fns_municipios'] : []), 'entes', ...(comFinancas(paineis) ? ['indicadores', 'alertas', 'lrf'] : [])];
   const partes = [`cod_ibge = ${cod} (7 dígitos) em ${emLista(tabelas7)}`];
   if (comTrabalho(paineis)) partes.push(`municipio = ${Math.floor(cod / 10)} (6 dígitos) só em rais_mun e rais_vinculos`);
   if (comMunic(paineis)) partes.push(`cod = ${cod} (7 dígitos) em munic_territorio e munic_respostas (MUNIC)`);
@@ -80,7 +88,7 @@ export function codigosDaUf(uf: string, cod: number, paineis: Paineis): string {
       `uf = ${cod} (código) ou uf_sigla = '${uf}' em rais_uf, rais_mun e rais_vinculos`);
   }
   if (comFinancas(paineis)) partes.push(`governo estadual: cod_ibge = ${cod} (esfera 'E'); municípios da UF: uf = '${uf}' com esfera 'M'`);
-  if (comSaude(paineis)) partes.push(`uf = '${uf}' (sigla) em saude_municipios (inclui as linhas de município ignorado da UF)`);
+  if (comSaude(paineis)) partes.push(`uf = '${uf}' (sigla) em saude_municipios (inclui as linhas de município ignorado da UF), em fns_municipios e em fns_composicao`);
   if (comClima(paineis)) partes.push(`grupo = '${uf}' (sigla) em clima_agregado; municípios da UF: uf = '${uf}' em clima_territorio`);
   if (comMunic(paineis)) partes.push(`uf = '${uf}' (sigla) em munic_territorio; grupo = '${uf}' no corte 'uf' de munic_agregados; na ESTADIC, cod = ${cod} em munic_territorio e munic_respostas (pesquisa = 'estadic')`);
   return `Códigos: ${partes.join('; ')}.`;
@@ -91,14 +99,14 @@ export function codigosDoDf(paineis: Paineis): string {
   const partes: string[] = [];
   if (comFinancas(paineis)) partes.push("nas finanças, cod_ibge = 53 (esfera 'D')");
   if (comTrabalho(paineis)) partes.push("no trabalho, Brasília: cod_ibge = 5300108 nas tabelas trab_*, municipio = 530010 em rais_mun e rais_vinculos, uf = 53 ou uf_sigla = 'DF' nas tabelas rais_*, escopo = 'DF' nas tabelas por UF");
-  if (comSaude(paineis)) partes.push("na saúde, o DF inteiro é Brasília: cod_ibge = 5300108 (ou uf = 'DF') em saude_municipios");
+  if (comSaude(paineis)) partes.push("na saúde, o DF inteiro é Brasília: cod_ibge = 5300108 (ou uf = 'DF') em saude_municipios e fns_municipios (no FNS, só a Secretaria e o Fundo de Saúde do DF; municipio = 530010 em fns_composicao)");
   if (comMunic(paineis)) partes.push("na gestão pública, Brasília é o município 5300108 (cod em munic_territorio e munic_respostas, pesquisa = 'munic'); o governo do DF, na ESTADIC (pesquisa = 'estadic'), é cod = 53; uf = 'DF' / grupo = 'DF' nos cortes por UF");
   return `Códigos: ${partes.join('; ')}.`;
 }
 
 // ---------------- localizar (ferramenta do modelo) ----------------
 
-export type Localizado = { tipo: 'municipio' | 'uf'; nome: string; uf: string; cod: number };
+export type Localizado = { tipo: 'municipio' | 'uf' | 'distrito'; nome: string; uf: string; cod: number };
 
 const ufDe = (s: string): string | null => {
   const x = s.trim();
@@ -149,6 +157,8 @@ export function localizar(nome: string, uf: string, cad: Cadastro): { encontrado
 
 /** Linha de um lugar para o modelo, com os códigos em cada formato. */
 function paraModeloLocalizado(l: Localizado, paineis: Paineis) {
+  if (l.tipo === 'distrito') return { tipo: 'distrito estadual', nome: l.nome, uf: l.uf, cod_ibge: l.cod,
+    codigos: 'Somente no FNS: cod_ibge = 2605459 em fns_municipios; municipio = 260545 em fns_composicao. Classificado como MUNICIPAL pela fonte. Não é ente fiscal declarante em entes/indicadores/lrf.' };
   if (l.tipo === 'uf') {
     return { tipo: 'uf', nome: l.nome, uf: l.uf, cod_ibge: l.cod, codigos: l.uf === 'DF' ? codigosDoDf(paineis) : codigosDaUf(l.uf, l.cod, paineis) };
   }
@@ -165,7 +175,8 @@ export function executarLocalizacao(entrada: unknown, cad: Cadastro, paineis: Pa
   const e = (entrada ?? {}) as { nome?: unknown; uf?: unknown };
   const nome = typeof e.nome === 'string' ? e.nome.slice(0, 120) : '';
   if (!nome.trim()) return { modelo: JSON.stringify({ erro: 'informe o nome do município ou da UF' }), tabela: { erro: 'nome vazio' }, erro: true };
-  const r = localizar(nome, typeof e.uf === 'string' ? e.uf : '', cad);
+  const r = localizar(nome, typeof e.uf === 'string' ? e.uf : '', comSaude(paineis) ? comNoronhaFns(cad) : cad);
+  for (const l of [...r.encontrados, ...r.sugestoes]) if (l.cod === NORONHA.cod) l.tipo = 'distrito';
   const lista = r.encontrados.length ? r.encontrados : r.sugestoes;
   const tabela = {
     colunas: ['nome', 'uf', 'cod_ibge', 'municipio_rais'],
@@ -197,7 +208,7 @@ export function executarLocalizacao(entrada: unknown, cad: Cadastro, paineis: Pa
 // ---------------- conferência dos códigos nas consultas ----------------
 
 const descrever = (e: EnteCadastro) => `${e.nome} (${e.uf})`;
-const TABELAS_SO_MUNICIPIO = /\b(trab_municipios|trab_grandes_setores|trab_setores|trab_caged|trab_caged_anual|saude_municipios)\b/;
+const TABELAS_SO_MUNICIPIO = /\b(trab_municipios|trab_grandes_setores|trab_setores|trab_caged|trab_caged_anual|saude_municipios|fns_municipios)\b/;
 const TABELAS_COM_UF_EM_COD = /\b(entes|indicadores|alertas|escopos|lrf)\b/;
 
 /**
@@ -208,6 +219,7 @@ const TABELAS_COM_UF_EM_COD = /\b(entes|indicadores|alertas|escopos|lrf)\b/;
  */
 export function conferirCodigos(sql: string, cad: Cadastro): string | null {
   const s = sqlSemTextos(sql);
+  if (consultaSoFns(s)) cad = comNoronhaFns(cad);
   const comTextos = sql.toLowerCase();
   const problemas: string[] = [];
   const pares: [string, number][] = [];
@@ -292,8 +304,10 @@ export function territoriosNasConsultas(sqls: string[], cad: Cadastro | null): s
     for (const m of s.matchAll(/\b(?:\w+\.)?(cod_ibge|municipio|uf)\s*=\s*(\d+)\b/g)) numeros.push([m[1], Number(m[2])]);
     for (const m of s.matchAll(/\b(?:\w+\.)?(cod_ibge|municipio|uf)\s+in\s*\(([\d\s,]+)\)/g)) for (const x of m[2].split(',')) numeros.push([m[1], Number(x)]);
     for (const [coluna, n] of numeros) {
-      const e = cad && (coluna === 'municipio' ? cad.porRais.get(n) : cad.porCodigo.get(n));
+      const cadConsulta = cad && consultaSoFns(s) ? comNoronhaFns(cad) : cad;
+      const e = cadConsulta && (coluna === 'municipio' ? cadConsulta.porRais.get(n) : cadConsulta.porCodigo.get(n));
       if (!e) continue;
+      if (e.cod === NORONHA.cod) { r.set(`m${e.cod}`, `${e.nome} (${e.uf}) · ${t('distrito estadual', 'state district')} · IBGE ${e.cod}`); continue; }
       if (e.esfera === 'M') r.set(`m${e.cod}`, `${e.nome} (${e.uf}) · IBGE ${e.cod}`);
       else if (e.esfera === 'E' || e.esfera === 'D') r.set(`u${e.uf}`, `${nomeDaUf(e.uf)} (${e.uf})`);
     }

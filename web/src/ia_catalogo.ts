@@ -13,7 +13,7 @@ import type { Cobertura } from './ia';
 import type { TipoColuna } from './ia_formato';
 
 /** Fonte cujos anos (do manifesto) dão a cobertura temporal da coluna. */
-export type ChaveCobertura = 'dca' | 'pib' | 'rais' | 'sim' | 'sinasc' | 'sih' | 'icsap' | 'sia' | 'aps' | 'cnes' | 'sinan' | 'siscan' | 'oncologia' | 'resp' | 'vacinacao';
+export type ChaveCobertura = 'dca' | 'pib' | 'rais' | 'sim' | 'sinasc' | 'sih' | 'icsap' | 'sia' | 'aps' | 'cnes' | 'sinan' | 'siscan' | 'oncologia' | 'resp' | 'vacinacao' | 'fns';
 
 export type Coluna = {
   tipo: TipoColuna;
@@ -68,6 +68,9 @@ const GRUPOS_ICSAP_IA: [string, RegExp][] = [
   ['úlcera gastrointestinal', /[úu]lcera|ulcer/i],
   ['doenças relacionadas ao pré-natal e parto', /pr[ée]-?natal|prenatal|childbirth/i],
 ];
+const FNS_F = 'Ministério da Saúde/Fundo Nacional de Saúde (FNS): repasses fundo a fundo, arquivos anuais "Repasse FAF com população"';
+const RESSALVA_FNS = 'repasse da União (perspectiva de quem transfere) a destinatários que o FNS classifica como municipais, mais a Secretaria e o Fundo de Saúde do DF; por ano do arquivo; R$ correntes (real só de 2006 em diante); não soma com a receita (SICONFI) nem com a despesa (SIOPS), que são o mesmo fluxo visto por quem recebe e gasta';
+const fns = (x: Omit<Coluna, 'fonte' | 'tipo'> & { tipo?: TipoColuna }): Coluna => ({ tipo: 'reais', fonte: FNS_F, tabelas: ['fns_municipios'], cobertura: 'fns', territorio: 'municípios com repasse no ano (DF: Secretaria e Fundo de Saúde)', ressalva: RESSALVA_FNS, ...x });
 const SIA = 'Ministério da Saúde/DATASUS: SIA (produção ambulatorial do SUS, grupo PA: procedimentos aprovados, por município do estabelecimento)';
 const RESSALVA_SIA = 'só o SUS; conta procedimentos aprovados (não pessoas) pelo município do estabelecimento, por ano de apresentação; valor da tabela do SUS (SIGTAP), não o custo nem o gasto do município';
 const sia = (x: Omit<Coluna, 'fonte' | 'tipo'> & { tipo?: TipoColuna }): Coluna => ({ tipo: 'contagem', fonte: SIA, tabelas: ['saude_municipios'], cobertura: 'sia', territorio: 'municípios onde fica o estabelecimento', ressalva: RESSALVA_SIA, ...x });
@@ -282,6 +285,7 @@ export function coberturaDaColuna(c: Coluna, cob?: Cobertura | null): string {
   if (c.cobertura === 'oncologia') return intervalo(cob?.oncologia);
   if (c.cobertura === 'resp') return intervalo(cob?.resp);
   if (c.cobertura === 'vacinacao') return intervalo(cob?.vacinacao);
+  if (c.cobertura === 'fns') return intervalo(cob?.fns);
   return c.cobertura ?? '';
 }
 
@@ -297,10 +301,29 @@ const COLUNAS_SO_VACINACAO: Record<string, Coluna> = {
   metodo: vac({ tipo: 'texto', rotulo: 'método de cálculo da cobertura', definicao: "'tipo_de_dose' (até 2022) ou 'individuo' (2023 em diante), conforme a Nota Técnica nº 84/2026-DPNI/SVSA/MS" }),
 };
 
-/** Coluna do catálogo; as genéricas de vacinação só quando o SQL lê uma tabela de vacinação. */
+/** Nomes comuns em outros SQL (linhas, grupo, bruto etc.) só recebem ficha FNS nesse domínio. */
+const TABELAS_FNS = /\b(?:from|join)\s+(?:\w+\.)?fns_(municipios|composicao|anos)\b/i;
+const COLUNAS_SO_FNS: Record<string, Coluna> = {
+  // financiamento federal (fns_municipios, fns_composicao e fns_anos; pipeline/fns.py): R$ correntes por ano do arquivo do FNS
+  bruto: fns({ rotulo: 'repasse bruto do FNS (R$ correntes)', definicao: 'soma do VL_BRUTO dos repasses fundo a fundo do ano a destinatários municipais, antes dos descontos; o saldo da conta (estoque) nunca entra', tabelas: ['fns_municipios', 'fns_composicao'] }),
+  liquido: fns({ rotulo: 'repasse líquido do FNS (R$ correntes)', definicao: 'soma do VL_LIQUIDO dos repasses fundo a fundo do ano, depois dos descontos; NULL onde o FNS não registra repasse no ano (nunca zero)', tabelas: ['fns_municipios', 'fns_composicao'] }),
+  liquido_real: fns({ rotulo: 'repasse líquido do FNS (R$ de 2025)', definicao: 'liquido corrigido para reais de 2025 pelo IPCA acumulado (dez/dez) do painel; NULL antes de 2006, quando o IPCA do painel ainda não existe' }),
+  linhas: fns({ tipo: 'contagem', rotulo: 'linhas do arquivo do FNS', definicao: 'linhas de repasse (conta e estratégia) somadas no município e ano ou na composição', tabelas: ['fns_municipios', 'fns_composicao'] }),
+  destino: fns({ tipo: 'texto', rotulo: 'destinatário (municipal ou distrital)', definicao: "'municipal' (TP_REPASSE = MUNICIPAL no FNS) ou 'distrital' (DF: Secretaria e Fundo de Saúde, que o FNS classifica como estaduais)" }),
+  bloco: fns({ tipo: 'texto', rotulo: 'bloco de financiamento (nome da fonte no ano)', definicao: 'BLOCO do arquivo do FNS, com o nome que a fonte usa naquele ano', tabelas: ['fns_composicao'], classificacao: 'rótulos retrospectivamente atualizados pelo FNS (Portaria GM/MS nº 828/2020): sem equivalência garantida entre anos, compare um ano de cada vez' }),
+  grupo: fns({ tipo: 'texto', rotulo: 'grupo de financiamento (nome da fonte no ano)', definicao: 'GRUPO do arquivo do FNS, com o nome que a fonte usa naquele ano', tabelas: ['fns_composicao'], classificacao: 'rótulos retrospectivamente atualizados pelo FNS: sem equivalência garantida entre anos' }),
+  estrategia: fns({ tipo: 'texto', rotulo: 'estratégia de financiamento (nome da fonte no ano)', definicao: 'ESTRATÉGIA do arquivo do FNS, com o nome que a fonte usa naquele ano', tabelas: ['fns_composicao'], classificacao: 'rótulos retrospectivamente atualizados pelo FNS: sem equivalência garantida entre anos' }),
+  liquido_estadual: fns({ rotulo: 'líquido repassado a fundos estaduais (fora do universo, R$ correntes)', definicao: 'VL_LIQUIDO das linhas TP_REPASSE = ESTADUAL do ano, que não entram em fns_municipios; só para dimensionar o que ficou de fora', tabelas: ['fns_anos'] }),
+  liquido_df_nao_comprovado: fns({ rotulo: 'líquido de outro CNPJ no DF (fora do universo, R$ correntes)', definicao: 'VL_LIQUIDO repassado em Brasília a destinatário fora dos CNPJs documentados da Secretaria e do Fundo de Saúde do DF (00394700000108, 00394700000299 e 12116247000157): não entra em fns_municipios', tabelas: ['fns_anos'] }),
+  populacao: { ...fns({ tipo: 'contagem', rotulo: 'população SVS/MS (habitantes)', definicao: 'estimativa da SVS/MS do ano, uma vez por município e ano; no per capita, usar a população dos mesmos municípios com repasse; nunca somar sobre linhas de composição que a repitam' }), fonte: 'SVS/MS: estimativas de população por município, sexo e idade' },
+};
+
+/** Coluna do catálogo: nomes específicos de domínio só quando a consulta lê suas tabelas. */
 export function colunaDaConsulta(nome: string, sql?: string): Coluna | undefined {
   const k = nome.toLowerCase();
-  return COLUNAS[k] ?? (sql && TABELAS_VACINACAO.test(sql) ? COLUNAS_SO_VACINACAO[k] : undefined);
+  const limpo = sql?.replace(/'(?:[^']|'')*'/g, "''").replace(/--[^\n]*/g, ' ').replace(/\/\*[\s\S]*?\*\//g, ' ');
+  if (limpo && TABELAS_FNS.test(limpo) && COLUNAS_SO_FNS[k]) return COLUNAS_SO_FNS[k];
+  return COLUNAS[k] ?? (limpo && TABELAS_VACINACAO.test(limpo) ? COLUNAS_SO_VACINACAO[k] : undefined);
 }
 
 /**
@@ -417,6 +440,12 @@ export const CONCEITOS: Conceito[] = [
     pedido: /cobertura\s+vacinal|coberturas?\s+de\s+vacina|vacina[çc][ãa]o|imuniza[çc][ãa]o|vacinas?\s+(em\s+dia|aplicadas)/i,
     atende: /\bsaude_vacinacao(_territorios)?\b/i,
     orientacao: 'use saude_vacinacao (município) ou saude_vacinacao_territorios (Brasil, regiões e UFs oficiais); cobertura é razão de 0 a 1 (nunca multiplique duas vezes), denominador zero é não calculável, acima de 100% é valor observado; o método muda em 2023 (séries separadas), o catálogo varia por ano, vacinas diferentes não se somam e UF/Brasil não são a média dos municípios',
+  },
+  {
+    id: 'repasse_federal_fns', nome: 'repasses federais do FNS (fundo a fundo)',
+    pedido: /repasses?\s+(federais?|fundo\s+a\s+fundo|do\s+(fns|fundo\s+nacional))|financiamento\s+federal|fundo\s+nacional\s+de\s+sa[úu]de|\bfns\b|transfer[êe]ncias?\s+(federais?\s+)?(do\s+)?(sus|fns|fundo\s+a\s+fundo)/i,
+    atende: /\bfns_municipios\b|\bfns_composicao\b|\bfns_anos\b/i,
+    orientacao: 'use fns_municipios (liquido, bruto, liquido_real a partir de 2006; população SVS/MS uma vez por município e ano) ou fns_composicao (bloco, grupo e estratégia, de um ano de cada vez); a receita de transferências do SICONFI (indicadores) e a despesa do SIOPS são o mesmo fluxo visto por quem recebe e gasta: não se somam ao repasse do FNS',
   },
   {
     id: 'mortalidade_infantil', nome: 'mortalidade infantil',

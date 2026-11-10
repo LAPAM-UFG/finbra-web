@@ -13,7 +13,7 @@ import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { basesAV, codigoConta, formatarPct } from '../src/calculos';
-import { consultaLivre, executar, sqlClassificacao, type Classificacao, tabelaDespesaFuncao, tabelasEducacaoSaude, tabelasIaTrabalho, usarMicrodadosNoTeste, usarMotorDeTeste } from '../src/dados';
+import { consultaLivre, executar, sqlClassificacao, type Classificacao, tabelaDespesaFuncao, tabelasEducacaoSaude, tabelasIaTrabalho, tabelasFns, usarLeituraNoTeste, reiniciarFnsNoTeste, usarMicrodadosNoTeste, usarMotorDeTeste } from '../src/dados';
 import {
   anosPedidos, ehPergunta, textoDaPergunta, PAINEIS, chamarIa, coberturaDaFonte, coberturaPorAno, lerEscolhaModelo, nomeDoModelo, periodosDiferem, codigosDoSql, comPergunta, conferir, consultasDaConversa, contextoParaModelo, descreverCobertura, disponibilidadeNoAno, pedeTabelaMunicipal, dadosDoGrafico, executarConsulta, fontesConsultadas, lerModo, lerResposta,
   lerRegressao, paraModelo, pedeTabela, perguntarIa, prepararResposta, recorteDe, revisarMetodo, revisarResposta, rotulosConsultas, semNominal, semUltimaPergunta, sugestoes, valorOficial,
@@ -44,8 +44,11 @@ import {
   tendenciasSemSuporte,
 } from '../src/ia_continuidade';
 import { TRABALHO } from '../../worker/src/sistema_trabalho.js';
-import { SAUDE, contextoSaude as contextoSaudeDoWorker } from '../../worker/src/sistema_saude.js';
-import { anosDaColuna, anosDoIndicador, avisoPreliminarNaoIncluido, calcular, calcularJanela, colunaGrupoIcsap, condicaoDado, disponivelNosDados, faixaAnos, fonteCurta, fonteDaColuna, formatar, GRUPOS_ICSAP, indicador, INDICADORES, metadadosIndicador, motivoSemValor, textoMotivo, textosMotivo, type FontesMeta } from '../src/saude_comum';
+import { contextoSaude, SAUDE } from '../../worker/src/sistema_saude.js';
+import { coberturaPopulacional, ordenarMunicipios, perCapita, porBloco, razaoPositiva, resumoFns, rotuloComposicao, temRepasse, universoFns } from '../src/fns_comum';
+import { guardaFns } from '../src/ia_fns';
+import { fontesDaConsulta } from '../src/ia_verificacao';
+import { anosDaColuna, anosDoIndicador, anosSaude, avisoPreliminarNaoIncluido, calcular, calcularJanela, colunaGrupoIcsap, condicaoDado, disponivelNosDados, faixaAnos, fonteCurta, fonteDaColuna, formatar, GRUPOS_ICSAP, indicador, INDICADORES, metadadosIndicador, motivoSemValor, textoMotivo, textosMotivo, type FontesMeta } from '../src/saude_comum';
 import { cadastro, codigosDoMunicipio, conferirCodigos, executarLocalizacao, localizar, territoriosNasConsultas } from '../src/ia_territorio';
 import { crc32, paraCsv, paraXlsx, paraXlsxAbas } from '../src/exportar';
 import { ordenarBusca } from '../src/contexto';
@@ -65,7 +68,10 @@ const GOLD_PUBLICADO = process.env.GOLD_PUBLICADO?.replaceAll('\\', '/');
 const doGoldPublicado = (c: string) => !!GOLD_PUBLICADO && /^gold\/(saude\/|manifesto\.json$|ipca\.parquet$)/.test(c);
 // VACINACAO_CANDIDATO: pasta do candidato da cobertura vacinal (gold/saude/vacinacao*.parquet), enquanto não for publicada
 const VACINACAO_CANDIDATO = process.env.VACINACAO_CANDIDATO?.replaceAll('\\', '/');
-const onde = (c: string) => (c.startsWith('silver/trabalho/micro/') ? `${MICRO}/${c}` : VACINACAO_CANDIDATO && c.startsWith('gold/saude/vacinacao') ? `${VACINACAO_CANDIDATO}/${c}` : doGoldPublicado(c) ? `${GOLD_PUBLICADO}/${c}` : `${DATA}/${c}`);
+// Override opcional só para FNS e manifesto; demais arquivos respeitam DATA/GOLD_PUBLICADO.
+const FNS_CANDIDATO = process.env.FNS_CANDIDATO?.replaceAll('\\', '/');
+const doFnsCandidato = (c: string) => !!FNS_CANDIDATO && /^gold\/(saude\/fns_[^/]+\.parquet$|manifesto\.json$)/.test(c);
+const onde = (c: string) => (doFnsCandidato(c) ? `${FNS_CANDIDATO}/${c}` : c.startsWith('silver/trabalho/micro/') ? `${MICRO}/${c}` : VACINACAO_CANDIDATO && c.startsWith('gold/saude/vacinacao') ? `${VACINACAO_CANDIDATO}/${c}` : doGoldPublicado(c) ? `${GOLD_PUBLICADO}/${c}` : `${DATA}/${c}`);
 const rota = <T>(caminho: string, params: Record<string, string | number | undefined> = {}) => executar(caminho, params) as Promise<T>;
 type L = Record<string, number | string | null | boolean>;
 
@@ -2643,7 +2649,7 @@ describe('saúde (SIM, SINASC e população da SVS/MS)', () => {
     const consulta = 'SELECT ano, 1000.0 * sum(infantis) / sum(nascidos) AS mi, sum(populacao) AS pop FROM saude_municipios GROUP BY ano';
     assert.equal(coberturaDaFonte(consulta, cob)?.nome, 'SIM/SINASC');
     assert.equal(fontesConsultadas([consulta]).filter((f) => /SIM|SINASC|SVS/.test(f)).length, 3);
-    assert.match(codigosDoMunicipio(5208707, ['saude']), /cod_ibge = 5208707 \(7 dígitos\) em saude_municipios e entes/);
+    assert.match(codigosDoMunicipio(5208707, ['saude']), /cod_ibge = 5208707 \(7 dígitos\) em saude_municipios, fns_municipios e entes/);
     assert.ok(juntaFontes('SELECT i.despesa_saude, s.infantis FROM indicadores i JOIN saude_municipios s ON s.cod_ibge = i.cod_ibge AND s.ano = i.exercicio'));
     // mortalidade infantil é óbitos de menores de 1 ano por nascidos vivos, não a neonatal
     const mi = CONCEITOS.find((c) => c.id === 'mortalidade_infantil')!;
@@ -4713,6 +4719,381 @@ describe('LRF: rastreabilidade do indicador ao demonstrativo (Pontal/SP 3540200 
   });
 });
 
+describe('saúde: financiamento federal (FNS, repasses fundo a fundo)', () => {
+  const GOIANIA = 5208707;
+  const SAO_PAULO = 3550308;
+  const ACRELANDIA = 1200013;
+  /** gold sem as tabelas do FNS (publicado antes deste lote): os testes de dados saem, os de compatibilidade rodam */
+  const temFns = existsSync(onde('gold/saude/fns_municipios.parquet'));
+  const pular = !temFns;
+
+  // totais conferidos direto nos arquivos originais do FNS (soma exata dos centavos; bruto, líquido): 2003 (CSV antigo), 2018 (CSV) e 2025 (XLSX)
+  const REFERENCIA: Record<number, { BR: number[]; GO: number[]; DF: number[]; mun: Record<number, number[]> }> = {
+    2003: { BR: [10747555456.99, 10061910709.05], GO: [410671327.34, 381766782.67], DF: [209430420.13, 193358339.84],
+      mun: { [GOIANIA]: [212753027.75, 184155672.89], [SAO_PAULO]: [353741604.29, 345533994.00], [ACRELANDIA]: [141282.72, 141282.72] } },
+    2018: { BR: [62601899740.82, 59772973409.07], GO: [2380957331.69, 2266448429.57], DF: [809984530.35, 755037744.02],
+      mun: { [GOIANIA]: [757112177.32, 663682538.55], [SAO_PAULO]: [2263283001.47, 2218778740.41], [ACRELANDIA]: [5139539.93, 5121037.43] } },
+    2025: { BR: [132809054349.89, 129069071449.47], GO: [4886810579.21, 4797459026.34], DF: [1418181485.70, 1298351894.75],
+      mun: { [GOIANIA]: [973527412.79, 904049064.80], [SAO_PAULO]: [3544209684.62, 3530868224.68], [ACRELANDIA]: [15334098.79, 15306098.79] } },
+  };
+  const centavos = (v: unknown) => Math.round(Number(v) * 100);
+
+  test('perCapita, cobertura e ausência: ausência não vira zero e sem população não há per capita', () => {
+    assert.equal(razaoPositiva(10, 0), null);
+    assert.equal(razaoPositiva(null, 5), null);
+    assert.equal(razaoPositiva(0, 5), 0, 'zero registrado continua zero');
+    const r = { ano: 2018, municipios: 3, municipios_com_repasse: 2, liquido: 300, liquido_com_pop: 250, liquido_real_com_pop: 500, pop_com_repasse: 50, pop_total: 100, liquido_sem_pop: 50 };
+    assert.equal(perCapita(r, false), 5);
+    assert.equal(perCapita(r, true), 10);
+    assert.equal(coberturaPopulacional(r), 0.5);
+    assert.equal(perCapita({ ...r, pop_com_repasse: 0 }, false), null);
+    assert.equal(perCapita(undefined, false), null);
+    assert.equal(perCapita({ ...r, liquido_com_pop: null }, false), null);
+    assert.equal(temRepasse(r), true);
+    assert.equal(temRepasse({ ...r, municipios_com_repasse: 0, liquido: null }), false);
+    assert.equal(temRepasse(undefined), false);
+    const antes2006 = { ano: 2004, liquido_com_pop: 80, liquido_real_com_pop: null, pop_com_repasse: 8 };
+    assert.equal(perCapita(antes2006, false), 10);
+    assert.equal(perCapita(antes2006, true), null, 'antes de 2006 não há per capita real');
+  });
+
+  test('retoma o FNS após falha de download ou instalação parcial', { skip: pular }, async () => {
+    for (const tipo of ['download', 'instalacao']) {
+      await reiniciarFnsNoTeste();
+      let falhar = true;
+      usarLeituraNoTeste(async (c) => {
+        if (falhar && c.endsWith('fns_anos.parquet')) {
+          falhar = false;
+          if (tipo === 'download') throw new Error('HTTP 503 simulado');
+          return new Uint8Array([1, 2, 3]); // primeira tabela instalada; segundo Parquet inválido
+        }
+        return new Uint8Array(await readFile(onde(c)));
+      });
+      try {
+        await assert.rejects(tabelasFns());
+        await tabelasFns();
+        assert.equal((await rota<L[]>('fns_serie', {})).length, 24);
+        assert.equal((await rota<L[]>('fns_anos', {})).length, 24);
+        assert.ok((await rota<L[]>('fns_composicao', { ano: 2025, ente: GOIANIA })).length > 0);
+      } finally {
+        usarLeituraNoTeste(async (c) => new Uint8Array(await readFile(onde(c))));
+        await reiniciarFnsNoTeste();
+      }
+    }
+  });
+
+  test('Boa Esperança do Norte 2024: consulta sem linha mantém sem registro no cartão e na exportação', { skip: pular }, async () => {
+    const serie = await rota<L[]>('fns_serie', { ente: 5101837 });
+    const r = serie.find((x) => x.ano === 2024);
+    assert.equal(r, undefined, 'caso real sem linha em 2024');
+    assert.equal(temRepasse(r), false, 'condição usada pelo cartão');
+    assert.ok(resumoFns(r, 2024, 2025).every((l) => l[2] === null && l[3] === 'sem registro'));
+    assert.ok(resumoFns(r, null, 2025).every((l) => l[2] === null && l[3] === 'fora da cobertura'));
+    const registrado = serie.find((x) => x.ano === 2025)!;
+    assert.equal(temRepasse(registrado), true);
+    const semPop = resumoFns({ ...registrado, pop_com_repasse: null }, 2025, 2025);
+    assert.equal(semPop[0][3], 'registrado');
+    assert.equal(semPop[3][3], 'sem população');
+    assert.equal(resumoFns({ ...registrado, ano: 2004, liquido_real: null }, 2004, 2025)[2][3], 'indisponível antes de 2006');
+  });
+
+  test('Noronha: distrito apenas na saúde, consultável no FNS, recusado em outros domínios', { skip: pular }, async () => {
+    const cad = await cadastro();
+    assert.equal(cad.porCodigo.has(2605459), false);
+    const local = executarLocalizacao({ nome: 'Fernando de Noronha', uf: 'PE' }, cad, ['saude']);
+    assert.equal(local.erro, false);
+    assert.match(local.modelo, /distrito estadual/);
+    assert.match(local.modelo, /Somente no FNS/);
+    assert.equal(executarLocalizacao({ nome: 'Fernando de Noronha', uf: 'PE' }, cad, ['financas']).erro, true);
+    for (const sql of [
+      'SELECT liquido FROM fns_municipios WHERE cod_ibge = 2605459 AND ano = 2003',
+      'SELECT sum(liquido) FROM fns_composicao WHERE municipio = 260545 AND ano = 2003',
+    ]) {
+      assert.equal(conferirCodigos(sql, cad), null);
+      const r = await executarConsulta({ sql }, ['saude']);
+      assert.ok(!('erro' in r), JSON.stringify(r));
+      assert.equal(centavos((r as { linhas: number[][] }).linhas[0][0]), 9584994);
+      assert.match(territoriosNasConsultas([sql], cad).join(' '), /Fernando de Noronha.*distrito estadual/);
+    }
+    for (const sql of [
+      'SELECT receita_corrente FROM indicadores WHERE cod_ibge = 2605459',
+      'SELECT populacao FROM saude_municipios WHERE cod_ibge = 2605459',
+      'SELECT f.liquido, i.receita_corrente FROM fns_municipios f JOIN indicadores i USING(cod_ibge) WHERE i.cod_ibge = 2605459',
+      'SELECT liquido FROM fns_municipios WHERE cod_ibge = 9999999',
+    ]) assert.ok(conferirCodigos(sql, cad), sql);
+  });
+
+  test('fontes da ficha/exportação FNS, população SVS, IPCA e auditoria', () => {
+    for (const tabela of ['fns_municipios', 'fns_composicao', 'fns_anos']) assert.match(fontesConsultadas([`SELECT sum(liquido) FROM ${tabela}`]).join(' '), /FNS/);
+    const fontes = fontesConsultadas(['SELECT liquido_real / populacao FROM fns_municipios']).join(' ');
+    assert.match(fontes, /FNS/); assert.match(fontes, /SVS/); assert.match(fontes, /IPCA/);
+    assert.ok(!fontesConsultadas(['SELECT sum(liquido) FROM fns_municipios']).some((f) => /IPCA|SVS/.test(f)));
+    assert.deepEqual(fontesConsultadas(["SELECT 'fns_municipios liquido_real populacao' AS texto"]), []);
+    assert.ok(atendeConceito(CONCEITOS.find((x) => x.id === 'repasse_federal_fns')!, 'SELECT ano, liquido_estadual FROM fns_anos'));
+    assert.match(universoFns(), /00.394.700\/0002-99/);
+    assert.ok(!SAUDE.includes('DF pode estar subestimado nesses anos'));
+  });
+
+  test('porBloco e ordenarMunicipios: somas por bloco, ordem e município sem população fora do per capita', () => {
+    const b = porBloco([{ bloco: 'A', bruto: 10, liquido: 8 }, { bloco: 'B', bruto: 100, liquido: 90 }, { bloco: 'A', bruto: 5, liquido: 4 }]);
+    assert.deepEqual(b, [{ bloco: 'B', bruto: 100, liquido: 90 }, { bloco: 'A', bruto: 15, liquido: 12 }]);
+    const m = [
+      { nome: 'X', liquido: 100, populacao: 10 }, { nome: 'Y', liquido: 500, populacao: 100 }, { nome: 'Z', liquido: 50, populacao: null }, { nome: 'W', liquido: 80, populacao: 0 },
+    ];
+    assert.deepEqual(ordenarMunicipios(m, 'percapita', true).map((x) => x.nome), ['X', 'Y'], 'sem população ou população zero ficam fora do per capita');
+    assert.deepEqual(ordenarMunicipios(m, 'liquido', true).map((x) => x.nome), ['Y', 'X', 'W', 'Z']);
+    assert.deepEqual(ordenarMunicipios(m, 'liquido', false).map((x) => x.nome), ['Z', 'W', 'X', 'Y']);
+    assert.equal(rotuloComposicao({ bloco: 'B', grupo: '', estrategia: 'E' }), 'B › E');
+  });
+
+  test('guardas da IA: denominador repetido (composição × município) e soma com receita ou despesa', () => {
+    // denominador repetido
+    assert.match(guardaFns('SELECT sum(m.populacao) FROM fns_composicao c JOIN fns_municipios m ON m.municipio = c.municipio AND m.ano = c.ano') ?? '', /repete o total e a população/);
+    assert.match(guardaFns('SELECT c.bloco, sum(c.liquido) / sum(s.populacao) FROM fns_composicao c JOIN saude_municipios s ON s.municipio = c.municipio AND s.ano = c.ano GROUP BY 1') ?? '', /repete o total e a população/);
+    assert.match(guardaFns('SELECT bloco, sum(liquido) / sum(populacao) FROM fns_composicao WHERE ano = 2018 GROUP BY 1') ?? '', /não tem população/);
+    // soma com receita ou despesa
+    assert.match(guardaFns('SELECT sum(f.liquido + i.receita_corrente) FROM fns_municipios f JOIN indicadores i ON i.cod_ibge = f.cod_ibge AND i.exercicio = f.ano') ?? '', /não se soma/);
+    assert.match(guardaFns('SELECT sum(f.liquido) + sum(s.siops_receita_sus) FROM fns_municipios f JOIN siops_municipios s ON s.cod_ibge = f.cod_ibge') ?? '', /não se soma/);
+    assert.match(guardaFns('SELECT sum(v) FROM (SELECT ano, liquido AS v FROM fns_municipios UNION ALL SELECT exercicio, despesa_saude FROM indicadores) x') ?? '', /não os empilhe/);
+    assert.match(guardaFns('WITH x AS (SELECT ano, liquido AS v FROM fns_municipios UNION ALL SELECT exercicio, despesa_saude FROM indicadores) SELECT sum(v) FROM x') ?? '', /não os empilhe/);
+    assert.equal(guardaFns("SELECT ano, liquido AS v, 'FNS' AS fonte FROM fns_municipios UNION ALL SELECT exercicio, despesa_saude, 'SICONFI' FROM indicadores"), null, 'comparação por fonte não soma os valores');
+    assert.equal(guardaFns("WITH c AS (SELECT ano, municipio, sum(liquido) v FROM fns_composicao WHERE ano = 2024 AND bloco = 'X' GROUP BY ano, municipio) SELECT sum(c.v) / sum(m.populacao) FROM c JOIN fns_municipios m USING(ano, municipio)"), null, 'composição pré-agregada não repete a população');
+    // o que não é soma passa: per capita no próprio fns_municipios, composição sozinha, lado a lado, textos entre aspas
+    assert.equal(guardaFns("SELECT ano, sum(liquido) / sum(populacao) FILTER (WHERE linhas IS NOT NULL AND populacao > 0) FROM fns_municipios WHERE uf = 'GO' GROUP BY 1"), null);
+    assert.equal(guardaFns('SELECT bloco, sum(liquido) FROM fns_composicao WHERE ano = 2018 GROUP BY 1'), null);
+    assert.equal(guardaFns('SELECT f.ano, f.liquido, i.receita_corrente FROM fns_municipios f JOIN indicadores i ON i.cod_ibge = f.cod_ibge AND i.exercicio = f.ano WHERE f.cod_ibge = 5208707'), null, 'colunas separadas');
+    assert.equal(guardaFns("SELECT sum(liquido) + 0 AS x FROM fns_municipios WHERE nome = 'receita + despesa'"), null);
+    assert.equal(guardaFns('SELECT sum(receita_corrente) + sum(despesa_corrente) FROM indicadores'), null, 'sem FNS a guarda não age');
+    assert.equal(guardaFns('SELECT * FROM fns_municipios c JOIN indicadores i ON true'), null);
+  });
+
+  test('guardas na consulta da IA: a consulta é recusada antes de rodar', { skip: pular }, async () => {
+    const r = await executarConsulta({ sql: 'SELECT sum(m.populacao) FROM fns_composicao c JOIN fns_municipios m ON m.municipio = c.municipio AND m.ano = c.ano' }, ['saude']);
+    assert.ok('erro' in r && r.bloqueada === true);
+    assert.match(String((r as { erro: string }).erro), /repete o total e a população/);
+    const soma = await executarConsulta({ sql: 'SELECT sum(f.liquido + i.receita_corrente) AS x FROM fns_municipios f JOIN indicadores i ON i.cod_ibge = f.cod_ibge AND i.exercicio = f.ano' }, ['saude', 'financas']);
+    assert.ok('erro' in soma && soma.bloqueada === true);
+    assert.match(String((soma as { erro: string }).erro), /não se soma/);
+  });
+
+  test('a IA do painel de saúde lê fns_municipios, fns_composicao e fns_anos (SQL e tabelas acessíveis)', { skip: pular }, async () => {
+    const a = await executarConsulta({ sql: "SELECT ano, sum(liquido) AS liquido FROM fns_municipios WHERE ano = 2018 AND uf = 'GO' GROUP BY 1" }, ['saude']);
+    assert.ok(!('erro' in a), JSON.stringify(a));
+    assert.equal(centavos((a as { linhas: number[][] }).linhas[0][1]), centavos(REFERENCIA[2018].GO[1]));
+    const b = await executarConsulta({ sql: "SELECT bloco, sum(liquido) AS liquido FROM fns_composicao WHERE ano = 2018 AND municipio = 520870 GROUP BY 1 ORDER BY 2 DESC" }, ['saude']);
+    assert.ok(!('erro' in b), JSON.stringify(b));
+    assert.equal(centavos((b as { linhas: number[][] }).linhas.reduce((s, l) => s + Number(l[1]), 0)), centavos(REFERENCIA[2018].mun[GOIANIA][1]));
+    const c = await executarConsulta({ sql: 'SELECT ano, linhas_arquivo, sha256 FROM fns_anos WHERE ano = 2018' }, ['saude']);
+    assert.ok(!('erro' in c), JSON.stringify(c));
+    assert.equal((c as { linhas: number[][] }).linhas[0][1], 92525);
+  });
+
+  test('catálogo, conceito e instruções do modelo conhecem o FNS', () => {
+    const f = fichaDaColuna('liquido', { fns: [2002, 2025] } as unknown as Cobertura, 'SELECT liquido FROM fns_municipios') ?? '';
+    assert.match(f, /VL_LIQUIDO/);
+    assert.match(f, /2002 a 2025/);
+    assert.match(f, /não soma com a receita \(SICONFI\) nem com a despesa \(SIOPS\)/);
+    assert.match(fichaDaColuna('liquido_real', null, 'SELECT liquido_real FROM fns_municipios') ?? '', /NULL antes de 2006/);
+    assert.match(fichaDaColuna('populacao', null, 'SELECT populacao FROM fns_municipios') ?? '', /uma vez por município e ano/);
+    const c = CONCEITOS.find((x) => x.id === 'repasse_federal_fns')!;
+    assert.ok(c.pedido.test('Quanto o FNS repassou aos municípios de Goiás?'));
+    assert.ok(c.pedido.test('repasses federais fundo a fundo para a saúde'));
+    assert.ok(!c.pedido.test('despesa com pessoal'));
+    assert.ok(atendeConceito(c, 'SELECT sum(liquido) FROM fns_municipios'));
+    assert.ok(!atendeConceito(c, 'SELECT sum(despesa_saude) FROM indicadores'));
+    for (const k of ['fns_municipios', 'fns_composicao', 'fns_anos', 'liquido_real', 'NULL antes de 2006', 'UMA vez por município e ano', 'Portaria GM/MS nº 828/2020', 'nunca some']) {
+      assert.ok(SAUDE.includes(k) || SAUDE.toLowerCase().includes(k.toLowerCase()), `instruções sem "${k}"`);
+    }
+    const ctx = contextoSaude({ fontes: { fns: { anos: [2002, 2003, 2025], anos_reais: [2006, 2025] } } });
+    assert.match(ctx, /FNS .*2002 a 2025; valor real \(liquido_real\) de 2006 a 2025, antes disso só nominal/);
+    assert.match(contextoSaude({ fontes: {} }), /FNS \(repasses federais\) indisponível/);
+    assert.deepEqual(coberturaDaFonte('SELECT sum(liquido) FROM fns_municipios', { fns: [2002, 2025] } as unknown as Cobertura), { nome: 'FNS', anos: [2002, 2025] });
+    assert.deepEqual(fontesDaConsulta('SELECT sum(liquido) FROM fns_municipios f JOIN indicadores i ON i.cod_ibge = f.cod_ibge').sort(), ['DCA', 'FNS']);
+  });
+
+  test('FNS: aliases genéricos mantêm rótulos e fichas de outros domínios intactos', () => {
+    const nomes = ['bruto', 'liquido', 'liquido_real', 'linhas', 'destino', 'bloco', 'grupo', 'estrategia', 'liquido_estadual', 'liquido_df_nao_comprovado'];
+    const cob = { fns: [2002, 2025] } as Cobertura;
+    for (const nome of nomes) {
+      assert.equal(fichaDaColuna(nome, cob), null, nome);
+      assert.equal(fichaDaColuna(nome, cob, `SELECT 1 AS ${nome} FROM indicadores`), null, nome);
+      assert.equal(fichaDaColuna(nome, cob, `SELECT 'FROM fns_municipios' AS ${nome} FROM indicadores /* JOIN fns_anos */`), null, nome);
+      assert.match(fichaDaColuna(nome, cob, `SELECT ${nome} FROM fns_municipios`) ?? '', /FNS/, nome);
+    }
+    assert.equal(rotuloColuna('linhas', tipoColuna('linhas', [7])), 'linhas');
+    assert.equal(rotuloColuna('grupo', tipoColuna('grupo', ['A'])), 'grupo');
+    assert.ok(!fichaDaColuna('populacao', cob, 'SELECT populacao FROM indicadores')!.includes('FNS'));
+    assert.match(fichaDaColuna('populacao', cob, 'SELECT populacao FROM fns_municipios')!, /SVS\/MS.*uma vez por município e ano/);
+    const exportar = (sql: string) => {
+      const m = montarTabela(espec({ tipo: 'tabela', grupo: '', periodo: '', valor: '', colunas: ['linhas', 'liquido'], total: false, participacao: false }),
+        { rotulo: 'C1', sql, resultado: { colunas: ['linhas', 'liquido'], linhas: [[7, 123.45]], total: 1 } });
+      assert.ok(m.ok);
+      return m.ok ? tabelaExportavel(m.tabela, [], cob) : null;
+    };
+    const outro = exportar('SELECT count(*) AS linhas, sum(receita_corrente) AS liquido FROM indicadores')!;
+    assert.equal(outro.colunas[0], 'linhas');
+    assert.ok(!JSON.stringify(outro.metadados).includes('FNS'));
+    const proprio = exportar('SELECT linhas, liquido FROM fns_municipios')!;
+    assert.match(new Map(proprio.metadados).get('Definição: liquido')!, /VL_LIQUIDO/);
+    assert.match(new Map(proprio.metadados).get('Definição: linhas')!, /linhas de repasse/i);
+  });
+
+  test('fonte do manifesto: anos, anos com valor real e universo', { skip: pular }, async () => {
+    const m = JSON.parse(await readFile(onde('gold/manifesto.json'), 'utf8'));
+    const f = m.fontes.fns;
+    assert.deepEqual(f.anos, Array.from({ length: 24 }, (_, i) => 2002 + i));
+    assert.deepEqual(f.anos_reais, [2006, 2025]);
+    assert.match(f.universo, /TP_REPASSE/);
+    assert.deepEqual(f.df.cnpj, ['00394700000108', '00394700000299', '12116247000157']);
+    assert.match(f.df.documentacao_historica, /Relatorio-Anual-de-Gestao-2009/);
+    assert.equal(f.territorios_especiais['2605459'].nome, 'Fernando de Noronha');
+    assert.equal(Object.keys(f.arquivos).length, 24);
+    assert.match(f.arquivos['2018'].sha256, /^[0-9a-f]{64}$/);
+    assert.match(f.arquivos['2025'].url, /REPASSE-FAF-COM-POPULACAO-2025\.xlsx$/);
+    // o manifesto candidato mantém as demais fontes do publicado
+    for (const k of ['sih', 'icsap', 'sia', 'populacao_svs']) assert.ok(m.fontes[k], `fonte ${k} sumiu do manifesto`);
+  });
+
+  test('série do Brasil: total = arquivo original em 2003, 2018 e 2025 (soma exata dos centavos)', { skip: pular }, async () => {
+    const br = await rota<L[]>('fns_serie', {});
+    assert.equal(br.length, 24);
+    for (const ano of [2003, 2018, 2025]) {
+      const r = br.find((x) => x.ano === ano)!;
+      assert.equal(centavos(r.bruto), centavos(REFERENCIA[ano].BR[0]), `${ano} bruto`);
+      assert.equal(centavos(r.liquido), centavos(REFERENCIA[ano].BR[1]), `${ano} líquido`);
+      assert.equal(centavos(r.liquido_distrital), centavos(REFERENCIA[ano].DF[1]), `${ano} DF`);
+    }
+  });
+
+  test('UF (GO) e três municípios (Goiânia, São Paulo, Acrelândia): totais = arquivo original', { skip: pular }, async () => {
+    for (const ano of [2003, 2018, 2025]) {
+      const go = (await rota<L[]>('fns_serie', { uf: 'GO' })).find((x) => x.ano === ano)!;
+      assert.equal(centavos(go.bruto), centavos(REFERENCIA[ano].GO[0]), `GO ${ano} bruto`);
+      assert.equal(centavos(go.liquido), centavos(REFERENCIA[ano].GO[1]), `GO ${ano} líquido`);
+      for (const [cod, [bruto, liquido]] of Object.entries(REFERENCIA[ano].mun)) {
+        const m = (await rota<L[]>('fns_serie', { ente: Number(cod) })).find((x) => x.ano === ano)!;
+        assert.equal(centavos(m.bruto), centavos(bruto), `${cod} ${ano} bruto`);
+        assert.equal(centavos(m.liquido), centavos(liquido), `${cod} ${ano} líquido`);
+        assert.equal(m.municipios, 1);
+        assert.equal(m.municipios_com_repasse, 1);
+      }
+    }
+  });
+
+  test('o líquido real só existe de 2006 em diante, e é líquido × fator do IPCA do painel', { skip: pular }, async () => {
+    const br = await rota<L[]>('fns_serie', {});
+    for (const r of br) {
+      if (Number(r.ano) < 2006) assert.equal(r.liquido_real, null, `${r.ano}: real antes de 2006`);
+      else assert.ok(Number(r.liquido_real) > 0, `${r.ano}: real ausente`);
+    }
+    const f2018 = (await consultaLivre('SELECT fator_real FROM ipca WHERE exercicio = 2018', 1)).linhas[0][0] as number;
+    const r2018 = br.find((x) => x.ano === 2018)!;
+    quase(Number(r2018.liquido_real), Number(r2018.liquido) * f2018, 1e-9);
+    assert.equal(perCapita(br.find((x) => x.ano === 2004), true), null);
+    assert.ok(perCapita(br.find((x) => x.ano === 2018), true)! > perCapita(br.find((x) => x.ano === 2018), false)!, 'real de 2025 > nominal de 2018');
+  });
+
+  test('cobertura populacional e per capita: população contada uma vez e só dos municípios com repasse', { skip: pular }, async () => {
+    await rota('saude_serie', {}); // carrega saude_municipios
+    const br = await rota<L[]>('fns_serie', {});
+    for (const r of br) {
+      assert.ok(Number(r.pop_com_repasse) <= Number(r.pop_total), `${r.ano}: população coberta maior que a total`);
+      assert.ok(Number(r.municipios_com_repasse) <= Number(r.municipios));
+      const cob = coberturaPopulacional(r)!;
+      assert.ok(cob > 0.9 && cob <= 1, `${r.ano}: cobertura ${cob}`);
+      const pc = perCapita(r, false)!;
+      assert.ok(pc > 10 && pc < 1500, `${r.ano}: per capita ${pc}`);
+    }
+    // a população de um município é a SVS/MS e aparece uma vez por município e ano
+    const dup = await consultaLivre('SELECT count(*) - count(DISTINCT (ano, municipio)) FROM fns_municipios', 1);
+    assert.equal(dup.linhas[0][0], 0);
+    const g = (await rota<L[]>('fns_serie', { ente: GOIANIA })).find((x) => x.ano === 2018)!;
+    const pop = (await consultaLivre('SELECT populacao FROM saude_municipios WHERE cod_ibge = 5208707 AND ano = 2018', 1)).linhas[0][0] as number;
+    assert.equal(g.pop_com_repasse, pop);
+    quase(perCapita(g, false)!, Number(g.liquido) / pop, 1e-12);
+  });
+
+  test('ausência não vira zero; DF 2009–2010 inclui o CNPJ histórico comprovado', { skip: pular }, async () => {
+    const sem = (await consultaLivre('SELECT count(*) FROM fns_municipios WHERE linhas IS NULL', 1)).linhas[0][0] as number;
+    assert.ok(sem > 0, 'esperava municípios-ano sem repasse');
+    assert.equal((await consultaLivre('SELECT count(*) FROM fns_municipios WHERE (linhas IS NULL) <> (liquido IS NULL) OR (linhas IS NULL) <> (bruto IS NULL)', 1)).linhas[0][0], 0);
+    assert.equal((await consultaLivre('SELECT count(*) FROM fns_municipios WHERE liquido = 0 AND linhas IS NULL', 1)).linhas[0][0], 0);
+    const exemplo = (await consultaLivre('SELECT cod_ibge, ano FROM fns_municipios WHERE linhas IS NULL AND cod_ibge IS NOT NULL ORDER BY ano DESC, cod_ibge LIMIT 1', 1)).linhas[0];
+    const r = (await rota<L[]>('fns_serie', { ente: Number(exemplo[0]) })).find((x) => x.ano === Number(exemplo[1]))!;
+    assert.equal(r.liquido, null);
+    assert.equal(temRepasse(r), false);
+    assert.equal(perCapita(r, false), null);
+    // CNPJ 00394700000299, documentado no RAG 2009.
+    const df = await rota<L[]>('fns_serie', { ente: 53 });
+    for (const [ano, liquido] of [[2009, 491939611.49], [2010, 506841617.39]]) {
+      assert.equal(centavos(df.find((x) => x.ano === ano)!.liquido), centavos(liquido), `DF ${ano}`);
+    }
+    const aud = await rota<L[]>('fns_anos', {});
+    for (const ano of [2009, 2010]) assert.equal(aud.find((x) => x.ano === ano)!.liquido_df_nao_comprovado, 0);
+    assert.equal(aud.find((x) => x.ano === 2018)!.liquido_df_nao_comprovado, 0);
+  });
+
+  test('DF: destinatário distrital só com os CNPJs comprovados; escopo UF = DF = município 53', { skip: pular }, async () => {
+    const porUf = await rota<L[]>('fns_serie', { uf: 'DF' });
+    const porEnte = await rota<L[]>('fns_serie', { ente: 53 });
+    assert.equal(centavos(porUf.find((x) => x.ano === 2018)!.liquido), centavos(REFERENCIA[2018].DF[1]));
+    assert.equal(centavos(porEnte.find((x) => x.ano === 2025)!.liquido), centavos(REFERENCIA[2025].DF[1]));
+    const d = await consultaLivre("SELECT count(*), count(*) FILTER (destino = 'distrital') FROM fns_municipios WHERE uf = 'DF' AND linhas IS NOT NULL", 1);
+    assert.deepEqual(d.linhas[0], [d.linhas[0][1], d.linhas[0][1]], 'toda linha do DF com repasse é distrital');
+    assert.equal((await consultaLivre("SELECT count(*) FROM fns_municipios WHERE destino = 'distrital' AND municipio <> 530010", 1)).linhas[0][0], 0);
+    const aud = await rota<L[]>('fns_anos', {});
+    for (const r of aud) assert.ok(Number(r.linhas_distritais) >= 0 && Number(r.linhas_quarentena) >= 0);
+  });
+
+  test('composição: soma bate com o município, a UF e o Brasil; rótulos são os da fonte em cada ano', { skip: pular }, async () => {
+    for (const [escopo, ano] of [[{ ente: GOIANIA }, 2018], [{ ente: ACRELANDIA }, 2025], [{ uf: 'GO' }, 2003], [{ uf: 'DF' }, 2025], [{}, 2018], [{}, 2025]] as [Record<string, number | string>, number][]) {
+      const comp = await rota<L[]>('fns_composicao', { ...escopo, ano });
+      const serie = (await rota<L[]>('fns_serie', escopo)).find((x) => x.ano === ano)!;
+      assert.ok(comp.length > 0, `${JSON.stringify(escopo)} ${ano}: composição vazia`);
+      assert.equal(centavos(comp.reduce((s, l) => s + Number(l.liquido), 0)), centavos(serie.liquido), `${JSON.stringify(escopo)} ${ano}: líquido`);
+      assert.equal(centavos(comp.reduce((s, l) => s + Number(l.bruto), 0)), centavos(serie.bruto), `${JSON.stringify(escopo)} ${ano}: bruto`);
+      assert.equal(new Set(comp.map((l) => `${l.bloco}|${l.grupo}|${l.estrategia}`)).size, comp.length, 'linhas distintas');
+    }
+    // os nomes mudam entre anos (a página não compara blocos entre anos)
+    const blocos = async (ano: number) => new Set((await rota<L[]>('fns_composicao', { ano })).map((l) => String(l.bloco)));
+    const [b2018, b2025] = [await blocos(2018), await blocos(2025)];
+    assert.ok([...b2025].some((x) => !b2018.has(x)) || [...b2018].some((x) => !b2025.has(x)), 'rótulos idênticos em 2018 e 2025 (esperava mudança de grafia)');
+  });
+
+  test('municípios do ano: só os com repasse, população uma vez, DF marcado como distrital', { skip: pular }, async () => {
+    const m = await rota<L[]>('fns_municipios', { ano: 2018 });
+    assert.ok(m.length > 5500 && m.length < 5600, `municípios com repasse: ${m.length}`);
+    assert.equal(new Set(m.map((x) => x.municipio)).size, m.length);
+    assert.ok(m.every((x) => x.liquido !== null && Number(x.linhas) > 0));
+    assert.equal(m.find((x) => x.cod_ibge === 5300108)?.destino, 'distrital');
+    assert.equal(centavos(m.reduce((s, x) => s + Number(x.liquido), 0)), centavos(REFERENCIA[2018].BR[1]));
+    const go = await rota<L[]>('fns_municipios', { ano: 2018, uf: 'GO' });
+    assert.ok(go.every((x) => x.uf === 'GO'));
+    assert.equal(centavos(go.reduce((s, x) => s + Number(x.liquido), 0)), centavos(REFERENCIA[2018].GO[1]));
+  });
+
+  test('auditoria por ano: linhas lidas = incluídas + excluídas + quarentena; totais incluídos batem com a série', { skip: pular }, async () => {
+    const aud = await rota<L[]>('fns_anos', {});
+    const br = await rota<L[]>('fns_serie', {});
+    assert.equal(aud.length, 24);
+    for (const a of aud) {
+      assert.equal(Number(a.linhas_arquivo), Number(a.linhas_municipais) + Number(a.linhas_distritais) + Number(a.linhas_excluidas) + Number(a.linhas_quarentena), `${a.ano}: linhas`);
+      assert.equal(centavos(a.liquido), centavos(br.find((x) => x.ano === a.ano)!.liquido), `${a.ano}: líquido da auditoria = série`);
+      assert.ok(Number(a.liquido_estadual) > 0, `${a.ano}: fundos estaduais fora do universo`);
+    }
+    const t2018 = aud.find((x) => x.ano === 2018)!;
+    assert.equal(t2018.linhas_arquivo, 92525);
+    assert.equal(aud.find((x) => x.ano === 2025)!.linhas_arquivo, 146847);
+  });
+
+  test('compatibilidade: sem as tabelas do FNS (dados antigos) a fonte some do manifesto e a página mostra indisponibilidade', () => {
+    const antigo: FontesMeta = { sih: { anos: [2008, 2009] }, populacao_svs: { anos: [2000, 2025] } };
+    assert.equal(antigo.fns, undefined);
+    assert.equal(anosDaColuna('populacao', antigo).length, 2);
+    assert.deepEqual(anosSaude({ ...antigo, fns: { anos: [2002, 2003] } }), [2000, 2002, 2003, 2008, 2009, 2025]);
+  });
+});
+
 describe('exportações: período de uma primeira coluna de anos', () => {
   test('anos com † (quebra de série da RAIS) entram no período; categorias e competências não viram período', () => {
     assert.equal(periodoDe(['2010', '2011', '2022 †', '2023 †', '2025']), '2010–2025');
@@ -5072,8 +5453,8 @@ describe('saúde: cobertura vacinal oficial por residência (PNI / InfoMS)', () 
     assert.ok(!atendeConceito(conceito, 'SELECT obitos FROM saude_municipios'));
     assert.match(fichaDaColuna('cobertura', { vacinacao: [2015, 2025] } as any, sql) ?? '', /2015 a 2025/);
     assert.match(fichaDaColuna('cobertura_fonte') ?? '', /sentinela/);
-    assert.match(contextoSaudeDoWorker({ fontes: { vacinacao: { anos: [2015, 2025] } } }), /Vacinação .* 2015 a 2025/);
-    assert.match(contextoSaudeDoWorker({ fontes: {} }), /Vacinação indisponível/);
+    assert.match(contextoSaude({ fontes: { vacinacao: { anos: [2015, 2025] } } }), /Vacinação .* 2015 a 2025/);
+    assert.match(contextoSaude({ fontes: {} }), /Vacinação indisponível/);
   });
 
   test('rótulos e fichas de vacinação só valem para consultas às tabelas de vacinação (SIM/SINASC com os mesmos aliases ficam intactos)', () => {
