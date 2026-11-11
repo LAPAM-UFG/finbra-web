@@ -271,6 +271,8 @@ export function TrabalhoVisaoGeral() {
             })}
             <li><Link to={urlAnalise(busca, '/trabalho/remuneracao', {})}><strong>{t('Remuneração e desigualdades', 'Pay and inequality')}</strong></Link>
               <span>{t('Compara média, mediana e composição por sexo, raça/cor, escolaridade e idade.', 'Compares average, median and composition by sex, race/colour, education and age.')}</span></li>
+            <li><Link to={urlAnalise(busca, '/trabalho/estabelecimentos', {})}><strong>{t('Estabelecimentos', 'Establishments')}</strong></Link>
+              <span>{t('Estabelecimentos declarantes, estoque de vínculos, porte, atividade, natureza jurídica, Simples e PAT; o cálculo começa em Calcular.', 'Declaring establishments, job stock, size, activity, legal nature, Simples and PAT; the calculation starts on Calculate.')}</span></li>
             <li><Link to={urlAnalise(busca, '/trabalho/perfil', {})}><strong>{t('Perfil de uma ocupação', 'Occupation profile')}</strong></Link>
               <span>{t('Sete tabelas de um recorte de ocupação (série, remuneração, atividades, perfil); escolha a ocupação na página.', 'Seven tables for an occupation (series, pay, activities, profile); choose the occupation on the page.')}</span></li>
           </ul>

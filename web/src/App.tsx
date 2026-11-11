@@ -22,6 +22,7 @@ import { Educacao, RemuneracaoEducacao, Saude } from './pages/SaudeEducacao';
 import { Socioeconomico } from './pages/Socioeconomico';
 import { TrabalhoCaged, TrabalhoEvolucao, TrabalhoRankings, TrabalhoVisaoGeral } from './pages/Trabalho';
 import { TrabalhoConsulta } from './pages/TrabalhoConsulta';
+import { TrabalhoEstabelecimentos } from './pages/TrabalhoEstabelecimentos';
 import { TrabalhoRemuneracao } from './pages/TrabalhoRemuneracao';
 import { TrabalhoMetodologia } from './pages/TrabalhoMetodologia';
 import { TrabalhoPerfil } from './pages/TrabalhoPerfil';
@@ -48,7 +49,8 @@ const menu = (): [string, [string, string][]][] => [
 
 /** Área de mercado de trabalho (RAIS e Novo CAGED), em /trabalho. */
 const menuTrabalho = (): [string, [string, string][]][] => [
-  ['RAIS', [['/trabalho', t('Visão geral', 'Overview')], ['/trabalho/evolucao', t('Evolução', 'Trends')], ['/trabalho/rankings', 'Rankings']]],
+  ['RAIS', [['/trabalho', t('Visão geral', 'Overview')], ['/trabalho/evolucao', t('Evolução', 'Trends')], ['/trabalho/rankings', 'Rankings'],
+    ['/trabalho/estabelecimentos', t('Estabelecimentos', 'Establishments')]]],
   [t('Análises do recorte', 'Scope analysis'), [['/trabalho/consulta', t('Consulta personalizada', 'Custom query')], ['/trabalho/perfil', t('Perfil do recorte', 'Scope profile')],
     ['/trabalho/remuneracao', t('Remuneração e desigualdades', 'Pay and inequality')]]],
   ['CAGED', [['/trabalho/caged', t('Empregos mês a mês', 'Jobs month by month')]]],
@@ -240,6 +242,7 @@ export function App() {
               <Route path="/trabalho/consulta" element={<TrabalhoConsulta />} />
               <Route path="/trabalho/perfil" element={<TrabalhoPerfil />} />
               <Route path="/trabalho/remuneracao" element={<TrabalhoRemuneracao />} />
+              <Route path="/trabalho/estabelecimentos" element={<TrabalhoEstabelecimentos />} />
               <Route path="/trabalho/metodologia" element={<TrabalhoMetodologia />} />
               <Route path="/trabalho/ia" element={<Navigate to="/ia?paineis=trabalho" replace />} />
               <Route path="/datasus" element={<SaudeVisaoGeral />} />

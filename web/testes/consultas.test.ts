@@ -13,7 +13,7 @@ import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { basesAV, codigoConta, formatarPct } from '../src/calculos';
-import { consultaLivre, executar, sqlClassificacao, type Classificacao, tabelaDespesaFuncao, tabelasEducacaoSaude, tabelasIaTrabalho, tabelasFns, usarLeituraNoTeste, reiniciarFnsNoTeste, usarMicrodadosNoTeste, usarMotorDeTeste, gruposDaFonte, FILTROS_LISTA } from '../src/dados';
+import { consultaLivre, executar, sqlClassificacao, type Classificacao, tabelaDespesaFuncao, tabelasEducacaoSaude, tabelasIaTrabalho, tabelasFns, usarLeituraNoTeste, reiniciarFnsNoTeste, usarMicrodadosNoTeste, usarMotorDeTeste, gruposDaFonte, FILTROS_LISTA, estabDoIndice, GRUPOS_ESTAB } from '../src/dados';
 import {
   anosPedidos, ehPergunta, textoDaPergunta, PAINEIS, chamarIa, coberturaDaFonte, coberturaPorAno, lerEscolhaModelo, nomeDoModelo, periodosDiferem, codigosDoSql, comPergunta, conferir, consultasDaConversa, contextoParaModelo, descreverCobertura, disponibilidadeNoAno, pedeTabelaMunicipal, dadosDoGrafico, executarConsulta, fontesConsultadas, lerModo, lerResposta,
   lerRegressao, paraModelo, pedeTabela, perguntarIa, prepararResposta, recorteDe, revisarMetodo, revisarResposta, rotulosConsultas, semNominal, semUltimaPergunta, sugestoes, valorOficial,
@@ -52,7 +52,7 @@ import { anosDaColuna, anosDoIndicador, anosSaude, avisoPreliminarNaoIncluido, c
 import { cadastro, codigosDoMunicipio, conferirCodigos, executarLocalizacao, localizar, territoriosNasConsultas } from '../src/ia_territorio';
 import { crc32, paraCsv, paraXlsx, paraXlsxAbas } from '../src/exportar';
 import { ordenarBusca } from '../src/contexto';
-import { ATALHOS_RAIS, concentracao, totalDosGrupos, urlAnalise } from '../src/trabalho_comum';
+import { AGRUPAMENTOS_ESTAB, ATALHOS_RAIS, CHAVES_FILTROS_RECORTE, FILTROS_AVANCADOS, PARAMS_TRABALHO, concentracao, lerAgrupamentoEstab, lerRecorte, temFiltrosDeRecorte, totalDosGrupos, urlAnalise } from '../src/trabalho_comum';
 import { gravarEstadoEvolucao, lerEstadoEvolucao, MAX_COMPARADOS, posicaoRelativa, resumoTrajetoria, tabelaMudancas, tabelaTrajetorias, variacaoPct, variacaoPosicao } from '../src/posicoes';
 
 import { avisoDoContexto, chaveDoRastro, contaDoRastro, RASTRO, urlDemonstrativo, urlDemonstrativos, valorAnexo, type ChaveRastro } from '../src/lrf_rastro';
@@ -1583,6 +1583,209 @@ describe('RAIS: atalhos, concentração e remuneração por grupo', () => {
     } finally {
       usarMicrodadosNoTeste(false);
     }
+  });
+});
+
+describe('RAIS: estabelecimentos e novos campos dos vínculos', () => {
+  const EST = `${MICRO}/silver/trabalho/micro/rais_estab`;
+  const temEst = (ano: number, uf: number) => existsSync(`${EST}/ano=${ano}/uf=${uf}.parquet`);
+  const semEst = !temEst(2013, 52) || !temEst(2024, 52) || !temEst(2024, 53) || !existsSync(`${MICRO}/silver/trabalho/micro/indice.json`);
+  const semMicroV = !existsSync(`${MICRO}/silver/trabalho/micro/rais_vinculos/ano=2024/uf=52.parquet`);
+  type E = { fonte: string; ano: number; ufs: number[]; resumo: L | null; grupos: L[]; sql: string; tem_uf99: boolean; rotulo_uf: string };
+  const est = (p: Record<string, string | number | undefined>) => rota<E>('trab_estab', p);
+  const somaGrupos = (g: L[], c: string) => g.reduce((s, r) => s + (r[c] as number), 0);
+
+  test('índice antigo (sem rais_estab) ou malformado: vazio, sem supor anos e UFs', () => {
+    assert.deepEqual(estabDoIndice({ rais_vinculos: { 2013: [52] } }), {});
+    assert.deepEqual(estabDoIndice(null), {});
+    assert.deepEqual(estabDoIndice({ rais_estab: { 2013: [53, 52, 1.5 as number], abc: [11], 2014: [] } }), { 2013: [52, 53] });
+  });
+
+  test('índice real: 2010–2025, UF 99 só de 2020 em diante, e os arquivos existem', { skip: semEst }, async () => {
+    const i = await rota<{ anos: number[]; ufs: Record<number, number[]> }>('trab_estab_indice');
+    assert.deepEqual(i.anos, Array.from({ length: 16 }, (_, k) => 2010 + k));
+    assert.ok(!i.ufs[2019].includes(99) && i.ufs[2020].includes(99) && i.ufs[2024].includes(99));
+    for (const [ano, ufs] of Object.entries(i.ufs)) for (const u of ufs) assert.ok(temEst(Number(ano), u), `${ano}/${u}`);
+  });
+
+  test('GO 2013: contagens iguais às do DuckDB independente; grupos somam o resumo', { skip: semEst }, async () => {
+    for (const agrupar of ['total', 'porte', 'divisao', 'natureza_juridica', 'simples', 'pat']) {
+      const r = await est({ ano: 2013, uf: 'GO', agrupar });
+      assert.equal(r.fonte, 'estab');
+      const t0 = r.resumo!;
+      assert.equal(t0.estabelecimentos, 265621);
+      assert.equal(t0.com_estoque, 265621);
+      assert.equal(t0.sem_estoque, 0);
+      assert.equal(t0.estoque_zero, 134831);
+      assert.equal(t0.com_vinculos, 130790);
+      assert.equal(t0.vinculos_ativos, 1509395);
+      assert.equal(t0.rais_negativa, 114694);
+      assert.equal(t0.pat_sim, 5320);
+      assert.equal(t0.simples_sim, 135893);
+      quase(t0.media_com_vinculos as number, 1509395 / 130790);
+      if (agrupar !== 'total') {
+        assert.equal(somaGrupos(r.grupos, 'estabelecimentos'), 265621);
+        assert.equal(somaGrupos(r.grupos, 'vinculos_ativos'), 1509395);
+      }
+    }
+  });
+
+  test('porte calculado do estoque: zero separado e faixas iguais ao código tamanho_estab do arquivo', { skip: semEst }, async () => {
+    const r = await est({ ano: 2013, uf: 'GO', agrupar: 'porte' });
+    const zero = r.grupos.find((g) => g.grupo === '0')!;
+    assert.equal(zero.estabelecimentos, 134831);
+    assert.equal(zero.vinculos_ativos, null); // sem vínculos: ausência da soma, não zero
+    assert.equal(zero.media_com_vinculos, null);
+    assert.equal(zero.nome, 'Zero vínculos ativos em 31/12');
+    assert.equal(r.grupos.find((g) => g.grupo === '1')!.estabelecimentos, 88947);
+  });
+
+  test('município (Goiânia 2024) e DF (53 → Brasília): filtro de 6 dígitos; código 9 do PAT e RAIS negativa 2 separados', { skip: semEst }, async () => {
+    const g = (await est({ ano: 2024, ente: 5208707 })).resumo!;
+    assert.equal(g.estabelecimentos, 140479);
+    assert.equal(g.vinculos_ativos, 716773);
+    assert.equal(g.rais_negativa, 80445);
+    assert.equal(g.negativa_outro_codigo, 285); // código 2: sem descrição verificada, fora da contagem de negativas
+    assert.equal(g.pat_sim, 0);
+    assert.equal(g.pat_nao, 0);
+    assert.equal(g.pat_outro_codigo, 140479);
+    assert.equal(g.negativa_com_vinculos, 0); // RAIS negativa nunca tem estoque ativo
+    const df = (await est({ ente: 53, ano: 2024 })).resumo!;
+    assert.equal(df.estabelecimentos, 211221);
+    const dfUf = (await est({ uf: 'DF', ano: 2024 })).resumo!;
+    assert.equal(dfUf.estabelecimentos, 211221);
+  });
+
+  test('Brasil: lê os arquivos do índice (com UF 99 desde 2020) e confere o total oficial de vínculos ativos', { skip: semEst, timeout: 600_000 }, async () => {
+    const r = await est({ ano: 2013, agrupar: 'simples' });
+    assert.equal(r.ufs.length, 27);
+    assert.equal(r.tem_uf99, false);
+    assert.equal(r.resumo!.estabelecimentos, 8166010);
+    assert.equal(r.resumo!.vinculos_ativos, 48948433); // igual ao total ativo da consulta de vínculos (RAIS 2013)
+    assert.equal(r.resumo!.geografia_ignorada, 0);
+    const r24 = await est({ ano: 2024 });
+    assert.ok(r24.tem_uf99 && r24.ufs.includes(99));
+    assert.equal(r24.resumo!.geografia_ignorada, 18404);
+    assert.equal(r24.resumo!.estabelecimentos, 13186059);
+    assert.equal(r24.resumo!.rais_negativa, 8465745);
+  });
+
+  test('SQL exportado = SQL executado: lista exata de caminhos relativos do índice, sem glob (Brasil, UF 99 e município)', { skip: semEst }, async () => {
+    const br = await est({ ano: 2024, agrupar: 'pat' });
+    assert.ok(!/uf=\*|\*\.parquet/.test(br.sql)); // sem glob de caminho (o SQL tem SELECT * e count(*) legítimos)
+    const caminhos = br.ufs.map((u) => `silver/trabalho/micro/rais_estab/ano=2024/uf=${u}.parquet`);
+    assert.equal(caminhos.length, 28);
+    for (const c of caminhos) assert.ok(br.sql.includes(`'${c}'`), c);
+    assert.equal((br.sql.match(/uf=\d+\.parquet/g) ?? []).length, 28);
+    assert.ok(br.sql.includes('uf=99.parquet'));
+    const go = await est({ ano: 2013, ente: 5208707 });
+    assert.equal((go.sql.match(/\.parquet/g) ?? []).length, 1);
+    assert.ok(go.sql.includes("'silver/trabalho/micro/rais_estab/ano=2013/uf=52.parquet'") && go.sql.includes('municipio = 520870'));
+  });
+
+  test('Goiânia 2024: média e mediana, Simples e PAT contra o DuckDB independente; estoque difere do de vínculos (sem forçar igualdade)', { skip: semEst || semMicroV }, async () => {
+    const r = await est({ ano: 2024, ente: 5208707, agrupar: 'simples' });
+    const t0 = r.resumo!;
+    assert.equal(t0.com_vinculos, 48621);
+    quase(t0.media_com_vinculos as number, 14.742045618148536);
+    assert.equal(t0.mediana_com_vinculos, 3);
+    assert.equal(t0.simples_sim, 90920);
+    assert.equal(t0.simples_nao, 49559);
+    assert.equal(t0.pat_informado, 140479); // preenchido, mas todo no código 9: não é classificação
+    assert.equal((t0.pat_informado as number) - (t0.pat_outro_codigo as number), 0);
+    // base de Vínculos: valor próprio, que a página de Estabelecimentos não concilia
+    usarMicrodadosNoTeste(true);
+    try {
+      const v = (await rota<{ linhas: L[] }>('trab_consulta', { ano: 2024, ente: 5208707, agrupar: 'total', situacao: 'ativos' })).linhas[0];
+      assert.equal(v.ativos, 728780);
+      assert.notEqual(v.ativos, t0.vinculos_ativos);
+    } finally {
+      usarMicrodadosNoTeste(false);
+    }
+  });
+
+  test('parâmetro próprio eagr: valida, não toca em agr e passa entre as páginas da área', () => {
+    assert.equal(lerAgrupamentoEstab(new URLSearchParams('eagr=simples&agr=cnae_divisao')), 'simples');
+    assert.equal(lerAgrupamentoEstab(new URLSearchParams('agr=porte')), 'porte'); // agr da consulta não vale aqui
+    assert.equal(lerAgrupamentoEstab(new URLSearchParams('eagr=xyz')), 'porte');
+    assert.ok(PARAMS_TRABALHO.includes('eagr') && PARAMS_TRABALHO.includes('agr') && PARAMS_TRABALHO.includes('agr2'));
+    assert.ok(AGRUPAMENTOS_ESTAB.every((x) => x in GRUPOS_ESTAB));
+    // gravar eagr não altera agr/agr2 (a mesma regra de useRecorte.definir)
+    const p = new URLSearchParams('agr=cnae_divisao&agr2=sexo&pcd=1');
+    p.set('eagr', 'pat');
+    assert.equal(p.get('agr'), 'cnae_divisao');
+    assert.equal(p.get('agr2'), 'sexo');
+    // limpar os filtros de vínculos cobre tudo o que temFiltrosDeRecorte conta
+    const r = lerRecorte(new URLSearchParams(CHAVES_FILTROS_RECORTE.map((k) => `${k}=1`).join('&')));
+    assert.ok(temFiltrosDeRecorte(r));
+    const limpo = lerRecorte(new URLSearchParams(''));
+    assert.ok(!temFiltrosDeRecorte(limpo));
+    assert.ok(CHAVES_FILTROS_RECORTE.includes('pcd') && CHAVES_FILTROS_RECORTE.includes('cbo') && !CHAVES_FILTROS_RECORTE.includes('eagr'));
+  });
+
+  test('erros claros: ano fora do índice, UF sem arquivo, agrupamento desconhecido', { skip: semEst }, async () => {
+    await assert.rejects(est({ ano: 2005 }), /Não há microdados de estabelecimentos/);
+    await assert.rejects(est({ ano: 2013, agrupar: 'xyz' }), /desconhecido/);
+    await assert.rejects(est({ ano: 2013, ente: 9999999 }), /Não há arquivo/);
+  });
+
+  test('formulário e URL: todo filtro avançado tem lista em FILTROS_LISTA e códigos no dicionário; atalhos novos existem', async () => {
+    for (const f of FILTROS_AVANCADOS()) {
+      assert.ok(f.chave in FILTROS_LISTA, f.chave);
+      assert.equal(FILTROS_LISTA[f.chave].variavel, f.variavel, f.chave);
+      assert.ok((await rota<L[]>('trab_codigos', { variavel: f.variavel })).length >= 2, `dicionário sem códigos de ${f.variavel}`);
+    }
+    const ids = ATALHOS_RAIS().map((x) => x.id);
+    for (const id of ['pcd', 'nac', 'modalidade', 'afast', 'deslig']) assert.ok(ids.includes(id), id);
+    const u = new URL(urlAnalise(new URLSearchParams('ano=2024&uf=DF&pcd=1&agr=cbo'), '/trabalho/estabelecimentos', {}), 'http://x');
+    assert.equal(u.search, '?ano=2024&uf=DF');
+  });
+
+  // ---- novos campos dos vínculos ----
+  const semMicro = !existsSync(`${MICRO}/silver/trabalho/micro/rais_vinculos/ano=2013/uf=53.parquet`) || !existsSync(`${MICRO}/silver/trabalho/micro/rais_vinculos/ano=2024/uf=53.parquet`);
+  type R = { fonte: string; linhas: L[] };
+  const cons = async (p: Record<string, string | number | undefined>) => {
+    usarMicrodadosNoTeste(true);
+    try { return await rota<R>('trab_consulta', { agrupar: 'total', situacao: 'ativos', uf: 'DF', ...p }); } finally { usarMicrodadosNoTeste(false); }
+  };
+
+  test('vínculos DF: PcD, tipo de deficiência e nacionalidade somam o total; reabilitado é o tipo 6', { skip: semMicro }, async () => {
+    const tot = (await cons({ ano: 2024 })).linhas[0].ativos as number;
+    for (const agrupar of ['pcd', 'tipo_deficiencia', 'nacionalidade']) {
+      const g = (await cons({ ano: 2024, agrupar })).linhas;
+      assert.equal(g.reduce((s, r) => s + (r.ativos as number), 0), tot, agrupar);
+    }
+    const tipos = (await cons({ ano: 2024, agrupar: 'tipo_deficiencia' })).linhas;
+    assert.equal(tipos.find((r) => r.grupo === '6')?.nome, 'Reabilitado');
+    const pcd = (await cons({ ano: 2024, agrupar: 'pcd' })).linhas;
+    const sim = pcd.find((r) => r.grupo === '1')!;
+    assert.equal(sim.nome, 'Com deficiência (inclui reabilitados)');
+    // o filtro PcD e o dos tipos 1 a 6 dão o mesmo recorte
+    const f1 = (await cons({ ano: 2024, pcd: '1' })).linhas[0].ativos;
+    const f2 = (await cons({ ano: 2024, tdef: '1,2,3,4,5,6' })).linhas[0].ativos;
+    assert.equal(f1, sim.ativos);
+    assert.equal(f2, f1);
+  });
+
+  test('parcial e intermitente: campo vazio (até 2015) fica à parte e nunca vira 0; 2024 tem 0 e 1', { skip: semMicro }, async () => {
+    const antigo = (await cons({ ano: 2013, agrupar: 'trab_parcial' })).linhas;
+    assert.deepEqual(antigo.map((r) => r.grupo), ['9']);
+    assert.match(String(antigo[0].nome), /Sem informação/);
+    const novo = (await cons({ ano: 2024, agrupar: 'trab_intermitente' })).linhas;
+    assert.deepEqual(novo.map((r) => r.grupo).sort(), ['0', '1']);
+    const sim = novo.find((r) => r.grupo === '1')!;
+    assert.equal((await cons({ ano: 2024, intm: '1' })).linhas[0].ativos, sim.ativos);
+    // filtrar 1 em 2013 não devolve nada: o campo vazio não é 0 nem 1
+    assert.equal((await cons({ ano: 2013, parc: '1' })).linhas[0].vinculos, 0);
+  });
+
+  test('capacidade: novos agrupamentos e filtros exigem microdados (Brasil e cubos); código inválido não é ignorado', { skip: semMicro }, async () => {
+    assert.ok(!gruposDaFonte('cubo_uf').includes('pcd') && !gruposDaFonte('cubo_mun').includes('nacionalidade'));
+    assert.ok(['pcd', 'tipo_deficiencia', 'nacionalidade', 'trab_parcial', 'trab_intermitente'].every((g) => gruposDaFonte('micro').includes(g)));
+    await assert.rejects(rota('trab_consulta', { ano: 2024, agrupar: 'pcd' }), /não está disponível/);
+    await assert.rejects(rota('trab_consulta', { ano: 2024, agrupar: 'total', pcd: '1' }), /precisam dos microdados/);
+    await assert.rejects(cons({ ano: 2024, pcd: 'um' }), /código inválido/);
+    await assert.rejects(cons({ ano: 2024, esc: '9,x' }), /código inválido/);
   });
 });
 

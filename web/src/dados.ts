@@ -1856,6 +1856,8 @@ const VINCULO_MTE = `CASE WHEN tipo_vinculo IN (10, 15, 20, 25, 60, 65, 70, 75) 
 const HORAS_VALIDAS = 'horas_contratadas BETWEEN 1 AND 44';
 const FAIXA_HORAS = `CASE WHEN horas_contratadas BETWEEN 1 AND 20 THEN '1' WHEN horas_contratadas BETWEEN 21 AND 30 THEN '2'
   WHEN horas_contratadas BETWEEN 31 AND 39 THEN '3' WHEN horas_contratadas = 40 THEN '4' WHEN horas_contratadas BETWEEN 41 AND 44 THEN '5' ELSE '9' END`;
+/** Indicador 0/1 com o campo vazio separado ('9') e qualquer outro código também à parte ('8'): vazio nunca vira 0. */
+const FLAG = (c: string) => `CASE WHEN ${c} IS NULL THEN '9' WHEN ${c} IN (0, 1) THEN ${c}::VARCHAR ELSE '8' END`;
 /** Tempo no emprego em meses, como na RAIS. */
 const FAIXA_TEMPO = `CASE WHEN tempo_emprego IS NULL OR tempo_emprego < 0 THEN '9' WHEN tempo_emprego < 3 THEN '1' WHEN tempo_emprego < 12 THEN '2'
   WHEN tempo_emprego < 24 THEN '3' WHEN tempo_emprego < 60 THEN '4' WHEN tempo_emprego < 120 THEN '5' ELSE '6' END`;
@@ -1888,6 +1890,17 @@ const DERIVADAS: [string, string, string][] = [
   ['faixa_tempo', '1', 'Menos de 3 meses'], ['faixa_tempo', '2', '3 a 11 meses'], ['faixa_tempo', '3', '1 ano a menos de 2'],
   ['faixa_tempo', '4', '2 a menos de 5 anos'], ['faixa_tempo', '5', '5 a menos de 10 anos'], ['faixa_tempo', '6', '10 anos ou mais'],
   ['faixa_tempo', '9', 'Não informado'],
+  // indicadores dos vínculos: 0 e 1 são os códigos do arquivo; 9 aqui é o campo vazio (nunca vira 0); 8, qualquer outro código
+  ['pcd', '0', 'Sem deficiência declarada'], ['pcd', '1', 'Com deficiência (inclui reabilitados)'],
+  ['pcd', '8', 'Código diferente de 0 e 1'], ['pcd', '9', 'Sem informação no arquivo do ano'],
+  ['trab_parcial', '0', 'Não'], ['trab_parcial', '1', 'Sim'], ['trab_parcial', '8', 'Código diferente de 0 e 1'], ['trab_parcial', '9', 'Sem informação no arquivo do ano (campo vazio)'],
+  ['trab_intermitente', '0', 'Não'], ['trab_intermitente', '1', 'Sim'], ['trab_intermitente', '8', 'Código diferente de 0 e 1'], ['trab_intermitente', '9', 'Sem informação no arquivo do ano (campo vazio)'],
+  // estabelecimentos: faixas calculadas do estoque de vínculos ativos em 31/12 e indicadores 0/1 (outros códigos ficam sem nome)
+  ['estab_porte', '0', 'Zero vínculos ativos em 31/12'], ['estab_porte', '1', '1 a 4'], ['estab_porte', '2', '5 a 9'], ['estab_porte', '3', '10 a 19'],
+  ['estab_porte', '4', '20 a 49'], ['estab_porte', '5', '50 a 99'], ['estab_porte', '6', '100 a 249'], ['estab_porte', '7', '250 a 499'],
+  ['estab_porte', '8', '500 a 999'], ['estab_porte', '9', '1.000 ou mais'], ['estab_porte', 'N', 'Estoque negativo (valor inválido)'],
+  ['estab_simples', '0', 'Não'], ['estab_simples', '1', 'Sim'],
+  ['estab_pat', '0', 'Não'], ['estab_pat', '1', 'Sim'], ['estab_pat', '9', 'Código 9 (sem descrição verificada; único valor desde 2023)'],
 ];
 
 /**
@@ -1897,7 +1910,7 @@ const DERIVADAS: [string, string, string][] = [
  * cubo_mun (município × divisão CNAE × grande grupo CBO). VITE_MICRODADOS=0 força as tabelas.
  */
 type FonteConsulta = 'micro' | 'cubo_uf' | 'cubo_mun';
-type IndiceMicro = { rais_vinculos?: Record<string, number[]> };
+export type IndiceMicro = { rais_vinculos?: Record<string, number[]>; rais_estab?: Record<string, number[]> };
 const env = (import.meta as { env?: Record<string, string | boolean | undefined> }).env;
 let indiceMicro: IndiceMicro | null = null;
 async function carregarIndiceMicro() {
@@ -1949,6 +1962,11 @@ const GRUPOS: Record<string, Grupo> = {
   faixa_idade: { micro: FAIXA_IDADE, nome: 'faixa_idade' },
   escolaridade: { micro: 'escolaridade::VARCHAR', nome: 'escolaridade' },
   raca_cor: { micro: 'raca_cor::VARCHAR', nome: 'raca_cor' },
+  pcd: { micro: FLAG('deficiente'), nome: 'pcd' },
+  tipo_deficiencia: { micro: 'tipo_deficiencia::VARCHAR', nome: 'tipo_deficiencia' },
+  nacionalidade: { micro: 'nacionalidade::VARCHAR', nome: 'nacionalidade' },
+  trab_parcial: { micro: FLAG('ind_parcial'), nome: 'trab_parcial' },
+  trab_intermitente: { micro: FLAG('ind_intermitente'), nome: 'trab_intermitente' },
   tipo_vinculo: { micro: 'tipo_vinculo::VARCHAR', nome: 'tipo_vinculo' },
   vinculo_mte: { micro: VINCULO_MTE, nome: 'vinculo_mte' },
   natureza_juridica_grupo: { micro: NJ_GRUPO, nome: 'natureza_juridica_grupo' },
@@ -1981,6 +1999,11 @@ export const FILTROS_LISTA: Record<string, { expr: string; variavel: string }> =
   tam: { expr: 'tamanho_estab::VARCHAR', variavel: 'tamanho_estab' },
   horas: { expr: FAIXA_HORAS, variavel: 'faixa_horas' },
   tempo: { expr: FAIXA_TEMPO, variavel: 'faixa_tempo' },
+  pcd: { expr: FLAG('deficiente'), variavel: 'pcd' },
+  tdef: { expr: 'tipo_deficiencia::VARCHAR', variavel: 'tipo_deficiencia' },
+  nac: { expr: 'nacionalidade::VARCHAR', variavel: 'nacionalidade' },
+  parc: { expr: FLAG('ind_parcial'), variavel: 'trab_parcial' },
+  intm: { expr: FLAG('ind_intermitente'), variavel: 'trab_intermitente' },
 };
 
 const MEDIDAS_MICRO = `
@@ -2178,7 +2201,11 @@ async function planoConsulta(q: Params, anos: number[]) {
     else filtros.push(`municipio IN (${muns.map((c) => Math.floor(Number(c) / 10)).join(', ')})`);
   }
   for (const [k, f] of Object.entries(FILTROS_LISTA)) {
-    const valores = String(q[k] ?? '').split(/[\s,;]+/).filter((s) => /^[0-9]{1,4}$/.test(s)).slice(0, 60);
+    const bruto = String(q[k] ?? '').split(/[\s,;]+/).filter(Boolean);
+    // um código que não é número de até 4 dígitos é erro de digitação: avisa em vez de ignorar e consultar o universo inteiro
+    const invalidos = bruto.filter((s) => !/^[0-9]{1,4}$/.test(s));
+    if (invalidos.length) throw new Error(t(`Filtro ${k}: código inválido (${invalidos.slice(0, 3).join(', ')}). Use códigos numéricos de até 4 dígitos.`, `Filter ${k}: invalid code (${invalidos.slice(0, 3).join(', ')}). Use numeric codes of up to 4 digits.`));
+    const valores = bruto.slice(0, 60);
     if (!valores.length) continue;
     if (fonte !== 'micro') usados.push(k);
     else filtros.push(`${f.expr} IN (${valores.map(lit).join(', ')})`);
@@ -2215,6 +2242,73 @@ function grupoDe(chave: unknown, fonte: FonteConsulta) {
 const comSecao = (origem: string, fonte: FonteConsulta, precisa: boolean) => (precisa
   ? `(SELECT v.*, cn.secao FROM ${origem} v LEFT JOIN trab_cnae cn ON cn.divisao = ${fonte === 'cubo_mun' ? 'v.cnae_divisao' : 'v.cnae_classe[1:2]'})`
   : origem);
+
+// ---------- estabelecimentos (RAIS Estabelecimentos, microdados) ----------
+
+const num0 = (v: unknown) => (typeof v === 'number' ? v : 0);
+
+/**
+ * Anos e UFs de rais_estab que o índice dos microdados publica (nada é suposto: 2010–2019 não têm a UF 99, a geografia
+ * ignorada). Sem índice, sem a chave rais_estab (índice antigo) ou com VITE_MICRODADOS=0, o resultado é vazio.
+ */
+async function indiceEstab(): Promise<Record<number, number[]>> {
+  if (env?.VITE_MICRODADOS === '0') return {};
+  return estabDoIndice(indiceMicro ?? await baixar('silver/trabalho/micro/indice.json').then((b) => JSON.parse(new TextDecoder().decode(b)) as IndiceMicro).catch(() => null));
+}
+
+/** Anos e UFs de rais_estab de um índice (já lido): só anos de 4 dígitos com UFs inteiras; índice antigo (sem rais_estab) dá {}. */
+export function estabDoIndice(indice: IndiceMicro | null | undefined): Record<number, number[]> {
+  const saida: Record<number, number[]> = {};
+  for (const [ano, ufs] of Object.entries(indice?.rais_estab ?? {})) {
+    const lista = (Array.isArray(ufs) ? ufs : []).filter((u) => Number.isInteger(u)).sort((x, y) => x - y);
+    if (/^\d{4}$/.test(ano) && lista.length) saida[Number(ano)] = lista;
+  }
+  return saida;
+}
+
+/** Faixas do estoque de vínculos ativos em 31/12 (calculadas de qtd_vinculos_ativos; zero à parte, ausente fica sem faixa). */
+const FAIXAS_ESTAB = `CASE WHEN qtd_vinculos_ativos IS NULL THEN NULL WHEN qtd_vinculos_ativos < 0 THEN 'N' WHEN qtd_vinculos_ativos = 0 THEN '0'
+  WHEN qtd_vinculos_ativos < 5 THEN '1' WHEN qtd_vinculos_ativos < 10 THEN '2' WHEN qtd_vinculos_ativos < 20 THEN '3' WHEN qtd_vinculos_ativos < 50 THEN '4'
+  WHEN qtd_vinculos_ativos < 100 THEN '5' WHEN qtd_vinculos_ativos < 250 THEN '6' WHEN qtd_vinculos_ativos < 500 THEN '7' WHEN qtd_vinculos_ativos < 1000 THEN '8' ELSE '9' END`;
+/** Agrupamentos de estabelecimentos: expressão sobre as colunas de rais_estab e de onde vem o nome (dicionário). */
+export const GRUPOS_ESTAB: Record<string, Grupo> = {
+  total: { micro: `'total'` },
+  divisao: { micro: 'cnae_classe[1:2]', nome: 'divisao' },
+  porte: { micro: FAIXAS_ESTAB, nome: 'estab_porte' },
+  natureza_juridica: { micro: 'natureza_juridica::VARCHAR', nome: 'natureza_juridica' },
+  simples: { micro: 'ind_simples::VARCHAR', nome: 'estab_simples' },
+  pat: { micro: 'ind_pat::VARCHAR', nome: 'estab_pat' },
+};
+
+/**
+ * Medidas por estabelecimento (uma linha do arquivo = um estabelecimento declarante, não uma empresa). Estoque = vínculos
+ * ativos em 31/12 (qtd_vinculos_ativos); ausente (NULL) fica à parte e nunca vira 0. RAIS negativa (código 1) é a declaração
+ * sem vínculos no ano, diferente de estoque zero em 31/12. Indicadores: só 0/1 contam como Não/Sim; vazio e outros códigos
+ * ficam fora dessas contagens e aparecem em "informado" e "outro código".
+ */
+const MEDIDAS_ESTAB = `
+  count(*)::DOUBLE AS estabelecimentos,
+  count(qtd_vinculos_ativos)::DOUBLE AS com_estoque,
+  (count(*) - count(qtd_vinculos_ativos))::DOUBLE AS sem_estoque,
+  count(*) FILTER (qtd_vinculos_ativos = 0) AS estoque_zero,
+  count(*) FILTER (qtd_vinculos_ativos < 0) AS estoque_negativo,
+  count(*) FILTER (qtd_vinculos_ativos > 0) AS com_vinculos,
+  sum(qtd_vinculos_ativos) FILTER (qtd_vinculos_ativos > 0)::DOUBLE AS vinculos_ativos,
+  sum(qtd_vinculos_ativos) FILTER (qtd_vinculos_ativos > 0)::DOUBLE / nullif(count(*) FILTER (qtd_vinculos_ativos > 0), 0) AS media_com_vinculos,
+  quantile_cont(qtd_vinculos_ativos::DOUBLE, 0.5) FILTER (qtd_vinculos_ativos > 0) AS mediana_com_vinculos,
+  count(ind_rais_negativa) AS negativa_informada,
+  count(*) FILTER (ind_rais_negativa = 1) AS rais_negativa,
+  count(*) FILTER (ind_rais_negativa = 1 AND qtd_vinculos_ativos > 0) AS negativa_com_vinculos,
+  count(*) FILTER (ind_rais_negativa NOT IN (0, 1)) AS negativa_outro_codigo,
+  count(ind_simples) AS simples_informado,
+  count(*) FILTER (ind_simples = 1) AS simples_sim,
+  count(*) FILTER (ind_simples = 0) AS simples_nao,
+  count(*) FILTER (ind_simples NOT IN (0, 1)) AS simples_outro_codigo,
+  count(ind_pat) AS pat_informado,
+  count(*) FILTER (ind_pat = 1) AS pat_sim,
+  count(*) FILTER (ind_pat = 0) AS pat_nao,
+  count(*) FILTER (ind_pat NOT IN (0, 1)) AS pat_outro_codigo,
+  count(*) FILTER (uf = 99) AS geografia_ignorada`;
 
 const rotasConsulta: Record<string, (q: Params) => Promise<unknown>> = {
   /**
@@ -2300,6 +2394,63 @@ const rotasConsulta: Record<string, (q: Params) => Promise<unknown>> = {
       : t(`Somando a tabela pré-somada da RAIS ${ano}`, `Summing the RAIS ${ano} pre-aggregated table`));
     const { base: baseIpca, fatores } = await fatoresIpca();
     return { fonte: plano.fonte, ano, dimensoes, linhas, base_ipca: baseIpca, fator_real: fatores[ano] ?? null, sql: semEspacos(sql) };
+  },
+
+  /** Anos e UFs publicados de rais_estab (vazio: índice antigo, sem estabelecimentos). */
+  async trab_estab_indice() {
+    const indice = await indiceEstab();
+    return { anos: Object.keys(indice).map(Number).sort((a, b) => a - b), ufs: indice };
+  },
+
+  /**
+   * Estabelecimentos declarantes da RAIS num ano: o resumo do território e, opcionalmente, um agrupamento (GRUPOS_ESTAB),
+   * numa leitura só (GROUPING SETS). Brasil lê os arquivos que o índice lista para o ano (inclui a UF 99, geografia ignorada,
+   * quando existir); UF lê o arquivo da UF; município lê o da UF filtrando o código de 6 dígitos. Ano ou UF fora do índice: erro claro.
+   */
+  async trab_estab(q) {
+    await dicionarioTrabalho();
+    const ano = inteiro(q.ano);
+    const indice = await indiceEstab();
+    const ufsAno = ano ? indice[ano] ?? [] : [];
+    if (!ano || !ufsAno.length) throw new Error(t(`Não há microdados de estabelecimentos publicados para ${ano ?? 'o ano pedido'}.`, `No establishment microdata is published for ${ano ?? 'the requested year'}.`));
+    const chave = String(q.agrupar ?? 'total');
+    const grupo = GRUPOS_ESTAB[chave];
+    if (!grupo) throw new Error(t(`Agrupamento de estabelecimentos desconhecido: ${chave}.`, `Unknown establishment grouping: ${chave}.`));
+    const ente = inteiro(q.ente);
+    const uf = UFS.has(String(q.uf)) ? String(q.uf) : null;
+    let ufCod: number | null = null;
+    const filtros: string[] = [];
+    if (ente) {
+      const cod = ente === 53 ? 5300108 : ente;
+      ufCod = Math.floor(cod / 100000);
+      filtros.push(`municipio = ${Math.floor(cod / 10)}`);
+    } else if (uf) {
+      const [u] = await consultar(`SELECT cod_ibge FROM entes WHERE esfera IN ('E', 'D') AND uf = $uf`, { uf });
+      ufCod = Number(u?.cod_ibge);
+    }
+    if (ufCod !== null && !ufsAno.includes(ufCod)) {
+      throw new Error(t(`Não há arquivo de estabelecimentos de ${SIGLAS[ufCod] ?? ufCod} em ${ano}.`, `There is no establishment file for ${SIGLAS[ufCod] ?? ufCod} in ${ano}.`));
+    }
+    const ufsLidas = ufCod !== null ? [ufCod] : ufsAno;
+    const caminho = (u: number) => `silver/trabalho/micro/rais_estab/ano=${ano}/uf=${u}.parquet`;
+    const onde = filtros.length ? filtros.join(' AND ') : 'true';
+    const consulta = (origem: string) => `SELECT g.*, ${chave === 'total' ? 'NULL' : nomeDoGrupo(grupo, 'grupo')} AS nome
+       FROM (SELECT ${chave === 'total' ? `'total' AS nivel, NULL::VARCHAR AS grupo` : `CASE WHEN grouping(grupo) = 0 THEN 'grupo' ELSE 'total' END AS nivel, grupo::VARCHAR AS grupo`}, ${MEDIDAS_ESTAB}
+             FROM (SELECT *, ${grupo.micro} AS grupo FROM read_parquet(${origem}) WHERE ${onde})
+             GROUP BY GROUPING SETS ((), (grupo))) g
+       ORDER BY g.nivel DESC, g.estabelecimentos DESC`;
+    const sql = consulta(`[${ufsLidas.map((u) => arq(caminho(u))).join(', ')}]`);
+    const linhas = await consultarTrabalho(sql, ufCod === null
+      ? t(`Lendo os estabelecimentos da RAIS ${ano} de ${ufsLidas.length} arquivos de UF (Brasil)`, `Reading RAIS ${ano} establishments from ${ufsLidas.length} state files (Brazil)`)
+      : t(`Lendo os estabelecimentos da RAIS ${ano} (${SIGLAS[ufCod] ?? ufCod})`, `Reading RAIS ${ano} establishments (${SIGLAS[ufCod] ?? ufCod})`));
+    const resumo = linhas.find((r) => r.nivel === 'total') ?? null;
+    // o SQL mostrado e exportado tem a mesma lista exata de arquivos (caminhos relativos), sem glob: um arquivo extra fora do índice mudaria os números
+    const exibicao = consulta(`[${ufsLidas.map((u) => `'${caminho(u)}'`).join(', ')}]`);
+    return {
+      fonte: 'estab', ano, uf_cod: ufCod, ufs: ufsLidas, resumo: resumo && num0(resumo.estabelecimentos) ? resumo : null,
+      grupos: linhas.filter((r) => r.nivel === 'grupo'), agrupar: chave, sql: semEspacos(exibicao),
+      tem_uf99: ufsLidas.includes(99), caminhos: ufsLidas.map(caminho), rotulo_uf: ufCod === null ? t('Brasil', 'Brazil') : SIGLAS[ufCod] ?? String(ufCod),
+    };
   },
 
   /** Nomes de um código do dicionário (CBO, CNAE…) que contêm o texto, para a busca dos filtros. */

@@ -23,11 +23,16 @@ export const FILTROS_AVANCADOS = (): { chave: string; variavel: string; rotulo: 
   { chave: 'tam', variavel: 'tamanho_estab', rotulo: t('Tamanho do estabelecimento', 'Establishment size') },
   { chave: 'horas', variavel: 'faixa_horas', rotulo: t('Jornada contratual semanal', 'Contracted weekly hours') },
   { chave: 'tempo', variavel: 'faixa_tempo', rotulo: t('Tempo no emprego', 'Job tenure') },
+  { chave: 'pcd', variavel: 'pcd', rotulo: t('Pessoa com deficiência (indicador)', 'Person with disability (indicator)') },
+  { chave: 'tdef', variavel: 'tipo_deficiencia', rotulo: t('Tipo de deficiência ou reabilitado', 'Disability type or rehabilitated') },
+  { chave: 'nac', variavel: 'nacionalidade', rotulo: t('Nacionalidade', 'Nationality') },
+  { chave: 'parc', variavel: 'trab_parcial', rotulo: t('Trabalho parcial', 'Part-time contract') },
+  { chave: 'intm', variavel: 'trab_intermitente', rotulo: t('Trabalho intermitente', 'Intermittent contract') },
 ];
 
 /** Parâmetros do recorte que acompanham a navegação entre as páginas da área de trabalho. */
 export const PARAMS_TRABALHO = ['cbo', 'cnae', 'sit', 'sexo', 'muns', ...FILTROS_AVANCADOS().map((f) => f.chave),
-  'agr', 'agr2', 'pct', 'cols', 'nmin', 'moeda', 'de', 'ate', 'base', 'ord', 'rord', 'min'];
+  'agr', 'agr2', 'eagr', 'pct', 'cols', 'nmin', 'moeda', 'de', 'ate', 'base', 'ord', 'rord', 'min'];
 
 export type Recorte = {
   cbo: string; cnae: string; situacao: string; sexo: string; muns: string;
@@ -75,6 +80,13 @@ export function useRecorte() {
   };
   return { recorte, definir, busca };
 }
+
+/** Parâmetros dos filtros de vínculos (os que `temFiltrosDeRecorte` conta), para limpá-los de uma vez. */
+export const CHAVES_FILTROS_RECORTE = ['cbo', 'cnae', 'sit', 'sexo', 'muns', ...FILTROS_AVANCADOS().map((f) => f.chave)];
+
+/** Agrupamentos da página Estabelecimentos, num parâmetro próprio (eagr): não toca no agr da Consulta de vínculos. */
+export const AGRUPAMENTOS_ESTAB = ['porte', 'divisao', 'natureza_juridica', 'simples', 'pat'];
+export const lerAgrupamentoEstab = (busca: URLSearchParams) => AGRUPAMENTOS_ESTAB.find((x) => x === busca.get('eagr')) ?? 'porte';
 
 /** Filtros do recorte que mudam o universo (os de exibição, como agrupamento e colunas, não contam). */
 export const temFiltrosDeRecorte = (r: Recorte) => !!(r.cbo || r.cnae || r.situacao || r.sexo || r.muns || Object.keys(r.listas).length);
@@ -182,6 +194,16 @@ export const ATALHOS_RAIS = (): { id: string; titulo: string; desc: string; para
     desc: t('Vínculos e remuneração por faixa de tamanho do estabelecimento.', 'Jobs and pay by establishment size band.') },
   { id: 'jornada', micro: true, params: { sit: 'ativos', agr: 'faixa_horas', agr2: 'faixa_tempo' }, titulo: t('Jornada e tempo no emprego', 'Hours and job tenure'),
     desc: t('Cruzamento da jornada contratual semanal com o tempo no emprego.', 'Cross-tab of contracted weekly hours and job tenure.') },
+  { id: 'pcd', micro: true, params: { sit: 'ativos', agr: 'tipo_deficiencia' }, titulo: t('Deficiência e reabilitados', 'Disability and rehabilitated'),
+    desc: t('Vínculos por tipo de deficiência declarada e reabilitados (código 6), ao lado dos sem deficiência declarada. Descreve o campo da RAIS: não mede cumprimento de cotas.', 'Jobs by declared disability type and rehabilitated (code 6), next to those with no declared disability. It describes the RAIS field: it does not measure quota compliance.') },
+  { id: 'nac', micro: true, params: { sit: 'ativos', agr: 'nacionalidade' }, titulo: t('Nacionalidade', 'Nationality'),
+    desc: t('Vínculos por nacionalidade declarada. Conta vínculos, não pessoas nem migrantes únicos.', 'Jobs by declared nationality. It counts jobs, not people or unique migrants.') },
+  { id: 'modalidade', micro: true, params: { sit: 'ativos', agr: 'trab_parcial', agr2: 'trab_intermitente' }, titulo: t('Trabalho parcial e intermitente', 'Part-time and intermittent work'),
+    desc: t('Cruzamento dos dois indicadores de modalidade; “sem informação” é o campo vazio do arquivo do ano (não é “não”).', 'Cross-tab of the two contract-modality indicators; “no information” is the file’s empty field for the year (not “no”).') },
+  { id: 'afast', micro: true, params: { sit: 'afastados', agr: 'causa_afastamento' }, titulo: t('Afastamentos no ano', 'Leaves during the year'),
+    desc: t('Vínculos com afastamento no ano por causa (primeira informada). O mês da RAIS é o ano de referência, não o fluxo mensal do CAGED.', 'Jobs with a leave during the year by reason (first reported). RAIS is annual, not the monthly CAGED flow.') },
+  { id: 'deslig', micro: true, params: { sit: 'desligados', agr: 'motivo_desligamento' }, titulo: t('Motivos de desligamento no ano', 'Separation reasons in the year'),
+    desc: t('Vínculos desligados no ano por motivo, sem calcular rotatividade; difere das movimentações mensais do CAGED.', 'Jobs separated in the year by reason, without computing turnover; different from CAGED monthly movements.') },
 ];
 
 /**
