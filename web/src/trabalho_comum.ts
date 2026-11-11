@@ -169,9 +169,10 @@ export function baixarPacote(nome: string, tabelas: { nome: string; tabela: Tabe
  * Endereço de uma análise pronta: guarda só o território e o ano da URL atual (ano, uf, ente) e descarta o
  * resto do recorte (ocupação, atividade, listas, agrupamentos), que poderia ser incompatível com a análise.
  */
-export function urlAnalise(busca: URLSearchParams, caminho: string, params: Record<string, string>): string {
+export function urlAnalise(busca: URLSearchParams, caminho: string, params: Record<string, string>, manter: string[] = []): string {
   const p = new URLSearchParams();
-  for (const k of ['ano', 'uf', 'ente']) if (busca.get(k)) p.set(k, busca.get(k)!);
+  // `manter`: parâmetros do recorte que a ação deve levar junto (ex.: a ocupação, ao abrir o perfil)
+  for (const k of ['ano', 'uf', 'ente', ...manter]) if (busca.get(k)) p.set(k, busca.get(k)!);
   for (const [k, v] of Object.entries(params)) p.set(k, v);
   return `${caminho}?${p}`;
 }

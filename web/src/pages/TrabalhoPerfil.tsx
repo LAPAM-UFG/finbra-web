@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useApi, type Linha } from '../api';
+import { AjudaTrabalho, CapacidadeTrabalho } from '../components/AjudaTrabalho';
 import { Dica } from '../components/Dica';
 import { BotoesExportar, type Tabela } from '../components/Exportar';
 import { CartaoGrafico, Grafico, linhas as graficoLinhas } from '../components/Grafico';
@@ -195,11 +196,15 @@ export function TrabalhoPerfil() {
       <h2 className="titulo-pagina">{t('Perfil da ocupação', 'Occupation profile')}</h2>
       <p className="subtitulo">{rotulo} · RAIS {de}–{ate} · {t('vínculos ativos em 31/12', 'jobs active on Dec 31')} <Dica rotulo={t('Fonte', 'Source')}>{notaFonte()}</Dica></p>
       <BarraFiltros semAno />
-      <p className="cobertura" role="note">{t(
+      <CapacidadeTrabalho micro={micro} rotulo={t('Como funciona', 'How it works')}
+        resumo={t('digite uma profissão (ex.: enfermeiro, motorista), escolha o resultado e gere sete tabelas: série histórica, remuneração, atividades e perfil de quem trabalha.', 'type an occupation (e.g. nurse, driver), choose the result and build seven tables: time series, pay, activities and worker profile.')}
+        detalhe={<>{t(
         'Diagnóstico padronizado de uma ocupação ou família da CBO: sete tabelas, cada uma exportável, e o conjunto completo em Excel ou em pacote de pesquisa. A CBO é a ocupação exercida no vínculo, não a formação nem o registro profissional.',
         'Standard diagnosis of a CBO occupation or family: seven tables, each exportable, and the full set in Excel or as a research package. CBO is the occupation performed in the job, not training or professional registration.',
-      )} {micro ? '' : t('Nesta fonte (tabelas pré-somadas do Brasil) parte das tabelas fica indisponível: escolha uma UF ou um município para os microdados.', 'In this source (pre-aggregated tables for Brazil) some tables are unavailable: choose a state or municipality for the microdata.')}</p>
-      <FormularioRecorte recorte={recorte} definir={(n) => { cancelarConsultasTrabalho(); definir(n); }} micro={micro} rotuloAplicar={t('Gerar perfil', 'Build profile')}
+      )} {micro ? '' : t('Nesta fonte (tabelas pré-somadas do Brasil) parte das tabelas fica indisponível: escolha uma UF ou um município para os microdados.', 'In this source (pre-aggregated tables for Brazil) some tables are unavailable: choose a state or municipality for the microdata.')}</>} />
+      <AjudaTrabalho />
+      <FormularioRecorte recorte={recorte} definir={(n) => { cancelarConsultasTrabalho(); definir(n); }} micro={micro} rotuloAplicar={t('Gerar perfil', 'Build profile')} tituloExtra={t('Período e valores', 'Period and values')}
+        resumoExtra={`${de}–${ate}`}
         extra={(
           <>
             <div className="campo">
@@ -220,7 +225,7 @@ export function TrabalhoPerfil() {
           </>
         )} />
       {recorte.situacao && recorte.situacao !== 'ativos' && <p className="aviso" role="status">{t('O perfil usa sempre os vínculos ativos em 31/12; o filtro de situação escolhido vale na Consulta personalizada.', 'The profile always uses jobs active on Dec 31; the chosen status filter applies in the Custom query.')}</p>}
-      {!pronto && <p className="vazio">{t('Escolha uma ocupação ou família da CBO (ex.: 2512, economistas) e clique em Gerar perfil.', 'Choose a CBO occupation or family (e.g. 2512, economists) and click Build profile.')}</p>}
+      {!pronto && <p className="vazio">{t('Comece pelo passo 1: digite uma profissão em “Profissão (CBO)”, por exemplo “enfermeiro” ou “economista”, escolha o resultado na lista (ou pressione Enter) e clique em Gerar perfil. Se já souber o código da CBO, use “Já sei o código”.', 'Start with step 1: type an occupation under “Occupation (CBO)”, for example “nurse” or “economist”, choose the result in the list (or press Enter) and click Build profile. If you already know the CBO code, use “I know the code”.')}</p>}
       {pronto && (
         <>
           <Estado carregando={carregando} erro={erro} tentarNovamente={recarregar} cancelar={cancelarConsultasTrabalho}

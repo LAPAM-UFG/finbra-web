@@ -5,6 +5,8 @@ import { Dica } from '../components/Dica';
 import { BotoesExportar } from '../components/Exportar';
 import { barras, CartaoGrafico, Grafico, linhas } from '../components/Grafico';
 import { Estado, Kpi } from '../components/Kpi';
+import { AjudaTrabalho } from '../components/AjudaTrabalho';
+import { PerguntasTrabalho, TodasAnalises } from '../components/PerguntasTrabalho';
 import { EtiquetasRecorte, paramsConsulta, useAnosConsulta } from '../components/RecorteTrabalho';
 import { TabelaSerie } from '../components/TabelaSerie';
 import { BarraFiltros, useDados, useFiltros } from '../contexto';
@@ -13,7 +15,7 @@ import { cancelarConsultasTrabalho, fonteConsulta, type Classificacao } from '..
 import { div, numero, numero1, pct, reais, reaisCurto, reaisExato } from '../format';
 import { num } from '../hooks';
 import { local, t } from '../idioma';
-import { ATALHOS_RAIS, concentracao, marcasQuebra, notaComparabilidade, quebrasEntre, temFiltrosDeRecorte, urlAnalise, useRecorte } from '../trabalho_comum';
+import { concentracao, marcasQuebra, notaComparabilidade, quebrasEntre, temFiltrosDeRecorte, useRecorte } from '../trabalho_comum';
 
 const SETORES = (): [string, string][] => [
   ['agropecuaria', t('Agropecuária', 'Agriculture')],
@@ -121,7 +123,7 @@ function NotaQuebra({ anos }: { anos: number[] }) {
 // ---------------- visão geral ----------------
 
 export function TrabalhoVisaoGeral() {
-  const { anoRais, escopo, rotulo, temDados, meta } = useTrabalho();
+  const { anoRais, escopo, rotulo, temDados, meta, caged } = useTrabalho();
   const serie = useApi<Linha[]>(temDados ? 'trab_serie' : null, escopo);
   const setores = useApi<Linha[]>(temDados && anoRais ? 'trab_setores' : null, { ...escopo, ano: anoRais });
   const [todos, setTodos] = useState(false);
@@ -153,11 +155,13 @@ export function TrabalhoVisaoGeral() {
       <BarraFiltros />
       <AvisoAno anoRais={anoRais} />
       <AvisoRecorte pagina={t('a visão geral', 'the overview')} />
+      <PerguntasTrabalho busca={busca} micro={micro} temCaged={!!caged} temIndicadores={!!a} />
+      <AjudaTrabalho />
       <Estado carregando={serie.carregando} erro={serie.erro} tentarNovamente={serie.recarregar}
         vazio={!serie.carregando && !a && t('Sem vínculos na RAIS para este recorte.', 'No RAIS jobs for this scope.')} />
       {a && (
         <>
-          <div className="kpis kpis-4">
+          <div className="kpis kpis-4" id="trabalho-indicadores" tabIndex={-1}>
             <Kpi rotulo={t('Vínculos formais ativos (31/12)', 'Formal jobs active (Dec 31)')} valor={numero(empregos)}
               nota={ant ? <>{t(`${pct(variacao)} sobre ${anoRais! - 1}`, `${pct(variacao)} on ${anoRais! - 1}`)}{quebra && <> · <span title={quebra.texto}>{t('variação observada; atravessa a quebra de ', 'observed change; crosses the break of ')}{quebra.ano}</span></>}</> : undefined} />
             <Kpi rotulo={t('Vínculos por mil habitantes', 'Jobs per thousand inhabitants')} valor={porMil !== null ? numero(1000 * porMil) : '–'}
@@ -248,36 +252,7 @@ export function TrabalhoVisaoGeral() {
           <p className="legenda-tabela">{conc.top3.map((x) => x.nome).join(' · ')}. {t('A divisão 84 é uma atividade e não equivale ao setor público.', 'Division 84 is an activity and is not the public sector.')}</p>
         </section>
       )}
-      {a && (
-        <section className="cartao">
-          <div className="cabeca-cartao">
-            <div>
-              <h3>{t('Explore a fundo este recorte', 'Explore this scope in depth')}</h3>
-              <p className="desc">{t('Atalhos para a Consulta personalizada, no mesmo território e ano; os filtros anteriores não são levados.', 'Shortcuts to the Custom query, for the same territory and year; earlier filters are not carried over.')}</p>
-            </div>
-          </div>
-          {!micro && <p className="nota-base">{t('Neste recorte só sexo e ocupações (grandes grupos) estão disponíveis nas tabelas pré-somadas; os demais cortes usam os microdados, que não estão publicados para este território.',
-            'For this scope only sex and occupations (major groups) are available in the pre-aggregated tables; the other cuts use the microdata, which are not published for this territory.')}</p>}
-          <ul className="rais-atalhos">
-            {ATALHOS_RAIS().map((x) => {
-              const bloqueado = x.micro && !micro;
-              return (
-                <li key={x.id} className={bloqueado ? 'bloqueado' : undefined}>
-                  {bloqueado ? <strong>{x.titulo}</strong> : <Link to={urlAnalise(busca, '/trabalho/consulta', x.params)}><strong>{x.titulo}</strong></Link>}
-                  <span>{x.desc}</span>
-                  {bloqueado && <small>{t('Exige microdados, indisponíveis neste recorte.', 'Needs microdata, unavailable for this scope.')}</small>}
-                </li>
-              );
-            })}
-            <li><Link to={urlAnalise(busca, '/trabalho/remuneracao', {})}><strong>{t('Remuneração e desigualdades', 'Pay and inequality')}</strong></Link>
-              <span>{t('Compara média, mediana e composição por sexo, raça/cor, escolaridade e idade.', 'Compares average, median and composition by sex, race/colour, education and age.')}</span></li>
-            <li><Link to={urlAnalise(busca, '/trabalho/estabelecimentos', {})}><strong>{t('Estabelecimentos', 'Establishments')}</strong></Link>
-              <span>{t('Estabelecimentos declarantes, estoque de vínculos, porte, atividade, natureza jurídica, Simples e PAT; o cálculo começa em Calcular.', 'Declaring establishments, job stock, size, activity, legal nature, Simples and PAT; the calculation starts on Calculate.')}</span></li>
-            <li><Link to={urlAnalise(busca, '/trabalho/perfil', {})}><strong>{t('Perfil de uma ocupação', 'Occupation profile')}</strong></Link>
-              <span>{t('Sete tabelas de um recorte de ocupação (série, remuneração, atividades, perfil); escolha a ocupação na página.', 'Seven tables for an occupation (series, pay, activities, profile); choose the occupation on the page.')}</span></li>
-          </ul>
-        </section>
-      )}
+      {a && <TodasAnalises busca={busca} micro={micro} />}
     </>
   );
 }

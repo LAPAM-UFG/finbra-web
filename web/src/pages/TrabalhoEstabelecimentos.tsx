@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useApi, type Linha } from '../api';
+import { AjudaTrabalho, CapacidadeTrabalho } from '../components/AjudaTrabalho';
 import { Dica } from '../components/Dica';
 import { BotoesExportar, type Tabela } from '../components/Exportar';
 import { barras, CartaoGrafico, Grafico } from '../components/Grafico';
@@ -157,13 +158,13 @@ export function TrabalhoEstabelecimentos() {
       <BarraFiltros />
       {f.anoForaDaBase && <p className="aviso" role="status">{t(`A RAIS de ${f.anoForaDaBase} não tem estabelecimentos publicados; a página usa ${ano}.`, `RAIS ${f.anoForaDaBase} has no published establishments; the page uses ${ano}.`)}</p>}
       {!f.anoForaDaBase && ano !== f.ano && <p className="aviso" role="status">{t(`Estabelecimentos de ${f.ano} não estão publicados; a página usa ${ano}.`, `Establishments for ${f.ano} are not published; the page uses ${ano}.`)}</p>}
-      <p className="cobertura capacidade" role="note">
-        <strong>{t('O que esta página oferece', 'What this page offers')}:</strong>{' '}
-        {tipo === 'brasil'
+      <CapacidadeTrabalho micro={tipo !== 'brasil'} rotulo={t('O que esta página oferece', 'What this page offers')}
+        resumo={t('conta os estabelecimentos que declararam à RAIS (unidades, não empresas) e como se dividem por porte, atividade, natureza jurídica, Simples e PAT. Escolha como dividir e clique em Calcular.', 'counts the establishments that reported to RAIS (units, not companies) and how they split by size, activity, legal nature, Simples and PAT. Choose how to split and click Calculate.')}
+        detalhe={<>{tipo === 'brasil'
           ? t(`para o Brasil, lê os ${indice.dados?.ufs[ano!]?.length ?? ''} arquivos de UF de ${ano} do índice (inclui a UF 99, geografia ignorada, quando existe). É uma leitura grande: só começa em Calcular.`,
             `for Brazil, reads the ${indice.dados?.ufs[ano!]?.length ?? ''} state files for ${ano} listed in the index (including state 99, unknown geography, when present). It is a large read: it only starts on Calculate.`)
-          : t('lê o arquivo da UF (e, num município, filtra o código de 6 dígitos). A leitura só começa em Calcular.', 'reads the state file (and, for a municipality, filters its 6-digit code). Reading only starts on Calculate.')}
-      </p>
+          : t('lê o arquivo da UF (e, num município, filtra o código de 6 dígitos). A leitura só começa em Calcular.', 'reads the state file (and, for a municipality, filters its 6-digit code). Reading only starts on Calculate.')}</>} />
+      <AjudaTrabalho foco="estabelecimentos" />
       <p className="nota-base" role="note"><strong>{t('Origem dos números', 'Origin of the numbers')}:</strong> {notaOrigem()}</p>
       {temFiltrosDeRecorte(recorte) && (
         <div className="aviso" role="status">
@@ -177,7 +178,7 @@ export function TrabalhoEstabelecimentos() {
       <section className="cartao formulario-recorte">
         <div className="filtros">
           <div className="campo">
-            <label htmlFor="e-agr">{t('Agrupar por', 'Group by')}</label>
+            <label htmlFor="e-agr">{t('Ver estabelecimentos por', 'View establishments by')}</label>
             <select id="e-agr" value={rascunho} onChange={(e) => setRascunho(e.target.value)}>
               {grupos.map((x) => <option key={x.id} value={x.id}>{x.rotulo}</option>)}
             </select>

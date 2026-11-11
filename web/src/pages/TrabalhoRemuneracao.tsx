@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useApi, type Linha } from '../api';
+import { AjudaTrabalho, CapacidadeTrabalho } from '../components/AjudaTrabalho';
 import { Dica } from '../components/Dica';
 import { BotoesExportar, type Tabela } from '../components/Exportar';
 import { barras, CartaoGrafico, Grafico } from '../components/Grafico';
@@ -106,18 +107,19 @@ export function TrabalhoRemuneracao() {
       <p className="subtitulo">{rotulo} · RAIS {ano} · {t('vínculos ativos em 31/12', 'jobs active on Dec 31')} <Dica rotulo={t('Fonte', 'Source')}>{notaFonte()}</Dica></p>
       <BarraFiltros />
       {f.anoForaDaBase && <p className="aviso" role="status">{t(`A RAIS de ${f.anoForaDaBase} ainda não foi publicada; a página usa ${ano}.`, `RAIS ${f.anoForaDaBase} has not been published yet; the page uses ${ano}.`)}</p>}
-      <p className={`cobertura capacidade ${micro ? '' : 'limitada'}`} role="note">
-        <strong>{t('O que esta página oferece aqui', 'What this page offers here')}:</strong>{' '}
-        {micro
+      <CapacidadeTrabalho micro={micro} rotulo={t('O que esta página oferece aqui', 'What this page offers here')}
+        resumo={micro ? t(`compara a remuneração de dezembro por sexo, raça/cor, escolaridade ou idade, com média, mediana, P10 e P90. Escolha a comparação e clique em Calcular.`, `compares December pay by sex, race/colour, education or age, with average, median, P10 and P90. Choose the comparison and click Calculate.`)
+          : t('só a divisão por sexo e a média de dezembro; o resto precisa dos microdados de uma UF ou município.', 'only the split by sex and the December average; the rest needs the microdata of a state or municipality.')}
+        detalhe={micro
           ? t(`microdados de ${rotulo}: sexo, raça/cor, escolaridade e idade, com média, mediana, P10 e P90. A leitura é pesada (SP, MG e RJ podem levar minutos): ela só começa em Calcular.`,
             `microdata for ${rotulo}: sex, race/colour, education and age, with average, median, P10 and P90. Reading is heavy (SP, MG and RJ may take minutes): it only starts on Calculate.`)
           : t('tabelas pré-somadas deste recorte: só a divisão por sexo e a média de dezembro; raça/cor, escolaridade, idade, mediana e percentis precisam dos microdados, que não estão disponíveis para este recorte.',
-            'pre-aggregated tables for this scope: only the split by sex and the December average; race/colour, education, age, median and percentiles need the microdata, which are not available for this scope.')}
-      </p>
+            'pre-aggregated tables for this scope: only the split by sex and the December average; race/colour, education, age, median and percentiles need the microdata, which are not available for this scope.')} />
+      <AjudaTrabalho foco="remuneracao" />
       <section className="cartao formulario-recorte">
         <div className="filtros">
           <div className="campo">
-            <label htmlFor="r-dim">{t('Comparar por', 'Compare by')}</label>
+            <label htmlFor="r-dim">{t('Comparar a remuneração por', 'Compare pay by')}</label>
             <select id="r-dim" value={dimEscolhida?.id} onChange={(e) => setRascunho(e.target.value)}>
               {dimensoes.map((d) => <option key={d.id} value={d.id}>{d.rotulo}</option>)}
             </select>

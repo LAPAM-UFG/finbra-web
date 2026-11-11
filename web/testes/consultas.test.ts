@@ -58,6 +58,7 @@ import { gravarEstadoEvolucao, lerEstadoEvolucao, MAX_COMPARADOS, posicaoRelativ
 import { avisoDoContexto, chaveDoRastro, contaDoRastro, RASTRO, urlDemonstrativo, urlDemonstrativos, valorAnexo, type ChaveRastro } from '../src/lrf_rastro';
 import { periodoDe } from '../src/components/TabelaSerie';
 import { anosDoImunobiologico, contraMeta, metodoDoAno, paraCatalogo, paraLinhaVac, pctRazao, razaoDasSomas, separarPorMetodo, situacao, textoCobertura, type LinhaVac } from '../src/vacinacao_comum';
+import './orientacao.test'; // regressões da orientação do mercado de trabalho (sem dados): rodam junto com esta suíte
 const require = createRequire(import.meta.url);
 const FETCH = globalThis.fetch; // alguns testes simulam o Worker trocando o fetch
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
@@ -1476,6 +1477,22 @@ describe('consulta personalizada (microdados da RAIS)', () => {
   test('dicionário: busca de ocupação pelo nome, sem acento', { skip: semCubo }, async () => {
     const r = await rota<L[]>('trab_dicionario', { variavel: 'cbo', texto: 'medico clinico' });
     assert.ok(r.some((x) => x.codigo === '225125'), JSON.stringify(r));
+  });
+  test('dicionário: nomes da CNAE por divisão (trab_cnae), classe e subclasse, com zeros preservados', { skip: semCubo }, async () => {
+    for (const d of ['01', '47']) {
+      const r = await rota<L[]>('trab_dicionario', { variavel: 'cnae_divisao', texto: d });
+      const x = r.find((y) => y.codigo === d);
+      assert.ok(x && String(x.descricao).length > 3, `${d}: ${JSON.stringify(r.slice(0, 3))}`);
+      assert.ok(r.every((y) => String(y.codigo).length === 2));
+    }
+    const classe = await rota<L[]>('trab_dicionario', { variavel: 'cnae_classe', texto: '01113' });
+    assert.ok(classe.some((y) => y.codigo === '01113'), JSON.stringify(classe));
+    const sub = await rota<L[]>('trab_dicionario', { variavel: 'cnae_subclasse', texto: 'cultivo' });
+    assert.ok(sub.length > 0 && sub.every((y) => String(y.codigo).length === 7));
+    const exata = await rota<L[]>('trab_dicionario', { variavel: 'cnae_subclasse', texto: String(sub[0].codigo) });
+    assert.ok(exata.some((y) => y.codigo === sub[0].codigo));
+    // prefixo (4 dígitos) não tem nome exato na divisão nem na classe: a tela o identifica como prefixo, sem inventar descrição
+    assert.ok(!(await rota<L[]>('trab_dicionario', { variavel: 'cnae_classe', texto: '4711' })).some((y) => y.codigo === '4711'));
   });
 });
 

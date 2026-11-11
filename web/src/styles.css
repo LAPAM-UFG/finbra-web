@@ -1103,3 +1103,64 @@ button.ia-historico-importar:focus-visible { outline: 2px solid var(--ia-acao); 
 .rais-atalhos li > span { font-size: 0.85rem; color: var(--tinta-2, inherit); }
 .rais-atalhos li.bloqueado { opacity: 0.65; }
 .rais-atalhos small { font-size: 0.78rem; }
+
+/* ---------- mercado de trabalho: orientação, passos do formulário e perguntas (escopo .trabalho-*) ---------- */
+.trabalho-perguntas-lista { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.trabalho-perguntas-lista li { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 12px; border: 1px solid var(--borda); border-radius: 8px; background: var(--superficie); }
+.trabalho-perguntas-lista h4 { margin: 0; font-size: 15px; }
+.trabalho-perguntas-lista p { margin: 0; font-size: 13px; color: var(--tinta-2); flex: 1; }
+.trabalho-perguntas-lista small { font-size: 12px; color: var(--tinta-3); }
+.trabalho-perguntas-lista a.botao { text-decoration: none; display: inline-block; }
+.trabalho-grupo-atalhos { margin-top: 12px; }
+.trabalho-grupo-atalhos h4 { margin: 0 0 6px; font-size: 13px; color: var(--tinta-2); }
+.trabalho-local { padding: 2px 8px; font-size: 12px; }
+.trabalho-capacidade p { margin: 0 0 4px; }
+.trabalho-capacidade summary { cursor: pointer; font-size: 12px; color: var(--tinta-2); }
+.trabalho-ajuda { margin: 0 0 12px; }
+.trabalho-ajuda > summary { cursor: pointer; font-size: 13px; color: var(--tinta-2); }
+.trabalho-ajuda dl { margin: 8px 0 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px 16px; font-size: 13px; }
+.trabalho-ajuda dt { font-weight: 600; }
+.trabalho-ajuda dd { margin: 2px 0 0; color: var(--tinta-2); }
+.trabalho-form .trabalho-passo { padding: 10px 0; }
+.trabalho-form .trabalho-passo + .trabalho-passo { border-top: 1px solid var(--borda); }
+.trabalho-form .trabalho-passo h3 { margin: 0 0 8px; font-size: 14px; display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px; }
+.trabalho-form .trabalho-passo h3 small { font-weight: 400; color: var(--tinta-3); font-size: 12px; }
+.trabalho-passo-n { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: var(--acento); color: #fff; font-size: 12px; flex: none; }
+.trabalho-form .filtros { align-items: flex-start; }
+.trabalho-form .campo { min-width: 0; max-width: 100%; }
+.trabalho-form .campo-codigos.trabalho-campo { width: 320px; }
+.trabalho-rotulo { display: flex; align-items: center; gap: 4px; }
+.trabalho-status { margin: 4px 0 0; font-size: 12px; color: var(--tinta-2); min-height: 1.2em; }
+.trabalho-dica-campo { display: block; margin-top: 3px; font-size: 11px; color: var(--tinta-3); max-width: 280px; }
+.trabalho-limpar-busca { font-size: 12px; }
+.trabalho-selecionados { margin-top: 6px; }
+.trabalho-selecionados ul { list-style: none; margin: 0 0 4px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.trabalho-selecionados li { display: flex; align-items: flex-start; justify-content: space-between; gap: 6px; padding: 3px 4px 3px 8px; border: 1px solid var(--borda); border-radius: 6px; background: var(--superficie-2); font-size: 12px; }
+.trabalho-selecionados li > span { overflow-wrap: anywhere; }
+.trabalho-selecionados li button { padding: 0 6px; font-size: 15px; line-height: 1.2; }
+.trabalho-codigo-manual { margin-top: 6px; font-size: 12px; }
+.trabalho-codigo-manual summary { cursor: pointer; color: var(--tinta-2); }
+.trabalho-codigo-manual label { display: block; margin-top: 6px; }
+.trabalho-codigo-manual input { width: 100%; }
+.trabalho-resumo { margin: 0 0 8px; font-size: 13px; color: var(--tinta-2); }
+.trabalho-pendente { font-size: 12px; border-left: 3px solid var(--acento); background: var(--superficie-2); padding: 3px 8px; border-radius: 4px; }
+.trabalho-pendente-botao { outline: 2px solid var(--acento); outline-offset: 2px; }
+.trabalho-inicio ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+.trabalho-inicio li { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.trabalho-inicio li span { font-size: 12px; color: var(--tinta-2); }
+.trabalho-form button:focus-visible, .trabalho-form summary:focus-visible, .trabalho-form input:focus-visible, .trabalho-form select:focus-visible,
+.trabalho-perguntas a:focus-visible, .trabalho-perguntas button:focus-visible, .trabalho-todas a:focus-visible, .trabalho-todas button:focus-visible,
+.trabalho-ajuda summary:focus-visible, .trabalho-capacidade summary:focus-visible, .trabalho-inicio button:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+@media (max-width: 600px) {
+  .trabalho-form .campo, .trabalho-form .campo-codigos.trabalho-campo { width: 100%; }
+  .trabalho-dica-campo { max-width: none; }
+  .trabalho-perguntas-lista, .trabalho-inicio ul { grid-template-columns: 1fr; }
+}
+
+/* legibilidade do formulário do mercado de trabalho (escopo .trabalho-form) */
+.trabalho-form label { font-size: 13px; text-transform: none; letter-spacing: 0; color: var(--tinta); font-weight: 600; }
+.trabalho-form .trabalho-dica-campo, .trabalho-form .trabalho-status, .trabalho-form .nota-base, .trabalho-form .trabalho-codigo-manual { font-size: 13px; }
+.trabalho-form .trabalho-selecionados li, .trabalho-form .sugestoes { font-size: 13px; }
+.trabalho-form .sugestoes li button { min-height: 40px; padding: 6px 8px; }
+.trabalho-form .trabalho-acao .botao { min-height: 44px; padding: 8px 22px; font-size: 14px; }
+.trabalho-form .campo input, .trabalho-form .campo select { min-height: 38px; font-size: 14px; }

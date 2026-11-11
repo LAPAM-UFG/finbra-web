@@ -2458,6 +2458,15 @@ const rotasConsulta: Record<string, (q: Params) => Promise<unknown>> = {
     await dicionarioTrabalho();
     const texto = String(q.texto ?? '').trim();
     if (texto.length < 2) return [];
+    // as divisões da CNAE não estão no dicionário (só classe e subclasse): os nomes vêm de trab_cnae, como em nomeDoGrupo
+    if (String(q.variavel) === 'cnae_divisao') {
+      return consultar(
+        `SELECT DISTINCT lpad(divisao::VARCHAR, 2, '0') AS codigo, divisao_nome AS descricao FROM trab_cnae
+         WHERE strip_accents(lower(divisao_nome)) LIKE '%' || strip_accents(lower($texto)) || '%' OR lpad(divisao::VARCHAR, 2, '0') LIKE $texto || '%'
+         ORDER BY codigo LIMIT 30`,
+        { texto },
+      );
+    }
     return consultar(
       `SELECT codigo, descricao FROM trab_dic
        WHERE variavel = $variavel AND (strip_accents(lower(descricao)) LIKE '%' || strip_accents(lower($texto)) || '%' OR codigo LIKE $texto || '%')

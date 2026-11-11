@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { buscar, useApi, type Linha } from '../api';
+import { AjudaTrabalho, BotaoEscolherLocal, CapacidadeTrabalho } from '../components/AjudaTrabalho';
 import { Dica } from '../components/Dica';
 import { BotoesExportar, type Tabela } from '../components/Exportar';
 import { Estado, Kpi } from '../components/Kpi';
@@ -10,6 +11,7 @@ import { div, numero, numero1, pct, reaisExato } from '../format';
 import { num } from '../hooks';
 import { idioma, t } from '../idioma';
 import { baixarPacote, FILTROS_AVANCADOS, pequeno, useRecorte, type Recorte } from '../trabalho_comum';
+import { categorizarOpcoes, normalizarAgrupamentos, opcoesAmigaveis, rotuloAmigavel } from '../trabalho_orientacao';
 
 export type ResultadoConsulta = {
   fonte: 'micro' | 'cubo_uf' | 'cubo_mun'; linhas: Linha[]; ano: number; base_ipca: number; fator_real: number | null; sql: string;
@@ -207,6 +209,11 @@ export function TrabalhoConsulta() {
   const agrupar2 = recorte.agrupar2 && valido(recorte.agrupar2) && recorte.agrupar2 !== agrupar && agrupar !== 'total' ? recorte.agrupar2 : '';
   const [agrRasc, setAgrRasc] = useState(recorte.agrupar || 'cnae_divisao');
   const [agr2Rasc, setAgr2Rasc] = useState(recorte.agrupar2);
+  // Voltar/Avançar, link ou preset mudam o agrupamento da URL: o rascunho acompanha (e só nisso, não a cada render)
+  const chaveUrl = `${recorte.agrupar}|${recorte.agrupar2}`;
+  useEffect(() => { setAgrRasc(recorte.agrupar || 'cnae_divisao'); setAgr2Rasc(recorte.agrupar2); }, [chaveUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+  // o que o rascunho realmente pede nesta fonte: a comparação some com o total, com o mesmo agrupamento ou se a fonte não a tem
+  const par = normalizarAgrupamentos(agrRasc, agr2Rasc, agrupamentos.map(([k]) => k));
   const [busca, setBusca] = useState('');
   const [ordem, setOrdem] = useState<{ id: string; desc: boolean } | null>(null);
 
@@ -224,6 +231,15 @@ export function TrabalhoConsulta() {
   const visiveis = colunas.filter((c) => !repetidas.has(c.id) && (recorte.cols ? recorte.cols.includes(c.id) : c.padrao));
   const nomeAgrupar = AGRUPAMENTOS().find(([k]) => k === agrupar)?.[1] ?? '';
   const nomeAgrupar2 = AGRUPAMENTOS().find(([k]) => k === agrupar2)?.[1] ?? '';
+  const tecnico = (k: string) => AGRUPAMENTOS().find(([x]) => x === k)?.[1] ?? k;
+  const nomeRasc = rotuloAmigavel(par.agr, tecnico(par.agr));
+  const nomeRasc2 = rotuloAmigavel(par.agr2, tecnico(par.agr2));
+  // exemplos do estado inicial: só os que existem nesta fonte (as tabelas pré-somadas têm menos cortes)
+  const exemplos = [
+    { id: 'ex1', params: { sit: 'ativos', agr: 'cnae_divisao' }, titulo: t('Empregos por atividade', 'Jobs by activity'), desc: t('Quais atividades mais empregam (divisões da CNAE), no fim do ano.', 'Which activities employ the most (CNAE divisions), at year end.') },
+    { id: 'ex2', params: { sit: 'ativos', agr: 'cbo_grande_grupo', agr2: 'sexo' }, titulo: t('Profissões por sexo', 'Occupations by sex'), desc: t('Grandes grupos de profissões (CBO), com homens e mulheres lado a lado.', 'CBO major occupation groups, with men and women side by side.') },
+    { id: 'ex3', params: { sit: 'ativos', agr: 'escolaridade', agr2: 'sexo' }, titulo: t('Escolaridade por sexo', 'Education by sex'), desc: t('Quantos empregos há em cada nível de instrução, para homens e mulheres.', 'How many jobs sit at each education level, for men and women.') },
+  ].filter((x) => valido(x.params.agr) && (!x.params.agr2 || valido(x.params.agr2)));
   const processado = (meta.fontes.rais_micro as { processado_em?: string } | undefined)?.processado_em;
 
   const linhas = useMemo(() => {
@@ -289,35 +305,57 @@ export function TrabalhoConsulta() {
       <p className="subtitulo">{rotulo} · RAIS {ano} <Dica rotulo={t('Fonte', 'Source')}>{notaFonte()}</Dica></p>
       <BarraFiltros />
       {f.anoForaDaBase && <p className="aviso" role="status">{t(`A RAIS de ${f.anoForaDaBase} ainda não foi publicada; a consulta usa ${ano}.`, `RAIS ${f.anoForaDaBase} has not been published yet; the query uses ${ano}.`)}</p>}
-      <p className={`cobertura capacidade ${micro ? '' : 'limitada'}`} role="note">
-        <strong>{t('O que esta consulta oferece aqui', 'What this query offers here')}:</strong>{' '}
-        {micro
+      <CapacidadeTrabalho micro={micro} rotulo={t('O que esta consulta oferece aqui', 'What this query offers here')}
+        resumo={micro ? t(`dados completos de ${rotulo}: você pode explorar todos os cortes e filtros e ver quanto se ganha no valor do meio e nas faixas de remuneração.`, `full data for ${rotulo}: you can explore every cut and filter and see what people earn at the middle value and across pay ranges.`)
+          : t('versão resumida: dá para ver totais, sexo e grandes grupos de profissões; os outros cortes e filtros precisam de uma UF ou município.', 'summary version: you can see totals, sex and broad occupation groups; the other cuts and filters need a state or municipality.')}
+        detalhe={micro
           ? t(`microdados de ${rotulo} (um registro por vínculo): todos os agrupamentos e filtros, medianas, percentis e remuneração por hora. UFs grandes (SP, MG, RJ) podem levar alguns minutos.`,
             `microdata for ${rotulo} (one record per job): every grouping and filter, medians, percentiles and pay per hour. Large states (SP, MG, RJ) may take a few minutes.`)
           : t(`tabelas pré-somadas (${tipo === 'brasil' ? 'Brasil' : 'município'}): CNAE até ${limites.cnae} dígitos, CBO até ${limites.cbo} dígito(s), sexo e situação; sem medianas, percentis e filtros avançados, que precisam dos microdados de uma UF ou município.`,
-            `pre-aggregated tables (${tipo === 'brasil' ? 'Brazil' : 'municipality'}): CNAE up to ${limites.cnae} digits, CBO up to ${limites.cbo} digit(s), sex and status; no medians, percentiles or advanced filters, which need the microdata of a state or municipality.`)}
-      </p>
+            `pre-aggregated tables (${tipo === 'brasil' ? 'Brazil' : 'municipality'}): CNAE up to ${limites.cnae} digits, CBO up to ${limites.cbo} digit(s), sex and status; no medians, percentiles or advanced filters, which need the microdata of a state or municipality.`)} />
       <FormularioRecorte recorte={recorte} definir={(n) => { cancelarConsultasTrabalho(); definir(n); }} micro={micro}
-        aplicarExtra={{ agr: agrRasc || 'total', agr2: agr2Rasc || null }}
+        sincronizar={chaveUrl} aplicarExtra={{ agr: par.agr, agr2: par.agr2 || null }}
+        resumoExtra={`${t('ver por', 'view by')} ${nomeRasc}${par.agr2 ? ` ${t('comparando com', 'compared with')} ${nomeRasc2}` : ''}`}
+        extraPendente={aplicada && (par.agr !== agrupar || par.agr2 !== agrupar2)}
         extra={(
           <>
             <div className="campo">
-              <label htmlFor="q-agr">{t('Agrupar por', 'Group by')}</label>
-              <select id="q-agr" value={agrRasc} onChange={(e) => setAgrRasc(e.target.value)}>
-                {agrupamentos.map(([k, n]) => <option key={k} value={k}>{n}</option>)}
+              <label htmlFor="q-agr">{t('Ver resultado por', 'View result by')}</label>
+              <select id="q-agr" value={par.agr} aria-describedby="q-agr-ajuda" onChange={(e) => { setAgrRasc(e.target.value); if (e.target.value === 'total' || e.target.value === par.agr2) setAgr2Rasc(''); }}>
+                {categorizarOpcoes(opcoesAmigaveis(agrupamentos)).map((g) => (
+                  <optgroup key={g.titulo} label={g.titulo}>{g.opcoes.map(([k, n]) => <option key={k} value={k}>{n}</option>)}</optgroup>
+                ))}
               </select>
+              <small id="q-agr-ajuda" className="trabalho-dica-campo">{t('As linhas da tabela: um grupo por linha (ex.: cada escolaridade). “Um total” mostra só o total.', 'The table rows: one group per row (e.g. each education level). “One total” shows only the total.')}{rotuloAmigavel(par.agr, '') && <> {t('Classificação técnica', 'Technical classification')}: {tecnico(par.agr)}.</>}</small>
             </div>
             <div className="campo">
-              <label htmlFor="q-agr2">{t('Cruzar com', 'Cross with')}</label>
-              <select id="q-agr2" value={agr2Rasc} onChange={(e) => setAgr2Rasc(e.target.value)} disabled={agrRasc === 'total'}>
-                <option value="">{t('(sem cruzamento)', '(no cross-tab)')}</option>
-                {agrupamentos.filter(([k]) => k !== 'total' && k !== agrRasc).map(([k, n]) => <option key={k} value={k}>{n}</option>)}
+              <label htmlFor="q-agr2">{t('Comparar com (opcional)', 'Compare with (optional)')}</label>
+              <select id="q-agr2" value={par.agr2} aria-describedby="q-agr2-ajuda" onChange={(e) => setAgr2Rasc(e.target.value)} disabled={par.agr === 'total'}>
+                <option value="">{t('(sem comparação)', '(no comparison)')}</option>
+                {categorizarOpcoes(opcoesAmigaveis(agrupamentos.filter(([k]) => k !== 'total' && k !== par.agr))).map((g) => (
+                  <optgroup key={g.titulo} label={g.titulo}>{g.opcoes.map(([k, n]) => <option key={k} value={k}>{n}</option>)}</optgroup>
+                ))}
               </select>
+              <small id="q-agr2-ajuda" className="trabalho-dica-campo">{t('Vira colunas. Ex.: ver por Escolaridade e comparar com Sexo mostra homens e mulheres em cada nível.', 'Becomes columns. E.g. view by Education and compare with Sex shows men and women at each level.')}</small>
             </div>
           </>
         )} />
+      <AjudaTrabalho />
 
-      {!aplicada && <p className="vazio">{t('Escolha os filtros e clique em Consultar.', 'Choose the filters and click Run query.')}</p>}
+      {!aplicada && (
+        <section className="cartao trabalho-inicio" aria-label={t('Por onde começar', 'Where to start')}>
+          <h3>{t('Ainda não há resultado: configure acima e clique em Consultar, ou comece por um exemplo', 'No result yet: set up the query above and click Run query, or start from an example')}</h3>
+          <ul>
+            {exemplos.map((x) => (
+              <li key={x.id}>
+                <button type="button" className="botao-leve" onClick={() => { setAgrRasc(x.params.agr); setAgr2Rasc(x.params.agr2 ?? ''); cancelarConsultasTrabalho(); definir({ ...x.params, agr2: x.params.agr2 ?? null }); }}>{x.titulo}</button>
+                <span>{x.desc}</span>
+              </li>
+            ))}
+          </ul>
+          {!micro && <p className="nota-base">{t('Outros cortes (raça/cor, escolaridade, idade, jornada…) precisam dos microdados: ', 'Other cuts (race/colour, education, age, hours…) need the microdata: ')}<BotaoEscolherLocal /></p>}
+        </section>
+      )}
       {aplicada && (
         <>
           <div className="filtros opcoes-resultado">
