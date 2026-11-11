@@ -13,7 +13,7 @@ import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { basesAV, codigoConta, formatarPct } from '../src/calculos';
-import { consultaLivre, executar, sqlClassificacao, type Classificacao, tabelaDespesaFuncao, tabelasEducacaoSaude, tabelasIaTrabalho, tabelasFns, usarLeituraNoTeste, reiniciarFnsNoTeste, usarMicrodadosNoTeste, usarMotorDeTeste } from '../src/dados';
+import { consultaLivre, executar, sqlClassificacao, type Classificacao, tabelaDespesaFuncao, tabelasEducacaoSaude, tabelasIaTrabalho, tabelasFns, usarLeituraNoTeste, reiniciarFnsNoTeste, usarMicrodadosNoTeste, usarMotorDeTeste, gruposDaFonte, FILTROS_LISTA } from '../src/dados';
 import {
   anosPedidos, ehPergunta, textoDaPergunta, PAINEIS, chamarIa, coberturaDaFonte, coberturaPorAno, lerEscolhaModelo, nomeDoModelo, periodosDiferem, codigosDoSql, comPergunta, conferir, consultasDaConversa, contextoParaModelo, descreverCobertura, disponibilidadeNoAno, pedeTabelaMunicipal, dadosDoGrafico, executarConsulta, fontesConsultadas, lerModo, lerResposta,
   lerRegressao, paraModelo, pedeTabela, perguntarIa, prepararResposta, recorteDe, revisarMetodo, revisarResposta, rotulosConsultas, semNominal, semUltimaPergunta, sugestoes, valorOficial,
@@ -52,6 +52,7 @@ import { anosDaColuna, anosDoIndicador, anosSaude, avisoPreliminarNaoIncluido, c
 import { cadastro, codigosDoMunicipio, conferirCodigos, executarLocalizacao, localizar, territoriosNasConsultas } from '../src/ia_territorio';
 import { crc32, paraCsv, paraXlsx, paraXlsxAbas } from '../src/exportar';
 import { ordenarBusca } from '../src/contexto';
+import { ATALHOS_RAIS, concentracao, totalDosGrupos, urlAnalise } from '../src/trabalho_comum';
 import { gravarEstadoEvolucao, lerEstadoEvolucao, MAX_COMPARADOS, posicaoRelativa, resumoTrajetoria, tabelaMudancas, tabelaTrajetorias, variacaoPct, variacaoPosicao } from '../src/posicoes';
 
 import { avisoDoContexto, chaveDoRastro, contaDoRastro, RASTRO, urlDemonstrativo, urlDemonstrativos, valorAnexo, type ChaveRastro } from '../src/lrf_rastro';
@@ -1475,6 +1476,113 @@ describe('consulta personalizada (microdados da RAIS)', () => {
   test('dicionário: busca de ocupação pelo nome, sem acento', { skip: semCubo }, async () => {
     const r = await rota<L[]>('trab_dicionario', { variavel: 'cbo', texto: 'medico clinico' });
     assert.ok(r.some((x) => x.codigo === '225125'), JSON.stringify(r));
+  });
+});
+
+describe('RAIS: atalhos, concentração e remuneração por grupo', () => {
+  const ANO = 2013;
+  const semCubo = !existsSync(`${DATA}/gold/trabalho/cubo_uf/ano=${ANO}.parquet`);
+  const semMicro = semCubo || !existsSync(`${MICRO}/silver/trabalho/micro/rais_vinculos/ano=${ANO}/uf=52.parquet`);
+  type R = { fonte: string; linhas: L[] };
+
+  test('urlAnalise mantém ano, UF e ente e descarta filtros incompatíveis', () => {
+    const busca = new URLSearchParams('ano=2022&uf=GO&ente=5208707&cbo=2512&cnae=84&raca=1&agr=cnae_divisao&moeda=real');
+    const u = new URL(urlAnalise(busca, '/trabalho/consulta', { sit: 'ativos', agr: 'sexo' }), 'http://x');
+    assert.equal(u.pathname, '/trabalho/consulta');
+    assert.deepEqual([...u.searchParams.keys()].sort(), ['agr', 'ano', 'ente', 'sit', 'uf']);
+    assert.equal(u.searchParams.get('agr'), 'sexo');
+    assert.equal(new URL(urlAnalise(new URLSearchParams(), '/trabalho/remuneracao', {}), 'http://x').search, '');
+  });
+
+  test('atalhos: ids únicos, só agrupamentos e filtros que a consulta conhece', () => {
+    const at = ATALHOS_RAIS();
+    assert.equal(new Set(at.map((a) => a.id)).size, at.length);
+    for (const a of at) {
+      for (const k of ['agr', 'agr2']) if (a.params[k]) assert.ok(gruposDaFonte('micro').includes(a.params[k]), a.params[k]);
+      // sem micro, só os agrupamentos que existem nas tabelas pré-somadas
+      if (!a.micro) for (const k of ['agr', 'agr2']) if (a.params[k]) assert.ok(gruposDaFonte('cubo_uf').includes(a.params[k]), a.params[k]);
+      for (const k of Object.keys(a.params)) if (!['sit', 'agr', 'agr2'].includes(k)) assert.ok(k in FILTROS_LISTA, k);
+    }
+  });
+
+  test('concentracao: HHI, 3 maiores e casos sem soma positiva', () => {
+    const c = concentracao([{ nome: 'a', valor: 50 }, { nome: 'b', valor: 30 }, { nome: 'c', valor: 10 }, { nome: 'd', valor: 10 }, { nome: 'e', valor: null }, { nome: 'f', valor: 0 }])!;
+    quase(c.parteTop3, 0.9);
+    quase(c.hhi, 0.25 + 0.09 + 0.01 + 0.01);
+    quase(c.efetivo, 1 / 0.36);
+    assert.equal(c.n, 4);
+    assert.deepEqual(c.top3.map((x) => x.nome), ['a', 'b', 'c']);
+    assert.equal(concentracao([]), null);
+    assert.equal(concentracao([{ nome: 'a', valor: 0 }, { nome: 'b', valor: null }]), null);
+    quase(concentracao([{ nome: 'a', valor: 1 }, { nome: 'b', valor: 1 }, { nome: 'c', valor: 1 }, { nome: 'd', valor: 1 }])!.hhi, 0.25);
+  });
+
+  test('totalDosGrupos: pesos diferentes, todos sem salário e sem vínculos (ausência não vira zero)', () => {
+    // média = soma ÷ ativos (nunca média das médias): 100 e 300 de soma, 1 e 3 ativos pesos diferentes
+    const t1 = totalDosGrupos([{ ativos: 1, n_rem_dez: 1, rem_dez_soma: 100, rem_dez_media: 100 }, { ativos: 3, n_rem_dez: 2, rem_dez_soma: 300, rem_dez_media: 100 }])!;
+    assert.equal(t1.ativos, 4);
+    assert.equal(t1.rem_dez_media, 100);
+    assert.equal(t1.n_rem_dez, 3);
+    const t2 = totalDosGrupos([{ ativos: 1, n_rem_dez: 1, rem_dez_soma: 1000, rem_dez_media: 1000 }, { ativos: 9, n_rem_dez: 9, rem_dez_soma: 9000, rem_dez_media: 1000 }, { ativos: 10, n_rem_dez: 0, rem_dez_soma: null, rem_dez_media: null }])!;
+    quase(t2.rem_dez_media as number, 10000 / 20); // a média das médias daria 1000
+    // todos os grupos com ativos e sem remuneração informada: média e soma ausentes, não zero
+    const t3 = totalDosGrupos([{ ativos: 5, n_rem_dez: 0, rem_dez_soma: null, rem_dez_media: null }, { ativos: 2, n_rem_dez: 0, rem_dez_soma: null, rem_dez_media: null }])!;
+    assert.equal(t3.ativos, 7);
+    assert.equal(t3.rem_dez_media, null);
+    assert.equal(t3.rem_dez_soma, null);
+    assert.equal(totalDosGrupos([]), null);
+    assert.equal(totalDosGrupos([{ ativos: 0, n_rem_dez: 0, rem_dez_soma: null }]), null);
+  });
+
+  test('Goiânia 2024 (microdados): totais por sexo e concentração conferem com os valores de referência', { skip: !existsSync(`${MICRO}/silver/trabalho/micro/rais_vinculos/ano=2024/uf=52.parquet`) || !existsSync(`${DATA}/gold/trabalho/setores.parquet`) }, async () => {
+    const l = await rota<L[]>('trab_setores', { ano: 2024, ente: 5208707 });
+    const c = concentracao(l.map((r) => ({ nome: String(r.divisao), valor: r.empregos as number })))!;
+    console.log('GOIANIA2024', (c.parteTop3 * 100).toFixed(6), (c.hhi * 10000).toFixed(5));
+    usarMicrodadosNoTeste(true);
+    try {
+      const g = await rota<R>('trab_consulta', { ano: 2024, ente: 5208707, agrupar: 'sexo', situacao: 'ativos' });
+      const tg = totalDosGrupos(g.linhas)!;
+      const tot = (await rota<R>('trab_consulta', { ano: 2024, ente: 5208707, agrupar: 'total', situacao: 'ativos' })).linhas[0];
+      assert.equal(tg.ativos, tot.ativos);
+      quase(tg.rem_dez_media as number, tot.rem_dez_media as number, 1e-9);
+      console.log('SEXO2024', JSON.stringify(g.linhas.map((r) => [r.grupo, r.ativos, r.rem_dez_media, r.rem_dez_mediana])));
+    } finally {
+      usarMicrodadosNoTeste(false);
+    }
+  });
+
+  test('concentração com dados reais: todas as divisões do Brasil, participações somam 100%', { skip: semCubo }, async () => {
+    const l = await rota<L[]>('trab_setores', { ano: ANO });
+    const c = concentracao(l.map((r) => ({ nome: String(r.divisao), valor: r.empregos as number })))!;
+    assert.ok(l.length > 60 && c.n > 60);
+    assert.ok(c.hhi > 1 / c.n && c.hhi < 1 && c.parteTop3 > 0 && c.parteTop3 < 1);
+  });
+
+  test('Brasil por sexo (tabelas): ativos e média totais batem com a consulta sem agrupar; sem quantis', { skip: semCubo }, async () => {
+    const g = await rota<R>('trab_consulta', { ano: ANO, agrupar: 'sexo', situacao: 'ativos' });
+    const tot = (await rota<R>('trab_consulta', { ano: ANO, agrupar: 'total', situacao: 'ativos' })).linhas[0];
+    assert.equal(g.fonte, 'cubo_uf');
+    assert.equal(g.linhas.reduce((s, r) => s + (r.ativos as number), 0), tot.ativos);
+    const massa = g.linhas.reduce((s, r) => s + (r.rem_dez_media as number) * (r.ativos as number), 0);
+    quase(massa / (tot.ativos as number), tot.rem_dez_media as number, 1e-9);
+    assert.ok(g.linhas.every((r) => r.rem_dez_mediana === undefined || r.rem_dez_mediana === null));
+  });
+
+  test('GO por raça/cor (microdados): grupos somam o total, mediana entre P10 e P90', { skip: semMicro }, async () => {
+    usarMicrodadosNoTeste(true);
+    try {
+      const g = await rota<R>('trab_consulta', { ano: ANO, uf: 'GO', agrupar: 'raca_cor', situacao: 'ativos' });
+      const tot = (await rota<R>('trab_consulta', { ano: ANO, uf: 'GO', agrupar: 'total', situacao: 'ativos' })).linhas[0];
+      assert.equal(g.fonte, 'micro');
+      assert.equal(g.linhas.reduce((s, r) => s + (r.ativos as number), 0), tot.ativos);
+      const massa = g.linhas.reduce((s, r) => s + (r.rem_dez_media as number) * (r.ativos as number), 0);
+      quase(massa / (tot.ativos as number), tot.rem_dez_media as number, 1e-9);
+      for (const r of g.linhas.filter((x) => (x.n_rem_dez as number) > 30)) {
+        assert.ok((r.rem_dez_p10 as number) <= (r.rem_dez_mediana as number) && (r.rem_dez_mediana as number) <= (r.rem_dez_p90 as number));
+      }
+    } finally {
+      usarMicrodadosNoTeste(false);
+    }
   });
 });
 

@@ -150,3 +150,67 @@ export function baixarPacote(nome: string, tabelas: { nome: string; tabela: Tabe
   }
   baixarArquivo(`${nomeArquivo(nome)}.zip`, zip(arquivos) as BlobPart, 'application/zip');
 }
+
+// ---------------- atalhos temáticos e concentração ----------------
+
+/**
+ * Endereço de uma análise pronta: guarda só o território e o ano da URL atual (ano, uf, ente) e descarta o
+ * resto do recorte (ocupação, atividade, listas, agrupamentos), que poderia ser incompatível com a análise.
+ */
+export function urlAnalise(busca: URLSearchParams, caminho: string, params: Record<string, string>): string {
+  const p = new URLSearchParams();
+  for (const k of ['ano', 'uf', 'ente']) if (busca.get(k)) p.set(k, busca.get(k)!);
+  for (const [k, v] of Object.entries(params)) p.set(k, v);
+  return `${caminho}?${p}`;
+}
+
+/** Atalhos da visão geral para a Consulta personalizada. `micro`: o agrupamento ou filtro só existe nos microdados (UF ou município). */
+export const ATALHOS_RAIS = (): { id: string; titulo: string; desc: string; params: Record<string, string>; micro: boolean }[] => [
+  { id: 'sexo', micro: false, params: { sit: 'ativos', agr: 'sexo' }, titulo: t('Sexo e remuneração', 'Sex and pay'),
+    desc: t('Vínculos ativos e remuneração média de dezembro de homens e mulheres.', 'Active jobs and average December pay of men and women.') },
+  { id: 'raca', micro: true, params: { sit: 'ativos', agr: 'raca_cor' }, titulo: t('Raça/cor', 'Race/colour'),
+    desc: t('Composição dos vínculos ativos e remuneração por raça/cor declarada.', 'Composition of active jobs and pay by reported race/colour.') },
+  { id: 'esc', micro: true, params: { sit: 'ativos', agr: 'escolaridade' }, titulo: t('Escolaridade', 'Education'),
+    desc: t('Quantos vínculos há em cada nível de instrução e quanto pagam.', 'How many jobs sit at each education level and what they pay.') },
+  { id: 'jovens', micro: true, params: { sit: 'ativos', idade: '1,2', agr: 'cnae_secao' }, titulo: t('Jovens (até 24 anos)', 'Young workers (up to 24)'),
+    desc: t('Em quais atividades (seções da CNAE) estão os vínculos de quem tem até 24 anos.', 'Which activities (CNAE sections) hold the jobs of workers up to 24.') },
+  { id: 'ocup', micro: false, params: { sit: 'ativos', agr: 'cbo_grande_grupo' }, titulo: t('Ocupações', 'Occupations'),
+    desc: t('Vínculos e remuneração pelos grandes grupos da CBO; depois, refine por família ou ocupação.', 'Jobs and pay by CBO major group; then refine by family or occupation.') },
+  { id: 'publico', micro: true, params: { sit: 'ativos', agr: 'setor_institucional' }, titulo: t('Setor público por natureza jurídica', 'Public sector by legal nature'),
+    desc: t('Administração pública, empresas estatais e setor privado pelo cadastro do estabelecimento (não pela atividade CNAE 84).', 'Public administration, state-owned firms and private sector by the establishment’s legal nature (not by CNAE 84 activity).') },
+  { id: 'porte', micro: true, params: { sit: 'ativos', agr: 'tamanho_estab' }, titulo: t('Porte do estabelecimento', 'Establishment size'),
+    desc: t('Vínculos e remuneração por faixa de tamanho do estabelecimento.', 'Jobs and pay by establishment size band.') },
+  { id: 'jornada', micro: true, params: { sit: 'ativos', agr: 'faixa_horas', agr2: 'faixa_tempo' }, titulo: t('Jornada e tempo no emprego', 'Hours and job tenure'),
+    desc: t('Cruzamento da jornada contratual semanal com o tempo no emprego.', 'Cross-tab of contracted weekly hours and job tenure.') },
+];
+
+/**
+ * Total de um recorte a partir dos seus grupos (todo vínculo ativo cai em algum grupo): ativos, N com remuneração e
+ * a média de dezembro = soma das remunerações ÷ ativos (nunca média das médias). A soma e a média ficam null
+ * quando ninguém tem remuneração informada (como o motor) e o total fica null sem vínculos ativos.
+ */
+export function totalDosGrupos(linhas: Record<string, unknown>[]) {
+  const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+  const ativos = linhas.reduce((s, r) => s + n(r.ativos), 0);
+  if (!(ativos > 0)) return null;
+  const nRem = linhas.reduce((s, r) => s + n(r.n_rem_dez), 0);
+  const soma = nRem > 0 && linhas.some((r) => typeof r.rem_dez_soma === 'number') ? linhas.reduce((s, r) => s + n(r.rem_dez_soma), 0) : null;
+  return { vinculos: ativos, ativos, n_rem_dez: nRem, rem_dez_soma: soma, rem_dez_media: soma === null ? null : soma / ativos };
+}
+
+export type Concentracao = { top3: { nome: string; parte: number }[]; parteTop3: number; hhi: number; efetivo: number; n: number; total: number };
+
+/**
+ * Concentração de uma distribuição de vínculos (ex.: divisões da CNAE de um território).
+ * Participação s_i = vínculos_i ÷ Σ vínculos; HHI = Σ s_i² (0 a 1; ×10.000 na tela); número efetivo = 1 ÷ HHI.
+ * Usa todas as categorias com valor positivo; sem soma positiva devolve null (nunca zero falso).
+ */
+export function concentracao(itens: { nome: string; valor: number | null | undefined }[]): Concentracao | null {
+  const v = itens.filter((i) => typeof i.valor === 'number' && Number.isFinite(i.valor) && i.valor > 0) as { nome: string; valor: number }[];
+  const total = v.reduce((s, i) => s + i.valor, 0);
+  if (!v.length || !(total > 0)) return null;
+  const partes = v.map((i) => ({ nome: i.nome, parte: i.valor / total })).sort((a, b) => b.parte - a.parte);
+  const hhi = partes.reduce((s, i) => s + i.parte * i.parte, 0);
+  const top3 = partes.slice(0, 3);
+  return { top3, parteTop3: top3.reduce((s, i) => s + i.parte, 0), hhi, efetivo: 1 / hhi, n: v.length, total };
+}

@@ -1096,3 +1096,10 @@ button.ia-historico-importar:focus-visible { outline: 2px solid var(--ia-acao); 
 .ia-fila-falhou .ia-fila-texto b, .ia-fila-cancelada .ia-fila-texto b { color: var(--erro, #b3261e); }
 .ia-fila-concluida { opacity: .65; }
 .ia-fila-erro { font-style: normal; color: var(--tinta-2); }
+
+/* atalhos temáticos da visão geral da RAIS */
+.rais-atalhos { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.rais-atalhos li { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 1px solid var(--grade, #e5e1d5); border-radius: 8px; }
+.rais-atalhos li > span { font-size: 0.85rem; color: var(--tinta-2, inherit); }
+.rais-atalhos li.bloqueado { opacity: 0.65; }
+.rais-atalhos small { font-size: 0.78rem; }

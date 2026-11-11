@@ -9,11 +9,11 @@ import { EtiquetasRecorte, paramsConsulta, useAnosConsulta } from '../components
 import { TabelaSerie } from '../components/TabelaSerie';
 import { BarraFiltros, useDados, useFiltros } from '../contexto';
 import { AlternarVista, EvolucaoPosicao } from '../components/EvolucaoPosicao';
-import { cancelarConsultasTrabalho, type Classificacao } from '../dados';
+import { cancelarConsultasTrabalho, fonteConsulta, type Classificacao } from '../dados';
 import { div, numero, numero1, pct, reais, reaisCurto, reaisExato } from '../format';
 import { num } from '../hooks';
 import { local, t } from '../idioma';
-import { marcasQuebra, notaComparabilidade, quebrasEntre, temFiltrosDeRecorte, useRecorte } from '../trabalho_comum';
+import { ATALHOS_RAIS, concentracao, marcasQuebra, notaComparabilidade, quebrasEntre, temFiltrosDeRecorte, urlAnalise, useRecorte } from '../trabalho_comum';
 
 const SETORES = (): [string, string][] => [
   ['agropecuaria', t('Agropecuária', 'Agriculture')],
@@ -135,6 +135,11 @@ export function TrabalhoVisaoGeral() {
   const quebra = anoRais ? quebrasEntre(anoRais - 1, anoRais)[0] : undefined;
   const lista = setores.dados ?? [];
   const totalSet = lista.reduce((s, r) => s + (num(r.empregos) ?? 0), 0);
+  // concentração com TODAS as divisões do território (não só as 12 da tela); só com a tabela carregada
+  const conc = useMemo(() => (setores.dados ? concentracao(setores.dados.map((r) => ({ nome: `${r.divisao} · ${String(r.divisao_nome ?? r.divisao)}`, valor: num(r.empregos) }))) : null),
+    [setores.dados]);
+  const { busca } = useRecorte();
+  const micro = fonteConsulta(escopo) === 'micro';
 
   const opcaoSetores = useMemo(() => barras(
     SETORES().map(([, n]) => n), SETORES().map(([k]) => num(a?.[`empregos_${k}`])), (v) => numero(v), true,
@@ -220,6 +225,56 @@ export function TrabalhoVisaoGeral() {
             )}
           </section>
         </div>
+      )}
+      {a && conc && (
+        <section className="cartao">
+          <div className="cabeca-cartao">
+            <div>
+              <h3>{t('Concentração das atividades', 'Activity concentration')}</h3>
+              <p className="desc">{t('Divisões da CNAE 2.0', 'CNAE 2.0 divisions')} · {rotulo} · RAIS {anoRais}</p>
+            </div>
+            <Dica rotulo={t('Fórmula', 'Formula')}>{t(
+              `Participação de cada divisão = vínculos ativos da divisão ÷ vínculos ativos de todas as divisões do território (${conc.n} divisões com vínculos, ${numero(conc.total)} vínculos). HHI = soma dos quadrados das participações (de 0 a 1; aqui ×10.000). Número efetivo de atividades = 1 ÷ HHI: quantas divisões do mesmo tamanho teriam a mesma concentração. Mede a distribuição dos vínculos entre atividades do estabelecimento; não diz se a economia local é mais ou menos diversificada em valor, produção ou empresas.`,
+              `Share of each division = active jobs in the division ÷ active jobs in all divisions of the territory (${conc.n} divisions with jobs, ${numero(conc.total)} jobs). HHI = sum of squared shares (0 to 1; here ×10,000). Effective number of activities = 1 ÷ HHI: how many equal-sized divisions would give the same concentration. It measures how jobs are spread across establishment activities; it does not say whether the local economy is more or less diversified in value, output or firms.`,
+            )}</Dica>
+          </div>
+          <div className="kpis kpis-4">
+            <Kpi rotulo={t('3 maiores divisões', 'Top 3 divisions')} valor={pct(conc.parteTop3)}
+              nota={conc.top3.map((x) => `${x.nome.split(' · ')[0]} ${pct(x.parte)}`).join(' · ')} />
+            <Kpi rotulo="HHI (0 – 10.000)" valor={numero(Math.round(conc.hhi * 10000))} nota={t('soma dos quadrados das participações × 10.000', 'sum of squared shares × 10,000')} />
+            <Kpi rotulo={t('Número efetivo de atividades', 'Effective number of activities')} valor={numero1(conc.efetivo)}
+              nota={t(`1 ÷ HHI; de ${conc.n} divisões com vínculos`, `1 ÷ HHI; out of ${conc.n} divisions with jobs`)} />
+          </div>
+          <p className="legenda-tabela">{conc.top3.map((x) => x.nome).join(' · ')}. {t('A divisão 84 é uma atividade e não equivale ao setor público.', 'Division 84 is an activity and is not the public sector.')}</p>
+        </section>
+      )}
+      {a && (
+        <section className="cartao">
+          <div className="cabeca-cartao">
+            <div>
+              <h3>{t('Explore a fundo este recorte', 'Explore this scope in depth')}</h3>
+              <p className="desc">{t('Atalhos para a Consulta personalizada, no mesmo território e ano; os filtros anteriores não são levados.', 'Shortcuts to the Custom query, for the same territory and year; earlier filters are not carried over.')}</p>
+            </div>
+          </div>
+          {!micro && <p className="nota-base">{t('Neste recorte só sexo e ocupações (grandes grupos) estão disponíveis nas tabelas pré-somadas; os demais cortes usam os microdados, que não estão publicados para este território.',
+            'For this scope only sex and occupations (major groups) are available in the pre-aggregated tables; the other cuts use the microdata, which are not published for this territory.')}</p>}
+          <ul className="rais-atalhos">
+            {ATALHOS_RAIS().map((x) => {
+              const bloqueado = x.micro && !micro;
+              return (
+                <li key={x.id} className={bloqueado ? 'bloqueado' : undefined}>
+                  {bloqueado ? <strong>{x.titulo}</strong> : <Link to={urlAnalise(busca, '/trabalho/consulta', x.params)}><strong>{x.titulo}</strong></Link>}
+                  <span>{x.desc}</span>
+                  {bloqueado && <small>{t('Exige microdados, indisponíveis neste recorte.', 'Needs microdata, unavailable for this scope.')}</small>}
+                </li>
+              );
+            })}
+            <li><Link to={urlAnalise(busca, '/trabalho/remuneracao', {})}><strong>{t('Remuneração e desigualdades', 'Pay and inequality')}</strong></Link>
+              <span>{t('Compara média, mediana e composição por sexo, raça/cor, escolaridade e idade.', 'Compares average, median and composition by sex, race/colour, education and age.')}</span></li>
+            <li><Link to={urlAnalise(busca, '/trabalho/perfil', {})}><strong>{t('Perfil de uma ocupação', 'Occupation profile')}</strong></Link>
+              <span>{t('Sete tabelas de um recorte de ocupação (série, remuneração, atividades, perfil); escolha a ocupação na página.', 'Seven tables for an occupation (series, pay, activities, profile); choose the occupation on the page.')}</span></li>
+          </ul>
+        </section>
       )}
     </>
   );
