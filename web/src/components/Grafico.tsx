@@ -29,10 +29,14 @@ function useVersaoTema() {
     const mq = matchMedia('(prefers-color-scheme: dark)');
     const bump = () => setVersao((v) => v + 1);
     mq.addEventListener('change', bump);
+    // Ctrl+P: a página usa a paleta clara (css de impressão) e depois volta à anterior; depende de o navegador avisar a mudança de mídia
+    const imp = matchMedia('print');
+    imp.addEventListener('change', bump);
     const obs = new MutationObserver(bump);
     obs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     return () => {
       mq.removeEventListener('change', bump);
+      imp.removeEventListener('change', bump);
       obs.disconnect();
     };
   }, []);

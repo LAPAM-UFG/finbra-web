@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Navigate, NavLink, Route, Routes, useLocation, useNavigationType } from 'react-router-dom';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigationType } from 'react-router-dom';
 import { HistoricoIa } from './components/HistoricoIa';
 import { ProvedorDados } from './contexto';
 import { definirIdioma, t, useIdioma } from './idioma';
@@ -98,6 +98,13 @@ function lerTema(): string | null {
 
 function AlternarTema() {
   const [tema, setTema] = useState<string | null>(lerTema);
+  const [sistemaEscuro, setSistemaEscuro] = useState(() => matchMedia('(prefers-color-scheme: dark)').matches);
+  useEffect(() => {
+    const consulta = matchMedia('(prefers-color-scheme: dark)');
+    const acompanharSistema = () => setSistemaEscuro(consulta.matches);
+    consulta.addEventListener('change', acompanharSistema);
+    return () => consulta.removeEventListener('change', acompanharSistema);
+  }, []);
   useEffect(() => {
     if (tema) document.documentElement.dataset.theme = tema;
     else delete document.documentElement.dataset.theme;
@@ -108,7 +115,7 @@ function AlternarTema() {
       /* armazenamento indisponível: o tema vale só nesta visita */
     }
   }, [tema]);
-  const escuro = tema ? tema === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  const escuro = tema ? tema === 'dark' : sistemaEscuro;
   return (
     <button className="tema" onClick={() => setTema(escuro ? 'light' : 'dark')}>
       {escuro ? t('Tema claro', 'Light theme') : t('Tema escuro', 'Dark theme')}
@@ -158,6 +165,22 @@ export function App() {
     o.observe(topo);
     return () => o.disconnect();
   }, []);
+  // a aba ativa fica à vista nos menus de rolagem horizontal (celular): ao trocar de área ou página e também quando a largura muda
+  // (girar o aparelho, redimensionar a janela). Só o scrollLeft do próprio menu muda, nunca a rolagem da página nem o scrollTop do menu
+  useLayoutEffect(() => {
+    const navs = Array.from(document.querySelectorAll<HTMLElement>('header.topo nav.areas, .casca > nav.menu'));
+    const mostrarAtiva = (nav: HTMLElement) => {
+      const ativo = nav.querySelector<HTMLElement>('a.ativo');
+      if (!ativo || nav.scrollWidth <= nav.clientWidth) return;
+      const n = nav.getBoundingClientRect();
+      const a = ativo.getBoundingClientRect();
+      if (a.left < n.left + 8 || a.right > n.right - 8) nav.scrollTo({ left: nav.scrollLeft + (a.left - n.left) - (n.width - a.width) / 2, behavior: 'auto' });
+    };
+    navs.forEach(mostrarAtiva);
+    const o = new ResizeObserver((entradas) => entradas.forEach((e) => mostrarAtiva(e.target as HTMLElement)));
+    navs.forEach((nav) => o.observe(nav));
+    return () => o.disconnect();
+  }, [pathname, area, idioma]);
   // só os filtros globais acompanham a navegação; as escolhas de cada página (anexo, indicador do ranking…) ficam nela
   const atuais = new URLSearchParams(search);
   const filtros = new URLSearchParams();
@@ -177,9 +200,9 @@ export function App() {
   return (
     <>
       <a className="pular" href="#conteudo">{t('Pular para o conteúdo', 'Skip to content')}</a>
-      <header className={`topo${area === 'ia' ? ' topo-ia' : ''}`}>
+      <header className="topo">
         <img className="logo" src="/logo_lapam.png" alt="LAPAM" />
-        <h1 className={area === 'ia' ? 'sr-only' : undefined}>{{
+        <h1 className="sr-only">{{
           financas: `${t('Finanças municipais', 'Municipal finances')} · SICONFI`,
           trabalho: t('Mercado de trabalho · RAIS e CAGED', 'Labour market · RAIS and CAGED'),
           saude: t('Saúde · DATASUS', 'Health · DATASUS'),
@@ -188,16 +211,17 @@ export function App() {
           ia: t('Pergunte aos dados · LAPAM/UFG', 'Ask the data · LAPAM/UFG'),
         }[area]}</h1>
         <nav className="areas" aria-label={t('Áreas', 'Areas')}>
-          <NavLink to={{ pathname: '/ia', search: buscaIa }} className={area === 'ia' ? 'ativo' : ''}>{t('Pergunte aos dados (IA)', 'Ask the data (AI)')}</NavLink>
-          <NavLink to={{ pathname: '/receitas', search: busca }} className={area === 'financas' ? 'ativo' : ''}>{t('Finanças públicas', 'Public finances')}</NavLink>
-          <NavLink to={{ pathname: '/trabalho', search: busca }} className={area === 'trabalho' ? 'ativo' : ''}>{t('Mercado de trabalho', 'Labour market')}</NavLink>
-          <NavLink to={{ pathname: '/datasus', search: busca }} className={area === 'saude' ? 'ativo' : ''}>{t('Saúde', 'Health')}</NavLink>
-          <NavLink to={{ pathname: '/munic', search: '' }} className={area === 'munic' ? 'ativo' : ''}>{t('Gestão pública', 'Public management')}</NavLink>
-          <NavLink to={{ pathname: '/clima', search: '' }} className={area === 'clima' ? 'ativo' : ''}>{t('Clima', 'Climate')}</NavLink>
+          <Link to={{ pathname: '/ia', search: buscaIa }} className={area === 'ia' ? 'ativo' : ''} aria-current={area === 'ia' ? 'page' : undefined}>{t('Pergunte aos dados (IA)', 'Ask the data (AI)')}</Link>
+          <Link to={{ pathname: '/receitas', search: busca }} className={area === 'financas' ? 'ativo' : ''} aria-current={area === 'financas' ? 'page' : undefined}>{t('Finanças públicas', 'Public finances')}</Link>
+          <Link to={{ pathname: '/trabalho', search: busca }} className={area === 'trabalho' ? 'ativo' : ''} aria-current={area === 'trabalho' ? 'page' : undefined}>{t('Mercado de trabalho', 'Labour market')}</Link>
+          <Link to={{ pathname: '/datasus', search: busca }} className={area === 'saude' ? 'ativo' : ''} aria-current={area === 'saude' ? 'page' : undefined}>{t('Saúde', 'Health')}</Link>
+          <Link to={{ pathname: '/munic', search: '' }} className={area === 'munic' ? 'ativo' : ''} aria-current={area === 'munic' ? 'page' : undefined}>{t('Gestão pública', 'Public management')}</Link>
+          <Link to={{ pathname: '/clima', search: '' }} className={area === 'clima' ? 'ativo' : ''} aria-current={area === 'clima' ? 'page' : undefined}>{t('Clima', 'Climate')}</Link>
         </nav>
-        <span className="espaco" />
-        <AlternarIdioma />
-        <AlternarTema />
+        <div className="topo-controles">
+          <AlternarIdioma />
+          <AlternarTema />
+        </div>
       </header>
       <div className={`casca${area === 'ia' ? ' casca-ia' : ''}`}>
         <nav className={`menu${area === 'ia' ? ' menu-ia' : ''}`} aria-label={t('Páginas', 'Pages')}>
