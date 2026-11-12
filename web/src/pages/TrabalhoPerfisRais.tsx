@@ -22,6 +22,13 @@ const faixaAnos = (anos: number[]) => {
 
 const GRUPO_CURTO = (): Record<string, string> => ({ '1': t('celetistas', 'CLT'), '2': t('estatutários', 'statutory'), '3': t('outros', 'other') });
 
+function NotaRemuneracaoPerfil({ perfil }: { perfil: Ok }) {
+  return <p className="nota-base dist-metodo">{perfil.remuneracoes === null
+    ? t('A remuneração por categoria ainda não foi publicada nesta versão dos dados.', 'Pay by category has not been published in this data version yet.')
+    : t('Remuneração média de dezembro, em R$ do próprio ano: soma dos valores positivos ÷ todos os vínculos ativos da categoria, inclusive os sem valor válido. “Com valor” mostra a cobertura da remuneração; se nenhum vínculo tem valor válido, a média fica indisponível. As barras representam a participação nos vínculos. Não é salário contratual nem média anual, e os grupos podem reunir ocupações e jornadas diferentes.',
+      'Average December pay in current-year R$: sum of positive values ÷ all active jobs in the category, including those without a valid value. “With December pay” shows pay coverage; if no job has a valid value, the average is unavailable. Bars show the share of jobs. It is neither contractual salary nor an annual average, and groups may include different occupations and working hours.')}</p>;
+}
+
 /**
  * Três seções do painel de trabalho — Raça/cor, Escolaridade e Tipos de vínculo — com contagens e participações já
  * calculadas, lidas de UM Parquet pequeno (o do ano exibido) para o recorte atual. Carregam à parte dos indicadores:
@@ -62,8 +69,8 @@ export function PerfisRais({ anoRais, escopo, rotulo, meta }: { anoRais: number 
     if (perfil.estado === 'inconsistente') {
       return (
         <div className="vazio erro" role="alert">
-          <p>{t('Os perfis deste recorte não passaram na conferência (a soma das categorias não fecha com o total) e por isso não são exibidos nem exportados.',
-            'The profiles for this scope failed the consistency check (the categories do not add up to the total), so they are neither shown nor exported.')}</p>
+          <p>{t('Os perfis deste recorte não passaram na conferência dos totais e por isso não são exibidos nem exportados.',
+            'The profiles for this scope failed the totals consistency check, so they are neither shown nor exported.')}</p>
           <details><summary>{t('Detalhe técnico', 'Technical detail')}</summary><code>{perfil.problemas.join('; ')}</code></details>
         </div>
       );
@@ -95,6 +102,10 @@ export function PerfisRais({ anoRais, escopo, rotulo, meta }: { anoRais: number 
         `statistical grouping from the RAIS 2023 technical note (pp. ${PAGINAS_NOTA_MTE}), not the legal regime: contracts under state or municipal law count as statutory, apprentices as other. ${URL_NOTA_MTE}`)],
       [t('Ensino superior', 'College'), t('superior completo, mestrado e doutorado são linhas separadas; o cartão "Ensino superior completo" soma as três', 'college degree, master’s and doctorate are separate rows; the "College degree" card adds the three')],
       [t('Fonte', 'Source'), fonteRais()],
+      [t('Remuneração', 'Pay'), p.remuneracoes === null
+        ? t('não publicada nesta versão dos dados: as colunas de remuneração ficam vazias', 'not published in this data version: the pay columns are empty')
+        : t('dezembro, R$ correntes do ano (valores em reais, não em centavos); soma dos valores positivos ÷ todos os vínculos ativos da categoria; sem nenhum valor válido, média indisponível; não é salário contratual nem média anual',
+          'December, current-year R$ (values in reais, not cents); sum of positive values ÷ all active jobs in the category; if none has a valid value, average unavailable; not contractual salary or an annual average')],
       [t('Perfis pré-calculados em', 'Profiles computed on'), processado || meta.geradoEm], [t('Versão da base', 'Data version'), meta.geradoEm],
     ],
   });
@@ -117,6 +128,7 @@ export function PerfisRais({ anoRais, escopo, rotulo, meta }: { anoRais: number 
         {corpo((p) => (
           <>
             {cobertura(p)}
+            <NotaRemuneracaoPerfil perfil={p} />
             <DistribuicaoBarras itens={distribuicao(p, 'raca_cor', lang).itens} legenda={t('Vínculos ativos por raça/cor', 'Active jobs by race/colour')} />
             <p className="nota-base">{t('“Não identificada” é um código da própria RAIS; “Não informado” é o campo vazio (só aparece se houver). Ambos ficam no total e não são somados a nenhuma raça/cor. Percentuais arredondados em uma casa: a soma pode diferir de 100%.',
               '“Not identified” is a RAIS code; “Not reported” is the empty field (shown only if present). Both stay in the total and are not added to any race/colour. Percentages are rounded to one decimal: they may not add up to exactly 100%.')}</p>
@@ -134,6 +146,7 @@ export function PerfisRais({ anoRais, escopo, rotulo, meta }: { anoRais: number 
           return (
             <>
               {cobertura(p)}
+              <NotaRemuneracaoPerfil perfil={p} />
               <p className="nota-base"><strong>{pct(sup.pct)} · {numero(sup.vinculos)} {t('vínculos com superior completo, mestrado ou doutorado', 'jobs with a college degree, master’s or doctorate')}</strong></p>
               <DistribuicaoBarras itens={d.itens} legenda={t('Vínculos ativos por escolaridade', 'Active jobs by education level')} />
               <p className="nota-base">{t('O cartão “Ensino superior completo” do perfil acima soma superior completo, mestrado e doutorado; aqui os três níveis aparecem separados. Campo vazio ou código fora do dicionário, se houver, aparece à parte e fica no total.',
@@ -155,6 +168,7 @@ export function PerfisRais({ anoRais, escopo, rotulo, meta }: { anoRais: number 
           return (
             <>
               {cobertura(p)}
+              <NotaRemuneracaoPerfil perfil={p} />
               <DistribuicaoBarras itens={resumo.itens} legenda={t('Vínculos ativos por grupo de tipo de vínculo', 'Active jobs by job-type group')} />
               <details className="dist-detalhe">
                 <summary>{t('Ver tipos detalhados', 'View detailed types')}</summary>
@@ -172,8 +186,8 @@ export function PerfisRais({ anoRais, escopo, rotulo, meta }: { anoRais: number 
 
       {pronto && pronto.total > 0 && (
         <div className="perfis-tudo">
-          <p className="nota-base">{t('Exportar: cada seção acima tem seus botões CSV e Excel; o arquivo traz todas as categorias, com contagem, total e participação (0 a 100). Os três perfis juntos:',
-            'Export: each section above has its CSV and Excel buttons; the file has every category, with count, total and share (0 to 100). All three profiles together:')}</p>
+          <p className="nota-base">{t('Exportar: cada seção acima tem seus botões CSV e Excel; o arquivo traz todas as categorias, contagem, participação, remuneração média e sua cobertura. Os três perfis juntos:',
+            'Export: each section above has its CSV and Excel buttons; the file has every category, count, share, average pay and its coverage. All three profiles together:')}</p>
           {exportar('trabalho_perfis', VARIAVEIS_PERFIL)}
         </div>
       )}

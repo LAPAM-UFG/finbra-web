@@ -1,6 +1,17 @@
-import { numero, pct } from '../format';
+import { numero, pct, reaisExato } from '../format';
 import { t } from '../idioma';
 import type { ItemDist } from '../trabalho_perfis';
+
+function Remuneracao({ item: i }: { item: ItemDist }) {
+  if (i.condicaoRem === 'nao_publicada') return null;
+  return <span className="dist-remuneracao">
+    <span className="dist-rem-titulo">{t('Remuneração média', 'Average pay')}: </span>
+    <span className="dist-rem-media">{i.condicaoRem === 'registrada' ? reaisExato(i.media)
+      : i.condicaoRem === 'sem_vinculos' ? '–' : t('sem valor válido', 'no valid value')}</span>
+    <small className="dist-cobertura">{i.vinculos === 0 ? t('sem vínculos', 'no jobs')
+      : t(`Com valor de dezembro: ${numero(i.nRem)} de ${numero(i.vinculos)}`, `With December pay: ${numero(i.nRem)} of ${numero(i.vinculos)}`)}</small>
+  </span>;
+}
 
 /**
  * Distribuição de vínculos por categoria: nome, barra proporcional ao TOTAL (a barra cheia seria 100% dos vínculos) e,
@@ -11,9 +22,10 @@ export function DistribuicaoBarras({ itens, legenda }: { itens: ItemDist[]; lege
   return (
     <ul className="dist-perfil" aria-label={legenda}>
       {itens.map((i) => (
-        <li key={i.codigo} className={`dist-item dist-${i.tipo}${i.vinculos === 0 ? ' dist-zero' : ''}`}>
+        <li key={i.codigo} data-codigo={i.codigo} className={`dist-item dist-${i.tipo}${i.vinculos === 0 ? ' dist-zero' : ''}`}>
           <span className="dist-nome">{i.rotulo}</span>
           <span className="dist-valor"><strong>{numero(i.vinculos)}</strong> <span className="dist-pct">{pct(i.pct)}</span></span>
+          <Remuneracao item={i} />
           <span className="dist-barra" aria-hidden="true">
             {i.pct !== null && i.vinculos > 0 && <span style={{ width: `${Math.min(100, i.pct * 100)}%` }} />}
           </span>
@@ -32,8 +44,8 @@ export function TabelaDistribuicao({ itens, grupo }: { itens: ItemDist[]; grupo?
         {itens.map((i) => {
           const g = grupo?.(i);
           return (
-            <tr key={i.codigo} className={i.vinculos === 0 ? 'dist-zero' : undefined}>
-              <td>{i.rotulo}{g && <small className="dist-grupo">{g}</small>}</td>
+            <tr key={i.codigo} data-codigo={i.codigo} className={i.vinculos === 0 ? 'dist-zero' : undefined}>
+              <td>{i.rotulo}{g && <small className="dist-grupo">{g}</small>}<Remuneracao item={i} /></td>
               <td>{numero(i.vinculos)}</td>
               <td>{pct(i.pct)}</td>
             </tr>

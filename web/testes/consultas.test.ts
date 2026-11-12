@@ -75,10 +75,19 @@ const doGoldPublicado = (c: string) => !!GOLD_PUBLICADO && /^gold\/(saude\/|mani
 const VACINACAO_CANDIDATO = process.env.VACINACAO_CANDIDATO?.replaceAll('\\', '/');
 // Override opcional só para FNS e manifesto; demais arquivos respeitam DATA/GOLD_PUBLICADO.
 const FNS_CANDIDATO = process.env.FNS_CANDIDATO?.replaceAll('\\', '/');
-// PERFIS_CANDIDATO: pasta do candidato dos perfis da RAIS (gold/trabalho/perfis e gold/manifesto.json com fontes.rais_perfis), enquanto não for publicado
+// PERFIS_CANDIDATO: pasta do candidato dos perfis da RAIS (gold/trabalho/perfis_v2 e gold/manifesto.json com fontes.rais_perfis), enquanto não for publicado.
+// Arquivos da V1 ausentes no candidato vêm de PERFIS_V1 (padrão DATA), para testar o fallback por ano.
 const PERFIS_CANDIDATO = process.env.PERFIS_CANDIDATO?.replaceAll('\\', '/');
+const PERFIS_V1 = (process.env.PERFIS_V1 ?? DATA).replaceAll('\\', '/');
+const doPerfis = (c: string): string | null => {
+  if (!PERFIS_CANDIDATO || !c.startsWith('gold/trabalho/perfis')) return null;
+  const daqui = `${PERFIS_CANDIDATO}/${c}`;
+  if (c.startsWith('gold/trabalho/perfis_v2/') || existsSync(daqui)) return daqui;
+  return [`${PERFIS_V1}/${c}`, `${PERFIS_V1}/${c.replace('gold/trabalho/perfis/', '')}`].find((x) => existsSync(x)) ?? daqui;
+};
+let MANIFESTO_TESTE: { fontes: Record<string, unknown> } | null = null; // o manifesto que a rota enxerga (os testes de perfis o ajustam e restauram)
 const doFnsCandidato = (c: string) => !!FNS_CANDIDATO && /^gold\/(saude\/fns_[^/]+\.parquet$|manifesto\.json$)/.test(c);
-const onde = (c: string) => (PERFIS_CANDIDATO && c.startsWith('gold/trabalho/perfis/') ? `${PERFIS_CANDIDATO}/${c}` : doFnsCandidato(c) ? `${FNS_CANDIDATO}/${c}` : c.startsWith('silver/trabalho/micro/') ? `${MICRO}/${c}` : VACINACAO_CANDIDATO && c.startsWith('gold/saude/vacinacao') ? `${VACINACAO_CANDIDATO}/${c}` : doGoldPublicado(c) ? `${GOLD_PUBLICADO}/${c}` : `${DATA}/${c}`);
+const onde = (c: string) => (doPerfis(c) ?? (doFnsCandidato(c) ? `${FNS_CANDIDATO}/${c}` : c.startsWith('silver/trabalho/micro/') ? `${MICRO}/${c}` : VACINACAO_CANDIDATO && c.startsWith('gold/saude/vacinacao') ? `${VACINACAO_CANDIDATO}/${c}` : doGoldPublicado(c) ? `${GOLD_PUBLICADO}/${c}` : `${DATA}/${c}`));
 const rota = <T>(caminho: string, params: Record<string, string | number | undefined> = {}) => executar(caminho, params) as Promise<T>;
 type L = Record<string, number | string | null | boolean>;
 
@@ -119,6 +128,7 @@ before(async () => {
     const candidato = JSON.parse(await readFile(`${PERFIS_CANDIDATO}/gold/manifesto.json`, 'utf8'));
     manifesto.fontes = { ...manifesto.fontes, rais_perfis: candidato.fontes?.rais_perfis };
   }
+  MANIFESTO_TESTE = manifesto;
   for (const [nome, arq] of Object.entries({
     entes: 'silver/entes.parquet', indicadores: 'gold/indicadores.parquet', escopos: 'gold/escopos.parquet',
     alertas: 'gold/alertas.parquet', faixas: 'gold/faixas.parquet', ipca: 'gold/ipca.parquet',
@@ -1327,7 +1337,7 @@ describe('Excel com várias abas', () => {
   });
 });
 describe('perfis da RAIS (raça/cor, escolaridade, tipo de vínculo)', () => {
-  const semPerfis = !PERFIS_CANDIDATO || !existsSync(`${PERFIS_CANDIDATO}/gold/trabalho/perfis/ano=2024.parquet`);
+  const semPerfis = !PERFIS_CANDIDATO || !existsSync(`${PERFIS_CANDIDATO}/gold/trabalho/perfis_v2/ano=2024.parquet`);
 
   test('Goiânia 2024: contagens do arquivo batem com a referência independente e com os cartões', { skip: semPerfis }, async () => {
     const l = await rota<L[]>('trab_perfis', { ente: 5208707, ano: 2024 });
@@ -1338,7 +1348,48 @@ describe('perfis da RAIS (raça/cor, escolaridade, tipo de vínculo)', () => {
     assert.equal(superiorSomado(distribuicao(p, 'escolaridade', 'pt')).vinculos, 257862);
     assert.deepEqual([...p.contagens.vinculo_mte.entries()].sort(), [['1', 505719], ['2', 204476], ['3', 18585]]);
     const serie = await rota<L[]>('trab_serie', { ente: 5208707 });
-    if (existsSync(`${DATA}/gold/trabalho/municipios.parquet`)) assert.equal(serie.find((r) => r.ano === 2024)!.empregos, 728780);
+    if (existsSync(`${DATA}/gold/trabalho/municipios.parquet`)) {
+      const g = serie.find((r) => r.ano === 2024)!;
+      assert.equal(g.empregos, 728780);
+      // remuneração: massa em centavos e n_rem_dez contra o gold (massa com no máximo 2 centavos de ruído de ponto flutuante), média = massa ÷ todos os ativos
+      assert.ok(p.remuneracoes && p.remuneracaoTotal, 'perfis V2 trazem a remuneração');
+      assert.ok(Math.abs(p.remuneracaoTotal!.massaCentavos! - Math.round((g.massa_dez as number) * 100)) <= 2);
+      assert.equal(p.remuneracaoTotal!.nRem, g.n_rem_dez);
+      quase(p.remuneracaoTotal!.media!, g.remuneracao_media as number);
+      const raca = distribuicao(p, 'raca_cor', 'pt').itens;
+      assert.equal(raca.reduce((x, i) => x + (i.nRem ?? 0), 0), g.n_rem_dez); // cobertura das categorias fecha no total
+      for (const i of raca.filter((x) => x.vinculos > 0 && x.nRem! > 0)) quase(i.media!, i.massaCentavos! / 100 / i.vinculos);
+    }
+  });
+
+  test('Brasil: categoria sem valor positivo tem média indisponível, nunca R$ 0,00', { skip: semPerfis }, async () => {
+    const p = lerPerfil((await rota<L[]>('trab_perfis', { ano: 2024 })) as any, 2024);
+    assert.equal(p.estado, 'ok');
+    if (p.estado !== 'ok') return;
+    for (const v of ['raca_cor', 'escolaridade', 'vinculo_mte', 'tipo_vinculo'] as const) {
+      for (const i of distribuicao(p, v, 'pt').itens) {
+        if (i.nRem === 0) assert.equal(i.media, null, `${v}/${i.codigo}`);
+        else assert.ok(i.media! > 0, `${v}/${i.codigo}`);
+      }
+    }
+  });
+
+  test('fallback por ano: ano só da V1 vem de perfis (contagens, sem remuneração) e o da V2 de perfis_v2', { skip: semPerfis || !existsSync(onde('gold/trabalho/perfis/ano=2023.parquet')) }, async () => {
+    const original = MANIFESTO_TESTE!.fontes.rais_perfis;
+    MANIFESTO_TESTE!.fontes.rais_perfis = { versao: 2, anos: [2024], fallback_v1: { anos: [2023] } };
+    try {
+      const v1 = lerPerfil((await rota<L[]>('trab_perfis', { ente: 5208707, ano: 2023 })) as any, 2023);
+      assert.equal(v1.estado, 'ok');
+      if (v1.estado === 'ok') {
+        assert.equal(v1.remuneracoes, null);
+        assert.equal(distribuicao(v1, 'raca_cor', 'pt').itens[0].condicaoRem, 'nao_publicada');
+      }
+      const v2 = lerPerfil((await rota<L[]>('trab_perfis', { ente: 5208707, ano: 2024 })) as any, 2024);
+      assert.ok(v2.estado === 'ok' && v2.remuneracoes !== null);
+      await assert.rejects(rota('trab_perfis', { ente: 5208707, ano: 2022 })); // nem V2 nem fallback: indisponível
+    } finally {
+      MANIFESTO_TESTE!.fontes.rais_perfis = original;
+    }
   });
 
   test('UF e Brasil: dimensões fecham no total; ano ou recorte inválido recusa em vez de zerar', { skip: semPerfis }, async () => {

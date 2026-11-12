@@ -176,7 +176,7 @@ Microdados do PDET (Ministério do Trabalho), baixados à mão do FTP para a pas
 | | |
 |---|---|
 | Totais do painel | `pipeline/trabalho.py`: `silver/trabalho` (somas por município, divisão CNAE e perfil) e `gold/trabalho` (páginas de mercado de trabalho) |
-| Perfis prontos do painel | `pipeline/trabalho_perfis.py`: raça/cor, escolaridade e tipos de vínculo dos ativos em 31/12, por município, UF e Brasil. Gera um Parquet por ano em `gold/trabalho/perfis`, com índice e manifesto candidato. Cada município concilia com `gold/trabalho/municipios.parquet`; categorias ignoradas e vazias permanecem na contagem. O navegador lê só o ano e o recorte escolhidos, sem abrir microdados |
+| Perfis prontos do painel | `pipeline/trabalho_perfis.py`: raça/cor, escolaridade e tipos de vínculo dos ativos em 31/12, por município, UF e Brasil. **Versão 2** (padrão): um Parquet por ano em `gold/trabalho/perfis_v2` (contagens **e remuneração média de dezembro** por categoria), com `indice.json` e manifesto candidato; a **versão 1** (`gold/trabalho/perfis`, só contagens) continua intacta como fallback. Cada município concilia com `gold/trabalho/municipios.parquet` (vínculos, `n_rem_dez` e massa de dezembro); categorias ignoradas e vazias permanecem na contagem. O navegador lê só o ano e o recorte escolhidos, sem abrir microdados |
 | Microdados | `pipeline/microdados.py`: uma linha por vínculo da RAIS (ativos ou não em 31/12), por estabelecimento e por movimentação do CAGED, com todas as colunas e nomes padronizados entre os anos. Fica em `E:/finbra/micro/silver/trabalho/micro/` (no HD externo; ~25–30 GB), em arquivos por ano e UF ordenados por município, CNAE e CBO. Sobe para o R2 com `py pipeline/r2.py enviar --raiz E:/finbra/micro --camadas silver` (o `indice.json` vai por último); o `baixar` os pula, a menos que se passe `--com-micro` |
 | Tabelas da consulta na web | o mesmo script soma os microdados em `gold/trabalho/cubo_uf/ano=AAAA.parquet` (UF × classe CNAE × CBO × sexo × situação × afastamento) e `gold/trabalho/cubo_mun/ano=AAAA.parquet` (município × divisão CNAE × grande grupo CBO × …), ~90 MB por ano; `py pipeline/microdados.py --so cubos` refaz só elas |
 | População | população de referência do IBGE em todos os anos (`silver/ibge_populacao.parquet`, de `externos.py`): a publicação do próprio ano (Censos 2010 e 2022, SIDRA 202 e 4709; estimativas de 1º de julho, SIDRA 6579) ou, no ano sem publicação (2023), a do ano anterior; `populacao_ano` diz qual entrou. A mesma regra de `indicadores.populacao_ibge` |
@@ -194,13 +194,29 @@ Os arquivos públicos não identificam pessoas nem empresas: a unidade é o vín
 aparece duas vezes) e não há como seguir o mesmo trabalhador entre anos.
 
 Para atualizar os perfis depois de atualizar os microdados e os totais da RAIS, rode, por exemplo,
-`py pipeline/trabalho_perfis.py --micro E:/finbra/micro --base E:/finbra/data --saida E:/finbra/candidato_perfis_rais --anos 2024 2025`.
-O destino precisa estar separado das origens. Anos validados podem ser retomados; qualquer diferença na
-contagem municipal interrompe a geração. Confira com `py pipeline/testes_perfis.py`. Antes de publicar,
-concilie a entrada `fontes.rais_perfis` do manifesto candidato com o **manifesto remoto mais recente**,
-preservando as demais fontes. Envie apenas os novos Parquet e o índice; o manifesto vai por último,
-depois da conferência dos arquivos remotos. `gold.fonte_trabalho` preserva a fonte nas regenerações
-quando os agregados e o índice estão presentes na pasta de dados.
+`py pipeline/trabalho_perfis.py --micro E:/finbra/micro --base E:/finbra/data --saida E:/finbra/candidato_remuneracao_rais_20261112 --anos 2010 2011 2012 2013 2014 2015 2016 2017 2018 2019 2020 2021 2022 2023 2024 2025`.
+Por padrão gera a **versão 2** em `<saida>/gold/trabalho/perfis_v2/` (`ano=AAAA.parquet` e `indice.json`, `versao` 2);
+`--versao 1` regera o formato antigo em `<saida>/gold/trabalho/perfis/`. O destino precisa estar separado das origens
+(que são só leitura, assim como os candidatos anteriores). Anos validados podem ser retomados (hash, assinatura da
+origem e revalidação); o arquivo do ano só ganha o nome final depois de validado. Confira com `py pipeline/testes_perfis.py`.
+
+Colunas da versão 2, em toda linha (inclusive `total/total`): as da versão 1 (`ano`, `escopo`, `variavel`, `codigo`,
+`vinculos`, `total`) mais `massa_dez_centavos` (BIGINT, nulo), `n_rem_dez` (BIGINT) e `remuneracao_media_dez` (DOUBLE, nulo,
+em R$). É a remuneração **nominal de dezembro** (`rem_dezembro_nom`, BRL): só valores maiores que zero entram na massa
+(somada em centavos inteiros, exata) e em `n_rem_dez`; a média é `massa / 100 / vínculos` com **todos** os vínculos
+ativos do grupo no denominador (a regra do painel em `trabalho.py`). Sem nenhum valor positivo, massa e média são nulas
+(nunca R$ 0,00). UF e Brasil somam vínculos, massa e `n_rem_dez` dos municípios; nunca média de médias. Cada município é
+conciliado com o gold: vínculos e `n_rem_dez` iguais; massa igual a `round(massa_dez * 100)` com tolerância de no máximo
+2 centavos (ruído de ponto flutuante do gold legado; o maior desvio fica no índice) e qualquer diferença maior interrompe
+a geração.
+
+Antes de publicar, concilie a entrada `fontes.rais_perfis` do manifesto candidato com o **manifesto remoto mais
+recente**, preservando as demais fontes. A entrada da versão 2 tem `versao: 2`, `arquivos:
+"gold/trabalho/perfis_v2/ano={ano}.parquet"`, `indice`, a documentação dos campos e, quando o manifesto de partida já
+tinha a versão 1, `fallback_v1` (anos e caminhos de `gold/trabalho/perfis`, para os anos que a versão 2 não cobre).
+Envie apenas o novo diretório `gold/trabalho/perfis_v2` (Parquet e índice); o manifesto vai por último, depois da
+conferência dos arquivos remotos; não apague a versão 1. `gold.fonte_trabalho` prefere a versão 2 validada e, sem ela,
+preserva a versão 1 nas regenerações do manifesto.
 
 ### Saúde (SIM, SINASC e população da SVS/MS)
 

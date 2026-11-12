@@ -15,7 +15,7 @@ import * as duckdb from '@duckdb/duckdb-wasm';
 import { t } from './idioma';
 import { SQL_IPCA_BASE } from './ia_moeda';
 import { indicador as indicadorSaude, type Indicador } from './saude_comum';
-import { caminhoPerfis, disponibilidadePerfis, escopoDoPerfil } from './trabalho_perfis';
+import { caminhoPerfis, disponibilidadePerfis, escopoDoPerfil, perfisComRemuneracao } from './trabalho_perfis';
 
 type Valor = string | number | boolean | null;
 export type Linha = Record<string, Valor>;
@@ -970,7 +970,8 @@ const rotasTrabalho: Record<string, (q: Params) => Promise<unknown>> = {
     const escopo = escopoDoPerfil(q);
     if (!escopo) throw new Error(t('recorte inválido para os perfis da RAIS', 'invalid scope for the RAIS profiles'));
     return consultar(
-      `SELECT ano, variavel, codigo, vinculos, total FROM read_parquet(${arq(caminhoPerfis(ano as number))})
+      `SELECT ano, variavel, codigo, vinculos, total${perfisComRemuneracao(manifesto.fontes?.rais_perfis, ano as number) ? ', massa_dez_centavos, n_rem_dez, remuneracao_media_dez' : ''}
+       FROM read_parquet(${arq(caminhoPerfis(ano as number, manifesto.fontes?.rais_perfis))})
        WHERE escopo = '${escopo.replace(/'/g, "''")}' ORDER BY variavel, codigo`,
     );
   },

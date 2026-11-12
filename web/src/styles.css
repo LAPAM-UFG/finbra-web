@@ -1222,5 +1222,14 @@ button.ia-historico-importar:focus-visible { outline: 2px solid var(--foco); out
 .dist-grupo { display: block; color: var(--tinta-3); font-size: 12px; }
 .perfis-tudo { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; }
 .perfis-tudo .nota-base { margin: 0; }
+.dist-remuneracao { display: block; grid-column: 1 / -1; font-size: 13px; color: var(--tinta-2); }
+.dist-rem-media { color: var(--tinta); font-weight: 650; white-space: nowrap; }
+.dist-cobertura { display: block; font-size: 11px; color: var(--tinta-3); }
+.dist-tabela .dist-remuneracao { margin-top: 3px; }
+.dist-metodo { margin-bottom: 12px; }
+@media (min-width: 900px) {
+  .dist-item:has(.dist-remuneracao) { grid-template-columns: minmax(0, 1fr) auto minmax(220px, auto); }
+  .dist-item > .dist-remuneracao { grid-column: 3; grid-row: 1; text-align: right; }
+}
 @media (max-width: 500px) { .dist-item { font-size: 13px; } .dist-tabela th:nth-child(2), .dist-tabela td:nth-child(2) { width: 5.6em; } }
 @media print { .dist-detalhe:not([open]) > :not(summary) { display: none; } .dist-item { break-inside: avoid; } }

@@ -97,7 +97,8 @@ export type Disponibilidade =
 export function disponibilidadePerfis(fonte: unknown, ano: number | null | undefined): Disponibilidade {
   const anosBrutos = fonte && typeof fonte === 'object' ? (fonte as { anos?: unknown }).anos : undefined;
   if (!Array.isArray(anosBrutos)) return { ok: false, motivo: 'sem_fonte', anos: [] };
-  const anos = anosBrutos.filter((a): a is number => typeof a === 'number' && Number.isInteger(a)).sort((x, y) => x - y);
+  const fallback = fonte && typeof fonte === 'object' && (fonte as { versao?: unknown }).versao === 2 ? (fonte as { fallback_v1?: { anos?: unknown } }).fallback_v1?.anos : undefined;
+  const anos = [...new Set([...anosBrutos, ...(Array.isArray(fallback) ? fallback : [])].filter((a): a is number => typeof a === 'number' && Number.isInteger(a)))].sort((x, y) => x - y);
   if (!anos.length) return { ok: false, motivo: 'sem_fonte', anos: [] };
   if (typeof ano !== 'number' || !Number.isInteger(ano)) return { ok: false, motivo: 'sem_ano', anos };
   return anos.includes(ano) ? { ok: true, anos } : { ok: false, motivo: 'ano_ausente', anos };
@@ -118,14 +119,22 @@ export function escopoDoPerfil(p: { ente?: unknown; uf?: unknown }): string | nu
   return 'BR';
 }
 
-export const caminhoPerfis = (ano: number) => `gold/trabalho/perfis/ano=${ano}.parquet`;
+export const perfisComRemuneracao = (fonte: unknown, ano?: number): boolean => {
+  if (!fonte || typeof fonte !== 'object' || (fonte as { versao?: unknown }).versao !== 2) return false;
+  const anos = (fonte as { anos?: unknown }).anos;
+  // remuneração só onde o arquivo V2 do ANO existe; sem a lista de anos ou sem o ano, nada é presumido
+  return ano !== undefined && Array.isArray(anos) && anos.includes(ano);
+};
+export const caminhoPerfis = (ano: number, fonte?: unknown) => `gold/trabalho/${perfisComRemuneracao(fonte, ano) ? 'perfis_v2' : 'perfis'}/ano=${ano}.parquet`;
 
 // ---------------- leitura das linhas ----------------
 
+export type RemuneracaoPerfil = { massaCentavos: number | null; nRem: number; media: number | null };
 export type PerfilLido =
   | { estado: 'sem_escopo' }
   | { estado: 'inconsistente'; problemas: string[] }
-  | { estado: 'ok'; ano: number; total: number; contagens: Record<VariavelPerfil, Map<string, number>> };
+  | { estado: 'ok'; ano: number; total: number; contagens: Record<VariavelPerfil, Map<string, number>>;
+      remuneracoes: Record<VariavelPerfil, Map<string, RemuneracaoPerfil>> | null; remuneracaoTotal: RemuneracaoPerfil | null };
 
 const inteiroNaoNegativo = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0;
 
@@ -142,6 +151,21 @@ export function lerPerfil(linhas: Linha[] | undefined, ano: number): PerfilLido 
   const total = totais.length === 1 && inteiroNaoNegativo(totais[0].vinculos) ? totais[0].vinculos : null;
   if (total === null) problemas.push('total');
   const contagens = Object.fromEntries(VARIAVEIS_PERFIL.map((v) => [v, new Map<string, number>()])) as Record<VariavelPerfil, Map<string, number>>;
+  const temRem = todas.some((r) => ['massa_dez_centavos', 'n_rem_dez', 'remuneracao_media_dez'].some((c) => c in r));
+  const remuneracoes = temRem ? Object.fromEntries(VARIAVEIS_PERFIL.map((v) => [v, new Map<string, RemuneracaoPerfil>()])) as Record<VariavelPerfil, Map<string, RemuneracaoPerfil>> : null;
+  const lerRem = (r: Linha): RemuneracaoPerfil | null => {
+    const m = r.massa_dez_centavos, k = r.n_rem_dez, media = r.remuneracao_media_dez;
+    if (!inteiroNaoNegativo(r.vinculos) || !inteiroNaoNegativo(k) || k > r.vinculos) { problemas.push('quantidade com remuneração'); return null; }
+    if (k === 0) {
+      if (m !== null || media !== null) { problemas.push('remuneração sem valor válido'); return null; }
+      return { massaCentavos: null, nRem: 0, media: null };
+    }
+    // média = massa ÷ 100 ÷ vínculos, a mesma conta do gerador (IEEE idêntico): só algumas ULPs de folga; cada valor positivo vale ao menos 1 centavo
+    if (typeof m !== 'number' || !Number.isSafeInteger(m) || m < k || typeof media !== 'number' || !Number.isFinite(media)
+      || media <= 0 || Math.abs(media - m / 100 / r.vinculos) > Math.abs(media) * Number.EPSILON * 4) { problemas.push('massa ou média de remuneração'); return null; }
+    return { massaCentavos: m, nRem: k, media };
+  };
+  const remuneracaoTotal = temRem && totais.length === 1 ? lerRem(totais[0]) : null;
   const vistas = new Set<string>();
   for (const r of todas) {
     if (r.ano !== undefined && r.ano !== ano) problemas.push(`ano ${String(r.ano)}`);
@@ -154,21 +178,32 @@ export function lerPerfil(linhas: Linha[] | undefined, ano: number): PerfilLido 
     if (vistas.has(chave)) { problemas.push(`duplicata ${r.variavel}/${r.codigo}`); continue; }
     vistas.add(chave);
     contagens[r.variavel as VariavelPerfil].set(r.codigo, r.vinculos);
+    if (remuneracoes) {
+      const rem = lerRem(r);
+      if (rem) remuneracoes[r.variavel as VariavelPerfil].set(r.codigo, rem);
+    }
   }
   if (total !== null) {
     for (const v of VARIAVEIS_PERFIL) {
       const soma = [...contagens[v].values()].reduce((s, x) => s + x, 0);
       if (soma !== total) problemas.push(`soma de ${v} (${soma}) diferente do total (${total})`);
+      if (remuneracoes && remuneracaoTotal) {
+        const valores = [...remuneracoes[v].values()];
+        if (valores.reduce((s, r) => s + (r.massaCentavos ?? 0), 0) !== (remuneracaoTotal.massaCentavos ?? 0)
+          || valores.reduce((s, r) => s + r.nRem, 0) !== remuneracaoTotal.nRem) problemas.push(`remuneração de ${v} não fecha no total`);
+      }
     }
   }
   if (problemas.length || total === null) return { estado: 'inconsistente', problemas: [...new Set(problemas)] };
-  return { estado: 'ok', ano, total, contagens };
+  return { estado: 'ok', ano, total, contagens, remuneracoes, remuneracaoTotal };
 }
 
 // ---------------- distribuições ----------------
 
 export type TipoItem = 'conhecido' | 'ausente' | 'desconhecido';
-export type ItemDist = { codigo: string; rotulo: string; vinculos: number; pct: number | null; tipo: TipoItem; grupoMte?: string | null };
+export type CondicaoRemuneracao = 'registrada' | 'sem_valor' | 'sem_vinculos' | 'nao_publicada';
+export type ItemDist = { codigo: string; rotulo: string; vinculos: number; pct: number | null; tipo: TipoItem; grupoMte?: string | null;
+  media: number | null; massaCentavos: number | null; nRem: number | null; semRem: number | null; condicaoRem: CondicaoRemuneracao };
 export type Distribuicao = { variavel: VariavelPerfil; total: number; soma: number; itens: ItemDist[] };
 
 export const razao = (a: number, b: number): number | null => (Number.isFinite(a) && Number.isFinite(b) && b > 0 ? a / b : null);
@@ -187,7 +222,10 @@ export function distribuicao(p: Extract<PerfilLido, { estado: 'ok' }>, variavel:
   const dic = DICIONARIO[variavel];
   const item = (codigo: string, rotulo: string, tipo: TipoItem): ItemDist => {
     const v = obs.get(codigo) ?? 0;
-    return { codigo, rotulo, vinculos: v, pct: razao(v, p.total), tipo, ...(variavel === 'tipo_vinculo' ? { grupoMte: grupoMte(codigo) } : {}) };
+    const rem = p.remuneracoes ? p.remuneracoes[variavel].get(codigo) ?? { massaCentavos: null, nRem: 0, media: null } : null;
+    return { codigo, rotulo, vinculos: v, pct: razao(v, p.total), tipo, ...(variavel === 'tipo_vinculo' ? { grupoMte: grupoMte(codigo) } : {}),
+      media: rem?.media ?? null, massaCentavos: rem?.massaCentavos ?? null, nRem: rem?.nRem ?? null, semRem: rem ? v - rem.nRem : null,
+      condicaoRem: !rem ? 'nao_publicada' : v === 0 ? 'sem_vinculos' : rem.nRem === 0 ? 'sem_valor' : 'registrada' };
   };
   const conhecidos = new Set(dic.map((x) => x.codigo));
   const itens = dic.map((x) => item(x.codigo, lang === 'en' ? x.en : x.pt, 'conhecido'));
@@ -207,8 +245,13 @@ export function superiorSomado(d: Distribuicao): { vinculos: number; pct: number
 
 export function colunasExportacao(lang: Lang): string[] {
   return lang === 'en'
-    ? ['Dimension', 'Code', 'Category', 'Category type', 'Ministry group', 'Active jobs', 'Total active jobs in the scope', 'Share', 'Share unit']
-    : ['Dimensão', 'Código', 'Categoria', 'Tipo da categoria', 'Grupo do MTE', 'Vínculos ativos', 'Total de vínculos ativos do recorte', 'Participação', 'Unidade da participação'];
+    ? ['Dimension', 'Code', 'Category', 'Category type', 'Ministry group', 'Active jobs', 'Total active jobs in the scope', 'Share', 'Share unit', 'Average December pay', 'December payroll', 'Jobs with valid December pay', 'Jobs without valid December pay', 'Pay data condition', 'Currency']
+    : ['Dimensão', 'Código', 'Categoria', 'Tipo da categoria', 'Grupo do MTE', 'Vínculos ativos', 'Total de vínculos ativos do recorte', 'Participação', 'Unidade da participação', 'Remuneração média de dezembro', 'Massa de dezembro', 'Vínculos com remuneração válida', 'Vínculos sem remuneração válida', 'Condição da remuneração', 'Moeda'];
+}
+
+export function condicaoRemuneracao(c: CondicaoRemuneracao, lang: Lang): string {
+  const nomes = { registrada: ['registrada', 'recorded'], sem_valor: ['sem remuneração válida', 'no valid pay'], sem_vinculos: ['sem vínculos', 'no jobs'], nao_publicada: ['remuneração não publicada', 'pay not published'] };
+  return nomes[c][lang === 'en' ? 1 : 0];
 }
 
 const TIPO_EXPORT: Record<TipoItem, Entrada> = {
@@ -231,6 +274,7 @@ export function linhasExportacao(p: Extract<PerfilLido, { estado: 'ok' }>, varia
         lang === 'en' ? NOME_VARIAVEL[v].en : NOME_VARIAVEL[v].pt, i.codigo, i.rotulo, lang === 'en' ? TIPO_EXPORT[i.tipo].en : TIPO_EXPORT[i.tipo].pt,
         g ? (lang === 'en' ? DICIONARIO.vinculo_mte.find((x) => x.codigo === g)!.en : DICIONARIO.vinculo_mte.find((x) => x.codigo === g)!.pt) : null,
         i.vinculos, d.total, i.pct === null ? null : i.pct * 100, '%',
+        i.media, i.massaCentavos === null ? null : i.massaCentavos / 100, i.nRem, i.semRem, condicaoRemuneracao(i.condicaoRem, lang), i.condicaoRem === 'nao_publicada' ? null : 'BRL',
       ]);
     }
   }

@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
 import {
-  AUSENTE, DICIONARIO, colunasExportacao, disponibilidadePerfis, distribuicao, escopoDoPerfil, grupoMte, lerPerfil, linhasExportacao, superiorSomado,
+  AUSENTE, DICIONARIO, caminhoPerfis, colunasExportacao, disponibilidadePerfis, distribuicao, escopoDoPerfil, grupoMte, lerPerfil, linhasExportacao, superiorSomado,
   type Linha, type PerfilLido,
 } from '../src/trabalho_perfis';
 
@@ -28,6 +28,90 @@ const GOIANIA = linhasDe(2024, 728780, {
   escolaridade: { '1': 1561, '2': 10152, '3': 6289, '4': 24831, '5': 30551, '6': 38130, '7': 337870, '8': 21534, '9': 243766, '10': 6739, '11': 7357 },
   vinculo_mte: { '1': 505719, '2': 204476, '3': 18585 },
   tipo_vinculo: { '10': 465346, '15': 3669, '20': 890, '25': 411, '30': 129193, '31': 234, '35': 23297, '40': 554, '50': 199, '55': 15660, '60': 35239, '65': 136, '70': 14, '75': 14, '80': 508, '90': 426, '95': 1238, '96': 42005, '97': 9747 },
+});
+
+// Duas categorias, com tamanhos e cobertura diferentes: massa em centavos, média sobre TODOS os ativos.
+function comRemuneracao(semValor = false): Linha[] {
+  const grupos: Record<string, string[]> = { raca_cor: ['2', '77'], escolaridade: ['7', '9'], tipo_vinculo: ['10', '30'], vinculo_mte: ['1', '2'] };
+  const m1 = semValor ? null : 300000;
+  const m2 = 1600000;
+  const total = (m1 ?? 0) + m2;
+  return [
+    { ano: 2024, variavel: 'total', codigo: 'total', vinculos: 10, total: 10, massa_dez_centavos: total, n_rem_dez: semValor ? 8 : 9, remuneracao_media_dez: total / 100 / 10 },
+    ...Object.entries(grupos).flatMap(([variavel, cs]) => [
+      { ano: 2024, variavel, codigo: cs[0], vinculos: 2, total: 10, massa_dez_centavos: m1, n_rem_dez: semValor ? 0 : 1, remuneracao_media_dez: m1 === null ? null : m1 / 100 / 2 },
+      { ano: 2024, variavel, codigo: cs[1], vinculos: 8, total: 10, massa_dez_centavos: m2, n_rem_dez: 8, remuneracao_media_dez: m2 / 100 / 8 },
+    ]),
+  ];
+}
+
+test('remuneração: média usa todos os vínculos da categoria; total é ponderado pela massa', () => {
+  const p = ok(comRemuneracao());
+  assert.equal(p.remuneracaoTotal?.media, 1900);
+  const d = distribuicao(p, 'raca_cor', 'pt');
+  const a = d.itens.find((i) => i.codigo === '2')!;
+  const b = d.itens.find((i) => i.codigo === '77')!;
+  assert.equal(a.media, 1500); // 3000 ÷ 2 ativos; apenas um tem o valor, não dividir por 1
+  assert.equal(a.nRem, 1);
+  assert.equal(a.semRem, 1);
+  assert.equal(b.media, 2000);
+  assert.equal(b.tipo, 'desconhecido');
+  assert.notEqual(p.remuneracaoTotal?.media, (a.media! + b.media!) / 2);
+});
+
+test('remuneração: grupo sem valor e categoria sem vínculos têm média indisponível', () => {
+  const p = ok(comRemuneracao(true));
+  const d = distribuicao(p, 'raca_cor', 'pt');
+  const semValor = d.itens.find((i) => i.codigo === '2')!;
+  const semVinculos = d.itens.find((i) => i.codigo === '1')!;
+  assert.equal(semValor.media, null);
+  assert.equal(semValor.nRem, 0);
+  assert.equal(semValor.semRem, 2);
+  assert.equal(semValor.condicaoRem, 'sem_valor');
+  assert.equal(semVinculos.media, null);
+  assert.equal(semVinculos.condicaoRem, 'sem_vinculos');
+  assert.equal(p.remuneracaoTotal?.media, 1600);
+});
+
+test('remuneração V1: contagens preservadas, salários não publicados nunca viram zero', () => {
+  const p = ok(GOIANIA);
+  assert.equal(p.remuneracoes, null);
+  const a = distribuicao(p, 'raca_cor', 'pt').itens[0];
+  assert.equal(a.media, null);
+  assert.equal(a.nRem, null);
+  assert.equal(a.semRem, null);
+  assert.equal(a.condicaoRem, 'nao_publicada');
+  assert.equal(caminhoPerfis(2024), 'gold/trabalho/perfis/ano=2024.parquet');
+  assert.equal(caminhoPerfis(2024, { versao: 2, anos: [2024] }), 'gold/trabalho/perfis_v2/ano=2024.parquet');
+  const parcial = { versao: 2, anos: [2024], fallback_v1: { anos: [2023, 2024] } };
+  assert.equal(disponibilidadePerfis(parcial, 2023).ok, true);
+  assert.equal(caminhoPerfis(2023, parcial), 'gold/trabalho/perfis/ano=2023.parquet');
+});
+
+test('remuneração: massa, cobertura e média incoerentes ou campos parciais recusam os dados', () => {
+  for (const [field, value] of [['massa_dez_centavos', 300001], ['n_rem_dez', 3], ['n_rem_dez', 0], ['remuneracao_media_dez', 3000]]) {
+    const linhas = comRemuneracao().map((r) => ({ ...r }));
+    linhas[1][field as string] = value;
+    assert.equal(lerPerfil(linhas, 2024).estado, 'inconsistente', String(field));
+  }
+  const parciais = comRemuneracao();
+  delete parciais[1].n_rem_dez;
+  assert.equal(lerPerfil(parciais, 2024).estado, 'inconsistente');
+});
+
+test('exportação de remuneração: reais numéricos, cobertura, condição e moeda explícitos', () => {
+  const cols = colunasExportacao('pt');
+  const rows = linhasExportacao(ok(comRemuneracao()), ['raca_cor'], 'pt');
+  const a = rows.find((r) => r[1] === '2')!;
+  assert.equal(a[cols.indexOf('Remuneração média de dezembro')], 1500);
+  assert.equal(a[cols.indexOf('Massa de dezembro')], 3000);
+  assert.equal(a[cols.indexOf('Vínculos com remuneração válida')], 1);
+  assert.equal(a[cols.indexOf('Vínculos sem remuneração válida')], 1);
+  assert.equal(a[cols.indexOf('Moeda')], 'BRL');
+  assert.ok(rows.every((r) => r.length === cols.length));
+  const old = linhasExportacao(ok(GOIANIA), ['raca_cor'], 'en')[0];
+  assert.equal(old[9], null);
+  assert.equal(old[13], 'pay not published');
 });
 
 test('Goiânia 2024: cada dimensão fecha no total e superior = 9 + 10 + 11 (257.862)', () => {
@@ -179,4 +263,28 @@ test('exportação: todas as categorias (zeros, ausente, desconhecidas, detalhad
   // total zero: participação vazia, não 0
   const zero = linhasExportacao(ok(linhasDe(2024, 0, {})), ['raca_cor'], 'pt');
   assert.ok(zero.every((r) => r[i('Participação')] === null && r[i('Vínculos ativos')] === 0));
+});
+
+test('metadados: V1 sem versão ignora fallback_v1; V2 só vale nos anos do próprio arquivo; sem lista de anos não há remuneração', () => {
+  const v1 = { anos: [2022], fallback_v1: { anos: [2023] } }; // metadado sem versão: só os anos declarados
+  assert.equal(disponibilidadePerfis(v1, 2023).ok, false);
+  assert.equal(caminhoPerfis(2022, v1), 'gold/trabalho/perfis/ano=2022.parquet');
+  assert.equal(caminhoPerfis(2024, { versao: 2, anos: [2023] }), 'gold/trabalho/perfis/ano=2024.parquet'); // ano fora da V2: nunca o arquivo V2
+  assert.equal(caminhoPerfis(2024, { versao: 2 }), 'gold/trabalho/perfis/ano=2024.parquet'); // V2 sem anos: nada presumido
+  assert.equal(caminhoPerfis(2024, { versao: 1, anos: [2024] }), 'gold/trabalho/perfis/ano=2024.parquet');
+});
+
+test('remuneração: média só com poucas ULPs de folga; massa abaixo de 1 centavo por valor é recusada', () => {
+  const exata = comRemuneracao();
+  assert.equal(lerPerfil(exata, 2024).estado, 'ok');
+  const ruido = comRemuneracao().map((r) => ({ ...r }));
+  ruido[1].remuneracao_media_dez = (ruido[1].remuneracao_media_dez as number) * (1 + 1e-9); // erro relativo bem acima de poucas ULPs
+  assert.equal(lerPerfil(ruido, 2024).estado, 'inconsistente');
+  const ulp = comRemuneracao().map((r) => ({ ...r }));
+  ulp[2].remuneracao_media_dez = (ulp[2].remuneracao_media_dez as number) * (1 + Number.EPSILON); // 1 ULP: tolerado
+  assert.equal(lerPerfil(ulp, 2024).estado, 'ok');
+  const pouca = comRemuneracao().map((r) => ({ ...r }));
+  pouca[2].massa_dez_centavos = 0;
+  pouca[2].remuneracao_media_dez = 0;
+  assert.equal(lerPerfil(pouca, 2024).estado, 'inconsistente'); // 1 valor positivo com massa 0: impossível
 });
