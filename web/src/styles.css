@@ -1199,3 +1199,28 @@ button.ia-historico-importar:focus-visible { outline: 2px solid var(--foco); out
 .trabalho-form .sugestoes li button { min-height: 40px; padding: 6px 8px; }
 .trabalho-form .trabalho-acao .botao { min-height: 44px; padding: 8px 22px; font-size: 14px; }
 .trabalho-form .campo input, .trabalho-form .campo select { min-height: 38px; font-size: 14px; }
+
+/* perfis da RAIS (raça/cor, escolaridade, tipos de vínculo): barras e tabela sem rolagem horizontal */
+.dist-perfil { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 9px; }
+.dist-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 3px; font-size: 14px; align-items: baseline; }
+.dist-nome { color: var(--tinta); overflow-wrap: anywhere; min-width: 0; }
+.dist-valor { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.dist-pct { color: var(--tinta-2); display: inline-block; min-width: 4.2em; }
+.dist-barra { grid-column: 1 / -1; height: 8px; border-radius: 4px; background: var(--superficie-2); overflow: hidden; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.dist-barra > span { display: block; height: 100%; background: var(--serie-1); border-radius: 4px; }
+.dist-ausente .dist-barra > span, .dist-desconhecido .dist-barra > span { background: var(--tinta-3); }
+.dist-zero .dist-nome, .dist-zero .dist-valor { color: var(--tinta-3); }
+.dist-detalhe { margin: 6px 0 10px; border: 1px solid var(--borda); border-radius: 8px; padding: 6px 12px; background: var(--superficie); }
+.dist-detalhe summary { cursor: pointer; color: var(--acao-texto); font-size: 14px; padding: 4px 0; }
+.dist-detalhe summary:focus-visible { outline: 2px solid var(--foco); outline-offset: 2px; }
+.dist-tabela { width: 100%; table-layout: fixed; border-collapse: collapse; margin-top: 6px; }
+.dist-tabela th:nth-child(2), .dist-tabela td:nth-child(2) { width: 6.5em; text-align: right; }
+.dist-tabela th:nth-child(3), .dist-tabela td:nth-child(3) { width: 4.6em; text-align: right; }
+.dist-tabela th { position: static; }
+.dist-tabela td { overflow-wrap: anywhere; font-variant-numeric: tabular-nums; vertical-align: top; }
+.dist-tabela .dist-zero td { color: var(--tinta-3); }
+.dist-grupo { display: block; color: var(--tinta-3); font-size: 12px; }
+.perfis-tudo { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; }
+.perfis-tudo .nota-base { margin: 0; }
+@media (max-width: 500px) { .dist-item { font-size: 13px; } .dist-tabela th:nth-child(2), .dist-tabela td:nth-child(2) { width: 5.6em; } }
+@media print { .dist-detalhe:not([open]) > :not(summary) { display: none; } .dist-item { break-inside: avoid; } }

@@ -13,7 +13,9 @@ function celulaCsv(v: Celula, decimal: string): string {
   if (v === null || v === undefined) return '';
   if (typeof v === 'number') return Number.isFinite(v) ? String(v).replace('.', decimal) : '';
   const s = String(v);
-  return /[";\n\r]/.test(s) || s.startsWith(' ') ? `"${s.replace(/"/g, '""')}"` : s;
+  // protege o delimitador efetivo (";" com decimal em vírgula, "," com decimal em ponto), ";" sempre, aspas e quebras de linha
+  const delimitador = decimal === ',' ? ';' : ',';
+  return /[";\n\r]/.test(s) || s.includes(delimitador) || s.startsWith(' ') ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
 /** CSV com os metadados no topo, uma linha em branco e a tabela. */

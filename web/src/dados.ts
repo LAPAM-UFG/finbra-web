@@ -15,6 +15,7 @@ import * as duckdb from '@duckdb/duckdb-wasm';
 import { t } from './idioma';
 import { SQL_IPCA_BASE } from './ia_moeda';
 import { indicador as indicadorSaude, type Indicador } from './saude_comum';
+import { caminhoPerfis, disponibilidadePerfis, escopoDoPerfil } from './trabalho_perfis';
 
 type Valor = string | number | boolean | null;
 export type Linha = Record<string, Valor>;
@@ -952,6 +953,25 @@ const rotasTrabalho: Record<string, (q: Params) => Promise<unknown>> = {
        WHERE ${filtro} AND s.ano = $ano::INTEGER
        ORDER BY s.empregos DESC`,
       p,
+    );
+  },
+
+  /**
+   * Perfis da RAIS (raça/cor, escolaridade, tipo de vínculo) de UM escopo e UM ano: lê só o Parquet pequeno do ano pedido
+   * (gold/trabalho/perfis, ordenado por escopo: leitura por Range). Sem a fonte no manifesto, sem o ano ou com recorte inválido,
+   * recusa: não há ano substituto nem zero no lugar de dado indisponível. O escopo é validado e entra como literal, sem cast na coluna.
+   */
+  async trab_perfis(q) {
+    const { manifesto } = await iniciar();
+    const ano = inteiro(q.ano);
+    if (!disponibilidadePerfis(manifesto.fontes?.rais_perfis, ano).ok) {
+      throw new Error(t(`perfis da RAIS indisponíveis para ${ano ?? 'o ano pedido'}`, `RAIS profiles unavailable for ${ano ?? 'the requested year'}`));
+    }
+    const escopo = escopoDoPerfil(q);
+    if (!escopo) throw new Error(t('recorte inválido para os perfis da RAIS', 'invalid scope for the RAIS profiles'));
+    return consultar(
+      `SELECT ano, variavel, codigo, vinculos, total FROM read_parquet(${arq(caminhoPerfis(ano as number))})
+       WHERE escopo = '${escopo.replace(/'/g, "''")}' ORDER BY variavel, codigo`,
     );
   },
 

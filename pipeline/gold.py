@@ -499,6 +499,10 @@ def fonte_trabalho(con):
         anos_esc = sorted(int(p.stem[4:]) for p in (pasta / "cubo_esc_porte").glob("ano=*.parquet"))
         if anos_esc:
             saida["rais_micro"]["esc_porte"] = anos_esc
+    # perfis agregados (trabalho_perfis.py): sem isto, refazer o manifesto apagaria a fonte
+    from trabalho_perfis import fonte_perfis
+
+    saida.update(fonte_perfis(pasta / "perfis"))
     return saida
 
 

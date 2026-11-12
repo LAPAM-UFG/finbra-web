@@ -176,6 +176,7 @@ Microdados do PDET (Ministério do Trabalho), baixados à mão do FTP para a pas
 | | |
 |---|---|
 | Totais do painel | `pipeline/trabalho.py`: `silver/trabalho` (somas por município, divisão CNAE e perfil) e `gold/trabalho` (páginas de mercado de trabalho) |
+| Perfis prontos do painel | `pipeline/trabalho_perfis.py`: raça/cor, escolaridade e tipos de vínculo dos ativos em 31/12, por município, UF e Brasil. Gera um Parquet por ano em `gold/trabalho/perfis`, com índice e manifesto candidato. Cada município concilia com `gold/trabalho/municipios.parquet`; categorias ignoradas e vazias permanecem na contagem. O navegador lê só o ano e o recorte escolhidos, sem abrir microdados |
 | Microdados | `pipeline/microdados.py`: uma linha por vínculo da RAIS (ativos ou não em 31/12), por estabelecimento e por movimentação do CAGED, com todas as colunas e nomes padronizados entre os anos. Fica em `E:/finbra/micro/silver/trabalho/micro/` (no HD externo; ~25–30 GB), em arquivos por ano e UF ordenados por município, CNAE e CBO. Sobe para o R2 com `py pipeline/r2.py enviar --raiz E:/finbra/micro --camadas silver` (o `indice.json` vai por último); o `baixar` os pula, a menos que se passe `--com-micro` |
 | Tabelas da consulta na web | o mesmo script soma os microdados em `gold/trabalho/cubo_uf/ano=AAAA.parquet` (UF × classe CNAE × CBO × sexo × situação × afastamento) e `gold/trabalho/cubo_mun/ano=AAAA.parquet` (município × divisão CNAE × grande grupo CBO × …), ~90 MB por ano; `py pipeline/microdados.py --so cubos` refaz só elas |
 | População | população de referência do IBGE em todos os anos (`silver/ibge_populacao.parquet`, de `externos.py`): a publicação do próprio ano (Censos 2010 e 2022, SIDRA 202 e 4709; estimativas de 1º de julho, SIDRA 6579) ou, no ano sem publicação (2023), a do ano anterior; `populacao_ano` diz qual entrou. A mesma regra de `indicadores.populacao_ibge` |
@@ -191,6 +192,15 @@ tabelas pré-somadas (médias, sem medianas; municípios só com divisão CNAE e
 
 Os arquivos públicos não identificam pessoas nem empresas: a unidade é o vínculo (quem tem dois empregos
 aparece duas vezes) e não há como seguir o mesmo trabalhador entre anos.
+
+Para atualizar os perfis depois de atualizar os microdados e os totais da RAIS, rode, por exemplo,
+`py pipeline/trabalho_perfis.py --micro E:/finbra/micro --base E:/finbra/data --saida E:/finbra/candidato_perfis_rais --anos 2024 2025`.
+O destino precisa estar separado das origens. Anos validados podem ser retomados; qualquer diferença na
+contagem municipal interrompe a geração. Confira com `py pipeline/testes_perfis.py`. Antes de publicar,
+concilie a entrada `fontes.rais_perfis` do manifesto candidato com o **manifesto remoto mais recente**,
+preservando as demais fontes. Envie apenas os novos Parquet e o índice; o manifesto vai por último,
+depois da conferência dos arquivos remotos. `gold.fonte_trabalho` preserva a fonte nas regenerações
+quando os agregados e o índice estão presentes na pasta de dados.
 
 ### Saúde (SIM, SINASC e população da SVS/MS)
 

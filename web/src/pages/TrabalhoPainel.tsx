@@ -17,6 +17,7 @@ import {
   calcularRais, faixaMeses, GRANDES_SETORES, somarCagedAno, valorExportado, type CagedAno, type Condicao, type PainelRais,
 } from '../trabalho_painel';
 import { IndiceSaude } from './SaudeDatasus';
+import { PerfisRais } from './TrabalhoPerfisRais';
 import {
   AvisoAno, AvisoRecorte, fonteCaged, fonteRais, MESES, NotaQuebra, notaPorMil, notaRemuneracao, notaSetores, SemDados, SETORES, useTrabalho,
 } from './Trabalho';
@@ -211,7 +212,14 @@ export function TrabalhoPainel() {
             <div className="kpis kpis-4">{cartoes('perfil')}</div>
             <p className="nota-base">{t('Percentuais sobre todos os vínculos ativos. Sexo, idade e escolaridade são os declarados na RAIS; vínculos com informação ausente continuam no denominador.',
               'Percentages over all active jobs. Sex, age and education are as declared in RAIS; jobs with missing information stay in the denominator.')}</p>
+          </>
+        )}
 
+        {/* raça/cor, escolaridade e tipos de vínculo: carregam à parte (um Parquet pequeno do ano), sem esperar nem travar os indicadores */}
+        <PerfisRais anoRais={anoRais} escopo={escopo} rotulo={rotulo} meta={meta} />
+
+        {rais && (
+          <>
             {titulo('atividades')}
             <div className="kpis kpis-4">{cartoes('atividades')}</div>
             <div className="grade-2">
@@ -325,8 +333,8 @@ export function TrabalhoPainel() {
 
             <section className="cartao" aria-labelledby="trabalho-resumo-t">
               <h3 id="trabalho-resumo-t">{t('Exportar resumo dos indicadores', 'Export indicator summary')}</h3>
-              <p className="nota-base">{t('Um arquivo com todos os indicadores dos cartões acima (valor, unidade, ano, fonte e condição do dado). Percentuais saem em pontos percentuais, como na tela. Os botões dos gráficos e da tabela de divisões exportam outros arquivos.',
-                'One file with every indicator card above (value, unit, year, source and data condition). Percentages come out in percentage points, as on screen. The chart and division-table buttons export other files.')}</p>
+              <p className="nota-base">{t('Um arquivo com os 30 indicadores principais (valor, unidade, ano, fonte e condição do dado). Percentuais saem em pontos percentuais, como na tela. As distribuições de raça/cor, escolaridade e tipo de vínculo têm exportação própria em cada seção. Os botões dos gráficos e da tabela de divisões exportam outros arquivos.',
+                'One file with the 30 main indicators (value, unit, year, source and data condition). Percentages come out in percentage points, as on screen. The race/colour, education and job-type distributions have their own export in each section. The chart and division-table buttons export other files.')}</p>
               {resumoCompleto ? (
             <BotoesExportar nome={`trabalho_painel_${anoRais}`} obter={() => ({
               colunas: [t('Bloco', 'Block'), t('Indicador', 'Indicator'), t('Valor', 'Value'), t('Unidade', 'Unit'), t('Ano', 'Year'), t('Fonte', 'Source'), t('Condição do dado', 'Data condition'), t('Nota', 'Note')],

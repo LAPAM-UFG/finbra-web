@@ -59,6 +59,8 @@ import { avisoDoContexto, chaveDoRastro, contaDoRastro, RASTRO, urlDemonstrativo
 import { periodoDe } from '../src/components/TabelaSerie';
 import { anosDoImunobiologico, contraMeta, metodoDoAno, paraCatalogo, paraLinhaVac, pctRazao, razaoDasSomas, separarPorMetodo, situacao, textoCobertura, type LinhaVac } from '../src/vacinacao_comum';
 import './painel.test';
+import { distribuicao, lerPerfil, superiorSomado } from '../src/trabalho_perfis';
+import './perfis.test'; // perfis da RAIS (raça/cor, escolaridade, vínculos): funções puras
 import './orientacao.test'; // regressões da orientação do mercado de trabalho (sem dados): rodam junto com esta suíte
 const require = createRequire(import.meta.url);
 const FETCH = globalThis.fetch; // alguns testes simulam o Worker trocando o fetch
@@ -73,8 +75,10 @@ const doGoldPublicado = (c: string) => !!GOLD_PUBLICADO && /^gold\/(saude\/|mani
 const VACINACAO_CANDIDATO = process.env.VACINACAO_CANDIDATO?.replaceAll('\\', '/');
 // Override opcional só para FNS e manifesto; demais arquivos respeitam DATA/GOLD_PUBLICADO.
 const FNS_CANDIDATO = process.env.FNS_CANDIDATO?.replaceAll('\\', '/');
+// PERFIS_CANDIDATO: pasta do candidato dos perfis da RAIS (gold/trabalho/perfis e gold/manifesto.json com fontes.rais_perfis), enquanto não for publicado
+const PERFIS_CANDIDATO = process.env.PERFIS_CANDIDATO?.replaceAll('\\', '/');
 const doFnsCandidato = (c: string) => !!FNS_CANDIDATO && /^gold\/(saude\/fns_[^/]+\.parquet$|manifesto\.json$)/.test(c);
-const onde = (c: string) => (doFnsCandidato(c) ? `${FNS_CANDIDATO}/${c}` : c.startsWith('silver/trabalho/micro/') ? `${MICRO}/${c}` : VACINACAO_CANDIDATO && c.startsWith('gold/saude/vacinacao') ? `${VACINACAO_CANDIDATO}/${c}` : doGoldPublicado(c) ? `${GOLD_PUBLICADO}/${c}` : `${DATA}/${c}`);
+const onde = (c: string) => (PERFIS_CANDIDATO && c.startsWith('gold/trabalho/perfis/') ? `${PERFIS_CANDIDATO}/${c}` : doFnsCandidato(c) ? `${FNS_CANDIDATO}/${c}` : c.startsWith('silver/trabalho/micro/') ? `${MICRO}/${c}` : VACINACAO_CANDIDATO && c.startsWith('gold/saude/vacinacao') ? `${VACINACAO_CANDIDATO}/${c}` : doGoldPublicado(c) ? `${GOLD_PUBLICADO}/${c}` : `${DATA}/${c}`);
 const rota = <T>(caminho: string, params: Record<string, string | number | undefined> = {}) => executar(caminho, params) as Promise<T>;
 type L = Record<string, number | string | null | boolean>;
 
@@ -111,6 +115,10 @@ before(async () => {
   db.open({ query: { castBigIntToDouble: true, castDecimalToDouble: true } }); // como no site (src/dados.ts)
   const { db: adb, con } = adaptar(db);
   const manifesto = JSON.parse(await readFile(onde('gold/manifesto.json'), 'utf8'));
+  if (PERFIS_CANDIDATO) {
+    const candidato = JSON.parse(await readFile(`${PERFIS_CANDIDATO}/gold/manifesto.json`, 'utf8'));
+    manifesto.fontes = { ...manifesto.fontes, rais_perfis: candidato.fontes?.rais_perfis };
+  }
   for (const [nome, arq] of Object.entries({
     entes: 'silver/entes.parquet', indicadores: 'gold/indicadores.parquet', escopos: 'gold/escopos.parquet',
     alertas: 'gold/alertas.parquet', faixas: 'gold/faixas.parquet', ipca: 'gold/ipca.parquet',
@@ -391,6 +399,17 @@ describe('exportação e busca', () => {
     const csv = paraCsv(tabela, ',');
     assert.ok(csv.startsWith('﻿'));
     assert.match(csv, /1,23456789;"x;y"/);
+  });
+
+  test('CSV: o delimitador efetivo é protegido nos dois idiomas, com aspas duplicadas e decimal só nos números', () => {
+    const t2 = { colunas: ['a', 'b', 'c'], linhas: [['CLT, urban, open-ended', 'diz "oi"; tchau', 0.5], ['sem separador', 'a,b', null]], metadados: [['Nota', 'x, y'] as [string, string]] };
+    const en = paraCsv(t2, '.').split('\r\n');
+    assert.equal(en[0], '﻿Nota,"x, y"'); // BOM + metadado com vírgula protegida
+    assert.equal(en[3], '"CLT, urban, open-ended","diz ""oi""; tchau",0.5'); // vírgula do texto protegida; ponto decimal
+    assert.equal(en[4], 'sem separador,"a,b",');
+    const pt = paraCsv(t2, ',').split('\r\n');
+    assert.equal(pt[3], 'CLT, urban, open-ended;"diz ""oi""; tchau";0,5'); // em PT a vírgula do texto não separa campos
+    assert.equal(pt[4], 'sem separador;a,b;');
   });
 
   test('XLSX: zip válido com CRC correto', () => {
@@ -1305,6 +1324,33 @@ describe('Excel com várias abas', () => {
       assert.ok(!/[:\\/?*[\]]/.test(n), n);
     }
     assert.ok(texto.includes('xl/worksheets/sheet4.xml'));
+  });
+});
+describe('perfis da RAIS (raça/cor, escolaridade, tipo de vínculo)', () => {
+  const semPerfis = !PERFIS_CANDIDATO || !existsSync(`${PERFIS_CANDIDATO}/gold/trabalho/perfis/ano=2024.parquet`);
+
+  test('Goiânia 2024: contagens do arquivo batem com a referência independente e com os cartões', { skip: semPerfis }, async () => {
+    const l = await rota<L[]>('trab_perfis', { ente: 5208707, ano: 2024 });
+    const p = lerPerfil(l as any, 2024);
+    assert.equal(p.estado, 'ok');
+    if (p.estado !== 'ok') return;
+    assert.equal(p.total, 728780);
+    assert.equal(superiorSomado(distribuicao(p, 'escolaridade', 'pt')).vinculos, 257862);
+    assert.deepEqual([...p.contagens.vinculo_mte.entries()].sort(), [['1', 505719], ['2', 204476], ['3', 18585]]);
+    const serie = await rota<L[]>('trab_serie', { ente: 5208707 });
+    if (existsSync(`${DATA}/gold/trabalho/municipios.parquet`)) assert.equal(serie.find((r) => r.ano === 2024)!.empregos, 728780);
+  });
+
+  test('UF e Brasil: dimensões fecham no total; ano ou recorte inválido recusa em vez de zerar', { skip: semPerfis }, async () => {
+    for (const q of [{ uf: 'GO' }, {}]) {
+      const p = lerPerfil((await rota<L[]>('trab_perfis', { ...q, ano: 2024 })) as any, 2024);
+      assert.equal(p.estado, 'ok');
+    }
+    await assert.rejects(rota('trab_perfis', { ente: 5208707, ano: 2009 }));
+    await assert.rejects(rota('trab_perfis', { ente: "5208707' OR 1=1 --", ano: 2024 }));
+    await assert.rejects(rota('trab_perfis', { uf: 'ZZ', ano: 2024 }));
+    // município inexistente no arquivo: sem escopo (não é zero)
+    assert.equal(lerPerfil((await rota<L[]>('trab_perfis', { ente: 1234567, ano: 2024 })) as any, 2024).estado, 'sem_escopo');
   });
 });
 describe('mercado de trabalho (RAIS e CAGED)', () => {
