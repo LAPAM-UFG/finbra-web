@@ -58,6 +58,7 @@ import { gravarEstadoEvolucao, lerEstadoEvolucao, MAX_COMPARADOS, posicaoRelativ
 import { avisoDoContexto, chaveDoRastro, contaDoRastro, RASTRO, urlDemonstrativo, urlDemonstrativos, valorAnexo, type ChaveRastro } from '../src/lrf_rastro';
 import { periodoDe } from '../src/components/TabelaSerie';
 import { anosDoImunobiologico, contraMeta, metodoDoAno, paraCatalogo, paraLinhaVac, pctRazao, razaoDasSomas, separarPorMetodo, situacao, textoCobertura, type LinhaVac } from '../src/vacinacao_comum';
+import './painel.test';
 import './orientacao.test'; // regressões da orientação do mercado de trabalho (sem dados): rodam junto com esta suíte
 const require = createRequire(import.meta.url);
 const FETCH = globalThis.fetch; // alguns testes simulam o Worker trocando o fetch

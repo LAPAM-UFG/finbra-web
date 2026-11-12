@@ -20,7 +20,8 @@ import { SaudeFinanciamento } from './pages/SaudeFinanciamento';
 import { ReceitasEvolucao, ReceitasVisaoGeral } from './pages/Receitas';
 import { Educacao, RemuneracaoEducacao, Saude } from './pages/SaudeEducacao';
 import { Socioeconomico } from './pages/Socioeconomico';
-import { TrabalhoCaged, TrabalhoEvolucao, TrabalhoRankings, TrabalhoVisaoGeral } from './pages/Trabalho';
+import { TrabalhoCaged, TrabalhoEvolucao, TrabalhoRankings } from './pages/Trabalho';
+import { TrabalhoPainel } from './pages/TrabalhoPainel';
 import { TrabalhoConsulta } from './pages/TrabalhoConsulta';
 import { TrabalhoEstabelecimentos } from './pages/TrabalhoEstabelecimentos';
 import { TrabalhoRemuneracao } from './pages/TrabalhoRemuneracao';
@@ -49,11 +50,11 @@ const menu = (): [string, [string, string][]][] => [
 
 /** Área de mercado de trabalho (RAIS e Novo CAGED), em /trabalho. */
 const menuTrabalho = (): [string, [string, string][]][] => [
-  ['RAIS', [['/trabalho', t('Visão geral', 'Overview')], ['/trabalho/evolucao', t('Evolução', 'Trends')], ['/trabalho/rankings', 'Rankings'],
-    ['/trabalho/estabelecimentos', t('Estabelecimentos', 'Establishments')]]],
-  [t('Análises do recorte', 'Scope analysis'), [['/trabalho/consulta', t('Consulta personalizada', 'Custom query')], ['/trabalho/perfil', t('Perfil do recorte', 'Scope profile')],
-    ['/trabalho/remuneracao', t('Remuneração e desigualdades', 'Pay and inequality')]]],
-  ['CAGED', [['/trabalho/caged', t('Empregos mês a mês', 'Jobs month by month')]]],
+  [t('Painel', 'Dashboard'), [['/trabalho', t('Painel de indicadores', 'Indicator dashboard')]]],
+  [t('Exploração avançada', 'Advanced exploration'), [['/trabalho/evolucao', t('Evolução', 'Trends')], ['/trabalho/rankings', 'Rankings'],
+    ['/trabalho/estabelecimentos', t('Estabelecimentos', 'Establishments')], ['/trabalho/consulta', t('Consulta personalizada', 'Custom query')],
+    ['/trabalho/perfil', t('Perfil do recorte', 'Scope profile')], ['/trabalho/remuneracao', t('Remuneração e desigualdades', 'Pay and inequality')],
+    ['/trabalho/caged', t('CAGED mês a mês', 'CAGED month by month')]]],
   [t('Metodologia', 'Methodology'), [['/trabalho/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
 ];
 
@@ -259,7 +260,7 @@ export function App() {
               <Route path="/educacao" element={<Educacao />} />
               <Route path="/educacao/profissionais" element={<RemuneracaoEducacao />} />
               <Route path="/saude" element={<Saude />} />
-              <Route path="/trabalho" element={<TrabalhoVisaoGeral />} />
+              <Route path="/trabalho" element={<TrabalhoPainel />} />
               <Route path="/trabalho/evolucao" element={<TrabalhoEvolucao />} />
               <Route path="/trabalho/caged" element={<TrabalhoCaged />} />
               <Route path="/trabalho/rankings" element={<TrabalhoRankings />} />

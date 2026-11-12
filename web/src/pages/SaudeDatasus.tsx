@@ -214,7 +214,7 @@ function BlocoSiops({ ano, ultimo }: { ano: number; ultimo: boolean }) {
  * um bloco ausente nunca tem link. Com âncora no endereço (acesso direto ou recarga), a página rola até o bloco e leva o
  * foco a ele assim que existir, e refaz a rolagem se outro bloco carregar acima dele, até o usuário interagir.
  */
-function IndiceSaude({ raiz }: { raiz: React.RefObject<HTMLElement | null> }) {
+export function IndiceSaude({ raiz }: { raiz: React.RefObject<HTMLElement | null> }) {
   const { hash, search, key } = useLocation(); // a chave muda a cada navegação, inclusive ao clicar de novo no mesmo link
   const [itens, setItens] = useState<{ id: string; rotulo: string }[]>([]);
   const interagiu = useRef(false);

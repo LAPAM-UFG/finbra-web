@@ -5,19 +5,17 @@ import { Dica } from '../components/Dica';
 import { BotoesExportar } from '../components/Exportar';
 import { barras, CartaoGrafico, Grafico, linhas } from '../components/Grafico';
 import { Estado, Kpi } from '../components/Kpi';
-import { AjudaTrabalho } from '../components/AjudaTrabalho';
-import { PerguntasTrabalho, TodasAnalises } from '../components/PerguntasTrabalho';
 import { EtiquetasRecorte, paramsConsulta, useAnosConsulta } from '../components/RecorteTrabalho';
 import { TabelaSerie } from '../components/TabelaSerie';
 import { BarraFiltros, useDados, useFiltros } from '../contexto';
 import { AlternarVista, EvolucaoPosicao } from '../components/EvolucaoPosicao';
-import { cancelarConsultasTrabalho, fonteConsulta, type Classificacao } from '../dados';
+import { cancelarConsultasTrabalho, type Classificacao } from '../dados';
 import { div, numero, numero1, pct, reais, reaisCurto, reaisExato } from '../format';
 import { num } from '../hooks';
 import { local, t } from '../idioma';
-import { concentracao, marcasQuebra, notaComparabilidade, quebrasEntre, temFiltrosDeRecorte, useRecorte } from '../trabalho_comum';
+import { marcasQuebra, notaComparabilidade, quebrasEntre, temFiltrosDeRecorte, useRecorte } from '../trabalho_comum';
 
-const SETORES = (): [string, string][] => [
+export const SETORES = (): [string, string][] => [
   ['agropecuaria', t('Agropecuária', 'Agriculture')],
   ['industria', t('Indústria', 'Industry')],
   ['construcao', t('Construção', 'Construction')],
@@ -26,32 +24,32 @@ const SETORES = (): [string, string][] => [
   ['adm_publica', t('Adm. pública, defesa e seguridade (CNAE 84)', 'Public adm., defence and social security (CNAE 84)')],
 ];
 
-const fonteRais = () => t(
+export const fonteRais = () => t(
   'RAIS (Relação Anual de Informações Sociais), Ministério do Trabalho e Emprego, microdados públicos sem identificação: vínculos formais ativos em 31 de dezembro, por município do estabelecimento. Processamento: LAPAM/UFG.',
   'RAIS (Annual Social Information Report), Ministry of Labour and Employment, public de-identified microdata: formal jobs active on December 31, by municipality of the establishment. Processing: LAPAM/UFG.',
 );
-const fonteCaged = () => t(
+export const fonteCaged = () => t(
   'Novo CAGED, Ministério do Trabalho e Emprego: admissões e desligamentos de empregos formais celetistas, mês a mês. Série com ajustes: declarações no prazo, mais as fora do prazo, menos as exclusões, pela competência da movimentação.',
   'New CAGED, Ministry of Labour and Employment: monthly hirings and separations of formal CLT jobs. Adjusted series: on-time filings, plus late filings, minus exclusions, by the month of the movement.',
 );
-const notaSetores = () => t(
+export const notaSetores = () => t(
   'Grandes setores pela divisão da CNAE 2.0 (atividade do estabelecimento): agropecuária (01–03), indústria (05–39, inclui extrativa, energia e saneamento), construção (41–43), comércio (45–47), administração pública, defesa e seguridade social (84) e serviços (demais). A divisão 84 é uma atividade: não reúne todo o setor público, que também aparece em educação, saúde e outras atividades. Para o setor público pela natureza jurídica, use a Consulta personalizada (setor institucional).',
   'Broad sectors by CNAE 2.0 division (establishment activity): agriculture (01–03), industry (05–39, including mining, energy and sanitation), construction (41–43), trade (45–47), public administration, defence and social security (84) and services (all others). Division 84 is an activity: it does not cover the whole public sector, which also appears in education, health and other activities. For the public sector by legal nature, use the Custom query (institutional sector).',
 );
-const notaRemuneracao = () => t(
+export const notaRemuneracao = () => t(
   'Remuneração média de dezembro, como no PDET/MTE: soma das remunerações nominais de dezembro ÷ todos os vínculos ativos em 31/12. Quem está ativo sem valor de dezembro conta como zero (entra no denominador), e o painel mostra quantos são: onde há muitos, a média fica abaixo do salário de quem tem o valor. Em grupos, massa ÷ ativos do grupo, nunca média das médias. Remuneração real: × (IPCA de dezembro do ano-base ÷ IPCA de dezembro do ano).',
   'Average December pay, as in PDET/MTE: sum of nominal December pay ÷ all jobs active on Dec 31. Active jobs without a December value count as zero (they stay in the denominator), and the dashboard shows how many there are: where there are many, the average falls below the pay of those with a value. For groups, payroll ÷ the group’s active jobs, never an average of averages. Real pay: × (base-year December IPCA ÷ December IPCA of the year).',
 );
-const notaPorMil = (ano: number | undefined) => t(
+export const notaPorMil = (ano: number | undefined) => t(
   `Vínculos ativos em 31/12 no município do estabelecimento ÷ população residente do mesmo ano (${ano ?? ''}) × 1.000. A população é a do painel de finanças desde 2013 e a do IBGE antes (Censo 2010 e estimativas). Não é taxa de ocupação, de formalização ou de desemprego: uma pessoa pode ter mais de um vínculo e trabalhar fora do município onde mora, e o valor pode passar de 1.000.`,
   `Jobs active on Dec 31 in the establishment’s municipality ÷ resident population of the same year (${ano ?? ''}) × 1,000. Population is the finance dashboard’s from 2013 and IBGE’s before (2010 Census and estimates). It is not an employment, formality or unemployment rate: a person may hold more than one job and work outside the municipality where they live, and the value can exceed 1,000.`,
 );
 
-const mesAno = (aaaamm: number) => `${String(aaaamm % 100).padStart(2, '0')}/${Math.floor(aaaamm / 100)}`;
-const MESES = () => t('jan fev mar abr mai jun jul ago set out nov dez', 'Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec').split(' ');
+export const mesAno = (aaaamm: number) => `${String(aaaamm % 100).padStart(2, '0')}/${Math.floor(aaaamm / 100)}`;
+export const MESES = () => t('jan fev mar abr mai jun jul ago set out nov dez', 'Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec').split(' ');
 
 /** Escopo das páginas de trabalho a partir dos filtros: município, UF (municípios dela) ou Brasil. */
-function useTrabalho() {
+export function useTrabalho() {
   const { meta } = useDados();
   const f = useFiltros();
   const rais = meta.fontes.rais as { anos?: number[] } | undefined;
@@ -77,11 +75,11 @@ function useTrabalho() {
   return { f, meta, anos, anoRais, caged, escopo, rotulo, municipio, temDados: anos.length > 0 };
 }
 
-function SemDados() {
+export function SemDados() {
   return <p className="vazio">{t('Os dados da RAIS e do CAGED ainda não foram publicados.', 'RAIS and CAGED data have not been published yet.')}</p>;
 }
 
-function AvisoAno({ anoRais }: { anoRais?: number }) {
+export function AvisoAno({ anoRais }: { anoRais?: number }) {
   const f = useFiltros();
   if (!f.anoForaDaBase || !anoRais) return null;
   return (
@@ -93,7 +91,7 @@ function AvisoAno({ anoRais }: { anoRais?: number }) {
 }
 
 /** Esta página usa tabelas agregadas por município: o recorte (ocupação, atividade, perfil) não se aplica a ela, e a página diz isso em vez de ignorá-lo em silêncio. */
-function AvisoRecorte({ pagina }: { pagina: string }) {
+export function AvisoRecorte({ pagina }: { pagina: string }) {
   const { recorte, definir } = useRecorte();
   const { search } = useLocation();
   if (!temFiltrosDeRecorte(recorte)) return null;
@@ -107,7 +105,7 @@ function AvisoRecorte({ pagina }: { pagina: string }) {
   );
 }
 
-function NotaQuebra({ anos }: { anos: number[] }) {
+export function NotaQuebra({ anos }: { anos: number[] }) {
   const qs = anos.length ? quebrasEntre(Math.min(...anos), Math.max(...anos)) : [];
   if (!qs.length) return null;
   return (
@@ -117,143 +115,6 @@ function NotaQuebra({ anos }: { anos: number[] }) {
       {t('Nos gráficos, linhas tracejadas marcam esses anos; variações que os atravessam são observadas e podem refletir cobertura ou classificação, não só o mercado de trabalho.',
         'In the charts, dashed lines mark these years; changes across them are observed and may reflect coverage or classification, not only the labour market.')}
     </p>
-  );
-}
-
-// ---------------- visão geral ----------------
-
-export function TrabalhoVisaoGeral() {
-  const { anoRais, escopo, rotulo, temDados, meta, caged } = useTrabalho();
-  const serie = useApi<Linha[]>(temDados ? 'trab_serie' : null, escopo);
-  const setores = useApi<Linha[]>(temDados && anoRais ? 'trab_setores' : null, { ...escopo, ano: anoRais });
-  const [todos, setTodos] = useState(false);
-  const a = serie.dados?.find((r) => r.ano === anoRais);
-  const ant = serie.dados?.find((r) => r.ano === (anoRais ?? 0) - 1);
-  const empregos = num(a?.empregos);
-  const porMil = div(num(a?.empregos_com_populacao), num(a?.populacao));
-  const nRem = num(a?.n_rem_dez);
-  const fora = empregos !== null && nRem !== null ? empregos - nRem : null;
-  const variacao = div((empregos ?? 0) - (num(ant?.empregos) ?? 0), num(ant?.empregos));
-  const quebra = anoRais ? quebrasEntre(anoRais - 1, anoRais)[0] : undefined;
-  const lista = setores.dados ?? [];
-  const totalSet = lista.reduce((s, r) => s + (num(r.empregos) ?? 0), 0);
-  // concentração com TODAS as divisões do território (não só as 12 da tela); só com a tabela carregada
-  const conc = useMemo(() => (setores.dados ? concentracao(setores.dados.map((r) => ({ nome: `${r.divisao} · ${String(r.divisao_nome ?? r.divisao)}`, valor: num(r.empregos) }))) : null),
-    [setores.dados]);
-  const { busca } = useRecorte();
-  const micro = fonteConsulta(escopo) === 'micro';
-
-  const opcaoSetores = useMemo(() => barras(
-    SETORES().map(([, n]) => n), SETORES().map(([k]) => num(a?.[`empregos_${k}`])), (v) => numero(v), true,
-  ), [serie.dados, anoRais]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  if (!temDados) return <><h2 className="titulo-pagina">{t('Mercado de trabalho', 'Labour market')}</h2><SemDados /></>;
-  return (
-    <>
-      <h2 className="titulo-pagina">{t('Mercado de trabalho: visão geral', 'Labour market: overview')}</h2>
-      <p className="subtitulo">{rotulo} · RAIS {anoRais} · {t('vínculos formais ativos em 31/12', 'formal jobs active on Dec 31')} <Dica rotulo={t('Fonte', 'Source')}>{fonteRais()}</Dica></p>
-      <BarraFiltros />
-      <AvisoAno anoRais={anoRais} />
-      <AvisoRecorte pagina={t('a visão geral', 'the overview')} />
-      <PerguntasTrabalho busca={busca} micro={micro} temCaged={!!caged} temIndicadores={!!a} />
-      <AjudaTrabalho />
-      <Estado carregando={serie.carregando} erro={serie.erro} tentarNovamente={serie.recarregar}
-        vazio={!serie.carregando && !a && t('Sem vínculos na RAIS para este recorte.', 'No RAIS jobs for this scope.')} />
-      {a && (
-        <>
-          <div className="kpis kpis-4" id="trabalho-indicadores" tabIndex={-1}>
-            <Kpi rotulo={t('Vínculos formais ativos (31/12)', 'Formal jobs active (Dec 31)')} valor={numero(empregos)}
-              nota={ant ? <>{t(`${pct(variacao)} sobre ${anoRais! - 1}`, `${pct(variacao)} on ${anoRais! - 1}`)}{quebra && <> · <span title={quebra.texto}>{t('variação observada; atravessa a quebra de ', 'observed change; crosses the break of ')}{quebra.ano}</span></>}</> : undefined} />
-            <Kpi rotulo={t('Vínculos por mil habitantes', 'Jobs per thousand inhabitants')} valor={porMil !== null ? numero(1000 * porMil) : '–'}
-              nota={t(`população de ${anoRais}; não é taxa de ocupação`, `${anoRais} population; not an employment rate`)}
-              dica={<Dica rotulo={t('Fórmula', 'Formula')}>{notaPorMil(anoRais)}</Dica>} />
-            <Kpi rotulo={t('Remuneração média de dezembro', 'Average December pay')} valor={reaisExato(num(a.remuneracao_media))}
-              nota={`${t('Real', 'Real')} (R$ dez/${meta.baseIpca}): ${reaisExato(num(a.remuneracao_media_real))} · ${t('regra do PDET', 'PDET rule')}`}
-              dica={<Dica rotulo={t('Fórmula', 'Formula')}>{notaRemuneracao()}</Dica>} />
-            <Kpi rotulo={t('Ativos sem remuneração de dezembro', 'Active jobs without December pay')} valor={`${numero(fora)} (${pct(div(fora, empregos))})`}
-              nota={t(`contam como zero na média; ${numero(nRem)} têm o valor`, `counted as zero in the average; ${numero(nRem)} have the value`)} />
-            <Kpi rotulo={t('Massa salarial de dezembro', 'December payroll')} valor={reais(num(a.massa_dez))} nota={t('nominal, soma dos valores informados', 'nominal, sum of reported values')} />
-            <Kpi rotulo={t('Mulheres', 'Women')} valor={pct(div(num(a.mulheres), empregos))}
-              nota={t(`remuneração média das mulheres = ${pct(div(num(a.remuneracao_mulheres), num(a.remuneracao_homens)), 0)} da dos homens (diferença observada)`,
-                `women’s average pay = ${pct(div(num(a.remuneracao_mulheres), num(a.remuneracao_homens)), 0)} of men’s (observed difference)`)} />
-            <Kpi rotulo={t('Atividade adm. pública (CNAE 84)', 'Public administration activity (CNAE 84)')} valor={pct(div(num(a.empregos_adm_publica), empregos))}
-              nota={t('dos vínculos; não é todo o setor público', 'of jobs; not the whole public sector')} dica={<Dica rotulo={t('Classificação', 'Classification')}>{notaSetores()}</Dica>} />
-            <Kpi rotulo={t('Estabelecimentos com vínculos ativos', 'Establishments with active jobs')} valor={numero(num(a.estabelecimentos))}
-              nota={t(`ensino superior completo: ${pct(div(num(a.superior), empregos))} dos vínculos`, `college degree: ${pct(div(num(a.superior), empregos))} of jobs`)} />
-          </div>
-          {quebra && <NotaQuebra anos={[anoRais! - 1, anoRais!]} />}
-        </>
-      )}
-      {a && (
-        <div className="grade-2">
-          <CartaoGrafico titulo={t('Vínculos por grande setor (atividade do estabelecimento)', 'Jobs by broad sector (establishment activity)')} desc={`RAIS ${anoRais}`}
-            acoes={<Dica rotulo={t('Classificação', 'Classification')}>{notaSetores()}</Dica>}>
-            <Grafico opcao={opcaoSetores} nome="trabalho_setores" />
-          </CartaoGrafico>
-          <section className="cartao">
-            <div className="cabeca-cartao">
-              <div>
-                <h3>{t('Atividades que mais empregam', 'Top employing activities')}</h3>
-                <p className="desc">{t('Divisões da CNAE 2.0', 'CNAE 2.0 divisions')} · RAIS {anoRais}</p>
-              </div>
-              <BotoesExportar nome={`trabalho_setores_${anoRais}`} obter={() => ({
-                colunas: [t('Divisão', 'Division'), t('Atividade', 'Activity'), t('Seção', 'Section'), t('Vínculos ativos', 'Active jobs'),
-                  t('Participação', 'Share'), t('Remuneração média (dez, nominal)', 'Average pay (Dec, nominal)')],
-                linhas: lista.map((r) => [r.divisao, r.divisao_nome, r.secao_nome, r.empregos, div(num(r.empregos), totalSet), r.remuneracao_media]),
-                metadados: [[t('Recorte', 'Scope'), rotulo], [t('Ano', 'Year'), String(anoRais)], [t('Universo', 'Universe'), t('vínculos ativos em 31/12', 'jobs active on Dec 31')],
-                  [t('Linhas', 'Rows'), t(`todas as ${lista.length} divisões (a tela mostra 12 de início)`, `all ${lista.length} divisions (the screen first shows 12)`)],
-                  [t('Fórmula', 'Formula'), notaRemuneracao()], [t('Fonte', 'Source'), fonteRais()], [t('Versão da base', 'Data version'), meta.geradoEm]],
-              })} />
-            </div>
-            <Estado carregando={setores.carregando} erro={setores.erro} tentarNovamente={setores.recarregar} />
-            {lista.length > 0 && (
-              <div className="rolagem">
-                <table className="tabela-fixa">
-                  <thead><tr><th>{t('Atividade', 'Activity')}</th><th>{t('Vínculos', 'Jobs')}</th><th>%</th><th>{t('Remuneração', 'Pay')}</th></tr></thead>
-                  <tbody>
-                    {(todos ? lista : lista.slice(0, 12)).map((r) => (
-                      <tr key={String(r.divisao)}>
-                        <td title={`${r.divisao} · ${r.secao_nome ?? ''}`}>{r.divisao} · {String(r.divisao_nome ?? r.divisao)}</td>
-                        <td>{numero(num(r.empregos))}</td><td>{pct(div(num(r.empregos), totalSet))}</td>
-                        <td>{reaisExato(num(r.remuneracao_media))}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            {lista.length > 12 && (
-              <p className="legenda-tabela"><button className="limpar" onClick={() => setTodos(!todos)}>
-                {todos ? t('mostrar menos', 'show fewer') : t(`mostrar as ${lista.length} atividades`, `show all ${lista.length} activities`)}
-              </button></p>
-            )}
-          </section>
-        </div>
-      )}
-      {a && conc && (
-        <section className="cartao">
-          <div className="cabeca-cartao">
-            <div>
-              <h3>{t('Concentração das atividades', 'Activity concentration')}</h3>
-              <p className="desc">{t('Divisões da CNAE 2.0', 'CNAE 2.0 divisions')} · {rotulo} · RAIS {anoRais}</p>
-            </div>
-            <Dica rotulo={t('Fórmula', 'Formula')}>{t(
-              `Participação de cada divisão = vínculos ativos da divisão ÷ vínculos ativos de todas as divisões do território (${conc.n} divisões com vínculos, ${numero(conc.total)} vínculos). HHI = soma dos quadrados das participações (de 0 a 1; aqui ×10.000). Número efetivo de atividades = 1 ÷ HHI: quantas divisões do mesmo tamanho teriam a mesma concentração. Mede a distribuição dos vínculos entre atividades do estabelecimento; não diz se a economia local é mais ou menos diversificada em valor, produção ou empresas.`,
-              `Share of each division = active jobs in the division ÷ active jobs in all divisions of the territory (${conc.n} divisions with jobs, ${numero(conc.total)} jobs). HHI = sum of squared shares (0 to 1; here ×10,000). Effective number of activities = 1 ÷ HHI: how many equal-sized divisions would give the same concentration. It measures how jobs are spread across establishment activities; it does not say whether the local economy is more or less diversified in value, output or firms.`,
-            )}</Dica>
-          </div>
-          <div className="kpis kpis-4">
-            <Kpi rotulo={t('3 maiores divisões', 'Top 3 divisions')} valor={pct(conc.parteTop3)}
-              nota={conc.top3.map((x) => `${x.nome.split(' · ')[0]} ${pct(x.parte)}`).join(' · ')} />
-            <Kpi rotulo="HHI (0 – 10.000)" valor={numero(Math.round(conc.hhi * 10000))} nota={t('soma dos quadrados das participações × 10.000', 'sum of squared shares × 10,000')} />
-            <Kpi rotulo={t('Número efetivo de atividades', 'Effective number of activities')} valor={numero1(conc.efetivo)}
-              nota={t(`1 ÷ HHI; de ${conc.n} divisões com vínculos`, `1 ÷ HHI; out of ${conc.n} divisions with jobs`)} />
-          </div>
-          <p className="legenda-tabela">{conc.top3.map((x) => x.nome).join(' · ')}. {t('A divisão 84 é uma atividade e não equivale ao setor público.', 'Division 84 is an activity and is not the public sector.')}</p>
-        </section>
-      )}
-      {a && <TodasAnalises busca={busca} micro={micro} />}
-    </>
   );
 }
 
