@@ -16,6 +16,8 @@ import { t } from './idioma';
 import { SQL_IPCA_BASE } from './ia_moeda';
 import { indicador as indicadorSaude, type Indicador } from './saude_comum';
 import { caminhoPerfis, disponibilidadePerfis, escopoDoPerfil, perfisComRemuneracao } from './trabalho_perfis';
+import { CURADORIA } from './munic_curadoria';
+import { ARQUIVOS_PAINEL, edicoesCuradas, lerEscolhas, paresPedidos, selecionar, usarArquivosLeves } from './munic_painel';
 
 type Valor = string | number | boolean | null;
 export type Linha = Record<string, Valor>;
@@ -1516,6 +1518,64 @@ const rotasMunic: Record<string, (q: Params) => Promise<unknown>> = {
        WHERE r.pesquisa = $pesquisa AND r.ano = $ano::INTEGER AND r.cod = $cod::INTEGER`,
       { pesquisa: pesquisaMunic(q), ano: inteiro(q.ano), cod: inteiro(q.cod) },
     );
+  },
+
+  /**
+   * Painel automático de gestão pública: TODOS os cartões numa rota só (não uma consulta por indicador). Lê do agregado o
+   * Brasil e a UF e, para um município ou governo estadual, só as respostas das variáveis curadas (filtro por edição e
+   * variável, para ler poucos grupos de linhas por Range). As edições e variáveis vêm da curadoria (munic_curadoria.ts), nunca
+   * do endereço; pesquisa, edição, UF e código inválidos recusam, sem cair no Brasil. Devolve também o universo de cada
+   * edição (território por edição) e o território achado, ou null se o código não existe.
+   */
+  async munic_painel(q) {
+    await tabelasMunic();
+    const sp = new URLSearchParams();
+    for (const [k, nome] of [['pesq', 'pesquisa'], ['ano', 'ano'], ['uf', 'uf'], ['cod', 'cod']] as const) if (q[nome] !== undefined && q[nome] !== null && q[nome] !== '') sp.set(k, String(q[nome]));
+    const esc = lerEscolhas(sp, edicoesCuradas(CURADORIA));
+    if (!esc.ok) throw new Error(t(`escolha inválida (${esc.erro}): ${esc.valor}`, `invalid choice (${esc.erro}): ${esc.valor}`));
+    const pesquisa = esc.pesquisa;
+    const sel = selecionar(CURADORIA, pesquisa, esc.modo);
+    const pares = paresPedidos(sel);
+    const vazio = { agregados: [], respostas: [], universo: [], territorio: null };
+    if (!pares.size) return vazio;
+    const seguro = /^[A-Za-z0-9]+$/;
+    for (const vars of pares.values()) for (const v of vars) if (!seguro.test(v)) throw new Error(`variável curada inválida: ${v}`);
+    const grupos = [...pares].map(([ano, vars]) => `(ano = ${Number(ano)} AND var IN (${vars.map((v) => `'${v}'`).join(', ')}))`).join(' OR ');
+    // cópias leves (só os pares da curadoria, mesmas colunas e linhas) quando o manifesto as declara e cobrem TODOS os pares pedidos; senão, os gold completos
+    const { manifesto } = await iniciar();
+    const leve = usarArquivosLeves(manifesto.fontes?.munic_painel, pares, pesquisa);
+    const arqAgregados = arq(leve ? ARQUIVOS_PAINEL.agregados : 'gold/munic/agregados.parquet');
+    const arqRespostas = arq(leve ? ARQUIVOS_PAINEL.respostas : 'gold/munic/respostas.parquet');
+    let territorio: Linha | null = null;
+    let uf = esc.escopo.tipo === 'uf' ? esc.escopo.uf : '';
+    if (esc.escopo.tipo === 'territorio') {
+      [territorio = null] = await consultar(
+        `SELECT cod, nome, uf, faixa, populacao FROM munic_territorio WHERE pesquisa = $pesquisa AND cod = $cod::INTEGER ORDER BY ano DESC LIMIT 1`,
+        { pesquisa, cod: esc.escopo.cod },
+      );
+      if (!territorio) return { ...vazio, territorio: null };
+      if (pesquisa === 'munic') uf = String(territorio.uf);
+    }
+    const recortes = `(corte = 'brasil' AND grupo = 'BR')${uf ? ` OR (corte = 'uf' AND grupo = $uf)` : ''}`;
+    const agregados = await consultar(
+      `SELECT ano::INTEGER AS ano, var, corte, grupo, valor_txt, valida, n::DOUBLE AS n, soma, media
+       FROM read_parquet(${arqAgregados})
+       WHERE pesquisa = $pesquisa AND (${grupos}) AND (${recortes})`,
+      uf ? { pesquisa, uf } : { pesquisa },
+    );
+    const respostas = esc.escopo.tipo === 'territorio'
+      ? await consultar(
+        `SELECT ano::INTEGER AS ano, var, valor_txt, valor_num, valida FROM read_parquet(${arqRespostas})
+         WHERE pesquisa = $pesquisa AND cod = $cod::INTEGER AND (${grupos})`,
+        { pesquisa, cod: esc.escopo.cod },
+      )
+      : [];
+    const universo = await consultar(
+      `SELECT ano::INTEGER AS ano, count(*)::INTEGER AS territorios, (count(*) FILTER (uf = $uf))::INTEGER AS territorios_uf
+       FROM munic_territorio WHERE pesquisa = $pesquisa AND ano IN (${[...pares.keys()].map(Number).join(', ')}) GROUP BY ano`,
+      { pesquisa, uf },
+    );
+    return { agregados, respostas, universo, territorio };
   },
 };
 

@@ -61,6 +61,9 @@ import { anosDoImunobiologico, contraMeta, metodoDoAno, paraCatalogo, paraLinhaV
 import './painel.test';
 import { distribuicao, lerPerfil, superiorSomado } from '../src/trabalho_perfis';
 import './perfis.test'; // perfis da RAIS (raça/cor, escolaridade, vínculos): funções puras
+import './munic_painel.test'; // painel automático de gestão pública: funções puras e curadoria
+import { CURADORIA } from '../src/munic_curadoria';
+import { COD_UF, montarCartoes, selecionar, type DadosPainel, type Escopo, type Modo } from '../src/munic_painel';
 import './orientacao.test'; // regressões da orientação do mercado de trabalho (sem dados): rodam junto com esta suíte
 const require = createRequire(import.meta.url);
 const FETCH = globalThis.fetch; // alguns testes simulam o Worker trocando o fetch
@@ -85,9 +88,18 @@ const doPerfis = (c: string): string | null => {
   if (c.startsWith('gold/trabalho/perfis_v2/') || existsSync(daqui)) return daqui;
   return [`${PERFIS_V1}/${c}`, `${PERFIS_V1}/${c.replace('gold/trabalho/perfis/', '')}`].find((x) => existsSync(x)) ?? daqui;
 };
+// MUNIC_CANDIDATO: candidato da gestão pública (gold/munic/catalogo, respostas e agregados e gold/manifesto.json com fontes.munic e fontes.estadic).
+// territorio e comparaveis, que o candidato não traz, continuam vindo de DATA; as demais fontes do manifesto e os outros candidatos (saúde, RAIS) não mudam.
+const MUNIC_CANDIDATO = process.env.MUNIC_CANDIDATO?.replaceAll('\\', '/');
+const doMunic = (c: string): string | null => {
+  const m = /^gold\/munic\/(catalogo|respostas|agregados|painel_respostas|painel_agregados)\.parquet$/.exec(c);
+  if (!MUNIC_CANDIDATO || !m) return null;
+  const daqui = `${MUNIC_CANDIDATO}/${c}`;
+  return existsSync(daqui) ? daqui : null;
+};
 let MANIFESTO_TESTE: { fontes: Record<string, unknown> } | null = null; // o manifesto que a rota enxerga (os testes de perfis o ajustam e restauram)
 const doFnsCandidato = (c: string) => !!FNS_CANDIDATO && /^gold\/(saude\/fns_[^/]+\.parquet$|manifesto\.json$)/.test(c);
-const onde = (c: string) => (doPerfis(c) ?? (doFnsCandidato(c) ? `${FNS_CANDIDATO}/${c}` : c.startsWith('silver/trabalho/micro/') ? `${MICRO}/${c}` : VACINACAO_CANDIDATO && c.startsWith('gold/saude/vacinacao') ? `${VACINACAO_CANDIDATO}/${c}` : doGoldPublicado(c) ? `${GOLD_PUBLICADO}/${c}` : `${DATA}/${c}`));
+const onde = (c: string) => (doPerfis(c) ?? doMunic(c) ?? (doFnsCandidato(c) ? `${FNS_CANDIDATO}/${c}` : c.startsWith('silver/trabalho/micro/') ? `${MICRO}/${c}` : VACINACAO_CANDIDATO && c.startsWith('gold/saude/vacinacao') ? `${VACINACAO_CANDIDATO}/${c}` : doGoldPublicado(c) ? `${GOLD_PUBLICADO}/${c}` : `${DATA}/${c}`));
 const rota = <T>(caminho: string, params: Record<string, string | number | undefined> = {}) => executar(caminho, params) as Promise<T>;
 type L = Record<string, number | string | null | boolean>;
 
@@ -127,6 +139,10 @@ before(async () => {
   if (PERFIS_CANDIDATO) {
     const candidato = JSON.parse(await readFile(`${PERFIS_CANDIDATO}/gold/manifesto.json`, 'utf8'));
     manifesto.fontes = { ...manifesto.fontes, rais_perfis: candidato.fontes?.rais_perfis };
+  }
+  if (MUNIC_CANDIDATO && existsSync(`${MUNIC_CANDIDATO}/gold/manifesto.json`)) {
+    const candidato = JSON.parse(await readFile(`${MUNIC_CANDIDATO}/gold/manifesto.json`, 'utf8'));
+    for (const k of ['munic', 'estadic', 'munic_painel']) if (candidato.fontes?.[k]) manifesto.fontes = { ...manifesto.fontes, [k]: candidato.fontes[k] }; // só as fontes de gestão: nenhuma outra é apagada
   }
   MANIFESTO_TESTE = manifesto;
   for (const [nome, arq] of Object.entries({
@@ -1334,6 +1350,174 @@ describe('Excel com várias abas', () => {
       assert.ok(!/[:\\/?*[\]]/.test(n), n);
     }
     assert.ok(texto.includes('xl/worksheets/sheet4.xml'));
+  });
+});
+describe('gestão pública: painel automático (MUNIC e ESTADIC)', () => {
+  const semMunic = !existsSync(`${DATA}/gold/munic/catalogo.parquet`) || !existsSync(`${DATA}/gold/munic/respostas.parquet`);
+  // a curadoria já usa o pessoal direto de 2024 (MREH011…016): só roda onde o gold tem essas variáveis (candidato ou publicado depois dele)
+  const temRh2024 = async () => (await rota<L[]>('munic_perguntas', { pesquisa: 'munic', ano: 2024, aba: 'Recursos humanos' })).some((r) => r.var === 'MREH016');
+  type Rota = DadosPainel & { territorio: L | null };
+  const painel = (q: Record<string, string | number | undefined>) => rota<Rota>('munic_painel', q);
+  const cartoesDe = (r: Rota, pesquisa: 'munic' | 'estadic', modo: Modo, escopo: Escopo, uf: string | null = null) =>
+    montarCartoes(selecionar(CURADORIA, pesquisa, modo), r, escopo, uf);
+  const achar = (cs: ReturnType<typeof cartoesDe>, id: string) => cs.find((c) => c.ind.id === id)!;
+
+  test('curadoria: cada par pesquisa/edição/variável existe no catálogo real com aba, tema e enunciado exatos, e as respostas válidas são as previstas', { skip: semMunic }, async (ctx) => {
+    if (!(await temRh2024())) return ctx.skip('gold sem o pessoal direto de 2024: use MUNIC_CANDIDATO');
+    const porTema = new Map<string, L[]>();
+    for (const ind of CURADORIA) {
+      for (const f of ind.fontes) {
+        const k = `${ind.pesquisa}|${f.ano}|${f.aba}`;
+        if (!porTema.has(k)) porTema.set(k, await rota<L[]>('munic_perguntas', { pesquisa: ind.pesquisa, ano: f.ano, aba: f.aba }));
+        const c = porTema.get(k)!.filter((r) => r.var === f.var);
+        assert.equal(c.length, 1, `${ind.id} ${f.ano} ${f.var} no catálogo`);
+        assert.equal(c[0].aba, f.aba, `${ind.id} aba`);
+        assert.equal(c[0].tema, f.tema, `${ind.id} tema`);
+        assert.equal(c[0].rotulo, f.rotulo, `${ind.id} enunciado`);
+        const dist = (await rota<L[]>('munic_distribuicao', { pesquisa: ind.pesquisa, ano: f.ano, var: f.var })).filter((r) => r.corte === 'brasil' && r.grupo === 'BR');
+        if (ind.tipo === 'binario') {
+          const validas = dist.filter((r) => r.valida && r.valor_txt !== null).map((r) => String(r.valor_txt));
+          const previstas = new Set([...(ind.sim ?? []), ...(ind.nao ?? [])]);
+          assert.ok(validas.length > 0 && validas.every((v) => previstas.has(v)), `${ind.id} ${f.ano}: respostas válidas ${validas.join(' | ')}`);
+          assert.ok(validas.some((v) => (ind.sim ?? []).includes(v)), `${ind.id}: nenhuma resposta Sim`);
+        } else {
+          assert.ok(dist.some((r) => r.valor_txt === null && r.valida && Number(r.n) > 0), `${ind.id} ${f.ano}: sem respostas numéricas`);
+          assert.ok(dist.every((r) => !r.valida || r.valor_txt === null), `${ind.id}: resposta textual válida`);
+        }
+      }
+    }
+  });
+
+  test('Brasil (última informação): números dos cartões contra a contagem independente, com ano real e universo', { skip: semMunic }, async (ctx) => {
+    if (!(await temRh2024())) return ctx.skip('gold sem o pessoal direto de 2024: use MUNIC_CANDIDATO');
+    const r = await painel({ pesquisa: 'munic' });
+    assert.equal(r.territorio, null);
+    assert.deepEqual([...new Set(r.agregados.map((x) => x.ano))].sort(), [2021, 2023, 2024]); // uma rota só, só as edições dos cartões
+    assert.deepEqual([...new Set(r.agregados.map((x) => `${x.corte}|${x.grupo}`))], ['brasil|BR']);
+    const cs = cartoesDe(r, 'munic', { tipo: 'ultima' }, { tipo: 'brasil' });
+    const b = (id: string) => achar(cs, id).recorte as { sim: number; nao: number; base: number; pct: number; semResposta: number };
+    assert.equal(achar(cs, 'm_rh_existe_indireta').fonte!.ano, 2024);
+    assert.deepEqual([b('m_rh_existe_indireta').sim, b('m_rh_existe_indireta').nao, b('m_rh_existe_indireta').semResposta], [1483, 4072, 15]);
+    assert.equal(b('m_rh_existe_indireta').pct, 1483 / 5555);
+    assert.deepEqual([b('m_tr_diario').sim, b('m_tr_diario').nao, b('m_tr_diario').semResposta], [3987, 1505, 78]); // inclui "–" (sem site) à parte
+    assert.deepEqual([b('m_tr_controle').sim, b('m_tr_controle').nao], [4738 + 571, 240]); // duas respostas afirmativas
+    assert.equal(achar(cs, 'm_pl_parcelamento').fonte!.ano, 2021);
+    assert.deepEqual([b('m_pl_parcelamento').sim, b('m_pl_parcelamento').nao, b('m_pl_parcelamento').semResposta], [2645 + 1259, 1657, 9]);
+    const rh = achar(cs, 'm_rh_direta_16');
+    assert.equal(rh.fonte!.ano, 2024); // direta restaurada em 2024 (MREH011…016)
+    assert.equal(rh.fonte!.var, 'MREH016');
+    const num = rh.recorte as { n: number; soma: number; semResposta: number };
+    assert.deepEqual([num.n, num.soma, num.semResposta], [5546, 7260108, 24]); // 5.546 municípios com valor; Não informou 8, Não sabe informar 9, Recusa 7
+    assert.equal(rh.universo, 5570);
+    // indireta: quadro próprio de 2024, só municípios com administração indireta; "–" (não se aplica) e o resto ficam à parte
+    const ind = achar(cs, 'm_rh_indireta_36');
+    assert.equal(ind.fonte!.var, 'MREH036');
+    const ni = ind.recorte as { n: number; soma: number; semResposta: number; semRespostaDetalhe: { texto: string; n: number }[] };
+    assert.deepEqual([ni.n, ni.soma, ni.semResposta], [1475, 354245, 4072 + 9 + 7 + 7]);
+    assert.equal(ni.semRespostaDetalhe[0].texto, '-');
+    assert.notEqual(ni.soma, num.soma); // não se somam: bases diferentes
+    // a direta de 2023 e 2021 continua publicada para quem escolhe a edição
+    assert.deepEqual(selecionar(CURADORIA, 'munic', { tipo: 'edicao', ano: 2023 }).find((s) => s.ind.id === 'm_rh_direta_16')!.fonte!.var, 'MREH0116');
+    assert.deepEqual(selecionar(CURADORIA, 'munic', { tipo: 'edicao', ano: 2021 }).find((s) => s.ind.id === 'm_rh_direta_16')!.fonte!.var, 'Mreh0116');
+    for (const c of cs) assert.ok(c.fonte && c.recorte && c.recorte.estado === 'ok', c.ind.id);
+  });
+
+  test('UF e município: prefeituras de GO somam só GO; Goiânia mostra a própria resposta, com UF e Brasil à parte', { skip: semMunic }, async (ctx) => {
+    if (!(await temRh2024())) return ctx.skip('gold sem o pessoal direto de 2024: use MUNIC_CANDIDATO');
+    const go = await painel({ pesquisa: 'munic', uf: 'GO' });
+    const cu = cartoesDe(go, 'munic', { tipo: 'ultima' }, { tipo: 'uf', uf: 'GO' });
+    const ind = achar(cu, 'm_rh_existe_indireta');
+    assert.deepEqual([(ind.recorte as { sim: number }).sim, (ind.recorte as { nao: number }).nao, ind.universo], [108, 138, 246]);
+    assert.deepEqual([(achar(cu, 'm_tr_conselho').recorte as { sim: number }).sim, (achar(cu, 'm_tr_conselho').recorte as { nao: number }).nao], [6, 240]);
+    const rh = achar(cu, 'm_rh_direta_16').recorte as { n: number; soma: number; semResposta: number };
+    assert.deepEqual([rh.n, rh.soma, rh.semResposta], [244, 236193, 2]); // 2024: 244 de 246 municípios de GO com valor
+    const rhi = achar(cu, 'm_rh_indireta_36').recorte as { n: number; soma: number; semResposta: number };
+    assert.deepEqual([rhi.n, rhi.soma, rhi.semResposta], [108, 10117, 138]); // só os 108 com administração indireta; 138 "–"
+    assert.ok(achar(cu, 'm_rh_existe_indireta').brasil, 'Brasil como comparação');
+    const g = await painel({ pesquisa: 'munic', cod: 5208707 });
+    assert.equal(g.territorio?.nome, 'Goiânia');
+    assert.equal(g.territorio?.uf, 'GO');
+    const cg = cartoesDe(g, 'munic', { tipo: 'ultima' }, { tipo: 'territorio', cod: 5208707, uf: null }, 'GO');
+    assert.deepEqual(achar(cg, 'm_rh_existe_indireta').territorio, { estado: 'sim', texto: 'Sim' });
+    assert.deepEqual(achar(cg, 'm_tr_conselho').territorio, { estado: 'sim', texto: 'Sim' });
+    assert.deepEqual(achar(cg, 'm_pl_parcelamento').territorio, { estado: 'sim', texto: 'Sim, como parte integrante do Plano Diretor' });
+    assert.deepEqual(achar(cg, 'm_rh_direta_16').territorio, { estado: 'valor', valor: 35455 });
+    assert.deepEqual(achar(cg, 'm_rh_direta_11').territorio, { estado: 'valor', valor: 25189 });
+    assert.deepEqual(achar(cg, 'm_rh_indireta_31').territorio, { estado: 'valor', valor: 1819 });
+    assert.deepEqual(achar(cg, 'm_rh_indireta_36').territorio, { estado: 'valor', valor: 2365 }); // direta e indireta: dois cartões, nunca somados
+    assert.ok(achar(cg, 'm_rh_existe_indireta').ufDoTerritorio && achar(cg, 'm_rh_existe_indireta').brasil);
+    // município que não existe: nenhum cartão, nada de Brasil
+    const nada = await painel({ pesquisa: 'munic', cod: 1234567 });
+    assert.equal(nada.territorio, null);
+    assert.deepEqual(nada.agregados, []);
+  });
+
+  test('ESTADIC é outra pesquisa: governo de GO e conjunto dos estados, sem usar prefeituras', { skip: semMunic }, async (ctx) => {
+    if (!(await temRh2024())) return ctx.skip('gold sem o pessoal direto de 2024: use MUNIC_CANDIDATO');
+    const br = await painel({ pesquisa: 'estadic' });
+    const cb = cartoesDe(br, 'estadic', { tipo: 'ultima' }, { tipo: 'brasil' });
+    assert.deepEqual([(achar(cb, 'e_tr_conselho').recorte as { sim: number }).sim, (achar(cb, 'e_tr_conselho').recorte as { nao: number }).nao, achar(cb, 'e_tr_conselho').universo], [14, 12, 27]);
+    assert.ok(cb.every((c) => c.ind.pesquisa === 'estadic'));
+    const go = await painel({ pesquisa: 'estadic', uf: 'GO' });
+    assert.equal(go.territorio?.cod, 52);
+    const cg = cartoesDe(go, 'estadic', { tipo: 'ultima' }, { tipo: 'territorio', cod: 52, uf: 'GO' });
+    assert.deepEqual(achar(cg, 'e_tr_conselho').territorio, { estado: 'sim', texto: 'Sim' });
+    assert.deepEqual(achar(cg, 'e_rh_direta_16').territorio, { estado: 'valor', valor: 85742 });
+    assert.deepEqual(achar(cg, 'e_rh_indireta_36').territorio, { estado: 'valor', valor: 6842 });
+    const nb = achar(cb, 'e_rh_direta_16').recorte as { n: number; soma: number };
+    assert.deepEqual([nb.n, nb.soma], [26, 2350427]); // 26 estados com valor
+    const nbi = achar(cb, 'e_rh_indireta_36').recorte as { n: number; soma: number };
+    assert.deepEqual([nbi.n, nbi.soma], [24, 352122]);
+    assert.equal(achar(cg, 'e_rh_direta_16').ufDoTerritorio, null); // não há "UF" da MUNIC misturada ao governo estadual
+    // código IBGE de cada UF (usado para o governo estadual) = código do território da ESTADIC
+    const terr = await rota<L[]>('munic_territorios', { pesquisa: 'estadic', ano: 2024 });
+    assert.deepEqual(Object.fromEntries(terr.map((r) => [String(r.uf), Number(r.cod)])), COD_UF);
+  });
+
+  test('arquivos leves: o painel devolve exatamente o mesmo com a fonte munic_painel e sem ela (gold completos); par faltando cai no fallback', { skip: semMunic }, async (ctx) => {
+    const original = MANIFESTO_TESTE!.fontes.munic_painel;
+    if (!original || !existsSync(onde('gold/munic/painel_respostas.parquet')) || !existsSync(onde('gold/munic/painel_agregados.parquet'))) return ctx.skip('sem painel_*.parquet e fontes.munic_painel: use MUNIC_CANDIDATO com as cópias leves');
+    if (!(await temRh2024())) return ctx.skip('gold sem o pessoal direto de 2024: use MUNIC_CANDIDATO');
+    const ordenado = (r: Rota) => ({
+      ...r, agregados: [...r.agregados].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))), respostas: [...r.respostas].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
+    });
+    const consultas = [{ pesquisa: 'munic' }, { pesquisa: 'munic', uf: 'GO' }, { pesquisa: 'munic', cod: 5208707 }, { pesquisa: 'munic', cod: 5208707, ano: 2023 }, { pesquisa: 'estadic' }, { pesquisa: 'estadic', uf: 'GO' }];
+    try {
+      for (const q of consultas) {
+        MANIFESTO_TESTE!.fontes.munic_painel = original;
+        const leve = ordenado(await painel(q));
+        MANIFESTO_TESTE!.fontes.munic_painel = undefined;
+        const cheio = ordenado(await painel(q));
+        assert.ok(cheio.agregados.length > 0, JSON.stringify(q));
+        assert.deepEqual(leve, cheio, `leve ≠ completo: ${JSON.stringify(q)}`);
+      }
+      // fonte com um par a menos: o atalho não vale e o resultado é o mesmo, pelos gold completos
+      const pares = JSON.parse(JSON.stringify((original as { pares: Record<string, Record<string, string[]>> }).pares));
+      pares.munic['2024'] = pares.munic['2024'].filter((v: string) => v !== 'MREH016');
+      MANIFESTO_TESTE!.fontes.munic_painel = { ...(original as object), pares };
+      const incompleto = ordenado(await painel({ pesquisa: 'munic', cod: 5208707 }));
+      MANIFESTO_TESTE!.fontes.munic_painel = undefined;
+      assert.deepEqual(incompleto, ordenado(await painel({ pesquisa: 'munic', cod: 5208707 })));
+    } finally {
+      MANIFESTO_TESTE!.fontes.munic_painel = original;
+    }
+  });
+
+  test('edição explícita: só as perguntas daquela edição; endereço inválido recusa em vez de virar Brasil', { skip: semMunic }, async (ctx) => {
+    if (!(await temRh2024())) return ctx.skip('gold sem o pessoal direto de 2024: use MUNIC_CANDIDATO');
+    const r = await painel({ pesquisa: 'munic', ano: 2023 });
+    assert.deepEqual([...new Set(r.agregados.map((x) => x.ano))], [2023]);
+    const cs = cartoesDe(r, 'munic', { tipo: 'edicao', ano: 2023 }, { tipo: 'brasil' });
+    assert.ok(cs.some((c) => c.fonte === null && c.ind.id === 'm_tr_lai')); // 2024 não aparece na edição 2023
+    assert.ok(cs.filter((c) => c.fonte).every((c) => c.fonte!.ano === 2023));
+    assert.equal(achar(cs, 'm_rh_existe_indireta').fonte!.var, 'MREH02'); // a mesma pergunta, no código da edição 2023
+    assert.equal(achar(cs, 'm_rh_direta_16').fonte!.var, 'MREH0116'); // direta 2023 preservada
+    assert.equal(achar(cs, 'm_rh_indireta_36').fonte, null); // a indireta numérica só foi curada em 2024: não disponível, nunca zero
+    await assert.rejects(painel({ pesquisa: 'munic', uf: 'XX' }));
+    await assert.rejects(painel({ pesquisa: 'munic', cod: 'abc' }));
+    await assert.rejects(painel({ pesquisa: 'munic', ano: 2019 }));
+    await assert.rejects(painel({ pesquisa: 'outra' }));
+    await assert.rejects(painel({ pesquisa: 'estadic', cod: 5208707 }));
   });
 });
 describe('perfis da RAIS (raça/cor, escolaridade, tipo de vínculo)', () => {

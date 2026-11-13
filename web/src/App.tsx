@@ -22,6 +22,9 @@ import { Educacao, RemuneracaoEducacao, Saude } from './pages/SaudeEducacao';
 import { Socioeconomico } from './pages/Socioeconomico';
 import { TrabalhoCaged, TrabalhoEvolucao, TrabalhoRankings } from './pages/Trabalho';
 import { TrabalhoPainel } from './pages/TrabalhoPainel';
+import { MunicEntrada } from './pages/MunicPainel';
+import { contextoMunic, edicoesCuradas, type Destino } from './munic_painel';
+import { CURADORIA } from './munic_curadoria';
 import { TrabalhoConsulta } from './pages/TrabalhoConsulta';
 import { TrabalhoEstabelecimentos } from './pages/TrabalhoEstabelecimentos';
 import { TrabalhoRemuneracao } from './pages/TrabalhoRemuneracao';
@@ -68,9 +71,14 @@ const menuSaude = (): [string, [string, string][]][] => [
   [t('Metodologia', 'Methodology'), [['/datasus/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
 ];
 
+/** Menu da área MUNIC: só pesq, uf, cod e ano (válidos) acompanham de página em página; a escolha de pergunta do explorador (aba, var, grupo) não. */
+const EDICOES_MUNIC = edicoesCuradas(CURADORIA);
+const DESTINO_MUNIC: Record<string, Destino> = { '/munic': 'painel', '/munic/territorio': 'ficha' };
+
 /** Área de gestão pública (MUNIC e ESTADIC, do IBGE), em /munic. */
 const menuMunic = (): [string, [string, string][]][] => [
-  [t('Gestão pública', 'Public management'), [['/munic', t('Visão geral', 'Overview')], ['/munic/evolucao', t('Evolução entre edições', 'Change across editions')],
+  [t('Gestão pública', 'Public management'), [['/munic', t('Painel automático', 'Automatic dashboard')]]],
+  [t('Exploração avançada', 'Advanced exploration'), [['/munic/perguntas', t('Explorar por pergunta', 'Explore by question')], ['/munic/evolucao', t('Evolução entre edições', 'Change across editions')],
     ['/munic/territorio', t('Ficha do município ou estado', 'Municipality or state profile')]]],
   [t('Metodologia', 'Methodology'), [['/munic/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
 ];
@@ -230,7 +238,7 @@ export function App() {
             <div key={grupo} style={{ display: 'contents' }}>
               <h4>{grupo}</h4>
               {itens.map(([para, rotulo]) => (
-                <NavLink key={para} to={{ pathname: para, search: area === 'ia' ? buscaIa : area === 'munic' || area === 'clima' ? '' : buscaArea }} end className={({ isActive }) => (isActive ? 'ativo' : '')}>
+                <NavLink key={para} to={{ pathname: para, search: area === 'ia' ? buscaIa : area === 'munic' ? contextoMunic(search, DESTINO_MUNIC[para] ?? 'avancado', EDICOES_MUNIC) : area === 'clima' ? '' : buscaArea }} end className={({ isActive }) => (isActive ? 'ativo' : '')}>
                   {rotulo}
                 </NavLink>
               ))}
@@ -279,7 +287,8 @@ export function App() {
               <Route path="/datasus/vacinacao" element={<SaudeVacinacao />} />
               <Route path="/datasus/financiamento" element={<SaudeFinanciamento />} />
               <Route path="/datasus/metodologia" element={<SaudeMetodologia />} />
-              <Route path="/munic" element={<MunicVisaoGeral />} />
+              <Route path="/munic" element={<MunicEntrada />} />
+              <Route path="/munic/perguntas" element={<MunicVisaoGeral />} />
               <Route path="/munic/evolucao" element={<MunicEvolucao />} />
               <Route path="/munic/territorio" element={<MunicTerritorio />} />
               <Route path="/munic/metodologia" element={<MunicMetodologia />} />

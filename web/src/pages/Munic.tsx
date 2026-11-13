@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useApi, type Linha } from '../api';
 import { Dica } from '../components/Dica';
 import { BotoesExportar } from '../components/Exportar';
@@ -9,9 +9,13 @@ import { useDados } from '../contexto';
 import { numero, numero1 } from '../format';
 import { local, t } from '../idioma';
 import {
-  avisoComparacao, compararVar, distribuicao, FAIXAS_PORTE, fonteMunic, nomePesquisa, notaSemResposta, pctTxt, pesquisaDe, semAcento,
+  avisoComparacao, celulasDaResposta, compararVar, distribuicao, FAIXAS_PORTE, fonteMunic, nomePesquisa, notaSemResposta, pctTxt, pesquisaDe, semAcento,
   siglaPesquisa, territorioNome, UFS, type Pesquisa,
 } from '../munic_comum';
+import { COD_UF, contextoMunic, edicoesCuradas } from '../munic_painel';
+import { CURADORIA } from '../munic_curadoria';
+
+const EDICOES_PAINEL = edicoesCuradas(CURADORIA);
 
 const num = (v: unknown) => (typeof v === 'number' ? v : null);
 const texto = (v: unknown) => (v === null || v === undefined ? '' : String(v));
@@ -89,8 +93,7 @@ export function MunicVisaoGeral() {
       : brasil.respostas.flatMap((r) => [`${r.texto} (n)`, `${r.texto} (%)`]))],
     linhas: [{ grupo: 'Brasil', d: brasil }, ...porUf, ...porFaixa].map(({ grupo, d }) => [grupo, numerica ? d.numerico : d.total,
       ...(numerica ? [d.soma, d.media] : brasil.respostas.flatMap((r) => {
-        const x = d.respostas.find((y) => y.texto === r.texto);
-        return [x?.n ?? 0, x ? x.parte : 0];
+        return celulasDaResposta(d, r.texto); // participação de 0 a 100 e vazio (não zero) sem respostas válidas
       }))]),
     metadados: [
       [t('Pesquisa', 'Survey'), nomePesquisa(pesquisa)], [t('Edição', 'Edition'), String(ano)], [t('Tema', 'Topic'), aba],
@@ -102,8 +105,9 @@ export function MunicVisaoGeral() {
 
   return (
     <>
-      <h2 className="titulo-pagina">{t('Gestão pública: MUNIC e ESTADIC', 'Public management: MUNIC and ESTADIC')}</h2>
+      <h2 className="titulo-pagina">{t('Gestão pública: explorar por pergunta', 'Public management: explore by question')}</h2>
       <p className="subtitulo">{nomePesquisa(pesquisa)} <Dica rotulo={t('Fonte', 'Source')}>{fonteMunic()}</Dica></p>
+      <p className="nota-base"><Link to={{ pathname: '/munic', search: contextoMunic(`?${sp}`, 'painel', EDICOES_PAINEL) }}>← {t('Voltar ao painel automático', 'Back to the automatic dashboard')}</Link></p>
       <section className="cartao">
         <div className="filtros">
           <SeletorPesquisa pesquisa={pesquisa} mudar={(p) => definir({ pesq: p === 'munic' ? null : p, ano: null, aba: null, var: null })} />
@@ -292,7 +296,7 @@ export function MunicEvolucao() {
                 : t('Participação de cada resposta entre as respostas válidas; só as quatro mais frequentes', 'Share of each answer among valid answers; only the four most frequent')}
               acoes={<BotoesExportar nome={`${pesquisa}_evolucao_${texto(grupo.grupo)}`} obter={() => ({
                 colunas: [t('Edição', 'Edition'), t('Respostas válidas', 'Valid answers'), ...(numerica ? [t('Soma', 'Sum'), t('Média', 'Mean')] : respostas.map((r) => `${r} (%)`)), t('Pergunta na edição', 'Question in the edition')],
-                linhas: porAno.map((p) => [p.ano, numerica ? p.nNum : p.total, ...(numerica ? [p.soma, p.media] : respostas.map((r) => (p.total ? (Number(p.validas.find((v) => v.valor_txt === r)?.n ?? 0) / p.total) : null))), p.perguntas.join(' | ')]),
+                linhas: porAno.map((p) => [p.ano, numerica ? p.nNum : p.total, ...(numerica ? [p.soma, p.media] : respostas.map((r) => (p.total ? (Number(p.validas.find((v) => v.valor_txt === r)?.n ?? 0) / p.total) * 100 : null))), p.perguntas.join(' | ')]),
                 metadados: [[t('Pesquisa', 'Survey'), nomePesquisa(pesquisa)], [t('Recorte', 'Scope'), t('Brasil', 'Brazil')], [t('Aviso', 'Warning'), avisoComparacao()],
                   [t('Base do percentual', 'Percentage base'), notaSemResposta()], [t('Fonte', 'Source'), fonteMunic()], [t('Versão da base', 'Data version'), geradoEm], [t('Endereço', 'Address'), location.href]],
               })} />}
@@ -326,7 +330,8 @@ export function MunicTerritorio() {
   const ano = anos.includes(Number(sp.get('ano'))) ? Number(sp.get('ano')) : anos[0];
   const uf = UFS.includes(sp.get('uf') ?? '') ? sp.get('uf')! : '';
   const lugares = useApi<Linha[]>(ano ? 'munic_territorios' : null, { pesquisa, ano, uf: pesquisa === 'munic' ? uf : '' });
-  const cod = Number(sp.get('cod')) || num(lugares.dados?.[0]?.cod);
+  // ESTADIC com UF e sem código: o governo dessa UF, não o primeiro da lista
+  const cod = Number(sp.get('cod')) || (pesquisa === 'estadic' && UFS.includes(sp.get('uf') ?? '') ? COD_UF[sp.get('uf')!] : undefined) || num(lugares.dados?.[0]?.cod);
   const lugar = (lugares.dados ?? []).find((r) => num(r.cod) === cod);
   const ficha = useApi<Linha[]>(ano && cod && lugar ? 'munic_ficha' : null, { pesquisa, ano, cod });
   const termo = semAcento(filtro.trim());

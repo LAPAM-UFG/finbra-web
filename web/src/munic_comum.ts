@@ -68,3 +68,13 @@ export const notaSemResposta = () => t(
   'Os percentuais usam só as respostas válidas. "Não aplicável", "Não informou", "Recusa", "Não soube informar" e "–" (pergunta não preenchida) aparecem à parte e ficam fora da base do percentual. Quem não respondeu a pergunta não entra e nunca vira zero.',
   'Percentages use valid answers only. "Not applicable", "Did not report", "Refused", "Could not report" and "–" (question not filled in) appear separately and are left out of the percentage base. Whoever did not answer is excluded and never counts as zero.',
 );
+
+/**
+ * Células "(n)" e "(%)" de uma resposta no CSV do explorador: participação de 0 a 100, como diz a coluna. Resposta que ninguém deu
+ * num recorte com respostas válidas vale 0; recorte sem nenhuma resposta válida fica vazio (null), nunca um zero inventado.
+ */
+export function celulasDaResposta(d: Distribuicao, texto: string): [number | null, number | null] {
+  const x = d.respostas.find((y) => y.texto === texto);
+  if (x) return [x.n, x.parte * 100];
+  return d.total > 0 ? [0, 0] : [null, null];
+}

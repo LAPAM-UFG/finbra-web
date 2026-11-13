@@ -95,6 +95,18 @@ def abrir(ed: dict, tmp: Path) -> Planilha:
     return Planilha(f)
 
 
+def codigo_do_dicionario(codigo: str, codigos: set[str]) -> str | None:
+    """Reconcilia apenas a divergência documentada de RH direto: M/EREH0111–0116 no dicionário,
+    M/EREH011–016 nos cabeçalhos das bases recentes. Um código exato sempre tem prioridade.
+    Não aproxima outros códigos nem cria coluna ausente da planilha."""
+    c = limpar(codigo).lower()
+    if c in codigos:
+        return c
+    m = re.fullmatch(r"([me]reh)011([1-6])", c)
+    alvo = f"{m[1]}01{m[2]}" if m else None
+    return alvo if alvo in codigos else None
+
+
 def ler_dicionario(pl: Planilha, codigos: set[str]) -> dict[str, dict]:
     """Código da variável → {tema, subtema, rotulo}. O dicionário é uma lista com recuo: seções numeradas, subtítulos e perguntas
     (as perguntas trazem o código numa coluna à direita); as perguntas filhas ficam mais à direita que a pergunta-mãe."""
@@ -106,8 +118,8 @@ def ler_dicionario(pl: Planilha, codigos: set[str]) -> dict[str, dict]:
         cel = [(i, limpar(c)) for i, c in enumerate(linha) if limpar(c) != ""]
         if not cel:
             continue
-        cods = [c.lower() for _, c in cel if c.lower() in codigos]
-        textos = [(i, c) for i, c in cel if c.lower() not in codigos and not isinstance(linha[i], float)
+        cods = [codigo for _, c in cel if (codigo := codigo_do_dicionario(c, codigos)) is not None]
+        textos = [(i, c) for i, c in cel if codigo_do_dicionario(c, codigos) is None and not isinstance(linha[i], float)
                   and not re.match(r"^(vari[aá]vel|t[ií]tulo link|subt[ií]tulo link)", c, re.I)]
         if not textos:
             continue
@@ -341,6 +353,8 @@ def fonte_munic(con) -> dict:
         anos = [r[0] for r in con.execute(f"SELECT DISTINCT ano FROM '{arq.as_posix()}' WHERE pesquisa = ? ORDER BY 1", [pesq]).fetchall()]
         if anos:
             saida[pesq] = {"anos": anos, "processado_em": quando, "url": url}
+    from munic_painel_dados import fonte_painel
+    saida.update(fonte_painel(GOLD_M))
     return saida
 
 
@@ -349,7 +363,8 @@ def atualizar_manifesto(con):
     if not caminho.exists():
         return
     manifesto = json.loads(caminho.read_text(encoding="utf-8"))
-    manifesto.setdefault("fontes", {}).update(fonte_munic(con))
+    manifesto.setdefault("fontes", {}).pop("munic_painel", None)
+    manifesto["fontes"].update(fonte_munic(con))
     manifesto["gerado_em"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     caminho.write_text(json.dumps(manifesto, ensure_ascii=False, indent=1), encoding="utf-8")
 
