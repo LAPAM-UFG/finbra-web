@@ -19,20 +19,16 @@ import { caminhoPerfis, disponibilidadePerfis, escopoDoPerfil, perfisComRemunera
 import { CURADORIA } from './munic_curadoria';
 import { ARQUIVOS_PAINEL, edicoesCuradas, lerEscolhas, paresPedidos, selecionar, usarArquivosLeves } from './munic_painel';
 import CLIMA_PAINEL_SQL from './clima_painel.sql?raw';
+import { criarAbertura, USAR_MOTOR } from './clima_abertura';
+import { BASE_DADOS, injetarManifesto, obterManifesto, versaoDoManifesto, type ManifestoBruto } from './manifesto';
 
 type Valor = string | number | boolean | null;
 export type Linha = Record<string, Valor>;
 type Params = Record<string, string | number | null | undefined>;
 
-type Manifesto = {
-  gerado_em: string; anos: number[]; base_ipca: number; colunas: Record<string, Record<string, string[]>>;
-  ipca_ultimo?: { exercicio: number; meses: number };
-  fontes?: Record<string, Record<string, unknown>>;
-  mapa_indicadores?: Record<string, Record<string, unknown>[]>;
-  politica_alertas?: Record<string, unknown>;
-};
+type Manifesto = ManifestoBruto;
 
-const BASE = typeof location === 'undefined' ? '' : new URL(import.meta.env?.VITE_DADOS_URL ?? '/dados/', location.href).href;
+const BASE = BASE_DADOS;
 
 // ---------------- motor ----------------
 
@@ -63,6 +59,7 @@ export function usarMotorDeTeste(instancia: duckdb.AsyncDuckDB, con: duckdb.Asyn
   db = instancia;
   caminhoLocal = resolver;
   lerLocal = ler;
+  injetarManifesto(manifesto);
   pronto = Promise.resolve({ con, manifesto });
 }
 
@@ -75,11 +72,7 @@ async function baixar(caminho: string): Promise<Uint8Array> {
 
 function iniciar() {
   pronto ??= (async () => {
-    const manifesto: Manifesto = await fetch(`${BASE}gold/manifesto.json`, { cache: 'no-cache' }).then((r) => {
-      if (!r.ok) throw new Error(`${t('manifesto indisponível', 'manifest unavailable')} (${r.status})`);
-      return r.json();
-    });
-    versao = manifesto.gerado_em.replace(/[^0-9]/g, '');
+    const manifesto = await manifestoCompartilhado();
     const arquivos = Promise.all(
       Object.entries(TABELAS_EM_MEMORIA).map(async ([nome, caminho]) => [nome, await baixar(caminho)] as const),
     );
@@ -111,6 +104,13 @@ function iniciar() {
   })();
   pronto.catch(() => (pronto = null));
   return pronto;
+}
+
+/** O manifesto único da sessão (o mesmo do caminho rápido do clima) e a versão dos URLs que sai dele. */
+async function manifestoCompartilhado(): Promise<Manifesto> {
+  const m = await obterManifesto((status) => `${t('manifesto indisponível', 'manifest unavailable')} (${status})`);
+  versao = versaoDoManifesto(m);
+  return m;
 }
 
 /**
@@ -1638,7 +1638,7 @@ const grupoClima = (q: Params) => (q.uf && UFS.has(String(q.uf)) ? String(q.uf) 
  * fontes.clima.painel do manifesto e lido por Range, ou, se o campo ou o arquivo faltar, a MESMA regra (clima_painel.sql) sobre
  * as tabelas publicadas. Os dois caminhos devolvem as mesmas colunas e os mesmos valores.
  */
-export type ResumoClimaFonte = { origem: 'leve' | 'calculado'; linhas: Linha[] };
+export type ResumoClimaFonte = { origem: 'abertura' | 'leve' | 'calculado'; linhas: Linha[] };
 const ENTRADA_CATALOGO = `agr AS (SELECT variavel, resumo_anual AS agregacao, anomalia AS tipo FROM clima_catalogo),`;
 export function painelLeveClima(manifesto: { fontes?: Record<string, Record<string, unknown>> } | undefined): string | null {
   const clima = manifesto?.fontes?.clima as { ate?: number; painel?: { versao?: number; arquivo?: unknown; ate?: number } } | undefined;
@@ -1690,7 +1690,33 @@ async function resumoClima(q: Params): Promise<ResumoClimaFonte> {
   return { origem: 'calculado', linhas };
 }
 
+/**
+ * Abertura rápida do clima: meta, territórios e resumo do recorte SEM iniciar o motor (DuckDB-WASM), lidos do pacote
+ * fontes.clima.abertura por um índice leve e um Range. Sem o pacote (ou se algo falhar), a rota segue pelo motor, mais lenta.
+ * Nos testes (motor injetado) o motor é sempre usado.
+ */
+const abertura = criarAbertura({
+  manifesto: manifestoCompartilhado,
+  url: (caminho, m) => `${BASE}v/${versaoDoManifesto(m)}${REVISAO_CACHE_HTTP}/${caminho}`,
+  buscar: (u, init) => fetch(u, init),
+});
+const ROTAS_INICIAIS_CLIMA = new Set(['clima_meta', 'clima_territorios', 'clima_painel']);
+export const estadoAberturaClima = () => abertura.estado();
+export async function executarInicialClima(caminho: string, params: Params): Promise<unknown | typeof USAR_MOTOR> {
+  if (caminhoLocal || !ROTAS_INICIAIS_CLIMA.has(caminho)) return USAR_MOTOR;
+  return abertura.executar(caminho, params);
+}
+
 const rotasClima: Record<string, (q: Params) => Promise<unknown>> = {
+  /** Metadados do clima (anos, último mês, normal) tirados do manifesto; o motor só é usado se o caminho rápido não for. */
+  async clima_meta() {
+    const { manifesto } = await iniciar();
+    const c = manifesto.fontes?.clima as { anos?: number[]; ate?: number; normal?: number[]; processado_em?: string } | undefined;
+    return {
+      anos: c?.anos ?? [], ate: c?.ate ?? null, normal: c?.normal?.length === 2 ? [c.normal[0], c.normal[1]] : null,
+      processado_em: c?.processado_em ?? null, gerado_em: manifesto.gerado_em, abertura: false,
+    };
+  },
   /** Variáveis publicadas (catálogo). */
   async clima_catalogo() {
     await tabelasClimaLeves();

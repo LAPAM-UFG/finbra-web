@@ -5,7 +5,8 @@ import { Dica } from '../components/Dica';
 import { BotoesExportar } from '../components/Exportar';
 import { CartaoGrafico, Grafico, linhas, mapaCalor } from '../components/Grafico';
 import { Estado } from '../components/Kpi';
-import { useDados } from '../contexto';
+import { ProvedorDados } from '../contexto';
+import type { ClimaMeta } from '../clima_abertura';
 import type { ResumoClimaFonte } from '../dados';
 import { numero } from '../format';
 import { t } from '../idioma';
@@ -54,10 +55,14 @@ function useEscolhaUrl() {
   return { sp, definir };
 }
 
+/** Anos, último mês e normal vêm só do manifesto (clima_meta): a página abre sem iniciar o motor de consultas. */
 function useMetaClima() {
-  const { meta } = useDados();
-  const f = meta.fontes.clima as { anos?: number[]; ate?: number; normal?: number[]; processado_em?: string } | undefined;
-  return { anos: f?.anos ?? [], ate: f?.ate, normal: (f?.normal ?? NORMAL_CLIMA) as [number, number], processadoEm: f?.processado_em, geradoEm: meta.geradoEm };
+  const r = useApi<ClimaMeta>('clima_meta', {});
+  const m = r.dados;
+  return {
+    anos: m?.anos ?? [], ate: m?.ate ?? undefined, normal: (m?.normal ?? NORMAL_CLIMA) as [number, number], processadoEm: m?.processado_em ?? undefined,
+    geradoEm: m?.gerado_em ?? '', carregando: r.carregando, erro: r.erro, recarregar: r.recarregar,
+  };
 }
 
 function useTerritorios(ativo: boolean) {
@@ -386,7 +391,7 @@ function DetalheSobDemanda({ forcar, ...props }: Parameters<typeof Detalhe>[0] &
     return () => obs.disconnect();
   }, [visivel]);
   return <div ref={alvo} id="cl-historico">
-    {visivel ? <Detalhe {...props} /> : <section className="cartao" style={{ minHeight: 160 }}>
+    {visivel ? <ProvedorDados sobDemanda><Detalhe {...props} /></ProvedorDados> : <section className="cartao" style={{ minHeight: 160 }}>
       <h3>{t('Histórico e mapa de calor', 'History and heat map')}</h3>
       <p className="desc">{t('Explore a série anual, os meses e a comparação com o habitual.', 'Explore the annual series, months and comparison with the usual.')}</p>
     </section>}
@@ -398,7 +403,7 @@ function DetalheSobDemanda({ forcar, ...props }: Parameters<typeof Detalhe>[0] &
 export function ClimaVisaoGeral() {
   const [forcarDetalhe, setForcarDetalhe] = useState(false);
   const { sp, definir } = useEscolhaUrl();
-  const { anos: anosMeta, normal: periodo, geradoEm } = useMetaClima();
+  const { anos: anosMeta, normal: periodo, geradoEm, carregando: carregandoMeta, erro: erroMeta, recarregar: recarregarMeta } = useMetaClima();
   const publicado = anosMeta.length > 0;
   const terr = useTerritorios(publicado);
   const escolha = lerEscolhaClima(sp, terr.lista);
@@ -410,6 +415,7 @@ export function ClimaVisaoGeral() {
   const escopo = municipio ? `${municipio.nome} (${municipio.uf})` : escolha.uf ? t(`Estado ${escolha.uf}`, `State ${escolha.uf}`) : t('Brasil', 'Brazil');
   const detalhe = medidaDe(escolha.variavel) ?? MEDIDAS[0];
 
+  if (carregandoMeta || erroMeta) return <><h2 className="titulo-pagina">{t('Clima', 'Climate')}</h2><Estado carregando={carregandoMeta} erro={erroMeta} tentarNovamente={recarregarMeta} /></>;
   if (!publicado) return <><h2 className="titulo-pagina">{t('Clima', 'Climate')}</h2><SemDados /></>;
   const ref = porVar.get('chuva_mm') ?? [...porVar.values()][0];
   return (
@@ -459,7 +465,7 @@ type Ordem = 'maior' | 'menor' | 'acima' | 'abaixo';
 
 export function ClimaRankings() {
   const { sp, definir } = useEscolhaUrl();
-  const { anos: anosMeta, normal: periodo, geradoEm } = useMetaClima();
+  const { anos: anosMeta, normal: periodo, geradoEm, carregando: carregandoMeta, erro: erroMeta, recarregar: recarregarMeta } = useMetaClima();
   const publicado = anosMeta.length > 0;
   const terr = useTerritorios(publicado);
   const escolha = lerEscolhaClima(sp, terr.lista);
@@ -483,6 +489,7 @@ export function ClimaRankings() {
     maior: t('Maior valor no ano', 'Highest value in the year'), menor: t('Menor valor no ano', 'Lowest value in the year'),
     acima: t('Mais acima do habitual', 'Furthest above usual'), abaixo: t('Mais abaixo do habitual', 'Furthest below usual'),
   };
+  if (carregandoMeta || erroMeta) return <><h2 className="titulo-pagina">{t('Clima: rankings', 'Climate: rankings')}</h2><Estado carregando={carregandoMeta} erro={erroMeta} tentarNovamente={recarregarMeta} /></>;
   if (!publicado) return <><h2 className="titulo-pagina">{t('Clima: rankings', 'Climate: rankings')}</h2><SemDados /></>;
   const fonte = fonteDe(m);
   const colunaAnomalia = m.relativa ? t('Variação', 'Change') : t('Diferença', 'Difference');
@@ -537,13 +544,13 @@ export function ClimaRankings() {
               <p className="desc">{t(`Os 50 primeiros de ${numero(lista.length)} municípios; valores iguais dividem a posição (1, 2, 2, 4). O habitual é a média ${periodo[0]}–${periodo[1]}. Município pequeno cobre poucas células da grade: leia com cautela.`,
                 `Top 50 of ${numero(lista.length)} municipalities; equal values share a rank (1, 2, 2, 4). The usual is the ${periodo[0]}–${periodo[1]} average. A small municipality covers few grid cells: read with caution.`)}</p>
             </div>
-            <BotoesExportar nome={`clima_${m.codigo}_ranking_${sel.ano}_${escolha.uf || 'BR'}`} obter={() => ({
+            <ProvedorDados sobDemanda silencioso><BotoesExportar nome={`clima_${m.codigo}_ranking_${sel.ano}_${escolha.uf || 'BR'}`} obter={() => ({
               colunas: [t('Posição', 'Rank'), t('Município', 'Municipality'), 'UF', `${m.nome()} (${m.unidade})`, `${t('Normal', 'Normal')} (${m.unidade})`,
                 m.relativa ? t('Variação sobre a normal (%)', 'Change from normal (%)') : t(`Diferença para a normal (${m.unidade === '%' ? 'p.p.' : m.unidade})`, `Difference from normal (${m.unidade === '%' ? 'p.p.' : m.unidade})`)],
               linhas: lista.map(({ r, pos }) => [pos, texto(r.nome), texto(r.uf), num(r.valor), num(r.normal), m.relativa ? (num(r.anomalia_pct) === null ? null : num(r.anomalia_pct)! * 100) : num(r.anomalia)]),
               metadados: [[t('Medida', 'Measure'), `${m.nome()} (${m.unidade})`], [t('Ano', 'Year'), String(sel.ano)], [t('Recorte', 'Scope'), escolha.uf || t('Brasil', 'Brazil')], [t('Ordenação', 'Sort'), rotuloOrdem[ordem]],
                 [t('Posições', 'Ranks'), t('empates competitivos (1, 2, 2, 4)', 'competitive ties (1, 2, 2, 4)')], [t('Normal', 'Normal'), `${periodo[0]}–${periodo[1]}`], [t('Fonte', 'Source'), fonte], [t('Versão da base', 'Data version'), geradoEm], [t('Endereço', 'Address'), location.href]],
-            })} />
+            })} /></ProvedorDados>
           </div>
           <div className="rolagem">
             <table className="tabela-fixa">

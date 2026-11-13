@@ -10,9 +10,16 @@ import { anosSaude, type FontesMeta } from './saude_comum';
 type Contexto = { meta: Meta; entes: Ente[]; porCodigo: Map<number, Ente> };
 const Ctx = createContext<Contexto | null>(null);
 
-export function ProvedorDados({ children }: { children: ReactNode }) {
-  const meta = useApi<Meta>('meta');
-  const entes = useApi<Ente[]>('entes');
+/**
+ * Meta e lista de entes (iniciam o motor DuckDB). As páginas de /clima abrem sem isso: o resumo vem do pacote de abertura
+ * (api.ts → clima_abertura.ts). O que precisa do motor (histórico, rankings, exportações) se envolve em <ProvedorDados sobDemanda>,
+ * que só então o inicia. Se o motor já foi carregado por outra página, o contexto é aproveitado.
+ */
+export function ProvedorDados({ children, sobDemanda = false, silencioso = false }: { children: ReactNode; sobDemanda?: boolean; silencioso?: boolean }) {
+  const caminho = useLocation().pathname;
+  const precisa = sobDemanda || !(caminho === '/clima' || caminho.startsWith('/clima/'));
+  const meta = useApi<Meta>(precisa ? 'meta' : null);
+  const entes = useApi<Ente[]>(precisa ? 'entes' : null);
   const valor = useMemo(
     () =>
       meta.dados && entes.dados
@@ -20,6 +27,7 @@ export function ProvedorDados({ children }: { children: ReactNode }) {
         : null,
     [meta.dados, entes.dados],
   );
+  if (!precisa) return <Ctx.Provider value={null}>{children}</Ctx.Provider>;
   if (meta.erro || entes.erro) {
     return (
       <Estado
@@ -29,7 +37,7 @@ export function ProvedorDados({ children }: { children: ReactNode }) {
       />
     );
   }
-  if (!valor) return <p className="carregando" role="status">{t('Carregando o motor de consultas e a lista de entes…', 'Loading the query engine and the list of governments…')}</p>;
+  if (!valor) return silencioso ? null : <p className="carregando" role="status">{t('Carregando o motor de consultas e a lista de entes…', 'Loading the query engine and the list of governments…')}</p>;
   return <Ctx.Provider value={valor}>{children}</Ctx.Provider>;
 }
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { executar } from './dados';
+import { USAR_MOTOR } from './clima_abertura';
+import { executar, executarInicialClima } from './dados';
 
 export type Meta = {
   anos: number[]; anexos: Record<string, string[]>; baseIpca: number; geradoEm: string;
@@ -34,7 +35,8 @@ export function url(caminho: string, params: Params = {}) {
 export function buscar<T>(caminho: string, params: Params = {}): Promise<T> {
   const u = url(caminho, params);
   if (!cache.has(u)) {
-    const p = executar(caminho, params);
+    // clima_meta, clima_territorios e clima_painel abrem sem o motor (pacote de abertura); se não houver pacote ou falhar, o motor responde
+    const p = executarInicialClima(caminho, params).then((r) => (r === USAR_MOTOR ? executar(caminho, params) : r));
     p.catch(() => cache.delete(u));
     cache.set(u, p);
   }
