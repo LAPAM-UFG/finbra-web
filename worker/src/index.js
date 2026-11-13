@@ -37,13 +37,19 @@ async function servirDados(request, env, url) {
     // o site pede cada arquivo com /v/<data da atualização>/ no caminho, então pode ficar em cache por bastante tempo;
     // o manifesto é sempre revalidado
     'Cache-Control': chave.endsWith('manifesto.json') ? 'no-cache' : 'public, max-age=86400',
+    // a resposta depende do Range pedido: sem isto o navegador reaproveita do disco um trecho (ex.: bytes 0-16383) guardado
+    // para outro intervalo sobreposto e entrega bytes que não são os pedidos (rodapé do Parquet ilegível)
+    Vary: 'Range',
   });
 
   if (request.method === 'HEAD') {
     const objeto = await env.DADOS.head(chave);
     if (!objeto) return new Response(null, { status: 404 });
     // o navegador descarta o Range no HEAD, mas o DuckDB-WASM só usa leitura parcial se o HEAD
-    // responder 206; HEAD não tem corpo, então anunciar o arquivo inteiro como 206 é inofensivo
+    // responder 206 com o tamanho do arquivo; por isso o 206 fica, sem corpo e sem cache (no-store, abaixo)
+    // resposta só de metadados (sem corpo): nunca vai para o cache, para o Content-Range do arquivo inteiro não se misturar
+    // com as respostas parciais (GET com Range) que o navegador guarda do mesmo endereço
+    cabecalhos.set('Cache-Control', 'no-store');
     cabecalhos.set('Content-Length', String(objeto.size));
     cabecalhos.set('Content-Range', `bytes 0-${objeto.size - 1}/${objeto.size}`);
     cabecalhos.set('ETag', objeto.httpEtag);

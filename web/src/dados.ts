@@ -117,7 +117,13 @@ function iniciar() {
  * cache se renovar a cada atualização. Não pode ser "?v=": para o DuckDB, "?" é curinga de glob.
  */
 let versao = '';
-const url = (caminho: string) => (caminhoLocal ? caminhoLocal(caminho) : `${BASE}v/${versao}/${caminho}`);
+/**
+ * Revisão do transporte HTTP, somada aos dígitos da versão no caminho (/dados/v/<versão><revisão>/…): invalida as entradas de
+ * cache do navegador anteriores à correção dos intervalos (Range sobrepostos, Vary: Range no Worker). Não muda a chave no R2,
+ * o manifesto nem o caminho dos testes locais; aumente só se o transporte voltar a exigir uma limpeza de cache.
+ */
+const REVISAO_CACHE_HTTP = '1';
+const url = (caminho: string) => (caminhoLocal ? caminhoLocal(caminho) : `${BASE}v/${versao}${REVISAO_CACHE_HTTP}/${caminho}`);
 const arq = (caminho: string) => `'${url(caminho)}'`;
 // Cada consulta lê um único arquivo: o navegador faz uma requisição por vez ao R2, então
 // abrir vários arquivos (um por ano) tornava a série histórica lenta.

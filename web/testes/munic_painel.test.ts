@@ -233,7 +233,10 @@ test('curadoria: indicadores únicos, enunciado e tema exatos presentes, binári
     assert.match(i.titulo.pt, direta ? /\(administração direta\)$/ : /\(administração indireta\)$/, i.id);
     assert.match(i.titulo.en, direta ? /\(direct administration\)$/ : /\(indirect administration\)$/, i.id);
     assert.ok(i.contexto?.pt && i.contexto?.en, `${i.id}: sem contexto`);
-    if (indireta) assert.match(i.contexto!.pt, /não se soma/, i.id);
+    if (indireta) {
+      assert.match(i.contexto!.pt, /quadro distinto/, i.id);
+      assert.doesNotMatch(i.contexto!.pt, /não se aplica|autarquias/i, `${i.id}: não inferir o motivo da ausência`);
+    }
     assert.equal(i.id.includes('indireta'), indireta, i.id);
   }
   // as 6 categorias de pessoal direto e de indireto em cada pesquisa; o direto continua nas edições anteriores

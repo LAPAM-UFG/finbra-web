@@ -62,6 +62,7 @@ import './painel.test';
 import { distribuicao, lerPerfil, superiorSomado } from '../src/trabalho_perfis';
 import './perfis.test'; // perfis da RAIS (raça/cor, escolaridade, vínculos): funções puras
 import './munic_painel.test'; // painel automático de gestão pública: funções puras e curadoria
+import './worker_dados.test'; // servidor de dados do Worker (HEAD, Range, Vary, 304) com R2 simulado
 import { CURADORIA } from '../src/munic_curadoria';
 import { COD_UF, montarCartoes, selecionar, type DadosPainel, type Escopo, type Modo } from '../src/munic_painel';
 import './orientacao.test'; // regressões da orientação do mercado de trabalho (sem dados): rodam junto com esta suíte
