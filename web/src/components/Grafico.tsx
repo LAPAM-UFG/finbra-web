@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import * as echarts from 'echarts/core';
-import { BarChart, LineChart } from 'echarts/charts';
-import { GridComponent, LegendComponent, MarkLineComponent, TooltipComponent } from 'echarts/components';
+import { BarChart, HeatmapChart, LineChart } from 'echarts/charts';
+import { GridComponent, LegendComponent, MarkLineComponent, TooltipComponent, VisualMapComponent } from 'echarts/components';
 import { CanvasRenderer, SVGRenderer } from 'echarts/renderers';
 import type { EChartsCoreOption } from 'echarts/core';
 import { nomeArquivo } from '../exportar';
 import { t } from '../idioma';
 
 // SVG: gráficos do relatório em PDF da IA, desenhados sem tela (graficoSvg)
-echarts.use([BarChart, LineChart, GridComponent, LegendComponent, TooltipComponent, MarkLineComponent, CanvasRenderer, SVGRenderer]);
+echarts.use([BarChart, HeatmapChart, LineChart, GridComponent, LegendComponent, TooltipComponent, MarkLineComponent, VisualMapComponent, CanvasRenderer, SVGRenderer]);
 
 /** Lê os tokens de cor atuais (mudam com o tema). */
 export function tokens() {
@@ -237,5 +237,32 @@ export function barras(categorias: string[], valores: (number | null)[], formato
         formatter: (p: { value: number }) => formato(p.value),
       },
     }],
+  });
+}
+
+/**
+ * Mapa de calor ano × mês de um desvio (cores divergentes, centro neutro). `dados`: [mês 0–11, índice do ano, desvio];
+ * `vazios`: células sem dado (lacuna), em cinza próprio e com tooltip "sem dado", nunca na escala (nem como zero);
+ * `semNormal`: tem valor mas não tem normal para comparar. A legenda fica fora do gráfico (texto e escala em HTML).
+ */
+export function mapaCalor(o: {
+  anos: number[]; meses: string[]; dados: [number, number, number][]; vazios: [number, number][]; semNormal: [number, number][];
+  limite: number; paleta: [string, string, string]; dica: (mes: number, ano: number) => string; cinza: string; cinzaSemNormal: string;
+}) {
+  return (t: Tokens): EChartsCoreOption => ({
+    animation: false,
+    grid: { left: 8, right: 12, top: 6, bottom: 6, containLabel: true },
+    tooltip: { ...tooltipBase(t), trigger: 'item', confine: true, formatter: (p: { value: number[] }) => o.dica(p.value[0], p.value[1]) },
+    xAxis: { type: 'category', data: o.meses, axisLabel: { color: t.tinta3, interval: 0, fontSize: 11 }, axisLine: { lineStyle: { color: t.eixo } }, axisTick: { show: false }, position: 'top' },
+    yAxis: {
+      type: 'category', data: o.anos, inverse: true, axisTick: { show: false }, axisLine: { show: false },
+      axisLabel: { color: t.tinta3, fontSize: 11, interval: (i: number) => o.anos[i] % 5 === 0 || i === 0 || i === o.anos.length - 1 },
+    },
+    visualMap: { show: false, min: -o.limite, max: o.limite, seriesIndex: 0, inRange: { color: o.paleta }, outOfRange: { color: o.paleta } },
+    series: [
+      { name: 'desvio', type: 'heatmap', data: o.dados, itemStyle: { borderColor: t.superficie, borderWidth: 1 }, emphasis: { itemStyle: { borderColor: t.tinta, borderWidth: 2 } } },
+      { name: 'sem dado', type: 'heatmap', data: o.vazios.map(([m, a]) => [m, a, 0]), itemStyle: { color: o.cinza, borderColor: t.superficie, borderWidth: 1 }, emphasis: { itemStyle: { borderColor: t.tinta, borderWidth: 2 } } },
+      { name: 'sem normal', type: 'heatmap', data: o.semNormal.map(([m, a]) => [m, a, 0]), itemStyle: { color: o.cinzaSemNormal, borderColor: t.superficie, borderWidth: 1 }, emphasis: { itemStyle: { borderColor: t.tinta, borderWidth: 2 } } },
+    ],
   });
 }

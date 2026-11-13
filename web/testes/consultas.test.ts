@@ -13,7 +13,7 @@ import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { basesAV, codigoConta, formatarPct } from '../src/calculos';
-import { consultaLivre, executar, sqlClassificacao, type Classificacao, tabelaDespesaFuncao, tabelasEducacaoSaude, tabelasIaTrabalho, tabelasFns, usarLeituraNoTeste, reiniciarFnsNoTeste, usarMicrodadosNoTeste, usarMotorDeTeste, gruposDaFonte, FILTROS_LISTA, estabDoIndice, GRUPOS_ESTAB } from '../src/dados';
+import { consultaLivre, executar, painelLeveClima, sqlClassificacao, type Classificacao, tabelaDespesaFuncao, tabelasEducacaoSaude, tabelasIaTrabalho, tabelasFns, usarLeituraNoTeste, reiniciarFnsNoTeste, usarMicrodadosNoTeste, usarMotorDeTeste, gruposDaFonte, FILTROS_LISTA, estabDoIndice, GRUPOS_ESTAB } from '../src/dados';
 import {
   anosPedidos, ehPergunta, textoDaPergunta, PAINEIS, chamarIa, coberturaDaFonte, coberturaPorAno, lerEscolhaModelo, nomeDoModelo, periodosDiferem, codigosDoSql, comPergunta, conferir, consultasDaConversa, contextoParaModelo, descreverCobertura, disponibilidadeNoAno, pedeTabelaMunicipal, dadosDoGrafico, executarConsulta, fontesConsultadas, lerModo, lerResposta,
   lerRegressao, paraModelo, pedeTabela, perguntarIa, prepararResposta, recorteDe, revisarMetodo, revisarResposta, rotulosConsultas, semNominal, semUltimaPergunta, sugestoes, valorOficial,
@@ -62,6 +62,7 @@ import './painel.test';
 import { distribuicao, lerPerfil, superiorSomado } from '../src/trabalho_perfis';
 import './perfis.test'; // perfis da RAIS (raça/cor, escolaridade, vínculos): funções puras
 import './munic_painel.test'; // painel automático de gestão pública: funções puras e curadoria
+import './clima.test'; // painel automático de clima: escolha pela URL, lacunas, acumulados, mapa de calor, unidades e exportação (funções puras)
 import './worker_dados.test'; // servidor de dados do Worker (HEAD, Range, Vary, 304) com R2 simulado
 import { CURADORIA } from '../src/munic_curadoria';
 import { COD_UF, montarCartoes, selecionar, type DadosPainel, type Escopo, type Modo } from '../src/munic_painel';
@@ -98,9 +99,13 @@ const doMunic = (c: string): string | null => {
   const daqui = `${MUNIC_CANDIDATO}/${c}`;
   return existsSync(daqui) ? daqui : null;
 };
+// CLIMA_CANDIDATO: pasta do candidato do resumo do painel de clima (gold/clima/painel.parquet e gold/manifesto.json com fontes.clima.painel), gerado por
+// pipeline/clima_painel.py; sem ela, o painel é calculado pelos gold publicados (o mesmo caminho do site quando o arquivo leve não existe).
+const CLIMA_CANDIDATO = process.env.CLIMA_CANDIDATO?.replaceAll('\\', '/');
+const doClima = (c: string): string | null => (CLIMA_CANDIDATO && c === 'gold/clima/painel.parquet' && existsSync(`${CLIMA_CANDIDATO}/${c}`) ? `${CLIMA_CANDIDATO}/${c}` : null);
 let MANIFESTO_TESTE: { fontes: Record<string, unknown> } | null = null; // o manifesto que a rota enxerga (os testes de perfis o ajustam e restauram)
 const doFnsCandidato = (c: string) => !!FNS_CANDIDATO && /^gold\/(saude\/fns_[^/]+\.parquet$|manifesto\.json$)/.test(c);
-const onde = (c: string) => (doPerfis(c) ?? doMunic(c) ?? (doFnsCandidato(c) ? `${FNS_CANDIDATO}/${c}` : c.startsWith('silver/trabalho/micro/') ? `${MICRO}/${c}` : VACINACAO_CANDIDATO && c.startsWith('gold/saude/vacinacao') ? `${VACINACAO_CANDIDATO}/${c}` : doGoldPublicado(c) ? `${GOLD_PUBLICADO}/${c}` : `${DATA}/${c}`));
+const onde = (c: string) => (doPerfis(c) ?? doMunic(c) ?? doClima(c) ?? (doFnsCandidato(c) ? `${FNS_CANDIDATO}/${c}` : c.startsWith('silver/trabalho/micro/') ? `${MICRO}/${c}` : VACINACAO_CANDIDATO && c.startsWith('gold/saude/vacinacao') ? `${VACINACAO_CANDIDATO}/${c}` : doGoldPublicado(c) ? `${GOLD_PUBLICADO}/${c}` : `${DATA}/${c}`));
 const rota = <T>(caminho: string, params: Record<string, string | number | undefined> = {}) => executar(caminho, params) as Promise<T>;
 type L = Record<string, number | string | null | boolean>;
 
@@ -144,6 +149,10 @@ before(async () => {
   if (MUNIC_CANDIDATO && existsSync(`${MUNIC_CANDIDATO}/gold/manifesto.json`)) {
     const candidato = JSON.parse(await readFile(`${MUNIC_CANDIDATO}/gold/manifesto.json`, 'utf8'));
     for (const k of ['munic', 'estadic', 'munic_painel']) if (candidato.fontes?.[k]) manifesto.fontes = { ...manifesto.fontes, [k]: candidato.fontes[k] }; // só as fontes de gestão: nenhuma outra é apagada
+  }
+  if (CLIMA_CANDIDATO && existsSync(`${CLIMA_CANDIDATO}/gold/manifesto.json`)) {
+    const candidato = JSON.parse(await readFile(`${CLIMA_CANDIDATO}/gold/manifesto.json`, 'utf8'));
+    if (candidato.fontes?.clima?.painel && manifesto.fontes?.clima) manifesto.fontes = { ...manifesto.fontes, clima: { ...manifesto.fontes.clima, painel: candidato.fontes.clima.painel } }; // só o campo painel
   }
   MANIFESTO_TESTE = manifesto;
   for (const [nome, arq] of Object.entries({
@@ -4467,6 +4476,130 @@ describe('IA: clima (CHIRPS e ERA5-Land)', () => {
     assert.ok(Number(par.linhas[0][1]) >= 5560);
   });
 });
+
+describe('painel de clima: resumo das seis variáveis (rotas do site)', () => {
+  const semClima = !existsSync(`${DATA}/gold/clima/mensal.parquet`);
+  type Resumo = { origem: 'leve' | 'calculado'; linhas: Record<string, number | string | null>[] };
+  const resumo = (q: Record<string, string | number | undefined>) => rota<Resumo>('clima_painel', q);
+  const ANO_COMPLETO = 2025;
+  const GOIANIA = 5208707;
+  const NORONHA = 2605459;
+  // o manifesto sem o campo painel: o painel cai no cálculo pelos gold publicados (compatibilidade)
+  async function semArquivoLeve<T>(f: () => Promise<T>) {
+    const original = (MANIFESTO_TESTE!.fontes.clima as Record<string, unknown>).painel;
+    delete (MANIFESTO_TESTE!.fontes.clima as Record<string, unknown>).painel;
+    try {
+      return await f();
+    } finally {
+      if (original !== undefined) (MANIFESTO_TESTE!.fontes.clima as Record<string, unknown>).painel = original;
+    }
+  }
+
+  test('Brasil: as seis variáveis, último ano completo, normal e anomalia iguais ao agregado publicado (ponderado por área)', { skip: semClima }, async () => {
+    const r = await semArquivoLeve(() => resumo({}));
+    assert.equal(r.origem, 'calculado');
+    assert.deepEqual(r.linhas.map((l) => l.variavel), ['chuva_mm', 'evap_mm', 'orvalho_c', 'radiacao_wm2', 'temperatura_c', 'umid_solo_pct']);
+    for (const l of r.linhas) {
+      assert.equal(l.ano_ate, ANO_COMPLETO);
+      const pub = await rota<L[]>('clima_anual', { variavel: String(l.variavel) });
+      const ano = pub.find((x) => x.ano === ANO_COMPLETO)!;
+      quase(Number(l.valor), Number(ano.valor), 1e-9);
+      quase(Number(l.normal), Number(ano.normal), 1e-9);
+      if (l.variavel === 'chuva_mm' || l.variavel === 'evap_mm') assert.ok(l.anomalia_pct !== null && l.anomalia === null);
+      else assert.ok(l.anomalia !== null && l.anomalia_pct === null);
+    }
+    // a média simples dos municípios é outra coisa: o Brasil NÃO é a média dos 5.569 valores
+    const chuva = r.linhas.find((l) => l.variavel === 'chuva_mm')!;
+    const simples = await consulta2(`SELECT avg(valor) FROM read_parquet('${DATA}/gold/clima/anual.parquet') WHERE variavel = 'chuva_mm' AND ano = ${ANO_COMPLETO}`);
+    assert.ok(Math.abs(Number(chuva.valor) - simples) > 50, 'o Brasil deve ser ponderado pela área, não média simples');
+  });
+
+  test('evaporação e radiação: a lacuna de 2022 a 2024 está declarada; o ano em curso é parcial e comparado só com os mesmos meses', { skip: semClima }, async () => {
+    const r = await semArquivoLeve(() => resumo({ uf: 'GO' }));
+    for (const v of ['evap_mm', 'radiacao_wm2']) assert.equal(r.linhas.find((l) => l.variavel === v)!.anos_lacuna, '2022,2023,2024');
+    for (const v of ['chuva_mm', 'temperatura_c', 'orvalho_c', 'umid_solo_pct']) assert.equal(r.linhas.find((l) => l.variavel === v)!.anos_lacuna, null);
+    for (const l of r.linhas) {
+      assert.equal(l.parcial_meses, 9, String(l.variavel)); // janeiro a setembro de 2026
+      const normalAno = Number(l.normal);
+      const normalParcial = Number(l.parcial_normal);
+      assert.ok(normalParcial > 0 && normalParcial !== normalAno);
+      if (l.variavel === 'chuva_mm' || l.variavel === 'evap_mm') assert.ok(normalParcial < normalAno, 'soma de 9 meses contra a soma das normais de 9 meses, não contra o ano inteiro');
+    }
+  });
+
+  test('chuva acumulada de 3, 6 e 12 meses de Goiânia: soma dos mensais contra a soma das normais dos mesmos meses; só chuva tem acumulado', { skip: semClima }, async () => {
+    const r = await semArquivoLeve(() => resumo({ cod: GOIANIA }));
+    const l = r.linhas.find((x) => x.variavel === 'chuva_mm')!;
+    assert.equal(l.acum_fim, 202609);
+    for (const [k, ini] of [[3, 7], [6, 4]] as const) {
+      const soma = await consulta2(`SELECT sum(valor) FROM read_parquet('${DATA}/gold/clima/mensal.parquet') WHERE variavel = 'chuva_mm' AND cod = ${GOIANIA} AND ano = 2026 AND mes >= ${ini}`);
+      const normais = await consulta2(`SELECT sum(normal) FROM read_parquet('${DATA}/gold/clima/normal.parquet') WHERE variavel = 'chuva_mm' AND cod = ${GOIANIA} AND mes BETWEEN ${ini} AND 9`);
+      assert.equal(l[`acum${k}_cob`], k);
+      quase(Number(l[`acum${k}_valor`]), soma, 1e-9);
+      quase(Number(l[`acum${k}_normal`]), normais, 1e-9);
+    }
+    const doze = await consulta2(`SELECT sum(valor) FROM read_parquet('${DATA}/gold/clima/mensal.parquet') WHERE variavel = 'chuva_mm' AND cod = ${GOIANIA} AND ano * 100 + mes BETWEEN 202510 AND 202609`);
+    quase(Number(l.acum12_valor), doze, 1e-9);
+    for (const x of r.linhas.filter((y) => y.variavel !== 'chuva_mm')) assert.ok(x.acum3_cob === null && x.acum12_valor === null, String(x.variavel));
+  });
+
+  test('Fernando de Noronha não tem linha no resumo (sem cobertura) e o cadastro o lista; código inexistente também não tem', { skip: semClima }, async () => {
+    for (const q of [{ cod: NORONHA, uf: 'PE' }, { cod: 9999999, uf: 'GO' }]) assert.equal((await semArquivoLeve(() => resumo(q))).linhas.length, 0);
+    const territorios = await rota<L[]>('clima_territorios', {});
+    assert.equal(territorios.length, 5570);
+    assert.ok(territorios.some((t) => t.cod === NORONHA && t.uf === 'PE'));
+    // o município (Goiânia) responde com as 6 variáveis e a UF dele não entra no lugar
+    assert.equal((await semArquivoLeve(() => resumo({ cod: GOIANIA }))).linhas.length, 6);
+  });
+
+  test('solo de Goiânia em 2025: 34,13% contra normal 36,43% é diferença de −2,30 p.p. (e −6,3% relativo)', { skip: semClima }, async () => {
+    const l = (await semArquivoLeve(() => resumo({ cod: GOIANIA }))).linhas.find((x) => x.variavel === 'umid_solo_pct')!;
+    quase(Number(l.valor), 34.1305, 1e-4);
+    quase(Number(l.normal), 36.4266, 1e-4);
+    quase(Number(l.anomalia), -2.2961, 1e-3);
+    assert.equal(l.anomalia_pct, null);
+  });
+
+  test('arquivo leve (candidato) e cálculo pelos gold devolvem as mesmas linhas para Brasil, UF e município', { skip: semClima || !CLIMA_CANDIDATO }, async () => {
+    for (const q of [{}, { uf: 'GO' }, { uf: 'PE' }, { cod: GOIANIA }, { cod: 4101101 }, { cod: 1100015 }]) {
+      const leve = await resumo(q);
+      assert.equal(leve.origem, 'leve', JSON.stringify(q));
+      const calc = await semArquivoLeve(() => resumo(q));
+      assert.equal(calc.origem, 'calculado');
+      assert.equal(leve.linhas.length, calc.linhas.length, JSON.stringify(q));
+      leve.linhas.forEach((a, i) => {
+        const b = calc.linhas[i];
+        for (const k of Object.keys(a)) {
+          if (k === 'grupo') continue;
+          if (typeof a[k] === 'number' && typeof b[k] === 'number') quase(a[k] as number, b[k] as number, 1e-9);
+          else assert.equal(a[k], b[k], `${JSON.stringify(q)} ${a.variavel} ${k}`);
+        }
+      });
+    }
+  });
+
+  test('manifesto sem o campo painel, com ano diferente ou caminho estranho: não usa o arquivo leve', () => {
+    assert.equal(painelLeveClima(undefined), null);
+    assert.equal(painelLeveClima({ fontes: { clima: { ate: 202609 } } }), null);
+    const ok = { fontes: { clima: { ate: 202609, painel: { versao: 1, arquivo: 'gold/clima/painel.parquet', ate: 202609 } } } };
+    assert.equal(painelLeveClima(ok), 'gold/clima/painel.parquet');
+    assert.equal(painelLeveClima({ fontes: { clima: { ate: 202610, painel: { versao: 1, arquivo: 'gold/clima/painel.parquet', ate: 202609 } } } }), null); // dados mais novos que o resumo
+    assert.equal(painelLeveClima({ fontes: { clima: { ate: 202609, painel: { versao: 2, arquivo: 'gold/clima/painel.parquet', ate: 202609 } } } }), null);
+    assert.equal(painelLeveClima({ fontes: { clima: { ate: 202609, painel: { versao: 1, arquivo: '../fora.parquet', ate: 202609 } } } }), null);
+  });
+
+  test('ranking de ano sem total anual não devolve linhas (a tela mostra a lacuna, não outro ano)', { skip: semClima }, async () => {
+    assert.equal((await rota<L[]>('clima_ranking', { variavel: 'evap_mm', ano: 2023 })).length, 0);
+    assert.equal((await rota<L[]>('clima_ranking', { variavel: 'evap_mm', ano: 'xx' })).length, 0);
+    assert.ok((await rota<L[]>('clima_ranking', { variavel: 'evap_mm', ano: ANO_COMPLETO })).length > 5000);
+  });
+});
+/** Valor único de uma consulta sobre os gold (para conferir o resumo contra os mensais). */
+async function consulta2(sql: string): Promise<number> {
+  const r = await executarConsulta({ sql: sql.replace(/read_parquet\('[^']*\/gold\/clima\/(\w+)\.parquet'\)/g, 'clima_$1') }, ['clima']);
+  assert.ok(!('erro' in r), 'erro' in r ? r.erro : '');
+  return Number((r as { linhas: unknown[][] }).linhas[0][0]);
+}
 
 describe('IA: cancelamento de consultas', () => {
   test('o sinal cancela a consulta de imediato, mesmo sem o DuckDB responder', async () => {

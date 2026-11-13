@@ -18,6 +18,7 @@ import { indicador as indicadorSaude, type Indicador } from './saude_comum';
 import { caminhoPerfis, disponibilidadePerfis, escopoDoPerfil, perfisComRemuneracao } from './trabalho_perfis';
 import { CURADORIA } from './munic_curadoria';
 import { ARQUIVOS_PAINEL, edicoesCuradas, lerEscolhas, paresPedidos, selecionar, usarArquivosLeves } from './munic_painel';
+import CLIMA_PAINEL_SQL from './clima_painel.sql?raw';
 
 type Valor = string | number | boolean | null;
 export type Linha = Record<string, Valor>;
@@ -1588,21 +1589,26 @@ const rotasMunic: Record<string, (q: Params) => Promise<unknown>> = {
 // ---------------- clima por município e mês (CHIRPS e ERA5-Land; pipeline/clima.py) ----------------
 
 /**
- * territorio, catalogo, normal e agregado (Brasil e UF) são pequenos e ficam em memória; mensal e anual (milhões de
- * linhas, ordenados por variável, município e ano) são lidos por Range: cada consulta pede uma variável e um município.
+ * territorio e catalogo (~70 KB) bastam para abrir o painel (lista de municípios e os seis cartões, que vêm do resumo leve);
+ * normal e agregado (Brasil e UF, ~3,6 MB) só entram quando um detalhe, a IA ou o cálculo sem o resumo precisam deles. Os
+ * arquivos são baixados em paralelo. mensal e anual (milhões de linhas, ordenados por variável, município e ano) são lidos
+ * por Range: cada consulta pede uma variável e um município.
  */
-let climaCarregada: Promise<void> | null = null;
-export function tabelasClima() {
-  climaCarregada ??= (async () => {
-    const { con } = await iniciar();
-    for (const nome of ['territorio', 'catalogo', 'normal', 'agregado']) {
+const climaTabela = new Map<string, Promise<void>>();
+function tabelaClima(nome: string) {
+  if (!climaTabela.has(nome)) {
+    const p = (async () => {
+      const { con } = await iniciar();
       await db.registerFileBuffer(`clima_${nome}.parquet`, await baixar(`gold/clima/${nome}.parquet`));
       await con.query(`CREATE TABLE clima_${nome} AS SELECT * FROM read_parquet('clima_${nome}.parquet')`);
-    }
-  })();
-  climaCarregada.catch(() => (climaCarregada = null));
-  return climaCarregada;
+    })();
+    p.catch(() => climaTabela.delete(nome));
+    climaTabela.set(nome, p);
+  }
+  return climaTabela.get(nome)!;
 }
+export const tabelasClimaLeves = () => Promise.all(['territorio', 'catalogo'].map(tabelaClima)).then(() => undefined);
+export const tabelasClima = () => Promise.all(['territorio', 'catalogo', 'normal', 'agregado'].map(tabelaClima)).then(() => undefined);
 
 /**
  * Tabelas da IA de clima: as quatro pequenas em memória (tabelasClima) e visões sobre mensal e anual, lidos por Range
@@ -1627,29 +1633,84 @@ const variavelClima = (q: Params) => String(q.variavel ?? 'chuva_mm');
 /** Município (cod) ou grupo: 'BR' ou a sigla de uma UF. */
 const grupoClima = (q: Params) => (q.uf && UFS.has(String(q.uf)) ? String(q.uf) : 'BR');
 
+/**
+ * Resumo das seis variáveis de um grupo (BR, UF ou município): o arquivo leve gold/clima/painel.parquet, anunciado em
+ * fontes.clima.painel do manifesto e lido por Range, ou, se o campo ou o arquivo faltar, a MESMA regra (clima_painel.sql) sobre
+ * as tabelas publicadas. Os dois caminhos devolvem as mesmas colunas e os mesmos valores.
+ */
+export type ResumoClimaFonte = { origem: 'leve' | 'calculado'; linhas: Linha[] };
+const ENTRADA_CATALOGO = `agr AS (SELECT variavel, resumo_anual AS agregacao, anomalia AS tipo FROM clima_catalogo),`;
+export function painelLeveClima(manifesto: { fontes?: Record<string, Record<string, unknown>> } | undefined): string | null {
+  const clima = manifesto?.fontes?.clima as { ate?: number; painel?: { versao?: number; arquivo?: unknown; ate?: number } } | undefined;
+  const p = clima?.painel;
+  if (!p || p.versao !== 1 || typeof p.arquivo !== 'string' || !/^gold\/clima\/[A-Za-z0-9_.-]+\.parquet$/.test(p.arquivo)) return null;
+  // o resumo só vale para o mesmo último mês dos dados publicados
+  return p.ate === clima?.ate ? p.arquivo : null;
+}
+async function resumoClima(q: Params): Promise<ResumoClimaFonte> {
+  const cod = inteiro(q.cod);
+  const grupo = cod ? String(cod) : grupoClima(q);
+  await tabelasClimaLeves();
+  const { manifesto } = await iniciar();
+  const leve = painelLeveClima(manifesto);
+  if (leve) {
+    try {
+      const linhas = await consultar(`SELECT * FROM read_parquet(${arq(leve)}) WHERE grupo = $g ORDER BY variavel`, { g: grupo });
+      return { origem: 'leve', linhas };
+    } catch (e) {
+      // arquivo anunciado e ausente (ou ilegível): cai no cálculo direto, sem perder o painel
+      console.warn('resumo leve do clima indisponível; calculando pelos gold publicados', e);
+    }
+  }
+  if (cod) {
+    await tabelasClima();
+    const linhas = await consultar(
+      `WITH a AS (SELECT CAST(cod AS VARCHAR) AS grupo, variavel, ano, valor, normal, anomalia_pct, anomalia
+                  FROM read_parquet(${arq('gold/clima/anual.parquet')}) WHERE cod = $cod::INTEGER),
+            s AS (SELECT CAST(cod AS VARCHAR) AS grupo, variavel, ano, mes, valor
+                  FROM read_parquet(${arq('gold/clima/mensal.parquet')}) WHERE cod = $cod::INTEGER),
+            n AS (SELECT CAST(cod AS VARCHAR) AS grupo, variavel, mes, normal FROM clima_normal WHERE cod = $cod::INTEGER),
+            ${ENTRADA_CATALOGO}
+            ${CLIMA_PAINEL_SQL} ORDER BY r.variavel`,
+      { cod },
+    );
+    return { origem: 'calculado', linhas };
+  }
+  await tabelasClima();
+  const linhas = await consultar(
+    `WITH a AS (SELECT grupo, variavel, ano, valor, avg(valor) FILTER (ano BETWEEN ${NORMAL_DE} AND ${NORMAL_ATE}) OVER (PARTITION BY grupo, variavel) AS normal,
+                       anomalia_pct, anomalia FROM clima_agregado WHERE grupo = $g AND mes = 0),
+          s AS (SELECT grupo, variavel, ano, mes, valor FROM clima_agregado WHERE grupo = $g AND mes > 0),
+          n AS (SELECT grupo, variavel, mes, avg(valor) FILTER (ano BETWEEN ${NORMAL_DE} AND ${NORMAL_ATE}) AS normal FROM clima_agregado
+                WHERE grupo = $g AND mes > 0 GROUP BY ALL),
+          ${ENTRADA_CATALOGO}
+          ${CLIMA_PAINEL_SQL} ORDER BY r.variavel`,
+    { g: grupo },
+  );
+  return { origem: 'calculado', linhas };
+}
+
 const rotasClima: Record<string, (q: Params) => Promise<unknown>> = {
   /** Variáveis publicadas (catálogo). */
   async clima_catalogo() {
-    await tabelasClima();
+    await tabelasClimaLeves();
     return consultar(
       `SELECT variavel, rotulo, unidade, resumo_anual, fonte, anomalia, ano_de, ano_ate, ate FROM clima_catalogo
        ORDER BY variavel <> 'chuva_mm', rotulo`,
     );
   },
 
-  /** Municípios com dados da variável (de uma UF ou todos). */
-  async clima_lugares(q) {
-    await tabelasClima();
-    return consultar(
-      `SELECT cod, nome, uf, regiao, area_km2 FROM clima_territorio
-       WHERE ($uf = '' OR uf = $uf) AND cod IN (SELECT cod FROM clima_normal WHERE variavel = $v) ORDER BY nome`,
-      { uf: UFS.has(String(q.uf)) ? String(q.uf) : '', v: variavelClima(q) },
-    );
+  /** Municípios do cadastro (para a busca pelo nome); quem não tem dado de clima é identificado pelo resumo, não aqui. */
+  async clima_territorios() {
+    await tabelasClimaLeves();
+    return consultar('SELECT cod, nome, uf FROM clima_territorio ORDER BY nome');
   },
+
+  /** Resumo das seis variáveis do recorte (cartões, acumulados de chuva, ano em curso e cobertura). */
+  clima_painel: resumoClima,
 
   /** Série anual (anos com os 12 meses) do município, da UF ou do Brasil, com a normal e a anomalia. */
   async clima_anual(q) {
-    await tabelasClima();
     const v = variavelClima(q);
     if (inteiro(q.cod)) {
       return consultar(
@@ -1658,6 +1719,7 @@ const rotasClima: Record<string, (q: Params) => Promise<unknown>> = {
         { cod: inteiro(q.cod), v },
       );
     }
+    await tabelasClima();
     return consultar(
       `SELECT ano, valor, avg(valor) FILTER (ano BETWEEN ${NORMAL_DE} AND ${NORMAL_ATE}) OVER () AS normal,
               anomalia_pct, valor - avg(valor) FILTER (ano BETWEEN ${NORMAL_DE} AND ${NORMAL_ATE}) OVER () AS anomalia
@@ -1668,8 +1730,8 @@ const rotasClima: Record<string, (q: Params) => Promise<unknown>> = {
 
   /** Série mensal do município, da UF ou do Brasil, com a normal do mês (1991–2020). */
   async clima_mensal(q) {
-    await tabelasClima();
     const v = variavelClima(q);
+    await tabelasClima();
     if (inteiro(q.cod)) {
       return consultar(
         `SELECT m.ano, m.mes, m.valor, n.normal
@@ -1688,12 +1750,14 @@ const rotasClima: Record<string, (q: Params) => Promise<unknown>> = {
 
   /** Ranking dos municípios num ano (de uma UF ou do Brasil): total ou média anual, normal e anomalia (relativa ou absoluta). */
   async clima_ranking(q) {
-    await tabelasClima();
+    await tabelasClimaLeves();
+    const ano = inteiro(q.ano);
+    if (ano === null || !Number.isFinite(ano)) return [];
     return consultar(
       `SELECT a.cod, t.nome, t.uf, a.valor, a.normal, a.anomalia_pct, a.anomalia
        FROM read_parquet(${arq('gold/clima/anual.parquet')}) a JOIN clima_territorio t USING (cod)
        WHERE a.variavel = $v AND a.ano = $ano::INTEGER AND ($uf = '' OR t.uf = $uf)`,
-      { v: variavelClima(q), ano: inteiro(q.ano), uf: UFS.has(String(q.uf)) ? String(q.uf) : '' },
+      { v: variavelClima(q), ano, uf: UFS.has(String(q.uf)) ? String(q.uf) : '' },
     );
   },
 };

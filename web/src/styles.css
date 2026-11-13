@@ -1271,3 +1271,38 @@ button.ia-historico-importar:focus-visible { outline: 2px solid var(--foco); out
 .mp-avancado summary { cursor: pointer; }
 .mp-fora { margin-top: -4px; }
 @media print { .mp-sugestoes, .mp-busca .limpar { display: none; } .mp-pergunta:not([open]) > :not(summary) { display: none; } .mp-cartao { break-inside: avoid; } }
+
+/* painel automático de clima: seis cartões, acumulados de chuva, detalhe e mapa de calor; sem rolagem horizontal a 390 px */
+.cl-filtros .filtros { align-items: end; }
+.cl-aviso { border-left: 3px solid var(--acao-texto); background: var(--superficie-2); padding: 8px 12px; border-radius: 4px; color: var(--tinta-2); margin: 0 0 12px; font-size: 13px; overflow-wrap: anywhere; }
+.cl-aviso.forte { border-left-color: var(--ruim); color: var(--tinta); }
+.cl-aviso p { margin: 0 0 6px; }
+.cl-aviso .acoes { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.cl-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 12px; margin-bottom: 14px; }
+.cl-cartao { background: var(--superficie); border: 1px solid var(--borda); border-radius: 10px; padding: 12px 14px; box-shadow: var(--sombra); min-width: 0; display: flex; flex-direction: column; gap: 4px; cursor: pointer; }
+.cl-cartao.sel { border-color: var(--acao-texto); box-shadow: 0 0 0 2px var(--acao-suave); }
+.cl-cartao h4 { margin: 0; font-size: 14px; font-weight: 650; line-height: 1.3; overflow-wrap: anywhere; }
+.cl-cartao .fonte { margin: 0; font-size: 11px; color: var(--tinta-3); }
+.cl-valor { margin: 4px 0 0; font-size: 13px; color: var(--tinta-2); }
+.cl-valor strong { font-size: 26px; color: var(--tinta); font-variant-numeric: tabular-nums; }
+.cl-num { margin: 0; font-size: 12px; color: var(--tinta-2); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.cl-frase { margin: 2px 0 0; font-size: 14px; font-weight: 600; color: var(--tinta); overflow-wrap: anywhere; }
+.cl-frase.acima::before { content: '▲ '; color: var(--acao-texto); }
+.cl-frase.abaixo::before { content: '▼ '; color: var(--tinta-2); }
+.cl-parcial { margin: 6px 0 0; padding-top: 6px; border-top: 1px dashed var(--borda); font-size: 12px; color: var(--tinta-2); overflow-wrap: anywhere; }
+.cl-nota { margin: 4px 0 0; font-size: 12px; color: var(--tinta-3); overflow-wrap: anywhere; }
+.cl-cartao .ver { align-self: flex-start; margin-top: 6px; }
+.cl-acum { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 230px), 1fr)); gap: 12px; margin: 8px 0 4px; }
+.cl-acum > div { background: var(--superficie-2); border-radius: 8px; padding: 10px 12px; min-width: 0; }
+.cl-acum h4 { margin: 0 0 2px; font-size: 13px; }
+.cl-legenda { display: flex; flex-wrap: wrap; gap: 6px 16px; list-style: none; margin: 8px 0 0; padding: 0; font-size: 12px; color: var(--tinta-2); }
+.cl-legenda li { display: flex; align-items: center; gap: 6px; }
+.cl-legenda i { display: inline-block; width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--borda-campo); }
+.cl-escala { height: 12px; border-radius: 6px; border: 1px solid var(--borda-campo); margin: 8px 0 2px; }
+.cl-escala-rotulos { display: flex; justify-content: space-between; font-size: 12px; color: var(--tinta-2); font-variant-numeric: tabular-nums; }
+.cl-exportar { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-size: 12px; color: var(--tinta-2); }
+.cl-exportar .exportar { display: inline-flex; }
+.cl-tabela-calor td, .cl-tabela-calor th { white-space: nowrap; padding: 3px 6px; font-size: 12px; }
+.cl-mini { font-size: 12px; color: var(--tinta-3); margin: 0 0 8px; }
+@media (max-width: 480px) { .cl-valor strong { font-size: 22px; } }
+@media print { .cl-cartao { break-inside: avoid; cursor: default; } .cl-cartao .ver { display: none; } }

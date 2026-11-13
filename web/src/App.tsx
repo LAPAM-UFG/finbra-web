@@ -9,6 +9,7 @@ import { Fpm, FpmFaixas } from './pages/Fpm';
 import { Ia } from './pages/Ia';
 import { MunicEvolucao, MunicMetodologia, MunicTerritorio, MunicVisaoGeral } from './pages/Munic';
 import { ClimaMetodologia, ClimaRankings, ClimaVisaoGeral } from './pages/Clima';
+import { buscaClima } from './clima_comum';
 import { LrfDemonstrativos, LrfIndicadores } from './pages/Lrf';
 import { Deflatores, Qualidade } from './pages/Metodologia';
 import { Rankings } from './pages/Rankings';
@@ -238,7 +239,7 @@ export function App() {
             <div key={grupo} style={{ display: 'contents' }}>
               <h4>{grupo}</h4>
               {itens.map(([para, rotulo]) => (
-                <NavLink key={para} to={{ pathname: para, search: area === 'ia' ? buscaIa : area === 'munic' ? contextoMunic(search, DESTINO_MUNIC[para] ?? 'avancado', EDICOES_MUNIC) : area === 'clima' ? '' : buscaArea }} end className={({ isActive }) => (isActive ? 'ativo' : '')}>
+                <NavLink key={para} to={{ pathname: para, search: area === 'ia' ? buscaIa : area === 'munic' ? contextoMunic(search, DESTINO_MUNIC[para] ?? 'avancado', EDICOES_MUNIC) : area === 'clima' ? buscaClima(search) : buscaArea }} end className={({ isActive }) => (isActive ? 'ativo' : '')}>
                   {rotulo}
                 </NavLink>
               ))}
