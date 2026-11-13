@@ -223,6 +223,15 @@ preserva a versão 1 nas regenerações do manifesto.
 Painel próprio em `/datasus` (o `/saude` das finanças é o SIOPS). Microdados públicos do DATASUS
 (`ftp.datasus.gov.br/dissemin/publicos`), no HD externo.
 
+A visão geral abre com população, nascimentos, internações e leitos SUS, e apresenta
+os 48 indicadores em oito temas. A busca por nome ou assunto filtra os números já
+carregados; o resumo CSV/Excel inclui todos os indicadores, com ano efetivo, unidade,
+numerador, denominador e condição do dado. Proporções são exportadas em 0–100 (%).
+Os gráficos do fim são montados ao chegar à seção. APS, ICSAP, vacinação, financiamento
+federal e produção ambulatorial têm atalhos que preservam território e ano.
+Esta interface usa os arquivos de Saúde existentes e mantém o custo inicial do motor
+de consultas; ampliar os cartões não exige novos Parquet nem alterações no manifesto.
+
 | | |
 |---|---|
 | Download | `pipeline/saude_baixar.py`: os .dbc de SIM, SINASC, SIH, CNES, SINAN, CIHA, SISCAN, SISPRENATAL, Oncologia e RESP, mais a população do IBGE/SVS, em `E:/finbra/brutos/saude` (mesma estrutura do FTP; ~220 GB). Ficam de fora o SIA e o PNI antigo, e as cópias do SIH em XML, DBF e CSV. Retomável |

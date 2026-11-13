@@ -11,16 +11,17 @@ import { BarraFiltros, useDados, useFiltros } from '../contexto';
 import type { Classificacao } from '../dados';
 import { numero, reais } from '../format';
 import { num } from '../hooks';
-import { local, t } from '../idioma';
+import { idioma, local, t } from '../idioma';
 import {
   anosDaColuna, anosDoIndicador, avisoPreliminarNaoIncluido, calcular, calcularJanela, CAPITULOS, condicaoDado, faixaAnos, fonteCurta, fonteSaude, formatar,
   disponivelNosDados, fonteDaColuna, indicador, INDICADORES, metadadosIndicador, nomeContagem, NOME_FONTE, processadoEm, rotuloCondicao, territorioDoIndicador,
+  motivoSemValor, textoMotivo, textoValor,
   type FonteChave, type FontesMeta, type Indicador,
 } from '../saude_comum';
+import { filtrarIndicadores, notaSemValor, referencia, tabelaResumo, TEMAS } from '../saude_painel';
 
-/** Ano mostrado de um dado: o último ano coberto (modo "último de cada fonte") ou o ano escolhido, se a fonte o cobre. */
-export const referencia = (cobertos: number[], ano: number, ultimo: boolean): number | null =>
-  ultimo ? cobertos.at(-1) ?? null : cobertos.includes(ano) ? ano : null;
+// o ano de referência (último de cada fonte ou o escolhido) vive em saude_painel.ts, junto do resumo exportável; as páginas continuam importando daqui
+export { referencia };
 
 /** Colunas que a versão dos dados carregada tem (null enquanto carrega): código novo com gold antigo esconde o que falta. */
 export function useColunasSaude(): Set<string> | null {
@@ -114,13 +115,15 @@ export function KpiIndicador({ ind, serie, ano, ultimo, fontes, extra }: {
   const cob = anosDoIndicador(ind, fontes);
   const ref = referencia(cob, ano, ultimo);
   const dica = <Dica rotulo={t('Fórmula', 'Formula')}>{ind.nota()} {t('Fonte', 'Source')}: {fonteCurta(ind)}.{ind.alerta ? ` ${ind.alerta()}` : ''}</Dica>;
+  // a unidade fica à vista no rótulo (não só na fórmula): "12,3" sozinho não diz se é por mil, por 100 mil ou por habitante
+  const rotulo = <>{ind.nome()}<span className="saude-unidade">{ind.unidade()}</span></>;
   if (!temColuna(serie, ind.numerador) || !temColuna(serie, ind.denominador)) {
-    return <Kpi rotulo={ind.nome()} valor={t('indisponível', 'unavailable')} nota={TEXTO_INDISPONIVEL()} dica={dica} />;
+    return <Kpi rotulo={rotulo} valor={t('indisponível', 'unavailable')} nota={TEXTO_INDISPONIVEL()} dica={dica} />;
   }
   if (ref === null) {
     const prel = avisoPreliminarNaoIncluido(ind.numerador, ano, fontes) ?? avisoPreliminarNaoIncluido(ind.denominador, ano, fontes);
     return (
-      <Kpi rotulo={ind.nome()} valor={t('fora da cobertura', 'outside coverage')} dica={dica}
+      <Kpi rotulo={rotulo} valor={textoValor('fora_cobertura', '')} dica={dica}
         nota={<>{fonteCurta(ind)}: {faixaAnos(cob)}{prel ? ` · ${prel}` : ''}</>} />
     );
   }
@@ -129,10 +132,13 @@ export function KpiIndicador({ ind, serie, ano, ultimo, fontes, extra }: {
   const d = num(r?.[ind.denominador]);
   const v = calcular(ind, r);
   const cond = condicaoDado(ind.numerador, n, ref, fontes);
-  const detalhe = v === null ? rotuloCondicao('ausente')
+  // sem valor por três motivos: sem registro (numerador ausente), denominador ausente ou denominador zero (razão indefinida)
+  const motivo = v === null ? motivoSemValor(ind, r) : null;
+  const detalheMotivo = motivo && motivo !== 'sem_registro' ? textoMotivo(motivo, ind) : null; // valor e rótulo vêm do helper; a nota usa o nome legível da contagem
+  const detalhe = v === null ? notaSemValor(ind, motivo)
     : ind.monetario ? `${reais(n)} ${t('÷', '÷')} ${numero(d)} ${nomeContagem(ind.denominador).toLowerCase()}`
     : ind.tipo === 'proporcao' ? `${numero(n)} ${t('de', 'of')} ${numero(d)}`
-    : `${ind.unidade()} · ${nomeContagem(ind.numerador)}: ${numero(n)} · ${nomeContagem(ind.denominador)}: ${numero(d)}`;
+    : `${nomeContagem(ind.numerador)}: ${numero(n)} · ${nomeContagem(ind.denominador)}: ${numero(d)}`;
   const marcas = [
     ...(cond === 'zero_registrado' ? [rotuloCondicao('zero_registrado')] : []),
     ...(cond === 'preliminar' ? [rotuloCondicao('preliminar')] : []),
@@ -140,7 +146,7 @@ export function KpiIndicador({ ind, serie, ano, ultimo, fontes, extra }: {
     ...(ind.alerta ? [ind.alerta()] : []),
   ];
   return (
-    <Kpi rotulo={ind.nome()} valor={v === null ? t('sem registro', 'no record') : formatar(ind, v)} dica={dica}
+    <Kpi rotulo={rotulo} valor={v === null ? (detalheMotivo?.valor ?? textoValor('ausente', '')) : formatar(ind, v)} dica={dica}
       nota={<>{ref} · {detalhe}{extra ? <> · {extra}</> : null}{marcas.length ? ` · ${marcas.join(' · ')}` : ''}<Atalhos ind={ind} ano={ref} /></>} />
   );
 }
@@ -217,18 +223,23 @@ function BlocoSiops({ ano, ultimo }: { ano: number; ultimo: boolean }) {
 export function IndiceSaude({ raiz }: { raiz: React.RefObject<HTMLElement | null> }) {
   const { hash, search, key } = useLocation(); // a chave muda a cada navegação, inclusive ao clicar de novo no mesmo link
   const [itens, setItens] = useState<{ id: string; rotulo: string }[]>([]);
+  const [alturaRaiz, setAlturaRaiz] = useState(0);
   const interagiu = useRef(false);
   useEffect(() => {
     const el = raiz.current;
     if (!el) return;
     const ler = () => {
-      const novos = [...el.querySelectorAll<HTMLElement>('[data-indice]')].map((e) => ({ id: e.id, rotulo: e.dataset.indice ?? '' }));
+      // âncora ainda sem conteúdo (o bloco carrega à parte) não ganha link: ele aparece quando o bloco chega
+      const novos = [...el.querySelectorAll<HTMLElement>('[data-indice]')].filter((e) => e.childElementCount > 0 || e.textContent).map((e) => ({ id: e.id, rotulo: e.dataset.indice ?? '' }));
       setItens((a) => (JSON.stringify(a) === JSON.stringify(novos) ? a : novos));
     };
     ler();
     const o = new MutationObserver(ler);
     o.observe(el, { childList: true, subtree: true });
-    return () => o.disconnect();
+    // blocos que carregam e gráficos que se montam mudam a altura da raiz: a rolagem até a âncora é refeita (até o primeiro gesto)
+    const r = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => setAlturaRaiz(Math.round(el.getBoundingClientRect().height)));
+    r?.observe(el);
+    return () => { o.disconnect(); r?.disconnect(); };
   }, [raiz]);
   useEffect(() => {
     const marcar = () => { interagiu.current = true; };
@@ -249,7 +260,7 @@ export function IndiceSaude({ raiz }: { raiz: React.RefObject<HTMLElement | null
     if (!alvo || !alvo.hasAttribute('data-indice') || interagiu.current) return;
     alvo.scrollIntoView({ block: 'start' }); // a margem de rolagem (scroll-padding-top) desconta o cabeçalho fixo, que muda de altura
     alvo.focus({ preventScroll: true });
-  }, [hash, key, itens]);
+  }, [hash, key, itens, alturaRaiz]);
   if (itens.length < 2) return null;
   return (
     <nav className="indice-saude" aria-label={t('Nesta página', 'On this page')}>
@@ -265,13 +276,59 @@ export function IndiceSaude({ raiz }: { raiz: React.RefObject<HTMLElement | null
 
 // ---------------- visão geral ----------------
 
-const CARTOES = {
-  materno: ['mortalidade_materna', 'baixo_peso', 'cesareas', 'pre_natal'],
-  mortalidade: ['mortalidade_geral', 'mal_definidas', 'dcnt_prematura', 'homicidios'],
-  rede: ['internacoes_fora', 'mortalidade_hospitalar', 'leitos_sus_mil', 'medicos_mil'],
-  vigilancia: ['dengue_incidencia', 'dengue_letalidade', 'chik_incidencia', 'tb_incidencia', 'hans_deteccao'],
-  oncologia: ['cito_25_64', 'cito_alterados', 'mamo_50_69', 'cancer_registros'],
-};
+/** Indicadores de um tema, na ordem de saude_painel.TEMAS; `especiais` troca o cartão padrão de alguns (triênio infantil, funil do tratamento). */
+const idsDoTema = (tema: string) => TEMAS.find((x) => x.id === tema)?.indicadores ?? [];
+
+/** Aparece quando chega perto da tela (ou ao pedir, ou ao imprimir): os gráficos e tabelas ao fim da página não montam na abertura. Os dados já estão carregados. */
+function Adiado({ id, indice, children }: { id: string; indice: string; children: ReactNode }) {
+  const raiz = useRef<HTMLDivElement>(null);
+  const [visivel, setVisivel] = useState(typeof IntersectionObserver === 'undefined');
+  useEffect(() => {
+    const el = raiz.current;
+    if (visivel || !el) return;
+    const o = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) setVisivel(true); }, { rootMargin: '600px 0px' });
+    o.observe(el);
+    const imprimir = () => setVisivel(true);
+    window.addEventListener('beforeprint', imprimir);
+    return () => { o.disconnect(); window.removeEventListener('beforeprint', imprimir); };
+  }, [visivel]);
+  return (
+    <div ref={raiz} className="grade-2" id={id} data-indice={indice} tabIndex={-1}>
+      {visivel ? children : (
+        <div className="saude-adiado">
+          <p>{t('Os gráficos e as tabelas desta parte carregam quando ela chega perto da tela.', 'The charts and tables in this part load when it gets near the screen.')}</p>
+          <button className="botao-leve" onClick={() => setVisivel(true)}>{t('Carregar gráficos agora', 'Load charts now')}</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Para onde ir quando o assunto não está na visão geral: cada painel guarda o recorte, o ano e o indicador da URL (a busca vem antes da âncora). */
+function OutrosPaineis() {
+  const { search } = useLocation();
+  const itens: [string, string, string, string?][] = [
+    [t('Atenção primária', 'Primary care'), t('Cobertura da atenção primária, equipes e agentes comunitários, com séries por metodologia.', 'Primary care coverage, teams and community health agents, with series by methodology.'), '/datasus/rede', '#saude-aps'],
+    [t('Internações evitáveis (ICSAP)', 'Avoidable admissions (ICSAP)'), t('Taxa, participação nas internações e os 19 grupos da lista brasileira.', 'Rate, share of admissions and the 19 groups of the Brazilian list.'), '/datasus/rede', '#saude-icsap'],
+    [t('Vacinação', 'Vaccination'), t('Cobertura vacinal por imunobiológico: série, comparação territorial e municípios.', 'Vaccination coverage by immunobiological: series, territorial comparison and municipalities.'), '/datasus/vacinacao'],
+    [t('Financiamento federal', 'Federal funding'), t('Repasses federais do FNS: série, composição e municípios.', 'FNS federal transfers: series, composition and municipalities.'), '/datasus/financiamento'],
+    [t('Produção ambulatorial', 'Outpatient output'), t('Procedimentos ambulatoriais aprovados (SIA), pelo município do estabelecimento.', 'Approved outpatient procedures (SIA), by municipality of the facility.'), '/datasus/ambulatorial'],
+    [t('Rede e acesso', 'Network and access'), t('Moradores × hospitais do município, leitos, UBS e profissionais.', 'Residents × municipal hospitals, beds, primary care units and staff.'), '/datasus/rede'],
+  ];
+  return (
+    <details className="saude-guia" id="saude-outros-paineis">
+      <summary>{t('Vacinação, atenção primária e outros painéis', 'Vaccination, primary care and other panels')}</summary>
+      <p className="nota-base">{t('Assuntos com página própria. O recorte e o ano escolhidos acompanham o link.', 'Subjects with their own page. The chosen scope and year follow the link.')}</p>
+      <ul>
+        {itens.map(([nome, frase, caminho, hash]) => (
+          <li key={nome}>
+            <Link to={{ pathname: caminho, search, hash }}><strong>{nome}</strong><span>{frase}</span></Link>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
 
 export function SaudeVisaoGeral() {
   const { ano, semAno, escopo, rotulo, temDados, meta, fontes } = useSaude();
@@ -290,7 +347,6 @@ export function SaudeVisaoGeral() {
     { nome: t('Neonatal', 'Neonatal'), valores: dados.map((r) => calcular(indicador('mortalidade_neonatal'), r)) },
     { nome: t('Pós-neonatal', 'Post-neonatal'), valores: dados.map((r) => calcular(indicador('mortalidade_pos_neonatal'), r)) },
   ], (v) => numero1Local(v)), [serie.dados]); // eslint-disable-line react-hooks/exhaustive-deps
-  const cartoes = (ids: string[]) => ids.map((id) => <KpiIndicador key={id} ind={indicador(id)} serie={dados} ano={ano} ultimo={semAno} fontes={fontes} />);
 
   // mortalidade infantil no triênio terminando no ano de referência: soma dos óbitos ÷ soma dos nascidos, com os dois totais
   const cobInf = anosDoIndicador(infantil, fontes);
@@ -303,6 +359,15 @@ export function SaudeVisaoGeral() {
   const refNasc = refDe('sinasc');
   const natalidade = indicador('natalidade');
   const blocos = useRef<HTMLDivElement>(null);
+  const metadados = useMetadados();
+  // busca local entre os indicadores do catálogo: não consulta nada, só filtra o que a série carregada já traz
+  const [texto, setTexto] = useState('');
+  const [temaSel, setTemaSel] = useState('');
+  const buscando = texto.trim() !== '' || temaSel !== '';
+  const achados = useMemo(() => filtrarIndicadores(texto, temaSel || null), [texto, temaSel, idioma()]); // eslint-disable-line react-hooks/exhaustive-deps
+  const limparBusca = () => { setTexto(''); setTemaSel(''); };
+  const cartoesTema = (tema: string, especiais: Record<string, ReactNode> = {}) => idsDoTema(tema).map((id) => especiais[id]
+    ?? <KpiIndicador key={id} ind={indicador(id)} serie={dados} ano={ano} ultimo={semAno} fontes={fontes} />);
 
   if (!temDados) return <><h2 className="titulo-pagina">{t('Saúde', 'Health')}</h2><SemDados /></>;
   return (
@@ -313,38 +378,116 @@ export function SaudeVisaoGeral() {
       <AvisoAno ano={ano} />
       <Estado carregando={serie.carregando} erro={serie.erro} tentarNovamente={serie.recarregar}
         vazio={!serie.carregando && !serie.dados?.length && t('Sem registros para este recorte.', 'No records for this scope.')} />
+      {serie.dados && serie.dados.length > 0 && (
+        <section className="saude-sintese" aria-labelledby="saude-sintese-titulo">
+          <h3 id="saude-sintese-titulo">{t('Resumo do recorte', 'Scope summary')}</h3>
+          <div className="kpis">
+            <KpiContagem rotulo={t('População residente', 'Resident population')} coluna="populacao" serie={dados} ano={ano} ultimo={semAno} fontes={fontes}
+              nota={() => t('SVS/MS · residentes', 'SVS/MS · residents')} />
+            <KpiContagem rotulo={t('Nascidos vivos', 'Live births')} coluna="nascidos" serie={dados} ano={ano} ultimo={semAno} fontes={fontes}
+              nota={() => t('SINASC · mães residentes', 'SINASC · resident mothers')} />
+            <KpiContagem rotulo={t('Internações SUS (moradores)', 'SUS admissions (residents)')} coluna="int_total" serie={dados} ano={ano} ultimo={semAno} fontes={fontes}
+              nota={() => t('SIH · por município de residência', 'SIH · by municipality of residence')} />
+            <KpiContagem rotulo={t('Leitos SUS', 'SUS beds')} coluna="cnes_leitos_sus" serie={dados} ano={ano} ultimo={semAno} fontes={fontes}
+              nota={() => t('CNES · dezembro', 'CNES · December')} />
+          </div>
+        </section>
+      )}
+      <OutrosPaineis />
+      {serie.dados && serie.dados.length > 0 && (
+        <section className="saude-busca" aria-label={t('Buscar indicador', 'Search indicator')}>
+          <div className="saude-busca-campos">
+            <div className="campo">
+              <label htmlFor="saude-tema">{t('Tema', 'Theme')}</label>
+              <select id="saude-tema" value={temaSel} onChange={(e) => setTemaSel(e.target.value)}>
+                <option value="">{t('Todos os temas', 'All themes')}</option>
+                {TEMAS.map((x) => <option key={x.id} value={x.id}>{x.nome()} ({x.indicadores.length})</option>)}
+              </select>
+            </div>
+            <div className="campo saude-busca-texto">
+              <label htmlFor="saude-busca">{t('Buscar indicador', 'Search indicator')}</label>
+              <input id="saude-busca" type="search" value={texto} autoComplete="off" onChange={(e) => setTexto(e.target.value)}
+                placeholder={t('ex.: médico, mama, cesárea, dengue', 'e.g. physician, breast, caesarean, dengue')} />
+            </div>
+            {buscando && <button type="button" className="botao-leve" onClick={limparBusca}>{t('Limpar busca', 'Clear search')}</button>}
+          </div>
+          <p className="nota-base" role="status" aria-live="polite">
+            {buscando
+              ? t(`${achados.length} de ${INDICADORES.length} indicadores${temaSel ? ` · ${TEMAS.find((x) => x.id === temaSel)?.nome()}` : ''}`,
+                `${achados.length} of ${INDICADORES.length} indicators${temaSel ? ` · ${TEMAS.find((x) => x.id === temaSel)?.nome()}` : ''}`)
+              : t(`${INDICADORES.length} indicadores organizados por tema. Busque um assunto para encontrar os números.`,
+                `${INDICADORES.length} indicators organized by theme. Search for a subject to find the numbers.`)}
+          </p>
+          <div className="saude-exportar">
+            <span>{t(`Baixar resumo completo (${INDICADORES.length} indicadores)`, `Download full summary (${INDICADORES.length} indicators)`)}</span>
+            <BotoesExportar nome="saude_visao_geral_indicadores" obter={() => {
+              const { colunas, linhas: lin } = tabelaResumo(dados, ano, semAno, fontes);
+              return { colunas, linhas: lin, metadados: metadados([
+                [t('Recorte', 'Scope'), rotulo],
+                [t('Indicadores', 'Indicators'), String(lin.length)],
+                [t('Regra do ano', 'Year rule'), semAno
+                  ? t('último ano coberto pela fonte de cada indicador (veja a coluna Ano de referência)', 'latest year covered by each indicator’s source (see the Reference year column)')
+                  : t(`${ano}, quando a fonte do indicador o cobre; fora da cobertura o valor fica vazio`, `${ano}, when the indicator’s source covers it; outside coverage the value is left empty`)],
+                [t('Regra de agregação', 'Aggregation rule'), t('razão da soma dos numeradores pela soma dos denominadores do recorte, nunca a média das taxas municipais', 'ratio of the sum of numerators to the sum of denominators in the scope, never the average of municipal rates')],
+                [t('Escala', 'Scale'), t('proporções em % de 0 a 100; taxas na unidade da coluna Unidade; valores em reais do ano-base do IPCA', 'shares in % from 0 to 100; rates in the unit of the Unit column; amounts in reais of the IPCA base year')],
+                [t('Sem valor', 'No value'), t('valor vazio com a condição do dado: sem registro, denominador ausente, denominador zero, fora da cobertura ou indisponível nesta versão; nunca zero', 'empty value with the data condition: no record, denominator missing, zero denominator, outside coverage or unavailable in this version; never zero')],
+                [t('Denominador pequeno', 'Small denominator'), t('“sim” quando o denominador fica abaixo do mínimo do indicador: poucos casos fazem a taxa oscilar muito', '“yes” when the denominator is below the indicator’s minimum: few cases make the rate swing a lot')],
+                [t('Leitura', 'Reading'), t('os indicadores não são ordenados como melhores ou piores; dependem de idade, oferta de serviços e registro', 'indicators are not ranked as better or worse; they depend on age, service supply and recording')],
+                [t('Fonte', 'Source'), fonteSaude()],
+              ], { precosReais: true }) };
+            }} />
+          </div>
+        </section>
+      )}
       <IndiceSaude raiz={blocos} />
       <div ref={blocos}>
-      {serie.dados && serie.dados.length > 0 && (
+      {serie.dados && serie.dados.length > 0 && buscando && (
+        achados.length ? (
+          <div className="kpis kpis-4" id="saude-resultados">
+            {achados.map((ind) => <KpiIndicador key={ind.id} ind={ind} serie={dados} ano={ano} ultimo={semAno} fontes={fontes} />)}
+          </div>
+        ) : (
+          <div className="aviso" role="status">
+            {t(`Nenhum dos ${INDICADORES.length} indicadores combina com a busca.`, `None of the ${INDICADORES.length} indicators matches the search.`)}{' '}
+            <button type="button" className="botao-leve" onClick={limparBusca}>{t('Limpar busca', 'Clear search')}</button>
+          </div>
+        )
+      )}
+      {serie.dados && serie.dados.length > 0 && !buscando && (
         <>
           <BlocoTitulo id="saude-maternidade" titulo={t('Maternidade e infância', 'Maternity and childhood')} refs={[['sinasc', refNasc], ['sim', anoSim]]} />
           <div className="kpis kpis-4">
             <KpiContagem rotulo={t('Nascidos vivos', 'Live births')} coluna="nascidos" serie={dados} ano={ano} ultimo={semAno} fontes={fontes}
               nota={(r) => t(`natalidade: ${formatar(natalidade, calcular(natalidade, r))} por mil hab.`, `birth rate: ${formatar(natalidade, calcular(natalidade, r))} per 1,000`)} />
-            <KpiIndicador ind={infantil} serie={dados} ano={ano} ultimo={semAno} fontes={fontes}
-              extra={[notaTri, t(`neonatal ${formatar(infantil, calcular(indicador('mortalidade_neonatal'), dados.find((r) => Number(r.ano) === refInf)))}`, `neonatal ${formatar(infantil, calcular(indicador('mortalidade_neonatal'), dados.find((r) => Number(r.ano) === refInf)))}`)].filter(Boolean).join(' · ')} />
-            {cartoes(CARTOES.materno)}
+            {cartoesTema('maternidade', {
+              mortalidade_infantil: <KpiIndicador key="mortalidade_infantil" ind={infantil} serie={dados} ano={ano} ultimo={semAno} fontes={fontes}
+                extra={[notaTri, t(`neonatal ${formatar(infantil, calcular(indicador('mortalidade_neonatal'), dados.find((r) => Number(r.ano) === refInf)))}`, `neonatal ${formatar(infantil, calcular(indicador('mortalidade_neonatal'), dados.find((r) => Number(r.ano) === refInf)))}`)].filter(Boolean).join(' · ')} />,
+            })}
           </div>
 
-          <BlocoTitulo id="saude-mortalidade" titulo={t('Mortalidade', 'Mortality')} refs={[['sim', anoSim], ['populacao_svs', refDe('populacao_svs')]]} />
+          <BlocoTitulo id="saude-mortalidade" titulo={t('Mortalidade e causas de morte', 'Mortality and causes of death')} refs={[['sim', anoSim], ['populacao_svs', refDe('populacao_svs')]]} />
           <div className="kpis kpis-4">
             <KpiContagem rotulo={t('Óbitos (não fetais)', 'Deaths (non-fetal)')} coluna="obitos" serie={dados} ano={ano} ultimo={semAno} fontes={fontes}
               nota={(r) => t(`taxa bruta: ${formatar(indicador('mortalidade_geral'), calcular(indicador('mortalidade_geral'), r))} por mil hab. · fetais: ${numero(num(r?.obitos_fetais))}`,
                 `crude rate: ${formatar(indicador('mortalidade_geral'), calcular(indicador('mortalidade_geral'), r))} per 1,000 · fetal: ${numero(num(r?.obitos_fetais))}`)}
               dica={<Dica rotulo={t('Fórmula', 'Formula')}>{indicador('mortalidade_geral').nota()}</Dica>} />
-            {cartoes(CARTOES.mortalidade)}
+            {cartoesTema('mortalidade')}
           </div>
 
-          <BlocoTitulo id="saude-rede" titulo={t('Rede e acesso', 'Network and access')} refs={[['sih', refDe('sih')], ['cnes', refDe('cnes')], ['sia', refDe('sia')]]} />
+          <BlocoTitulo id="saude-internacoes" titulo={t('Internações (SIH/SUS)', 'Hospital admissions (SIH/SUS)')} refs={[['sih', refDe('sih')], ['populacao_svs', refDe('populacao_svs')]]} />
           <div className="kpis kpis-4">
             <KpiContagem rotulo={t('Internações (SUS)', 'Admissions (SUS)')} coluna="int_total" serie={dados} ano={ano} ultimo={semAno} fontes={fontes}
-              nota={(r) => t(`${formatar(indicador('internacoes_mil'), calcular(indicador('internacoes_mil'), r))} por mil hab. · moradores do município`, `${formatar(indicador('internacoes_mil'), calcular(indicador('internacoes_mil'), r))} per 1,000 · residents`)}
+              nota={(r) => t(`${formatar(indicador('internacoes_mil'), calcular(indicador('internacoes_mil'), r))} por mil hab. · pelo município de residência`, `${formatar(indicador('internacoes_mil'), calcular(indicador('internacoes_mil'), r))} per 1,000 · by municipality of residence`)}
               dica={<Dica rotulo={t('Fórmula', 'Formula')}>{indicador('internacoes_mil').nota()}</Dica>} />
             <KpiContagem rotulo={t('Valor pago nas internações (total)', 'Amount paid for admissions (total)')} coluna="int_valor_real" monetario serie={dados} ano={ano} ultimo={semAno} fontes={fontes}
               nota={() => t('R$ de 2025, tabela do SUS', 'R$ of 2025, SUS table')}
               dica={<Dica rotulo={t('Fórmula', 'Formula')}>{indicador('valor_por_internacao').nota()}</Dica>} />
-            <KpiIndicador ind={indicador('valor_por_internacao')} serie={dados} ano={ano} ultimo={semAno} fontes={fontes} />
-            {cartoes(CARTOES.rede)}
+            {cartoesTema('internacoes')}
+          </div>
+
+          <BlocoTitulo id="saude-rede" titulo={t('Rede e acesso', 'Network and access')} refs={[['cnes', refDe('cnes')], ['sia', refDe('sia')]]} />
+          <div className="kpis kpis-4">
+            {cartoesTema('rede')}
             <KpiContagem rotulo={t('Procedimentos ambulatoriais (SIA)', 'Outpatient procedures (SIA)')} coluna="amb_qtd" serie={dados} ano={ano} ultimo={semAno} fontes={fontes}
               nota={() => <>{t('procedimentos aprovados, pelo município do estabelecimento', 'approved procedures, by municipality of the facility')} · <Link to={`/datasus/ambulatorial${search}`}>{t('produção ambulatorial', 'outpatient output')}</Link></>} />
           </div>
@@ -353,20 +496,34 @@ export function SaudeVisaoGeral() {
           </p>
           <BlocoSiops ano={ano} ultimo={semAno} />
 
+          <BlocoTitulo id="saude-icsap-resumo" titulo={t('Internações evitáveis (ICSAP)', 'Avoidable admissions (ICSAP)')} refs={[['icsap', refDe('icsap')], ['populacao_svs', refDe('populacao_svs')]]} />
+          <div className="kpis kpis-4">{cartoesTema('icsap')}</div>
+          <p className="nota-base">{t('Medida indireta, influenciada por idade, oferta de serviços e registro; não é avaliação isolada da gestão.', 'An indirect measure, influenced by age, service supply and recording; not an isolated assessment of management.')}</p>
+          <p className="nota-base">
+            <Link to={{ pathname: '/datasus/rede', search, hash: '#saude-icsap' }}>{t('Ver os 19 grupos da lista brasileira de ICSAP e a série', 'See the 19 groups of the Brazilian ICSAP list and the series')}</Link>
+          </p>
+
           <BlocoTitulo id="saude-vigilancia" titulo={t('Vigilância', 'Surveillance')} refs={[['sinan', refDe('sinan')], ['populacao_svs', refDe('populacao_svs')]]} />
-          <div className="kpis kpis-4">{cartoes(CARTOES.vigilancia)}</div>
+          <div className="kpis kpis-4">{cartoesTema('vigilancia')}</div>
 
           <BlocoTitulo id="saude-oncologia" titulo={t('Oncologia', 'Oncology')} refs={[['siscan', refDe('siscan')], ['oncologia', refDe('oncologia')]]} />
           <div className="kpis kpis-4">
-            {cartoes(CARTOES.oncologia)}
-            <DetalheTratamento serie={dados} ano={ano} ultimo={semAno} fontes={fontes} />
+            {cartoesTema('oncologia', { cancer_60_dias: <DetalheTratamento key="cancer_60_dias" serie={dados} ano={ano} ultimo={semAno} fontes={fontes} /> })}
           </div>
 
-          <p className="nota-base">{notaResidencia()}</p>
+          <BlocoTitulo id="saude-resp" titulo={t('Microcefalia e alterações do SNC (RESP)', 'Microcephaly and CNS changes (RESP)')} refs={[['resp', refDe('resp')], ['sinasc', refNasc]]} />
+          <div className="kpis kpis-4">{cartoesTema('resp')}</div>
         </>
       )}
-      {a && (
-        <div className="grade-2" id="saude-graficos" data-indice={t('Gráficos: causas de morte e mortalidade infantil', 'Charts: causes of death and infant mortality')} tabIndex={-1}>
+      {serie.dados && serie.dados.length > 0 && (
+        <p className="nota-base">
+          {t('Os cartões seguem a ordem dos temas, sem ordenar resultados como bons ou ruins: dependem da idade da população, da oferta de serviços e do registro. Com denominadores pequenos (poucos casos) as taxas oscilam muito.',
+            'Cards follow the order of the themes and do not rank results as good or bad: they depend on population age, service supply and recording. With small denominators (few cases) rates swing a lot.')}
+          {!buscando && <> {notaResidencia()}</>}
+        </p>
+      )}
+      {a && !buscando && (
+        <Adiado id="saude-graficos" indice={t('Gráficos: causas de morte e mortalidade infantil', 'Charts: causes of death and infant mortality')}>
           <CartaoGrafico titulo={t('Óbitos por capítulo da CID-10 (causa básica)', 'Deaths by ICD-10 chapter (underlying cause)')} desc={`${rotulo} · ${anoSim}`}
             tabela={<TabelaCapitulos linha={a} ano={anoSim!} rotulo={rotulo} versao={meta.geradoEm} />}>
             <Grafico opcao={opcaoCaps} nome="saude_capitulos" altura={420} />
@@ -382,7 +539,7 @@ export function SaudeVisaoGeral() {
             ]} metadados={metadadosIndicador(infantil, fontes, rotulo)} />}>
             <Grafico opcao={opcaoInf} nome="saude_mortalidade_infantil" />
           </CartaoGrafico>
-        </div>
+        </Adiado>
       )}
       </div>
     </>
@@ -396,20 +553,12 @@ function DetalheTratamento({ serie, ano, ultimo, fontes }: { serie: Linha[]; ano
   const ref = referencia(cob, ano, ultimo);
   if (ref === null) return <KpiIndicador ind={ind} serie={serie} ano={ano} ultimo={ultimo} fontes={fontes} />;
   const r = serie.find((x) => Number(x.ano) === ref);
-  const casos = num(r?.onco_casos);
-  const tratados = num(r?.onco_tratados);
-  const validos = num(r?.onco_trat_validos);
-  const ate60 = num(r?.onco_trat_60d);
-  const v = calcular(ind, r);
-  return (
-    <Kpi rotulo={ind.nome()} valor={v === null ? t('sem registro', 'no record') : formatar(ind, v)}
-      dica={<Dica rotulo={t('Fórmula', 'Formula')}>{ind.nota()}</Dica>}
-      nota={<>
-        {ref} · {numero(ate60)} {t('de', 'of')} {numero(validos)} {t('registros com datas válidas', 'records with valid dates')}
-        <br />{t('Diagnósticos', 'Diagnoses')}: {numero(casos)} · {t('com tratamento registrado', 'with treatment recorded')}: {numero(tratados)} · {t('com datas válidas', 'with valid dates')}: {numero(validos)} · {t('em até 60 dias', 'within 60 days')}: {numero(ate60)}
-        <Atalhos ind={ind} ano={ref} />
-      </>} />
+  const funil = (
+    <>
+      <br />{t('Diagnósticos', 'Diagnoses')}: {numero(num(r?.onco_casos))} · {t('com tratamento registrado', 'with treatment recorded')}: {numero(num(r?.onco_tratados))} · {t('com datas válidas', 'with valid dates')}: {numero(num(r?.onco_trat_validos))} · {t('tratados em até 60 dias', 'treated within 60 days')}: {numero(num(r?.onco_trat_60d))}
+    </>
   );
+  return <KpiIndicador ind={ind} serie={serie} ano={ano} ultimo={ultimo} fontes={fontes} extra={funil} />;
 }
 
 const numero1Local = (v: number | null) => (v === null ? '–' : v.toLocaleString(local(), { minimumFractionDigits: 1, maximumFractionDigits: 1 }));

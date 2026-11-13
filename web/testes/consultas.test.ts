@@ -66,6 +66,7 @@ import './clima.test'; // painel automático de clima: escolha pela URL, lacunas
 import './worker_dados.test'; // servidor de dados do Worker (HEAD, Range, Vary, 304) com R2 simulado
 import { CURADORIA } from '../src/munic_curadoria';
 import { COD_UF, montarCartoes, selecionar, type DadosPainel, type Escopo, type Modo } from '../src/munic_painel';
+import './saude_painel.test'; // visão geral da saúde: temas, busca, valor/condição e escala do resumo (sem dados)
 import './orientacao.test'; // regressões da orientação do mercado de trabalho (sem dados): rodam junto com esta suíte
 const require = createRequire(import.meta.url);
 const FETCH = globalThis.fetch; // alguns testes simulam o Worker trocando o fetch

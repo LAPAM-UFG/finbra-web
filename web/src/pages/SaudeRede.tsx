@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, useRef, type ReactNode } from 'react';
 import { useApi, type Linha } from '../api';
 import { Dica } from '../components/Dica';
 import { BotoesExportar } from '../components/Exportar';
@@ -12,7 +12,7 @@ import { t } from '../idioma';
 import { anosDaColuna, condicaoDado, faixaAnos, fonteSaude, rotuloCondicao, type FontesMeta } from '../saude_comum';
 import { BlocoAps } from './SaudeAps';
 import { BlocoIcsap } from './SaudeIcsap';
-import { AvisoAno, referencia, useSaude } from './SaudeDatasus';
+import { AvisoAno, IndiceSaude, referencia, useSaude } from './SaudeDatasus';
 
 const razao = (a: number | null, b: number | null) => (a === null || !b ? null : a / b);
 
@@ -41,6 +41,7 @@ function Painel({ titulo, dica, children }: { titulo: string; dica: string; chil
 export function SaudeRede() {
   const { ano, semAno, escopo, rotulo, temDados, fontes, municipio, uf, f, meta } = useSaude();
   const serie = useApi<Linha[]>(temDados ? 'saude_serie' : null, escopo);
+  const blocosRede = useRef<HTMLDivElement>(null); // raiz do índice: as âncoras de APS e ICSAP existem antes de os blocos carregarem
   // município ignorado (sem município válido): só existe em UF e Brasil, e entra nos totais; aqui sai à parte
   const ignorados = useApi<Linha[]>(temDados && !municipio ? 'saude_ignorados' : null, { uf: uf ?? undefined });
   const dados = serie.dados ?? [];
@@ -79,6 +80,8 @@ export function SaudeRede() {
       <AvisoAno ano={ano} />
       <Estado carregando={serie.carregando} erro={serie.erro} tentarNovamente={serie.recarregar}
         vazio={!serie.carregando && !serie.dados?.length && t('Sem registros para este recorte.', 'No records for this scope.')} />
+      <IndiceSaude raiz={blocosRede} />
+      <div ref={blocosRede}>
       {serie.dados && serie.dados.length > 0 && !('int_atendidas' in serie.dados[0]) && (
         <p className="aviso" role="status">{t('Os dois pontos de vista das internações (moradores e hospitais do município) são indisponíveis nesta versão dos dados.', 'The two views of admissions (residents and municipality hospitals) are unavailable in this data version.')}</p>
       )}
@@ -132,8 +135,8 @@ export function SaudeRede() {
           <p className="nota-base">{t('A capacidade é do município onde fica o estabelecimento, enquanto as internações dos moradores são do município de residência: municípios com hospital regional têm leitos e médicos altos para a própria população porque atendem moradores de outros.', 'Capacity belongs to the municipality where the facility is, while residents’ admissions are by municipality of residence: municipalities with a regional hospital have high beds and physicians for their own population because they serve residents of others.')}</p>
         </>
       )}
-      {temDados && <BlocoAps ano={ano} semAno={semAno} escopo={escopo} rotulo={rotulo} municipio={municipio} fontes={fontes} versao={meta.geradoEm} />}
-      {temDados && <BlocoIcsap serieDados={serie.dados} ano={ano} semAno={semAno} rotulo={rotulo} municipio={municipio} fontes={fontes} versao={meta.geradoEm} />}
+      {temDados && <div id="saude-aps" data-indice={t('Atenção primária (APS)', 'Primary care (APS)')} tabIndex={-1}><BlocoAps ano={ano} semAno={semAno} escopo={escopo} rotulo={rotulo} municipio={municipio} fontes={fontes} versao={meta.geradoEm} /></div>}
+      {temDados && <div id="saude-icsap" data-indice={t('Internações evitáveis (ICSAP)', 'Avoidable admissions (ICSAP)')} tabIndex={-1}><BlocoIcsap serieDados={serie.dados} ano={ano} semAno={semAno} rotulo={rotulo} municipio={municipio} fontes={fontes} versao={meta.geradoEm} /></div>}
       {serie.dados && serie.dados.length > 0 && (
         <CartaoGrafico titulo={recorte ? t('Internações: moradores × hospitais dos municípios do recorte', 'Admissions: residents × hospitals of the scope’s municipalities') : t('Internações: moradores × hospitais do município', 'Admissions: residents × municipality hospitals')} desc={`${rotulo} · ${t('SIH, por ano de competência', 'SIH, by competence year')}`}
           tabela={<TabelaSerie nome="saude_rede_acesso" anos={anosS} colunas={[
@@ -156,6 +159,7 @@ export function SaudeRede() {
         </CartaoGrafico>
       )}
       {f.alvo === null && <p className="nota-base">{t('Escolha um município para ver os médicos que atuam nele.', 'Choose a municipality to see the physicians who work in it.')}</p>}
+      </div>
       <BotoesExportar nome="saude_rede_resumo" obter={() => ({
         colunas: [t('Medida', 'Measure'), t('Ano', 'Year'), t('Valor', 'Value'), t('Condição do dado', 'Data condition')],
         linhas: ([['int_total', refSih], ['int_fora', refSih], ['int_atendidas', refSih], ['int_atendidas_de_fora', refSih], ['cnes_leitos_sus', refCnes], ['cnes_ubs', refCnes],
