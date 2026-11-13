@@ -16,8 +16,8 @@ import type { Pesquisa } from './munic_comum';
 
 export type Texto = { pt: string; en: string };
 export type FonteMunic = { ano: number; var: string; aba: string; tema: string; rotulo: string };
-export type BlocoMunic = 'pessoal' | 'transparencia' | 'planejamento' | 'habitacao' | 'inclusao';
-export const BLOCOS_MUNIC: BlocoMunic[] = ['pessoal', 'transparencia', 'planejamento', 'habitacao', 'inclusao'];
+export type BlocoMunic = 'pessoal' | 'transparencia' | 'planejamento' | 'habitacao' | 'educacao_saude' | 'cultura_esporte' | 'infancia_direitos' | 'rural_trabalho' | 'inclusao';
+export const BLOCOS_MUNIC: BlocoMunic[] = ['pessoal', 'transparencia', 'planejamento', 'habitacao', 'educacao_saude', 'cultura_esporte', 'infancia_direitos', 'rural_trabalho', 'inclusao'];
 
 export type IndicadorMunic = {
   id: string;

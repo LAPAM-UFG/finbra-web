@@ -203,7 +203,48 @@ test('exportação: números como números, ano real e condição em todas as li
   assert.equal(linhas[1][i('Unidade da resposta')], 'servidores');
 });
 
-test('curadoria: indicadores únicos, enunciado e tema exatos presentes, binários com Sim e Não, blocos cobertos, 30 a 50 por pesquisa', () => {
+test('curadoria ampliada: os 85 indicadores já publicados seguem, e os novos são binários de uma edição, com bloco e texto próprios', () => {
+  const publicados = [
+  'm_rh_existe_indireta', 'm_rh_concurso', 'm_rh_corraca', 'm_rh_direta_16', 'm_rh_direta_11', 'm_rh_direta_12', 'm_rh_direta_13',
+  'm_rh_direta_14', 'm_rh_direta_15', 'm_rh_indireta_36', 'm_rh_indireta_31', 'm_rh_indireta_32', 'm_rh_indireta_33', 'm_rh_indireta_34',
+  'm_rh_indireta_35', 'm_tr_lai', 'm_tr_controle', 'm_tr_conselho', 'm_tr_lgpd_area', 'm_tr_lgpd_lei', 'm_tr_tic', 'm_tr_site',
+  'm_tr_whatsapp', 'm_tr_diario', 'm_tr_nfe', 'm_pl_plano_diretor', 'm_pl_parcelamento', 'm_pl_zoneamento', 'm_pl_obras', 'm_pl_fundiaria',
+  'm_pl_plano_educ', 'm_pl_plano_saude', 'm_pl_cons_educ', 'm_hb_plano', 'm_hb_conselho', 'm_hb_cadastro', 'm_hb_construcao',
+  'm_hb_urbanizacao', 'm_hb_fundiaria', 'm_hb_cons_transp', 'm_hb_bicicletario', 'm_in_cons_assist', 'm_in_org_mulheres', 'm_in_cons_mulher',
+  'm_in_cons_sanutri', 'm_in_cons_segpub', 'm_in_guarda', 'm_in_cons_racial', 'm_in_denuncia_racial', 'm_in_abrigo_imigrantes',
+  'e_rh_direta_16', 'e_rh_direta_11', 'e_rh_direta_12', 'e_rh_direta_13', 'e_rh_direta_14', 'e_rh_direta_15', 'e_rh_indireta_36',
+  'e_rh_indireta_31', 'e_rh_indireta_32', 'e_rh_indireta_33', 'e_rh_indireta_34', 'e_rh_indireta_35', 'e_rh_existe_indireta', 'e_tr_lai',
+  'e_tr_controle', 'e_tr_conselho', 'e_tr_lgpd_area', 'e_tr_lgpd_lei', 'e_tr_site', 'e_tr_whatsapp', 'e_tr_diario', 'e_tr_nfe', 'e_tr_wifi',
+  'e_pl_plano_educ', 'e_pl_plano_saude', 'e_hb_plano', 'e_hb_conselho', 'e_hb_cadastro', 'e_hb_intermunicipal', 'e_in_cons_assist',
+  'e_in_org_mulheres', 'e_in_plano_mulheres', 'e_in_cons_mulher', 'e_in_lei_sanutri', 'e_in_cons_sanutri',
+  ];
+  assert.equal(publicados.length, 85);
+  const porId = new Map(CURADORIA.map((i) => [i.id, i]));
+  for (const id of publicados) assert.ok(porId.has(id), `indicador publicado removido: ${id}`);
+  assert.deepEqual(CURADORIA.slice(0, 85).map((i) => i.id), publicados, 'os 85 publicados mantêm ordem e posição');
+  const novos = CURADORIA.filter((i) => !publicados.includes(i.id));
+  assert.ok(novos.filter((i) => i.pesquisa === 'munic').length >= 30);
+  assert.ok(novos.filter((i) => i.pesquisa === 'estadic').length >= 20);
+  const blocosNovos = ['educacao_saude', 'cultura_esporte', 'infancia_direitos', 'rural_trabalho'] as const;
+  for (const p of ['munic', 'estadic'] as const) {
+    for (const b of blocosNovos) assert.ok(novos.filter((i) => i.pesquisa === p && i.bloco === b).length >= 3, `${p} ${b}`);
+  }
+  assert.ok((BLOCOS_MUNIC as string[]).includes('inclusao') && BLOCOS_MUNIC.length === 9);
+  for (const i of novos) {
+    assert.equal(i.tipo, 'binario', i.id); // nenhuma quantidade nova: só existência, com Sim e Não efetivos
+    assert.deepEqual([i.sim, i.nao], [['Sim'], ['Não']], i.id);
+    assert.equal(i.fontes.length, 1, `${i.id}: uma edição só, sem continuidade presumida`);
+    assert.ok([2021, 2023, 2024].includes(i.fontes[0].ano), i.id);
+    assert.ok(i.titulo.pt.trim() && i.titulo.en.trim() && i.titulo.pt !== i.titulo.en, i.id);
+    assert.ok(!/Evento clim/i.test(i.fontes[0].aba), `${i.id}: o bloco do Rio Grande do Sul não entra na visão nacional`);
+    assert.ok(!/(score|ranking|nota|índice de gestão)/i.test(i.titulo.pt), i.id);
+  }
+  // pares pesquisa/edição/variável não se repetem entre indicadores
+  const pares = CURADORIA.flatMap((i) => i.fontes.map((f) => `${i.pesquisa}|${f.ano}|${f.var.toLowerCase()}`));
+  assert.equal(new Set(pares).size, pares.length);
+});
+
+test('curadoria: indicadores únicos, enunciado e tema exatos presentes, binários com Sim e Não, blocos cobertos, ampliação sem teto antigo', () => {
   const ids = CURADORIA.map((i) => i.id);
   assert.equal(new Set(ids).size, ids.length);
   for (const i of CURADORIA) {
@@ -219,7 +260,7 @@ test('curadoria: indicadores únicos, enunciado e tema exatos presentes, binári
   }
   for (const p of ['munic', 'estadic'] as const) {
     const n = CURADORIA.filter((i) => i.pesquisa === p).length;
-    assert.ok(n >= 25 && n <= (p === 'munic' ? 60 : 40), `${p}: ${n}`);
+    assert.ok(n >= (p === 'munic' ? 100 : 65), `${p}: ${n}`); // ampliação: sem teto antigo de 50 e 35
     for (const b of BLOCOS_MUNIC) assert.ok(CURADORIA.some((i) => i.pesquisa === p && i.bloco === b), `${p} sem o bloco ${b}`);
   }
   // as edições recentes aparecem em mais de um ano: nada de "tudo é 2024"

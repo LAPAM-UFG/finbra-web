@@ -36,6 +36,25 @@ const BLOCOS = (): Record<BlocoMunic, { titulo: string; desc: string }> => ({
     titulo: t('Habitação e mobilidade', 'Housing and mobility'),
     desc: t('Estruturas e programas de habitação e de transporte.', 'Housing and transport structures and programmes.'),
   },
+  educacao_saude: {
+    titulo: t('Educação e saúde', 'Education and health'),
+    desc: t('Conselhos, fundos, planos e serviços de educação e de saúde declarados pelos gestores. Dizem se a estrutura existe, não a qualidade do atendimento.',
+      'Education and health councils, funds, plans and services declared by managers. They say whether the structure exists, not the quality of service.'),
+  },
+  cultura_esporte: {
+    titulo: t('Cultura e esporte', 'Culture and sport'),
+    desc: t('Conselhos, fundos, equipamentos e ações de cultura e de esporte.', 'Culture and sport councils, funds, facilities and actions.'),
+  },
+  infancia_direitos: {
+    titulo: t('Primeira infância e direitos', 'Early childhood and rights'),
+    desc: t('Conselhos, comitês e políticas de direitos humanos, da criança e do adolescente, da pessoa idosa, da pessoa com deficiência e da primeira infância.',
+      'Councils, committees and policies on human rights, children and adolescents, older persons, persons with disabilities and early childhood.'),
+  },
+  rural_trabalho: {
+    titulo: t('Desenvolvimento rural e trabalho', 'Rural development and work'),
+    desc: t('Estruturas e ações de agropecuária, desenvolvimento rural, inclusão produtiva, qualificação profissional e crédito.',
+      'Farming and rural development structures and actions, productive inclusion, professional training and credit.'),
+  },
   inclusao: {
     titulo: t('Inclusão, políticas setoriais e proteção', 'Inclusion, sector policies and protection'),
     desc: t('Assistência social, mulheres, segurança alimentar, segurança pública, igualdade racial e migração.', 'Social assistance, women, food security, public security, racial equality and migration.'),
