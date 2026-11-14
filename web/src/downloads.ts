@@ -4,7 +4,7 @@
  * caminho sob gold/downloads/, sem "..", sem esquema, sem barra invertida e com sha256 válido.
  */
 export const TIPOS = ['painel', 'area', 'detalhado', 'dicionario', 'pacote', 'metodologia'] as const;
-export const FORMATOS = ['csv.zip', 'parquet', 'xlsx', 'zip', 'json', 'txt'] as const;
+export const FORMATOS = ['dta', 'csv.zip', 'parquet', 'xlsx', 'zip', 'json', 'txt', 'do'] as const;
 export type Tipo = (typeof TIPOS)[number];
 export type Formato = (typeof FORMATOS)[number];
 
@@ -13,12 +13,15 @@ export type ArquivoDl = {
   id: string; tipo: Tipo; area: string | null; nome: string; nome_en: string; descricao: string; descricao_en: string; formato: Formato;
   caminho: string; bytes: number; sha256: string; linhas: number | null; variaveis: number | null; ano_de: number | null; ano_ate: number | null; uf: string | null;
   bytes_extraido?: number;
+  escopo?: 'principal' | 'detalhado';
 };
 export type ManifestoDl = {
   versao: 1; gerado_em: string; base_gerado_em: string; base_sha256: string; base_ipca: number;
   resumo: { municipios: number; ano_de: number; ano_ate: number; variaveis: number; linhas: number; variaveis_detalhadas: number };
   notas: string[]; areas: AreaDl[]; arquivos: ArquivoDl[];
   dicionario: { caminho: string; bytes: number; sha256: string };
+  edicao?: 'enxuta_2013';
+  stata?: { versao: number; minimo: number; painel_declarado: boolean; chave: string[] };
 };
 
 export const PREFIXO = 'gold/downloads/';
@@ -61,6 +64,7 @@ export function validarManifesto(bruto: unknown): { manifesto: ManifestoDl; desc
   if (!texto(bruto.gerado_em) || !texto(bruto.base_gerado_em) || !texto(bruto.base_sha256) || !SHA.test(bruto.base_sha256) || !natural(bruto.base_ipca)) throw falha('cabeçalho');
   if (!registro(resumo) || !(['municipios', 'variaveis', 'linhas', 'variaveis_detalhadas'] as const).every((k) => natural(resumo[k])) || !anoOuNulo(resumo.ano_de) || !anoOuNulo(resumo.ano_ate)
     || resumo.ano_de === null || resumo.ano_ate === null) throw falha('resumo');
+  if (bruto.edicao === 'enxuta_2013' && (resumo.ano_de < 2013 || (resumo.variaveis as number) > 300)) throw falha('recorte da base enxuta');
   if (!Array.isArray(areas) || !Array.isArray(arquivos) || !Array.isArray(notas)) throw falha('listas');
   if (!registro(dicionario) || !caminhoSeguro(dicionario.caminho) || !natural(dicionario.bytes) || !texto(dicionario.sha256) || !SHA.test(dicionario.sha256)) throw falha('dicionário');
 
@@ -76,8 +80,10 @@ export function validarManifesto(bruto: unknown): { manifesto: ManifestoDl; desc
       && (f.area === null || (texto(f.area) && areasOk.some((a) => a.id === f.area))) && texto(f.nome) && f.nome !== '' && texto(f.nome_en) && texto(f.descricao) && texto(f.descricao_en)
       && caminhoSeguro(f.caminho) && natural(f.bytes) && texto(f.sha256) && SHA.test(f.sha256) && naturalOuNulo(f.linhas) && naturalOuNulo(f.variaveis)
       && (f.bytes_extraido === undefined || natural(f.bytes_extraido))
+      && (f.escopo === undefined || f.escopo === 'principal' || f.escopo === 'detalhado')
       && anoOuNulo(f.ano_de) && anoOuNulo(f.ano_ate) && (f.uf === null || (texto(f.uf) && /^[A-Z]{2}$/.test(f.uf)));
-    if (bom) {
+    const recorte = bruto.edicao !== 'enxuta_2013' || !registro(f) || !['painel', 'area', 'detalhado'].includes(String(f.tipo)) || (typeof f.ano_de === 'number' && f.ano_de >= 2013);
+    if (bom && recorte) {
       ids.add((f as ArquivoDl).id);
       ok.push(f as ArquivoDl);
     } else descartados += 1;
@@ -139,6 +145,8 @@ export type EntradaDic = {
   variavel: string; nome: string; descricao: string; area: string; fonte: string; unidade: string; tipo: string; regra_anual: string;
   ano_de: number | null; ano_ate: number | null; tabela: string; observacao: string;
   anos_observados?: number[];
+  variavel_original?: string;
+  stata_rotulos?: Record<string, string>;
 };
 export type IndiceDic = { entradas: EntradaDic[]; textos: string[]; variaveis: string[] };
 
@@ -153,6 +161,8 @@ export function validarDicionario(bruto: unknown): EntradaDic[] {
     saida.push({
       variavel: e.variavel, nome: s(e.nome), descricao: s(e.descricao), area: s(e.area), fonte: s(e.fonte), unidade: s(e.unidade), tipo: s(e.tipo), regra_anual: s(e.regra_anual),
       ano_de: anoOuNulo(e.ano_de) ? e.ano_de : null, ano_ate: anoOuNulo(e.ano_ate) ? e.ano_ate : null, tabela: s(e.tabela), observacao: s(e.observacao),
+      variavel_original: s(e.variavel_original) || undefined,
+      stata_rotulos: registro(e.stata_rotulos) ? Object.fromEntries(Object.entries(e.stata_rotulos).filter(([,v]) => typeof v === 'string')) as Record<string,string> : undefined,
       anos_observados: Array.isArray(e.anos_observados) ? e.anos_observados.filter((v): v is number => typeof v==='number'&&Number.isInteger(v)&&v>=1900&&v<=2200) : undefined,
     });
   }
@@ -163,7 +173,7 @@ export function indexarDicionario(entradas: EntradaDic[]): IndiceDic {
   return {
     entradas,
     variaveis: entradas.map((e) => normalizar(e.variavel)),
-    textos: entradas.map((e) => normalizar(`${e.variavel} ${e.nome} ${e.descricao} ${e.fonte} ${e.unidade} ${e.tabela}`)),
+    textos: entradas.map((e) => normalizar(`${e.variavel} ${e.variavel_original ?? ''} ${e.nome} ${e.descricao} ${e.fonte} ${e.unidade} ${e.tabela}`)),
   };
 }
 
@@ -182,3 +192,11 @@ export function filtrarDicionario(idx: IndiceDic, busca: string, area: string): 
 }
 
 export const POR_PAGINA = 40;
+
+export const FORMATOS_BASE = ['dta', 'csv.zip', 'parquet'] as const;
+export type FormatoBase = (typeof FORMATOS_BASE)[number];
+export const formatosBase = (arquivos: ArquivoDl[]): FormatoBase[] => FORMATOS_BASE.filter((f) => arquivos.some((a) => a.formato === f));
+export const formatoDisponivel = (pedido: FormatoBase, arquivos: ArquivoDl[]): FormatoBase => {
+ const disponiveis = formatosBase(arquivos);
+ return disponiveis.includes(pedido) ? pedido : disponiveis[0] ?? 'csv.zip';
+};

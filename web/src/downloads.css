@@ -60,6 +60,14 @@
 .dl-campo-larga input { width: 100%; }
 .dl-uf .dl-campo { margin-bottom: 10px; max-width: 340px; }
 .dl-uf .dl-campo select { width: 100%; }
+.dl-formatos { display: flex; flex-wrap: wrap; gap: 8px; border: 0; padding: 0; margin: 12px 0; }
+.dl-formatos legend { padding: 0; margin-bottom: 5px; font-size: 13px; color: var(--tinta-2); }
+.dl-formatos label { display: inline-flex; align-items: center; gap: 7px; min-height: 42px; padding: 6px 12px; border: 1px solid var(--borda-campo); border-radius: 8px; background: var(--superficie); cursor: pointer; }
+.dl-formatos label:has(input:checked) { color: var(--acao-texto); background: var(--acao-suave); border-color: var(--acao); font-weight: 600; }
+.dl-formatos input { accent-color: var(--acao); }
+.dl-avancado { margin-top: 24px; border: 1px solid var(--borda); border-radius: 10px; padding: 12px 14px; background: var(--superficie); scroll-margin-top: calc(var(--altura-topo, 60px) + 12px); }
+.dl-avancado > summary { font-size: 16px; font-weight: 600; cursor: pointer; }
+.dl-avancado[open] > summary { margin-bottom: 10px; }
 .dl-filtros { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin: 22px 0 0; padding: 12px; background: var(--superficie); border: 1px solid var(--borda); border-radius: 10px; }
 .dl-secao .dl-filtros { margin-top: 0; }
 .dl-grupo { margin: 0 0 8px; }

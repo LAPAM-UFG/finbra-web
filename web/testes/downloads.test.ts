@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { caminhoSeguro, urlArquivo, validarManifesto, validarDicionario, indexarDicionario, filtrarDicionario, filtrarArquivos, faixaAnos } from '../src/downloads';
+import { caminhoSeguro, urlArquivo, validarManifesto, validarDicionario, indexarDicionario, filtrarDicionario, filtrarArquivos, faixaAnos, formatoDisponivel, formatosBase } from '../src/downloads';
 import { buscaEntreAreas } from '../src/navegacao';
 
 const arquivo = {id:'br_csv',tipo:'painel',area:null,nome:'Brasil',nome_en:'Brazil',descricao:'Base anual',descricao_en:'Annual panel',formato:'csv.zip',caminho:'gold/downloads/br_abcdef.csv.zip',bytes:100,sha256:'a'.repeat(64),linhas:10,variaveis:4,ano_de:2020,ano_ate:2024,uf:null};
@@ -38,4 +38,21 @@ test('Downloads não leva filtros para os painéis',()=>{
 
 test('anos observados deixam as lacunas da pesquisa explícitas',()=>{
  assert.equal(faixaAnos({ano_de:2021,ano_ate:2024,anos_observados:[2021,2023,2024]}),'2021, 2023–2024');
+});
+
+test('Stata e comandos do arquivo são aceitos e o formato tem fallback durante a atualização',()=>{
+ const lido=validarManifesto({...manifesto,arquivos:[arquivo,{...arquivo,id:'dta',formato:'dta',caminho:'gold/downloads/painel.dta'},{...arquivo,id:'do',tipo:'metodologia',formato:'do',caminho:'gold/downloads/exemplo.do'}]}).manifesto.arquivos;
+ assert.equal(lido.length,3);assert.deepEqual(formatosBase(lido),['dta','csv.zip']);assert.equal(formatoDisponivel('dta',lido),'dta');assert.equal(formatoDisponivel('dta',[lido[0]]),'csv.zip');
+});
+
+test('edição enxuta recusa o período anterior a 2013 e os arquivos não recortados',()=>{
+ const novo={...manifesto,edicao:'enxuta_2013',resumo:{...manifesto.resumo,variaveis:254,ano_de:2013}};
+ assert.throws(()=>validarManifesto({...novo,resumo:{...novo.resumo,ano_de:2012}}));
+ assert.throws(()=>validarManifesto({...novo,resumo:{...novo.resumo,variaveis:301}}));
+ const lido=validarManifesto({...novo,arquivos:[arquivo,{...arquivo,id:'antigo',ano_de:2012}]});assert.equal(lido.descartados,1);
+});
+
+test('dicionário encontra o nome original e preserva a codificação Stata',()=>{
+ const entries=validarDicionario([{variavel:'rais_esc_9_rem_media',variavel_original:'rais_escolaridade_9_remuneracao_media',nome:'Remuneração',stata_rotulos:{1:'Sim',2:'Não'}}]);
+ assert.equal(filtrarDicionario(indexarDicionario(entries),'rais_escolaridade_9','').length,1);assert.deepEqual(entries[0].stata_rotulos,{'1':'Sim','2':'Não'});
 });

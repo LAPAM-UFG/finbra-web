@@ -1,8 +1,8 @@
 import { useCallback, useDeferredValue, useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 import '../downloads.css';
 import {
-  COD_BRASILIA, COD_NORONHA, faixaAnos, filtrarArquivos, filtrarDicionario, filtroVazio, indexarDicionario, POR_PAGINA, tamanho, urlArquivo, validarDicionario, validarManifesto,
-  type ArquivoDl, type AreaDl, type EntradaDic, type Filtro, type Formato, type IndiceDic, type ManifestoDl,
+  COD_BRASILIA, COD_NORONHA, faixaAnos, filtrarArquivos, filtrarDicionario, filtroVazio, formatoDisponivel, formatosBase, indexarDicionario, POR_PAGINA, tamanho, urlArquivo, validarDicionario, validarManifesto,
+  type ArquivoDl, type AreaDl, type EntradaDic, type Filtro, type Formato, type FormatoBase, type IndiceDic, type ManifestoDl,
 } from '../downloads';
 import { Estado } from '../components/Kpi';
 import { numero } from '../format';
@@ -39,12 +39,14 @@ function useJson<T>(url: string, ativo: boolean, ler: (bruto: unknown) => T) {
 const pick = (pt: string, en: string) => (idioma() === 'en' && en ? en : pt);
 
 const FORMATO: Record<Formato, { nome: () => string; dica: () => string }> = {
+  dta: { nome: () => 'Stata (.dta)', dica: () => t('Abre direto no Stata 14 ou mais recente, com rótulos', 'Opens directly in Stata 14 or later, with labels') },
   'csv.zip': { nome: () => 'CSV (.zip)', dica: () => t('Extraia para importar. No Excel, prefira um recorte por UF ou tema.', 'Extract to import. For Excel, prefer a state or topic subset.') },
-  parquet: { nome: () => 'Parquet', dica: () => t('Para R, Python e Stata (por conversão); não abre direto no Excel', 'For R, Python and Stata (via conversion); does not open directly in Excel') },
+  parquet: { nome: () => 'Parquet', dica: () => t('Formato compacto para R e Python', 'Compact format for R and Python') },
   xlsx: { nome: () => 'Excel (.xlsx)', dica: () => t('Abre direto no Excel', 'Opens directly in Excel') },
   zip: { nome: () => 'ZIP', dica: () => t('Pacote compactado', 'Compressed package') },
   json: { nome: () => 'JSON', dica: () => t('Para programas e buscas', 'For programs and search') },
   txt: { nome: () => t('Texto', 'Text'), dica: () => t('Documento de texto', 'Text document') },
+  do: { nome: () => 'Stata (.do)', dica: () => t('Exemplo de comandos para usar após abrir o .dta', 'Example commands to use after opening the .dta') },
 };
 
 const rotuloUf = (uf: string) => (uf === 'DF' ? `DF · ${t('Brasília', 'Brasília')} (${COD_BRASILIA})` : `${nomeDaUf(uf)} (${uf})`);
@@ -123,7 +125,7 @@ function BaseIntegrada({ arquivos, base }: { arquivos: ArquivoDl[]; base: string
   const ufs = [...new Set(porUf.map((a) => a.uf!))].sort((x, y) => x.localeCompare(y));
   return (
     <>
-      <p className="dl-aviso">{t('Para usar no Excel, comece por uma UF ou por um tema. A base nacional é grande; o Parquet é mais compacto para análise em R ou Python.', 'For Excel, start with a state or topic. The national dataset is large; Parquet is more compact for analysis in R or Python.')}</p>
+      <p className="dl-aviso">{t('Uma linha por município e ano. Você pode baixar o Brasil inteiro ou escolher uma UF. Os formatos têm as mesmas variáveis.', 'One row per municipality and year. Download all of Brazil or choose a state. Formats contain the same variables.')}</p>
       {nacionais.length ? (
         <ul className="dl-lista dl-grade">{nacionais.map((a) => <Arquivo key={a.id} a={a} base={base} destaque />)}</ul>
       ) : (
@@ -155,7 +157,7 @@ function Dicionario({ m, base }: { m: ManifestoDl; base: string }) {
   const url = urlArquivo(m.dicionario.caminho, base) ?? '';
   const dic = useJson<IndiceDic>(url, aberto && url !== '', (b) => indexarDicionario(validarDicionario(b)));
   const adiado = useDeferredValue(busca);
-  const nomeArea = useCallback((id: string) => { const a = m.areas.find((x) => x.id === id); return a ? pick(a.nome, a.nome_en) : id; }, [m.areas]);
+  const nomeArea = useCallback((id: string) => { if (id === 'identificacao') return t('Identificação', 'Identifiers'); const a = m.areas.find((x) => x.id === id); return a ? pick(a.nome, a.nome_en) : id; }, [m.areas]);
   const areas = useMemo(() => [...new Set((dic.dados?.entradas ?? []).map((e) => e.area).filter(Boolean))].sort((x, y) => nomeArea(x).localeCompare(nomeArea(y), local())), [dic.dados, nomeArea]);
   const achadas = useMemo(() => (dic.dados ? filtrarDicionario(dic.dados, adiado, area) : []), [dic.dados, adiado, area]);
   const paginas = Math.max(1, Math.ceil(achadas.length / POR_PAGINA));
@@ -213,6 +215,8 @@ function Variavel({ e, nomeArea }: { e: EntradaDic; nomeArea: (id: string) => st
   const linhas: [string, string][] = ([
     [t('Descrição', 'Description'), e.descricao], [t('Fonte', 'Source'), e.fonte], [t('Tipo', 'Type'), e.tipo], [t('Regra para o ano', 'Annual rule'), e.regra_anual],
     [t('Tabela', 'Table'), e.tabela], [t('Observação', 'Note'), e.observacao],
+    [t('Nome na fonte ampla', 'Name in the source base'), e.variavel_original && e.variavel_original !== e.variavel ? e.variavel_original : ''],
+    [t('Códigos no Stata', 'Stata value labels'), e.stata_rotulos ? Object.entries(e.stata_rotulos).map(([k,v]) => `${k} = ${v}`).join('; ') : ''],
   ] as [string, string][]).filter(([, v]) => v);
   return (
     <li className="dl-var">
@@ -235,9 +239,14 @@ function Guia({ m, metodologia, base }: { m: ManifestoDl; metodologia: ArquivoDl
     [t('Abrir no Excel', 'Open in Excel'), t(
       'Extraia o .zip e use Dados › De texto/CSV. Os CSV estão em UTF-8 com BOM, separador ponto e vírgula e decimal com vírgula.',
       'Extract the .zip and use Data › From Text/CSV. CSV files are UTF-8 with BOM, semicolon-separated, with decimal commas.')],
-    [t('Parquet: R, Python, Stata', 'Parquet: R, Python, Stata'), t(
-      'Parquet é um formato compacto para programação e estatística. No Stata, converta antes; no Excel, use o CSV.',
-      'Parquet is a compact format for programming and statistics. In Stata, convert first; in Excel, use the CSV.')],
+    ...(m.arquivos.some((a) => a.formato === 'dta') ? [[t('Abrir no Stata', 'Open in Stata'), m.stata?.painel_declarado ? t(
+      'Abra o .dta no Stata 14 ou mais recente. Ele traz rótulos das variáveis e categorias; cod_ibge e ano já declaram o painel municipal. Há também um exemplo de comandos .do.',
+      'Open the .dta in Stata 14 or later. It includes variable and value labels; cod_ibge and ano already declare the municipal panel. A .do command example is also available.') : t(
+      'Abra o .dta no Stata 14 ou mais recente e use xtset cod_ibge ano para declarar o painel. Há também um exemplo de comandos .do.',
+      'Open the .dta in Stata 14 or later and use xtset cod_ibge ano to declare the panel. A .do command example is also available.') ] as [string, ReactNode]] : []),
+    [t('Parquet: R e Python', 'Parquet: R and Python'), t(
+      'Parquet é um formato compacto para programação e estatística. Os nomes e os valores correspondem aos da base para Stata e CSV.',
+      'Parquet is a compact format for programming and statistics. Names and values correspond to the Stata and CSV base.')],
     [t('Identificadores', 'Identifiers'), t(
       'O município é identificado pelo código IBGE de 7 dígitos. Use-o, e não o nome, para cruzar com outras bases.',
       'Municipalities are identified by the 7-digit IBGE code. Use it, not the name, to join other datasets.')],
@@ -293,16 +302,22 @@ const rolar = (id: string) => document.getElementById(id)?.scrollIntoView({ beha
 function Conteudo({ m, descartados }: { m: ManifestoDl; descartados: number }) {
   const en = idioma() === 'en';
   const [filtro, setFiltro] = useState<Filtro>(filtroVazio);
+  const [formato, setFormato] = useState<FormatoBase>('dta');
+  const [detalhesAbertos, setDetalhesAbertos] = useState(false);
   const adiado = useDeferredValue(filtro);
+  const idFormato = useId();
   const idTexto = useId();
   const idTema = useId();
   const idUf = useId();
   const por = (tipo: ArquivoDl['tipo']) => m.arquivos.filter((a) => a.tipo === tipo);
   const painel = por('painel');
-  const temas = por('area');
+  const opcoesFormato = formatosBase(painel);
+  const formatoAtual = formatoDisponivel(formato, painel);
+  const temas = por('area').filter((a) => a.formato === formatoAtual);
   const detalhes = por('detalhado');
   const pacotes = por('pacote');
-  const dicionarios = por('dicionario');
+  const dicionarios = por('dicionario').filter((a) => a.escopo !== 'detalhado');
+  const dicionariosDetalhados = por('dicionario').filter((a) => a.escopo === 'detalhado');
   const metodologia = por('metodologia');
   const explorar = [...temas, ...detalhes];
   const areasUsadas = m.areas.filter((a) => explorar.some((f) => f.area === a.id));
@@ -312,6 +327,7 @@ function Conteudo({ m, descartados }: { m: ManifestoDl; descartados: number }) {
   const detalhesF = filtrarArquivos(detalhes, adiado, en);
   const r = m.resumo;
   const quando = (() => { const d = new Date(m.gerado_em); return Number.isNaN(d.getTime()) ? m.gerado_em : d.toLocaleDateString(local(), { day: 'numeric', month: 'long', year: 'numeric' }); })();
+  useEffect(() => { if (/munic|anexo|dca/i.test(adiado.texto)) setDetalhesAbertos(true); }, [adiado.texto]);
 
   // detalhados agrupados pelo tema, na ordem do manifesto
   const grupos: { area: AreaDl | null; itens: ArquivoDl[] }[] = [];
@@ -322,8 +338,9 @@ function Conteudo({ m, descartados }: { m: ManifestoDl; descartados: number }) {
     else grupos.push({ area, itens: [f] });
   }
   const secoes: [string, string, boolean][] = [
-    ['dl-base', t('Base integrada', 'Integrated base'), painel.length > 0], ['dl-detalhes', t('Mais detalhes', 'More detail'), detalhes.length > 0],
+    ['dl-base', t('Base principal', 'Main base'), painel.length > 0],
     ['dl-temas', t('Por tema', 'By theme'), temas.length > 0], ['dl-dicionario', t('Dicionário', 'Dictionary'), true], ['dl-guia', t('Como usar', 'How to use'), true],
+    ['dl-detalhes', t('Dados detalhados', 'Detailed data'), detalhes.length > 0],
   ];
 
   return (
@@ -333,10 +350,9 @@ function Conteudo({ m, descartados }: { m: ManifestoDl; descartados: number }) {
         <li><strong>{r.ano_de}–{r.ano_ate}</strong><span>{t('período total; varia por fonte', 'total period; varies by source')}</span></li>
         <li><strong>{numero(r.variaveis)}</strong><span>{t('variáveis na base integrada', 'variables in the integrated base')}</span></li>
         <li><strong>{numero(r.linhas)}</strong><span>{t('linhas (município × ano)', 'rows (municipality × year)')}</span></li>
-        <li><strong>{numero(r.variaveis_detalhadas)}</strong><span>{t('variáveis nos arquivos detalhados', 'variables in the detailed files')}</span></li>
       </ul>
       <nav className="dl-ancoras" aria-label={t('Nesta página', 'On this page')}>
-        {secoes.filter(([, , ok]) => ok).map(([id, nome]) => <button key={id} type="button" onClick={() => rolar(id)}>{nome}</button>)}
+        {secoes.filter(([, , ok]) => ok).map(([id, nome]) => <button key={id} type="button" onClick={() => { if (id === 'dl-detalhes') { setDetalhesAbertos(true); requestAnimationFrame(() => rolar(id)); } else rolar(id); }}>{nome}</button>)}
       </nav>
       {descartados > 0 && (
         <p className="dl-aviso" role="status">
@@ -344,12 +360,16 @@ function Conteudo({ m, descartados }: { m: ManifestoDl; descartados: number }) {
         </p>
       )}
 
-      <Secao id="dl-base" titulo={t('Base integrada', 'Integrated base')}
-        intro={t('Uma linha por município e ano, com os indicadores já calculados. É o arquivo para quem quer começar por um só.', 'One row per municipality and year, with indicators already computed. The one file to start with.')}>
-        <BaseIntegrada arquivos={painel} base={BASE_DADOS} />
+      <Secao id="dl-base" titulo={m.edicao === 'enxuta_2013' ? t('Base enxuta', 'Compact base') : t('Base integrada', 'Integrated base')}
+        intro={t('Uma linha por município e ano, com indicadores selecionados dos seis temas. Os cálculos estão prontos e os vazios foram preservados.', 'One row per municipality and year, with selected indicators from the six themes. Calculations are ready and missing values are preserved.')}>
+        {opcoesFormato.length > 0 && <fieldset className="dl-formatos"><legend>{t('Escolha o formato', 'Choose a format')}</legend>
+          {opcoesFormato.map((f) => <label key={f}><input type="radio" name={idFormato} value={f} checked={f === formatoAtual} onChange={() => setFormato(f)} />{FORMATO[f].nome()}</label>)}
+        </fieldset>}
+        {formatoAtual === 'dta' && m.stata?.painel_declarado && <p className="dl-intro">{t('Abre diretamente no Stata, com rótulos e o painel município × ano já declarado.', 'Opens directly in Stata, with labels and the municipality × year panel already declared.')}</p>}
+        <BaseIntegrada arquivos={painel.filter((a) => a.formato === formatoAtual)} base={BASE_DADOS} />
         {pacotes.length > 0 && (
           <>
-            <h4 className="dl-sub">{t('Tudo de uma vez', 'Everything at once')}</h4>
+            <h4 className="dl-sub">{t('Pacote da base principal e dicionário', 'Main base and dictionary package')}</h4>
             <ul className="dl-lista">{pacotes.map((a) => <Arquivo key={a.id} a={a} base={BASE_DADOS} />)}</ul>
           </>
         )}
@@ -384,20 +404,6 @@ function Conteudo({ m, descartados }: { m: ManifestoDl; descartados: number }) {
         </div>
       )}
 
-      {detalhes.length > 0 && (
-        <Secao id="dl-detalhes" titulo={t('Mais detalhes', 'More detail')}
-          intro={t('Arquivos com todas as respostas ou contas de uma fonte, sem resumir: a pesquisa MUNIC completa de cada edição e as contas anuais (DCA) de cada anexo. Chave: município × ano, e só as perguntas que existem em cada edição.',
-            'Files with every answer or account from one source, unsummarised: the full MUNIC survey of each edition and the annual accounts (DCA) of each annex. Key: municipality × year, with only the questions that exist in each edition.')}>
-          {grupos.length === 0 ? <p className="dl-vazio">{t('Nenhum arquivo com esse filtro.', 'No files match this filter.')}</p> : grupos.map((g) => (
-            <div key={g.area?.id ?? 'outros'} className="dl-grupo">
-              <h4 className="dl-sub">{g.area ? pick(g.area.nome, g.area.nome_en) : t('Outros', 'Other')}</h4>
-              {g.area && <p className="dl-intro">{pick(g.area.descricao, g.area.descricao_en)}</p>}
-              <Lista arquivos={g.itens} base={BASE_DADOS} limite={filtrado ? 50 : 8} />
-            </div>
-          ))}
-        </Secao>
-      )}
-
       {temas.length > 0 && (
         <Secao id="dl-temas" titulo={t('Por tema', 'By theme')}
           intro={t('A mesma chave (município × ano), mas só com as variáveis de um assunto. Cada arquivo mostra os anos e o número de variáveis que de fato contém.', 'The same key (municipality × year), with only the variables of one subject. Each file shows the years and the number of variables it actually contains.')}>
@@ -411,6 +417,17 @@ function Conteudo({ m, descartados }: { m: ManifestoDl; descartados: number }) {
         {dicionarios.length > 0 && <ul className="dl-lista">{dicionarios.map((a) => <Arquivo key={a.id} a={a} base={BASE_DADOS} />)}</ul>}
         <Dicionario m={m} base={BASE_DADOS} />
       </Secao>
+
+      {detalhes.length > 0 && <details id="dl-detalhes" className="dl-avancado" open={detalhesAbertos} onToggle={(e) => setDetalhesAbertos(e.currentTarget.open)}>
+        <summary>{t('Dados detalhados (opcional)', 'Detailed data (optional)')}</summary>
+        <p className="dl-intro">{t('Questionários completos da MUNIC e contas anuais DCA, em CSV e Parquet. Também estão limitados aos anos desde 2013. São arquivos separados, com mais variáveis que a base principal.', 'Full MUNIC questionnaires and DCA annual accounts, in CSV and Parquet. Also restricted to years from 2013 onwards. These are separate files, with more variables than the main base.')}</p>
+        {grupos.length === 0 ? <p className="dl-vazio">{t('Nenhum arquivo com esse filtro.', 'No files match this filter.')}</p> : grupos.map((g) => (
+          <div key={g.area?.id ?? 'outros'} className="dl-grupo"><h4 className="dl-sub">{g.area ? pick(g.area.nome, g.area.nome_en) : t('Outros', 'Other')}</h4>
+            <Lista arquivos={g.itens} base={BASE_DADOS} limite={filtrado ? 50 : 6} />
+          </div>
+        ))}
+        {dicionariosDetalhados.length > 0 && <><h4 className="dl-sub">{t('Dicionário dos complementos', 'Supplement dictionary')}</h4><Lista arquivos={dicionariosDetalhados} base={BASE_DADOS} /></>}
+      </details>}
 
       <Secao id="dl-guia" titulo={t('Como usar os arquivos', 'How to use the files')}>
         <Guia m={m} metodologia={metodologia} base={m.base_ipca} />
@@ -430,8 +447,8 @@ export function Downloads() {
     <div className="downloads-painel">
       <h2>{t('Baixar dados municipais', 'Download municipal data')}</h2>
       <p className="dl-sub-titulo">
-        {t('Finanças, saúde, trabalho, gestão pública, clima e assistência, com uma linha por município e ano. Baixe a base integrada ou os arquivos detalhados, com dicionário.',
-          'Finance, health, labour, public management, climate and social assistance, with one row per municipality and year. Download the integrated base or detailed files, with a dictionary.')}
+        {man.dados?.manifesto.edicao === 'enxuta_2013' ? t('Base enxuta desde 2013: finanças, saúde, trabalho, gestão pública, clima e assistência. Disponível em Stata, CSV e Parquet, com um dicionário curto.',
+          'A compact base from 2013 onwards: finance, health, labour, public management, climate and social assistance. Available in Stata, CSV and Parquet, with a short dictionary.') : t('Finanças, saúde, trabalho, gestão pública, clima e assistência, com uma linha por município e ano e dicionário.', 'Finance, health, labour, public management, climate and social assistance, with one row per municipality and year and a dictionary.')}
       </p>
       {man.erro && <Estado erro={man.erro} mensagem={t('Não foi possível carregar a lista de arquivos.', 'Could not load the file list.')} tentarNovamente={man.recarregar} />}
       {man.carregando && <p className="carregando" role="status">{t('Carregando a lista de arquivos…', 'Loading the file list…')}</p>}

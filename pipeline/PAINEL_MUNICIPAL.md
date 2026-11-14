@@ -1,4 +1,6 @@
-# Downloads municipais
+# Fonte ampla dos downloads municipais
+
+> A central pública usa a edição enxuta desde 2013, com 254 variáveis e Stata. Veja [DOWNLOADS_ENXUTO.md](DOWNLOADS_ENXUTO.md). Este documento descreve a fonte ampla intermediária; seu manifesto não deve substituir o publicado diretamente.
 
 `/downloads` entrega arquivos já calculados. A abertura lê apenas `gold/downloads/manifesto.json`; dicionário e bases grandes só são baixados quando solicitados. Esse manifesto é independente do global: a geração/publicação não invalida os pacotes rápidos de Saúde e Clima.
 

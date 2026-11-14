@@ -1,0 +1,1284 @@
+{
+  "versao": 1,
+  "ano_inicial": 2013,
+  "criterios": [
+    "Núcleo de 200–300 variáveis: medidas de uso geral, sem as centenas de recortes de cargo/CNAE ou perguntas de uma única edição.",
+    "PIB e INSS vêm das séries históricas de maior cobertura; não se repetem suas cópias condicionadas à entrega da DCA.",
+    "RAIS mantém quantidades e remunerações por raça/cor, escolaridade e três tipos de vínculo MTE; participações podem ser calculadas com o total.",
+    "Condições e meses acompanham os indicadores sociais; fluxos anuais incluem o número de meses, inclusive para valores corrigidos pelo IPCA.",
+    "MUNIC/RH e CadÚnico são exceções de cobertura: pesquisas e retratos observados, sem transformar um retrato em série anual.",
+    "Não se concatenam metodologias distintas de vacinação ou AB/APS. Não se preenchem missings com zeros."
+  ],
+  "variaveis": [
+    {
+      "origem": "fin_populacao_ibge",
+      "variavel": "fin_populacao_ibge",
+      "area": "financas"
+    },
+    {
+      "origem": "fin_populacao_ibge_ano",
+      "variavel": "fin_populacao_ibge_ano",
+      "area": "financas"
+    },
+    {
+      "origem": "fin_fpm",
+      "variavel": "fin_fpm",
+      "area": "financas"
+    },
+    {
+      "origem": "fin_icms",
+      "variavel": "fin_icms",
+      "area": "financas"
+    },
+    {
+      "origem": "fin_ipva",
+      "variavel": "fin_ipva",
+      "area": "financas"
+    },
+    {
+      "origem": "fin_iptu",
+      "variavel": "fin_iptu",
+      "area": "financas"
+    },
+    {
+      "origem": "fin_iss",
+      "variavel": "fin_iss",
+      "area": "financas"
+    },
+    {
+      "origem": "fin_itbi",
+      "variavel": "fin_itbi",
+      "area": "financas"
+    },
+    {
+      "origem": "fin_receita_bruta",
+      "variavel": "fin_receita_bruta",
+      "area": "financas"
+    },
+    {
+      "origem": "fin_receita_liquida",
+      "variavel": "fin_receita_liquida",
+      "area": "financas"
+    },
+    {
+      "origem": "fin_receita_corrente",
+      "variavel": "fin_receita_corrente",
+      "area": "financas"
+    },
+    {
+      "origem": "fin_receita_capital",
+      "variavel": "fin_receita_capital",
+      "area": "financas"
+    },
+    {
+      "origem": "fin_receita_impostos_taxas",
+      "variavel": "fin_receita_impostos_taxas",
+      "area": "financas"
+    },
+    {
+      "origem": "fin_transferencias_correntes",
+      "variavel": "fin_transferencias_correntes",
+      "area": "financas"
+    },
+    {
+      "origem": "fin_despesa_empenhada",
+      "variavel": "fin_despesa_empenhada",
+      "area": "financas"
+    },
+    {
+      "origem": "fin_despesa_liquidada",
+      "variavel": "fin_despesa_liquidada",
+      "area": "financas"
+    },
+    {
+      "origem": "fin_despesa_paga",
+      "variavel": "fin_despesa_paga",
+      "area": "financas"
+    },
+    {
+      "origem": "fin_despesa_corrente",
+      "variavel": "fin_despesa_corrente",
+      "area": "financas"
+    },
+    {
+      "origem": "fin_despesa_capital",
+      "variavel": "fin_despesa_capital",
+      "area": "financas"
+    },
+    {
+      "origem": "fin_despesa_pessoal",
+      "variavel": "fin_despesa_pessoal",
+      "area": "financas"
+    },
+    {
+      "origem": "fin_investimentos",
+      "variavel": "fin_investimentos",
+      "area": "financas"
+    },
+    {
+      "origem": "fin_despesa_saude_liquidada",
+      "variavel": "fin_despesa_saude_liquidada",
+      "area": "financas"
+    },
+    {
+      "origem": "fin_despesa_educacao_liquidada",
+      "variavel": "fin_despesa_educacao_liquidada",
+      "area": "financas"
+    },
+    {
+      "origem": "fin_despesa_administracao_liquidada",
+      "variavel": "fin_despesa_adm_liquidada",
+      "area": "financas"
+    },
+    {
+      "origem": "fin_ativo",
+      "variavel": "fin_ativo",
+      "area": "financas"
+    },
+    {
+      "origem": "fin_patrimonio_liquido",
+      "variavel": "fin_patrimonio_liquido",
+      "area": "financas"
+    },
+    {
+      "origem": "ibge_pib",
+      "variavel": "ibge_pib",
+      "area": "financas"
+    },
+    {
+      "origem": "ibge_vab_agropecuaria",
+      "variavel": "ibge_vab_agropecuaria",
+      "area": "financas"
+    },
+    {
+      "origem": "ibge_vab_industria",
+      "variavel": "ibge_vab_industria",
+      "area": "financas"
+    },
+    {
+      "origem": "ibge_vab_servicos",
+      "variavel": "ibge_vab_servicos",
+      "area": "financas"
+    },
+    {
+      "origem": "ibge_vab_adm_publica",
+      "variavel": "ibge_vab_adm_publica",
+      "area": "financas"
+    },
+    {
+      "origem": "fin_pib_per_capita",
+      "variavel": "fin_pib_per_capita",
+      "area": "financas"
+    },
+    {
+      "origem": "lrf_rreo_tipo",
+      "variavel": "lrf_rreo_tipo",
+      "area": "financas"
+    },
+    {
+      "origem": "lrf_rgf_tipo",
+      "variavel": "lrf_rgf_tipo",
+      "area": "financas"
+    },
+    {
+      "origem": "lrf_rcl",
+      "variavel": "lrf_rcl",
+      "area": "financas"
+    },
+    {
+      "origem": "lrf_rcl_ajustada",
+      "variavel": "lrf_rcl_ajustada",
+      "area": "financas"
+    },
+    {
+      "origem": "lrf_pessoal_rcl_pct",
+      "variavel": "lrf_pessoal_rcl_pct",
+      "area": "financas"
+    },
+    {
+      "origem": "lrf_pessoal_limite_pct",
+      "variavel": "lrf_pessoal_limite_pct",
+      "area": "financas"
+    },
+    {
+      "origem": "lrf_dcl",
+      "variavel": "lrf_dcl",
+      "area": "financas"
+    },
+    {
+      "origem": "lrf_dcl_rcl_pct",
+      "variavel": "lrf_dcl_rcl_pct",
+      "area": "financas"
+    },
+    {
+      "origem": "lrf_resultado_primario",
+      "variavel": "lrf_resultado_primario",
+      "area": "financas"
+    },
+    {
+      "origem": "lrf_resultado_nominal",
+      "variavel": "lrf_resultado_nominal",
+      "area": "financas"
+    },
+    {
+      "origem": "se_mde_pct",
+      "variavel": "se_mde_pct",
+      "area": "financas"
+    },
+    {
+      "origem": "se_fundeb_remuneracao_pct",
+      "variavel": "se_fundeb_remuneracao_pct",
+      "area": "financas"
+    },
+    {
+      "origem": "se_aluno_basica",
+      "variavel": "se_aluno_basica",
+      "area": "financas"
+    },
+    {
+      "origem": "se_aluno_infantil",
+      "variavel": "se_aluno_infantil",
+      "area": "financas"
+    },
+    {
+      "origem": "se_aluno_fundamental",
+      "variavel": "se_aluno_fundamental",
+      "area": "financas"
+    },
+    {
+      "origem": "se_saude_pct",
+      "variavel": "se_saude_pct",
+      "area": "financas"
+    },
+    {
+      "origem": "se_saude_hab",
+      "variavel": "se_saude_hab",
+      "area": "financas"
+    },
+    {
+      "origem": "se_saude_proprios_hab",
+      "variavel": "se_saude_proprios_hab",
+      "area": "financas"
+    },
+    {
+      "origem": "se_sus_hab",
+      "variavel": "se_sus_hab",
+      "area": "financas"
+    },
+    {
+      "origem": "se_saude_total",
+      "variavel": "se_saude_total",
+      "area": "financas"
+    },
+    {
+      "origem": "se_saude_proprios",
+      "variavel": "se_saude_proprios",
+      "area": "financas"
+    },
+    {
+      "origem": "se_sus_receita",
+      "variavel": "se_sus_receita",
+      "area": "financas"
+    },
+    {
+      "origem": "fin_alerta_receita_exclui",
+      "variavel": "fin_alerta_receita_exclui",
+      "area": "financas"
+    },
+    {
+      "origem": "fin_alerta_despesa_exclui",
+      "variavel": "fin_alerta_despesa_exclui",
+      "area": "financas"
+    },
+    {
+      "origem": "sau_ind_mortalidade_infantil",
+      "variavel": "sau_ind_mortalidade_infantil",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_mortalidade_neonatal",
+      "variavel": "sau_ind_mortalidade_neonatal",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_mortalidade_pos_neonatal",
+      "variavel": "sau_ind_mortalidade_pos_neonatal",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_mortalidade_infancia",
+      "variavel": "sau_ind_mortalidade_infancia",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_mortalidade_materna",
+      "variavel": "sau_ind_mortalidade_materna",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_mortalidade_geral",
+      "variavel": "sau_ind_mortalidade_geral",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_dcnt_prematura",
+      "variavel": "sau_ind_dcnt_prematura",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_homicidios",
+      "variavel": "sau_ind_homicidios",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_suicidios",
+      "variavel": "sau_ind_suicidios",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_transito",
+      "variavel": "sau_ind_transito",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_mal_definidas",
+      "variavel": "sau_ind_mal_definidas",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_natalidade",
+      "variavel": "sau_ind_natalidade",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_baixo_peso",
+      "variavel": "sau_ind_baixo_peso",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_prematuros",
+      "variavel": "sau_ind_prematuros",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_cesareas",
+      "variavel": "sau_ind_cesareas",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_pre_natal",
+      "variavel": "sau_ind_pre_natal",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_maes_adolescentes",
+      "variavel": "sau_ind_maes_adolescentes",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_internacoes_mil",
+      "variavel": "sau_ind_internacoes_mil",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_internacoes_idosos",
+      "variavel": "sau_ind_internacoes_idosos",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_internacoes_criancas",
+      "variavel": "sau_ind_internacoes_criancas",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_internacoes_fora",
+      "variavel": "sau_ind_internacoes_fora",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_mortalidade_hospitalar",
+      "variavel": "sau_ind_mortalidade_hospitalar",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_permanencia_media",
+      "variavel": "sau_ind_permanencia_media",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_icsap_taxa",
+      "variavel": "sau_ind_icsap_taxa",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_icsap_proporcao",
+      "variavel": "sau_ind_icsap_proporcao",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_valor_por_internacao",
+      "variavel": "sau_ind_valor_por_internacao",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_valor_por_habitante",
+      "variavel": "sau_ind_valor_por_habitante",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_leitos_mil",
+      "variavel": "sau_ind_leitos_mil",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_leitos_sus_mil",
+      "variavel": "sau_ind_leitos_sus_mil",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_medicos_mil",
+      "variavel": "sau_ind_medicos_mil",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_enfermeiros_mil",
+      "variavel": "sau_ind_enfermeiros_mil",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_estabelecimentos_10mil",
+      "variavel": "sau_ind_estabelecimentos_10mil",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_leitos_sus_proporcao",
+      "variavel": "sau_ind_leitos_sus_proporcao",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_dengue_incidencia",
+      "variavel": "sau_ind_dengue_incidencia",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_dengue_letalidade",
+      "variavel": "sau_ind_dengue_letalidade",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_dengue_graves",
+      "variavel": "sau_ind_dengue_graves",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_chik_incidencia",
+      "variavel": "sau_ind_chik_incidencia",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_tb_incidencia",
+      "variavel": "sau_ind_tb_incidencia",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_hans_deteccao",
+      "variavel": "sau_ind_hans_deteccao",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_violencia_notificada",
+      "variavel": "sau_ind_violencia_notificada",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_cito_25_64",
+      "variavel": "sau_ind_cito_25_64",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_cito_alterados",
+      "variavel": "sau_ind_cito_alterados",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_mamo_50_74",
+      "variavel": "sau_ind_mamo_50_74",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_cancer_registros",
+      "variavel": "sau_ind_cancer_registros",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ind_cancer_60_dias",
+      "variavel": "sau_ind_cancer_60_dias",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_populacao",
+      "variavel": "sau_populacao",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_pop_menor_1",
+      "variavel": "sau_pop_menor_1",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_pop_30_69",
+      "variavel": "sau_pop_30_69",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_pop_60_mais",
+      "variavel": "sau_pop_60_mais",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_pop_mulheres_10_49",
+      "variavel": "sau_pop_mulheres_10_49",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_pop_mulheres_25_64",
+      "variavel": "sau_pop_mulheres_25_64",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_pop_mulheres_50_74",
+      "variavel": "sau_pop_mulheres_50_74",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_obitos",
+      "variavel": "sau_obitos",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_nascidos",
+      "variavel": "sau_nascidos",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_infantis",
+      "variavel": "sau_infantis",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_maternos",
+      "variavel": "sau_maternos",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_int_total",
+      "variavel": "sau_int_total",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_icsap_int",
+      "variavel": "sau_icsap_int",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_icsap_base",
+      "variavel": "sau_icsap_base",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_cnes_estab",
+      "variavel": "sau_cnes_estab",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_cnes_estab_sus",
+      "variavel": "sau_cnes_estab_sus",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_cnes_ubs",
+      "variavel": "sau_cnes_ubs",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_cnes_leitos",
+      "variavel": "sau_cnes_leitos",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_cnes_leitos_sus",
+      "variavel": "sau_cnes_leitos_sus",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_cnes_medicos",
+      "variavel": "sau_cnes_medicos",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_cnes_enfermeiros",
+      "variavel": "sau_cnes_enfermeiros",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_cnes_dentistas",
+      "variavel": "sau_cnes_dentistas",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_sinan_dengue_provaveis",
+      "variavel": "sau_sinan_dengue_provaveis",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_ab_cobertura",
+      "variavel": "sau_ab_cobertura",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_aps_cobertura",
+      "variavel": "sau_aps_cobertura",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_acs_cobertura",
+      "variavel": "sau_acs_cobertura",
+      "area": "saude"
+    },
+    {
+      "origem": "fns_liquido_real",
+      "variavel": "fns_liquido_real",
+      "area": "saude"
+    },
+    {
+      "origem": "vac_individuo_bcg_cobertura",
+      "variavel": "vac_ind_bcg",
+      "area": "saude"
+    },
+    {
+      "origem": "vac_tipo_de_dose_bcg_cobertura",
+      "variavel": "vac_td_bcg",
+      "area": "saude"
+    },
+    {
+      "origem": "vac_individuo_penta_dtp_hepb_hib_cobertura",
+      "variavel": "vac_ind_penta",
+      "area": "saude"
+    },
+    {
+      "origem": "vac_tipo_de_dose_penta_dtp_hepb_hib_cobertura",
+      "variavel": "vac_td_penta",
+      "area": "saude"
+    },
+    {
+      "origem": "vac_individuo_poliomielite_cobertura",
+      "variavel": "vac_ind_polio",
+      "area": "saude"
+    },
+    {
+      "origem": "vac_tipo_de_dose_polio_injetavel_vip_cobertura",
+      "variavel": "vac_td_vip",
+      "area": "saude"
+    },
+    {
+      "origem": "vac_individuo_triplice_viral_1_dose_cobertura",
+      "variavel": "vac_ind_triplice_d1",
+      "area": "saude"
+    },
+    {
+      "origem": "vac_tipo_de_dose_triplice_viral_1_dose_cobertura",
+      "variavel": "vac_td_triplice_d1",
+      "area": "saude"
+    },
+    {
+      "origem": "rais_populacao",
+      "variavel": "rais_populacao",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_populacao_ano",
+      "variavel": "rais_populacao_ano",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_empregos",
+      "variavel": "rais_empregos",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_estabelecimentos",
+      "variavel": "rais_estabelecimentos",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_mulheres",
+      "variavel": "rais_mulheres",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_homens",
+      "variavel": "rais_homens",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_ate24",
+      "variavel": "rais_ate24",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_de50mais",
+      "variavel": "rais_de50mais",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_empregos_por_mil",
+      "variavel": "rais_empregos_por_mil",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_remuneracao_media",
+      "variavel": "rais_remuneracao_media",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_remuneracao_media_real",
+      "variavel": "rais_remuneracao_media_real",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_massa_dez",
+      "variavel": "rais_massa_dez",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_empregos_agropecuaria",
+      "variavel": "rais_empregos_agropecuaria",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_empregos_industria",
+      "variavel": "rais_empregos_industria",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_empregos_construcao",
+      "variavel": "rais_empregos_construcao",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_empregos_comercio",
+      "variavel": "rais_empregos_comercio",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_empregos_servicos",
+      "variavel": "rais_empregos_servicos",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_empregos_adm_publica",
+      "variavel": "rais_empregos_adm_publica",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_raca_cor_1_vinculos",
+      "variavel": "rais_raca_cor_1_vinculos",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_raca_cor_2_vinculos",
+      "variavel": "rais_raca_cor_2_vinculos",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_raca_cor_4_vinculos",
+      "variavel": "rais_raca_cor_4_vinculos",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_raca_cor_6_vinculos",
+      "variavel": "rais_raca_cor_6_vinculos",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_raca_cor_8_vinculos",
+      "variavel": "rais_raca_cor_8_vinculos",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_raca_cor_9_vinculos",
+      "variavel": "rais_raca_cor_9_vinculos",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_raca_cor_99_vinculos",
+      "variavel": "rais_raca_cor_99_vinculos",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_raca_cor_1_remuneracao_media",
+      "variavel": "rais_raca_cor_1_rem_media",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_raca_cor_2_remuneracao_media",
+      "variavel": "rais_raca_cor_2_rem_media",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_raca_cor_4_remuneracao_media",
+      "variavel": "rais_raca_cor_4_rem_media",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_raca_cor_6_remuneracao_media",
+      "variavel": "rais_raca_cor_6_rem_media",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_raca_cor_8_remuneracao_media",
+      "variavel": "rais_raca_cor_8_rem_media",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_escolaridade_1_vinculos",
+      "variavel": "rais_escolaridade_1_vinculos",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_escolaridade_1_remuneracao_media",
+      "variavel": "rais_escol_1_rem_media",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_escolaridade_10_vinculos",
+      "variavel": "rais_escolaridade_10_vinculos",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_escolaridade_10_remuneracao_media",
+      "variavel": "rais_escol_10_rem_media",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_escolaridade_11_vinculos",
+      "variavel": "rais_escolaridade_11_vinculos",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_escolaridade_11_remuneracao_media",
+      "variavel": "rais_escol_11_rem_media",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_escolaridade_2_vinculos",
+      "variavel": "rais_escolaridade_2_vinculos",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_escolaridade_2_remuneracao_media",
+      "variavel": "rais_escol_2_rem_media",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_escolaridade_3_vinculos",
+      "variavel": "rais_escolaridade_3_vinculos",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_escolaridade_3_remuneracao_media",
+      "variavel": "rais_escol_3_rem_media",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_escolaridade_4_vinculos",
+      "variavel": "rais_escolaridade_4_vinculos",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_escolaridade_4_remuneracao_media",
+      "variavel": "rais_escol_4_rem_media",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_escolaridade_5_vinculos",
+      "variavel": "rais_escolaridade_5_vinculos",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_escolaridade_5_remuneracao_media",
+      "variavel": "rais_escol_5_rem_media",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_escolaridade_6_vinculos",
+      "variavel": "rais_escolaridade_6_vinculos",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_escolaridade_6_remuneracao_media",
+      "variavel": "rais_escol_6_rem_media",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_escolaridade_7_vinculos",
+      "variavel": "rais_escolaridade_7_vinculos",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_escolaridade_7_remuneracao_media",
+      "variavel": "rais_escol_7_rem_media",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_escolaridade_8_vinculos",
+      "variavel": "rais_escolaridade_8_vinculos",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_escolaridade_8_remuneracao_media",
+      "variavel": "rais_escol_8_rem_media",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_escolaridade_9_vinculos",
+      "variavel": "rais_escolaridade_9_vinculos",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_escolaridade_9_remuneracao_media",
+      "variavel": "rais_escol_9_rem_media",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_escolaridade_99_vinculos",
+      "variavel": "rais_escolaridade_99_vinculos",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_vinculo_mte_1_vinculos",
+      "variavel": "rais_vinculo_mte_1_vinculos",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_vinculo_mte_1_remuneracao_media",
+      "variavel": "rais_vinculo_mte_1_rem_media",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_vinculo_mte_2_vinculos",
+      "variavel": "rais_vinculo_mte_2_vinculos",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_vinculo_mte_2_remuneracao_media",
+      "variavel": "rais_vinculo_mte_2_rem_media",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_vinculo_mte_3_vinculos",
+      "variavel": "rais_vinculo_mte_3_vinculos",
+      "area": "trabalho"
+    },
+    {
+      "origem": "rais_vinculo_mte_3_remuneracao_media",
+      "variavel": "rais_vinculo_mte_3_rem_media",
+      "area": "trabalho"
+    },
+    {
+      "origem": "caged_admissoes",
+      "variavel": "caged_admissoes",
+      "area": "trabalho"
+    },
+    {
+      "origem": "caged_desligamentos",
+      "variavel": "caged_desligamentos",
+      "area": "trabalho"
+    },
+    {
+      "origem": "caged_saldo",
+      "variavel": "caged_saldo",
+      "area": "trabalho"
+    },
+    {
+      "origem": "caged_meses",
+      "variavel": "caged_meses",
+      "area": "trabalho"
+    },
+    {
+      "origem": "caged_ultimo_salario_medio_admissao",
+      "variavel": "caged_salario_ult_adm",
+      "area": "trabalho"
+    },
+    {
+      "origem": "caged_ultimo_mes",
+      "variavel": "caged_ultimo_mes",
+      "area": "trabalho"
+    },
+    {
+      "origem": "inss_previdenciarios",
+      "variavel": "inss_previdenciarios",
+      "area": "assistencia"
+    },
+    {
+      "origem": "inss_aposentadorias",
+      "variavel": "inss_aposentadorias",
+      "area": "assistencia"
+    },
+    {
+      "origem": "inss_pensoes",
+      "variavel": "inss_pensoes",
+      "area": "assistencia"
+    },
+    {
+      "origem": "soc_cad_qtd_familias",
+      "variavel": "soc_cad_qtd_familias",
+      "area": "assistencia"
+    },
+    {
+      "origem": "soc_cad_qtd_familias_mes",
+      "variavel": "soc_cad_qtd_familias_mes",
+      "area": "assistencia"
+    },
+    {
+      "origem": "soc_cad_qtd_familias_condicao",
+      "variavel": "soc_cad_qtd_familias_condicao",
+      "area": "assistencia"
+    },
+    {
+      "origem": "soc_cad_qtd_pessoas",
+      "variavel": "soc_cad_qtd_pessoas",
+      "area": "assistencia"
+    },
+    {
+      "origem": "soc_cad_qtd_pessoas_mes",
+      "variavel": "soc_cad_qtd_pessoas_mes",
+      "area": "assistencia"
+    },
+    {
+      "origem": "soc_cad_qtd_pessoas_condicao",
+      "variavel": "soc_cad_qtd_pessoas_condicao",
+      "area": "assistencia"
+    },
+    {
+      "origem": "soc_cad_ivcad_geral",
+      "variavel": "soc_cad_ivcad_geral",
+      "area": "assistencia"
+    },
+    {
+      "origem": "soc_cad_ivcad_geral_mes",
+      "variavel": "soc_cad_ivcad_geral_mes",
+      "area": "assistencia"
+    },
+    {
+      "origem": "soc_cad_ivcad_geral_condicao",
+      "variavel": "soc_cad_ivcad_geral_condicao",
+      "area": "assistencia"
+    },
+    {
+      "origem": "soc_pbf_familias_atendidas",
+      "variavel": "soc_pbf_familias_atendidas",
+      "area": "assistencia"
+    },
+    {
+      "origem": "soc_pbf_familias_atendidas_mes",
+      "variavel": "soc_pbf_familias_atendidas_mes",
+      "area": "assistencia"
+    },
+    {
+      "origem": "soc_pbf_familias_atendidas_condicao",
+      "variavel": "soc_pbf_fam_atendidas_cond",
+      "area": "assistencia"
+    },
+    {
+      "origem": "soc_pbf_valor_medio_planilha",
+      "variavel": "soc_pbf_valor_medio_planilha",
+      "area": "assistencia"
+    },
+    {
+      "origem": "soc_pbf_valor_medio_planilha_mes",
+      "variavel": "soc_pbf_valor_medio_planilha_mes",
+      "area": "assistencia"
+    },
+    {
+      "origem": "soc_pbf_valor_medio_planilha_condicao",
+      "variavel": "soc_pbf_benef_medio_mds_cond",
+      "area": "assistencia"
+    },
+    {
+      "origem": "soc_pbf_cgu_responsaveis",
+      "variavel": "soc_pbf_cgu_responsaveis",
+      "area": "assistencia"
+    },
+    {
+      "origem": "soc_pbf_cgu_responsaveis_mes",
+      "variavel": "soc_pbf_cgu_responsaveis_mes",
+      "area": "assistencia"
+    },
+    {
+      "origem": "soc_pbf_cgu_responsaveis_condicao",
+      "variavel": "soc_pbf_cgu_responsaveis_cond",
+      "area": "assistencia"
+    },
+    {
+      "origem": "soc_bpc_beneficios",
+      "variavel": "soc_bpc_beneficios",
+      "area": "assistencia"
+    },
+    {
+      "origem": "soc_bpc_beneficios_mes",
+      "variavel": "soc_bpc_beneficios_mes",
+      "area": "assistencia"
+    },
+    {
+      "origem": "soc_bpc_beneficios_condicao",
+      "variavel": "soc_bpc_beneficios_condicao",
+      "area": "assistencia"
+    },
+    {
+      "origem": "soc_pbf_cgu_valor_soma_ano",
+      "variavel": "soc_pbf_cgu_valor_soma_ano",
+      "area": "assistencia"
+    },
+    {
+      "origem": "soc_pbf_cgu_valor_meses",
+      "variavel": "soc_pbf_cgu_valor_meses",
+      "area": "assistencia"
+    },
+    {
+      "origem": "soc_pbf_cgu_valor_real_soma_ano",
+      "variavel": "soc_pbf_cgu_valor_real_soma_ano",
+      "area": "assistencia"
+    },
+    {
+      "origem": "soc_pbf_cgu_valor_real_meses",
+      "variavel": "soc_pbf_cgu_valor_real_meses",
+      "area": "assistencia"
+    },
+    {
+      "origem": "soc_pbf_cgu_valor_mes",
+      "variavel": "soc_pbf_cgu_valor_mes",
+      "area": "assistencia"
+    },
+    {
+      "origem": "soc_bpc_valor_pago_soma_ano",
+      "variavel": "soc_bpc_valor_pago_soma_ano",
+      "area": "assistencia"
+    },
+    {
+      "origem": "soc_bpc_valor_pago_meses",
+      "variavel": "soc_bpc_valor_pago_meses",
+      "area": "assistencia"
+    },
+    {
+      "origem": "soc_bpc_valor_pago_real_soma_ano",
+      "variavel": "soc_bpc_valor_pago_real_soma_ano",
+      "area": "assistencia"
+    },
+    {
+      "origem": "soc_bpc_valor_pago_real_meses",
+      "variavel": "soc_bpc_valor_pago_real_meses",
+      "area": "assistencia"
+    },
+    {
+      "origem": "soc_bpc_valor_pago_mes",
+      "variavel": "soc_bpc_valor_pago_mes",
+      "area": "assistencia"
+    },
+    {
+      "origem": "mun_m_rh_existe_indireta",
+      "variavel": "mun_m_rh_existe_indireta",
+      "area": "gestao"
+    },
+    {
+      "origem": "mun_m_rh_direta_16",
+      "variavel": "mun_m_rh_direta_16",
+      "area": "gestao"
+    },
+    {
+      "origem": "mun_m_rh_direta_11",
+      "variavel": "mun_m_rh_direta_11",
+      "area": "gestao"
+    },
+    {
+      "origem": "mun_m_rh_direta_12",
+      "variavel": "mun_m_rh_direta_12",
+      "area": "gestao"
+    },
+    {
+      "origem": "mun_m_rh_direta_13",
+      "variavel": "mun_m_rh_direta_13",
+      "area": "gestao"
+    },
+    {
+      "origem": "mun_m_rh_direta_14",
+      "variavel": "mun_m_rh_direta_14",
+      "area": "gestao"
+    },
+    {
+      "origem": "mun_m_rh_direta_15",
+      "variavel": "mun_m_rh_direta_15",
+      "area": "gestao"
+    },
+    {
+      "origem": "cli_chuva_mm_valor",
+      "variavel": "cli_chuva_mm_valor",
+      "area": "clima"
+    },
+    {
+      "origem": "cli_chuva_mm_anomalia_pct",
+      "variavel": "cli_chuva_anom_rel",
+      "area": "clima"
+    },
+    {
+      "origem": "cli_temperatura_c_valor",
+      "variavel": "cli_temperatura_c_valor",
+      "area": "clima"
+    },
+    {
+      "origem": "cli_temperatura_c_anomalia",
+      "variavel": "cli_temperatura_c_anomalia",
+      "area": "clima"
+    },
+    {
+      "origem": "cli_orvalho_c_valor",
+      "variavel": "cli_orvalho_c_valor",
+      "area": "clima"
+    },
+    {
+      "origem": "cli_orvalho_c_anomalia",
+      "variavel": "cli_orvalho_c_anomalia",
+      "area": "clima"
+    },
+    {
+      "origem": "cli_umid_solo_pct_valor",
+      "variavel": "cli_umid_solo_pct_valor",
+      "area": "clima"
+    },
+    {
+      "origem": "cli_umid_solo_pct_anomalia",
+      "variavel": "cli_umid_solo_pct_anomalia",
+      "area": "clima"
+    },
+    {
+      "origem": "cli_evap_mm_valor",
+      "variavel": "cli_evap_mm_valor",
+      "area": "clima"
+    },
+    {
+      "origem": "cli_evap_mm_anomalia_pct",
+      "variavel": "cli_evap_anom_rel",
+      "area": "clima"
+    },
+    {
+      "origem": "cli_radiacao_wm2_valor",
+      "variavel": "cli_radiacao_wm2_valor",
+      "area": "clima"
+    },
+    {
+      "origem": "cli_radiacao_wm2_anomalia",
+      "variavel": "cli_radiacao_wm2_anomalia",
+      "area": "clima"
+    }
+  ]
+}
