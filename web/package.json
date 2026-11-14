@@ -8,6 +8,8 @@
     "preview": "vite preview",
     "test:saude-abertura": "vite build --ssr testes/saude_abertura.test.ts --outDir testes/.saida/saude_abertura --emptyOutDir --logLevel warn && node --test testes/.saida/saude_abertura/saude_abertura.test.js",
     "test:assistencia": "vite build --ssr testes/assistencia.test.ts --outDir testes/.saida/assistencia --emptyOutDir --logLevel warn && node --test testes/.saida/assistencia/assistencia.test.js",
+    "test:downloads": "vite build --ssr testes/downloads.test.ts --outDir testes/.saida/downloads --emptyOutDir --logLevel warn && node --test testes/.saida/downloads/downloads.test.js",
+    "catalogo:downloads": "vite build --ssr scripts/catalogos_downloads.ts --outDir testes/.saida/catalogos_downloads --emptyOutDir --logLevel warn",
     "test": "vite build --ssr testes/consultas.test.ts --outDir testes/.saida --emptyOutDir --logLevel warn && node --test testes/.saida/consultas.test.js"
   },
   "dependencies": {

@@ -1,6 +1,6 @@
 import { COD_UF } from './munic_painel';
 
-export type Area = 'financas' | 'trabalho' | 'saude' | 'munic' | 'clima' | 'assistencia' | 'ia';
+export type Area = 'financas' | 'trabalho' | 'saude' | 'munic' | 'clima' | 'assistencia' | 'downloads' | 'ia';
 
 const ufPorCodigo = new Map(Object.entries(COD_UF).map(([uf, cod]) => [String(cod), uf]));
 const query = (p: URLSearchParams) => { const s = p.toString(); return s ? `?${s}` : ''; };
@@ -10,7 +10,8 @@ const query = (p: URLSearchParams) => { const s = p.toString(); return s ? `?${s
  * Ano de edição da MUNIC/ESTADIC não é exercício nem ano de observação: só vale nessa área.
  * Escolhas próprias (indicador, ocupação, pergunta, variável climática) não cruzam áreas.
  */
-export function buscaEntreAreas(search: string, origem: Area, destino: Exclude<Area, 'ia'>): string {
+export function buscaEntreAreas(search: string, origem: Area, destino: Exclude<Area, 'ia' | 'downloads'>): string {
+  if (origem === 'downloads') return '';
   const atual = new URLSearchParams(search);
   const saida = new URLSearchParams();
   if (origem === destino) {

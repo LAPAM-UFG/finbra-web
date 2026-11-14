@@ -6,6 +6,8 @@ Cobre os 7 anexos da DCA de 2013 em diante, mais PIB municipal (IBGE) e IPCA (Ba
 
 **Site:** https://finbra-web.luanviniciusbernardelli.workers.dev
 
+**[Baixar dados municipais](https://finbra-web.luanviniciusbernardelli.workers.dev/downloads):** base integrada município × ano, recortes por UF/tema, complementos MUNIC/DCA e dicionário de variáveis. Preparação e regras em [pipeline/PAINEL_MUNICIPAL.md](pipeline/PAINEL_MUNICIPAL.md).
+
 ## Como funciona
 
 ```

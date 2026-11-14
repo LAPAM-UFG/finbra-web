@@ -4,6 +4,7 @@ import { HistoricoIa } from './components/HistoricoIa';
 import { ProvedorDados } from './contexto';
 import { definirIdioma, t, useIdioma } from './idioma';
 import { Demonstrativos } from './pages/Demonstrativos';
+import { Downloads } from './pages/Downloads';
 import { DespesasEvolucao, DespesasNaturezaEvolucao, DespesasNaturezaVisaoGeral, DespesasVisaoGeral } from './pages/Despesas';
 import { Fpm, FpmFaixas } from './pages/Fpm';
 import { Ia } from './pages/Ia';
@@ -102,7 +103,12 @@ const menuAssistencia = (): [string, [string, string][]][] => [
   [t('Metodologia', 'Methodology'), [['/assistencia/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
 ];
 
-const areaDe = (pathname: string): Area => (pathname === '/ia' ? 'ia' : pathname.startsWith('/trabalho') ? 'trabalho'
+/** Central de downloads (/downloads): só metadados na abertura, sem filtros globais nem motor de consultas. */
+const menuDownloads = (): [string, [string, string][]][] => [
+  [t('Dados abertos', 'Open data'), [['/downloads', t('Baixar dados municipais', 'Download municipal data')]]],
+];
+
+const areaDe = (pathname: string): Area => (pathname === '/ia' ? 'ia' : pathname === '/downloads' || pathname.startsWith('/downloads/') ? 'downloads' : pathname.startsWith('/trabalho') ? 'trabalho'
   : pathname.startsWith('/datasus') ? 'saude' : pathname.startsWith('/munic') ? 'munic' : pathname.startsWith('/clima') ? 'clima' : pathname.startsWith('/assistencia') ? 'assistencia' : 'financas');
 
 function lerTema(): string | null {
@@ -207,11 +213,11 @@ export function App() {
   const dentro = new URLSearchParams(filtros);
   if (area === 'trabalho') for (const k of PARAMS_TRABALHO) if (atuais.get(k)) dentro.set(k, atuais.get(k)!);
   const buscaArea = dentro.toString() ? `?${dentro}` : '';
-  const paraArea = (destino: Exclude<Area, 'ia'>) => buscaEntreAreas(search, area, destino);
+  const paraArea = (destino: Exclude<Area, 'ia' | 'downloads'>) => buscaEntreAreas(search, area, destino);
   // a aba da IA abre com o tema da área de onde se veio (só ordena os exemplos): território e ano dos filtros do painel não
   // vão junto, porque a pergunta diz o recorte e a IA escolhe as fontes
   const filtrosIa = new URLSearchParams(area === 'ia' ? atuais : undefined);
-  if (area !== 'ia' && area !== 'munic' && area !== 'clima') filtrosIa.set('paineis', area);
+  if (area !== 'ia' && area !== 'munic' && area !== 'clima' && area !== 'downloads') filtrosIa.set('paineis', area);
   const buscaIa = `?${filtrosIa}`;
 
   return (
@@ -226,6 +232,7 @@ export function App() {
           munic: t('Gestão pública · MUNIC e ESTADIC', 'Public management · MUNIC and ESTADIC'),
           clima: t('Clima · CHIRPS e ERA5-Land', 'Climate · CHIRPS and ERA5-Land'),
           assistencia: t('Assistência social · CadÚnico, Bolsa Família e BPC', 'Social assistance · Cadastro Único, Bolsa Família and BPC'),
+          downloads: t('Baixar dados municipais', 'Download municipal data'),
           ia: t('Pergunte aos dados · LAPAM/UFG', 'Ask the data · LAPAM/UFG'),
         }[area]}</h1>
         <nav className="areas" aria-label={t('Áreas', 'Areas')}>
@@ -238,17 +245,21 @@ export function App() {
           <Link to={{ pathname: '/assistencia', search: paraArea('assistencia') }} className={area === 'assistencia' ? 'ativo' : ''} aria-current={area === 'assistencia' ? 'page' : undefined}>{t('Assistência social', 'Social assistance')}</Link>
         </nav>
         <div className="topo-controles">
+          <Link to="/downloads" className="topo-baixar" aria-current={area === 'downloads' ? 'page' : undefined} aria-label={t('Baixar dados municipais', 'Download municipal data')}>
+            <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M10 3v9m0 0-3.5-3.5M10 12l3.5-3.5M4 16h12" /></svg>
+            <span>{t('Baixar dados', 'Download data')}</span>
+          </Link>
           <AlternarIdioma />
           <AlternarTema />
         </div>
       </header>
       <div className={`casca${area === 'ia' ? ' casca-ia' : ''}`}>
         <nav className={`menu${area === 'ia' ? ' menu-ia' : ''}`} aria-label={t('Páginas', 'Pages')}>
-          {({ financas: menu, trabalho: menuTrabalho, saude: menuSaude, munic: menuMunic, clima: menuClima, assistencia: menuAssistencia, ia: menuIa }[area])().map(([grupo, itens]) => (
+          {({ financas: menu, trabalho: menuTrabalho, saude: menuSaude, munic: menuMunic, clima: menuClima, assistencia: menuAssistencia, downloads: menuDownloads, ia: menuIa }[area])().map(([grupo, itens]) => (
             <div key={grupo} style={{ display: 'contents' }}>
               <h4>{grupo}</h4>
               {itens.map(([para, rotulo]) => (
-                <NavLink key={para} to={{ pathname: para, search: area === 'ia' ? buscaIa : area === 'munic' ? contextoMunic(search, DESTINO_MUNIC[para] ?? 'avancado', EDICOES_MUNIC) : area === 'clima' ? buscaClima(search) : area === 'assistencia' ? buscaEntreAreas(search, 'assistencia', 'assistencia') : buscaArea }} end className={({ isActive }) => (isActive ? 'ativo' : '')}>
+                <NavLink key={para} to={{ pathname: para, search: area === 'downloads' ? '' : area === 'ia' ? buscaIa : area === 'munic' ? contextoMunic(search, DESTINO_MUNIC[para] ?? 'avancado', EDICOES_MUNIC) : area === 'clima' ? buscaClima(search) : area === 'assistencia' ? buscaEntreAreas(search, 'assistencia', 'assistencia') : buscaArea }} end className={({ isActive }) => (isActive ? 'ativo' : '')}>
                   {rotulo}
                 </NavLink>
               ))}
@@ -310,6 +321,7 @@ export function App() {
               <Route path="/assistencia/rankings" element={<AssistenciaRankings />} />
               <Route path="/assistencia/tabela" element={<AssistenciaTabela />} />
               <Route path="/assistencia/metodologia" element={<AssistenciaMetodologia />} />
+              <Route path="/downloads" element={<Downloads />} />
               <Route path="/deflatores" element={<Deflatores />} />
               <Route path="/qualidade" element={<Qualidade />} />
               <Route path="*" element={<p className="vazio">{t('Página não encontrada.', 'Page not found.')}</p>} />
