@@ -185,11 +185,11 @@ function BlocoTitulo({ titulo, refs, id }: { titulo: string; refs: [FonteChave, 
 function BlocoSiops({ ano, ultimo }: { ano: number; ultimo: boolean }) {
   const { f, meta } = useSaude();
   const cod = f.alvo && f.alvo.esfera !== 'E' ? f.alvo.cod_ibge : null;
-  const ente = useApi<Linha[]>(cod ? 'se_ente' : null, { ente: cod ?? undefined });
-  const grupo = useApi<Linha[]>(cod ? null : 'se_grupo', { esfera: 'M', uf: f.uf ?? undefined });
-  const dados = (cod ? ente.dados : grupo.dados) ?? [];
+  // contrato privado saude_siops: ano, saude_hab e saude_proprios_hab de se_ente (município) ou de se_grupo (municípios da UF ou do Brasil)
+  const siops = useApi<Linha[]>('saude_siops', cod ? { ente: cod } : { uf: f.uf ?? undefined });
+  const dados = siops.dados ?? [];
   const validos = dados.filter((r) => num(r.saude_hab) !== null);
-  if ((cod ? ente.carregando : grupo.carregando) || !validos.length) return null;
+  if (siops.carregando || !validos.length) return null;
   const cobertos = validos.map((r) => Number(r.ano));
   const ref = referencia(cobertos, ano, ultimo);
   const r = ref === null ? undefined : validos.find((x) => Number(x.ano) === ref);

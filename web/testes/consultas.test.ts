@@ -7,12 +7,13 @@
  */
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { readFile, writeFile } from 'node:fs/promises';
+import { open as abrirArquivo, readFile, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { basesAV, codigoConta, formatarPct } from '../src/calculos';
+import { anuncioDoManifesto as anuncioSaude, criarAberturaSaude, USAR_MOTOR as USAR_MOTOR_SAUDE } from '../src/saude_abertura';
 import { consultaLivre, executar, painelLeveClima, sqlClassificacao, type Classificacao, tabelaDespesaFuncao, tabelasEducacaoSaude, tabelasIaTrabalho, tabelasFns, usarLeituraNoTeste, reiniciarFnsNoTeste, usarMicrodadosNoTeste, usarMotorDeTeste, gruposDaFonte, FILTROS_LISTA, estabDoIndice, GRUPOS_ESTAB } from '../src/dados';
 import {
   anosPedidos, ehPergunta, textoDaPergunta, PAINEIS, chamarIa, coberturaDaFonte, coberturaPorAno, lerEscolhaModelo, nomeDoModelo, periodosDiferem, codigosDoSql, comPergunta, conferir, consultasDaConversa, contextoParaModelo, descreverCobertura, disponibilidadeNoAno, pedeTabelaMunicipal, dadosDoGrafico, executarConsulta, fontesConsultadas, lerModo, lerResposta,
@@ -6255,5 +6256,92 @@ describe('saúde: cobertura vacinal oficial por residência (PNI / InfoMS)', () 
       WHERE v.ano = 2024 AND v.imunobiologico = 'bcg' AND v.cod_ibge = 5208707`, 5);
     assert.equal(r.linhas.length, 1);
     assert.deepEqual(r.linhas[0].slice(1, 3), [12918, 17937]);
+  });
+});
+
+// Abertura rápida da saúde: os aliases do motor (saude_meta, saude_entes, saude_siops) e, com SAUDE_ABERTURA_CANDIDATO (pasta com gold/ do pacote gerado
+// por pipeline/saude_abertura.py, sobre os MESMOS dados de DATA_DIR), a paridade do pacote com as rotas do motor para Brasil, UFs e uma amostra de entes.
+describe('abertura rápida da saúde', () => {
+  const CAND = process.env.SAUDE_ABERTURA_CANDIDATO?.replaceAll('\\', '/');
+  const semSaude = !existsSync(`${DATA}/gold/saude/municipios.parquet`) || !existsSync(`${DATA}/gold/saude_educacao.parquet`);
+  const proximo = (a: unknown, b: unknown, tol: number, onde: string) => {
+    if (a === null || b === null || a === undefined || b === undefined) return assert.equal(a ?? null, b ?? null, onde);
+    assert.ok(Math.abs(Number(a) - Number(b)) <= tol * Math.max(1, Math.abs(Number(b))), `${onde}: ${a} ≉ ${b}`);
+  };
+
+  test('saude_meta e saude_entes devolvem exatamente o que meta e entes devolvem', { skip: semSaude }, async () => {
+    assert.deepEqual(await rota('saude_meta'), await rota('meta'));
+    const entes = await rota<L[]>('entes');
+    assert.deepEqual(await rota('saude_entes'), entes);
+    assert.ok(entes.length > 5000 && entes.every((e) => e.esfera !== 'U'));
+  });
+
+  test('saude_siops é a projeção (ano, saude_hab, saude_proprios_hab) de se_ente e de se_grupo (esfera M), sem alterar essas rotas', { skip: semSaude }, async () => {
+    const proj = (l: L[]) => l.map((r) => ({ ano: r.ano, saude_hab: r.saude_hab, saude_proprios_hab: r.saude_proprios_hab }));
+    for (const ente of [GOIAS_MUN, 53, 11, 5208707, 9999999]) assert.deepEqual(await rota('saude_siops', { ente }), proj(await rota<L[]>('se_ente', { ente })), `ente ${ente}`);
+    for (const uf of [undefined, 'GO', 'DF', 'SP']) assert.deepEqual(await rota('saude_siops', { uf }), proj(await rota<L[]>('se_grupo', { esfera: 'M', uf })), `uf ${uf}`);
+    assert.equal((await rota<L[]>('se_ente', { ente: 5208707 })).length > 0 && 'saude_total' in (await rota<L[]>('se_ente', { ente: 5208707 }))[0], true, 'se_ente continua com todas as colunas');
+  });
+
+  test('pacote candidato: saude_serie, saude_siops, saude_entes, saude_colunas e saude_meta iguais ao motor', { skip: semSaude || !CAND || !existsSync(`${CAND}/gold/manifesto.json`) }, async () => {
+    const manifesto = JSON.parse(await readFile(`${CAND}/gold/manifesto.json`, 'utf8'));
+    const anuncio = anuncioSaude(manifesto);
+    assert.ok(anuncio, 'o manifesto candidato anuncia a abertura da saúde');
+    // só o Range pedido é lido do disco (o NDJSON tem ~140 MB): fs.open/read, sem copiar o arquivo inteiro a cada requisição
+    const buscar = async (u: string, init?: RequestInit) => {
+      const caminho = `${CAND}/${u.replace(/^.*\/v\/\d+\//, '')}`;
+      const m = /^bytes=(\d+)-(\d+)$/.exec(new Headers(init?.headers).get('Range') ?? '');
+      if (!m) return new Response(new Uint8Array(await readFile(caminho)) as BodyInit, { status: 200 }); // só o índice (~320 KB)
+      const [ini, fim] = [Number(m[1]), Number(m[2])];
+      const arquivo = await abrirArquivo(caminho, 'r');
+      try {
+        const total = (await arquivo.stat()).size;
+        const corpo = Buffer.alloc(fim - ini + 1);
+        const { bytesRead } = await arquivo.read(corpo, 0, corpo.length, ini);
+        return new Response(new Uint8Array(corpo.subarray(0, bytesRead)) as BodyInit, { status: 206, headers: { 'Content-Range': `bytes ${ini}-${fim}/${total}` } });
+      } finally {
+        await arquivo.close();
+      }
+    };
+    const avisos: string[] = [];
+    const a = criarAberturaSaude({ manifesto: async () => manifesto, url: (c) => `https://t/v/1/${c}`, buscar, avisar: (m) => void avisos.push(m) });
+    const nativo = async (c: string, q: Record<string, string | number | undefined>) => {
+      const r = await a.executar(c, q);
+      assert.notEqual(r, USAR_MOTOR_SAUDE, `${c} ${JSON.stringify(q)} caiu no motor: ${avisos.join('; ')}`);
+      return r as L[];
+    };
+    const indice = JSON.parse(await readFile(`${CAND}/${anuncio.indice}`, 'utf8')) as { grupos: string[] };
+    const municipios = indice.grupos.filter((g) => /^\d{7}$/.test(g));
+    const amostra = [...municipios.filter((_, i) => i % 53 === 0), '5208707', '3305505', '1504752', '3107307', '5300108', '2605459', '4106902'];
+    // Brasil e UFs (somas de ponto flutuante: tolerância relativa de 1e-9; contagens inteiras são exatas)
+    const ufs = indice.grupos.filter((g) => g !== 'BR' && /^[A-Z]{2}$/.test(g));
+    assert.equal(ufs.length, 27);
+    for (const q of [{}, ...ufs.map((uf) => ({ uf }))]) {
+      const motor = await rota<L[]>('saude_serie', q);
+      const nat = await nativo('saude_serie', q);
+      assert.equal(nat.length, motor.length, JSON.stringify(q));
+      motor.forEach((l, i) => { for (const k of Object.keys(l)) proximo(nat[i][k], l[k], 1e-9, `${JSON.stringify(q)}/${l.ano}/${k}`); assert.deepEqual(Object.keys(nat[i]), Object.keys(l)); });
+      assert.deepEqual(await nativo('saude_siops', q), await rota('saude_siops', q), `SIOPS ${JSON.stringify(q)}`);
+    }
+    // entes: o DF pelo ente 53 (saúde → Brasília; SIOPS → 53), Noronha (sem código no cadastro) e uma amostra
+    for (const g of [...amostra, '53', '11']) {
+      const ente = g === '5300108' ? 53 : Number(g);
+      const motor = await rota<L[]>('saude_serie', { ente });
+      const nat = await nativo('saude_serie', { ente });
+      assert.equal(nat.length, motor.length, `ente ${ente}`);
+      motor.forEach((l, i) => { assert.deepEqual(nat[i], l, `ente ${ente}/${l.ano}`); });
+      const s1 = await nativo('saude_siops', { ente: Number(g) });
+      const s2 = await rota<L[]>('saude_siops', { ente: Number(g) });
+      assert.equal(s1.length, s2.length, `SIOPS ${g}`);
+      s2.forEach((l, i) => { for (const k of Object.keys(l)) proximo(s1[i][k], l[k], 1e-12, `SIOPS ${g}/${l.ano}/${k}`); });
+    }
+    assert.deepEqual(await nativo('saude_entes', {}), await rota('entes'));
+    assert.deepEqual(await nativo('saude_colunas', {}), await rota('saude_colunas'));
+    const motorMeta = (await rota('meta')) as Record<string, unknown>;
+    const meta = (await a.executar('saude_meta', {})) as Record<string, unknown>;
+    assert.equal(meta.geradoEm, manifesto.gerado_em);
+    for (const k of Object.keys(motorMeta)) if (k !== 'geradoEm') assert.deepEqual(meta[k], motorMeta[k], `meta.${k}`);
+    assert.deepEqual(Object.keys(meta), Object.keys(motorMeta));
+    assert.equal(avisos.length, 0, avisos.join('; '));
   });
 });

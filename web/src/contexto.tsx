@@ -14,12 +14,16 @@ const Ctx = createContext<Contexto | null>(null);
  * Meta e lista de entes (iniciam o motor DuckDB). As páginas de /clima abrem sem isso: o resumo vem do pacote de abertura
  * (api.ts → clima_abertura.ts). O que precisa do motor (histórico, rankings, exportações) se envolve em <ProvedorDados sobDemanda>,
  * que só então o inicia. Se o motor já foi carregado por outra página, o contexto é aproveitado.
+ * Em /datasus, o contexto completo (meta e entes) vem das rotas saude_meta e saude_entes, atendidas pelo pacote de abertura da saúde
+ * (saude_abertura.ts) ou, sem ele, pelo motor com o mesmo resultado.
  */
 export function ProvedorDados({ children, sobDemanda = false, silencioso = false }: { children: ReactNode; sobDemanda?: boolean; silencioso?: boolean }) {
   const caminho = useLocation().pathname;
   const precisa = sobDemanda || !(caminho === '/clima' || caminho.startsWith('/clima/'));
-  const meta = useApi<Meta>(precisa ? 'meta' : null);
-  const entes = useApi<Ente[]>(precisa ? 'entes' : null);
+  // /datasus: contexto completo pelo pacote de abertura da saúde (saude_meta e saude_entes devolvem o mesmo que meta e entes; sem pacote, o motor responde)
+  const saude = !sobDemanda && (caminho === '/datasus' || caminho.startsWith('/datasus/'));
+  const meta = useApi<Meta>(precisa ? (saude ? 'saude_meta' : 'meta') : null);
+  const entes = useApi<Ente[]>(precisa ? (saude ? 'saude_entes' : 'entes') : null);
   const valor = useMemo(
     () =>
       meta.dados && entes.dados
@@ -37,7 +41,7 @@ export function ProvedorDados({ children, sobDemanda = false, silencioso = false
       />
     );
   }
-  if (!valor) return silencioso ? null : <p className="carregando" role="status">{t('Carregando o motor de consultas e a lista de entes…', 'Loading the query engine and the list of governments…')}</p>;
+  if (!valor) return silencioso ? null : <p className="carregando" role="status">{saude ? t('Carregando os dados de saúde…', 'Loading the health data…') : t('Carregando o motor de consultas e a lista de entes…', 'Loading the query engine and the list of governments…')}</p>;
   return <Ctx.Provider value={valor}>{children}</Ctx.Provider>;
 }
 

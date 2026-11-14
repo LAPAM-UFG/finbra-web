@@ -20,6 +20,7 @@ import { CURADORIA } from './munic_curadoria';
 import { ARQUIVOS_PAINEL, edicoesCuradas, lerEscolhas, paresPedidos, selecionar, usarArquivosLeves } from './munic_painel';
 import CLIMA_PAINEL_SQL from './clima_painel.sql?raw';
 import { criarAbertura, USAR_MOTOR } from './clima_abertura';
+import { criarAberturaSaude } from './saude_abertura';
 import { BASE_DADOS, injetarManifesto, obterManifesto, versaoDoManifesto, type ManifestoBruto } from './manifesto';
 
 type Valor = string | number | boolean | null;
@@ -287,6 +288,10 @@ const rotas: Record<string, (q: Params) => Promise<unknown>> = {
       mapaIndicadores: manifesto.mapa_indicadores ?? {}, politica: manifesto.politica_alertas ?? {},
     };
   },
+
+  /** Contexto da saúde (/datasus): os mesmos meta e entes, com nome próprio para a abertura rápida interceptar só as rotas da saúde. */
+  saude_meta: (q) => rotas.meta(q),
+  saude_entes: (q) => rotas.entes(q),
 
   async colunas(q) {
     const { manifesto } = await iniciar();
@@ -806,6 +811,15 @@ const rotasSaudeEducacao: Record<string, (q: Params) => Promise<unknown>> = {
        FROM se s WHERE ${onde} GROUP BY ano ORDER BY ano`,
       p,
     );
+  },
+
+  /**
+   * Despesa em saúde por habitante do bloco SIOPS de /datasus: só ano, saude_hab e saude_proprios_hab, projetados de se_ente (um ente) ou
+   * de se_grupo (municípios da UF ou do Brasil). Contrato privado da abertura rápida; se_ente e se_grupo continuam como são.
+   */
+  async saude_siops(q) {
+    const linhas = (inteiro(q.ente) ? await rotasSaudeEducacao.se_ente({ ente: q.ente }) : await rotasSaudeEducacao.se_grupo({ esfera: 'M', uf: q.uf })) as Linha[];
+    return linhas.map((r) => ({ ano: r.ano, saude_hab: r.saude_hab, saude_proprios_hab: r.saude_proprios_hab }));
   },
 
   /** Entes de um grupo num ano (tabela e exportação). */
@@ -1705,6 +1719,22 @@ export const estadoAberturaClima = () => abertura.estado();
 export async function executarInicialClima(caminho: string, params: Params): Promise<unknown | typeof USAR_MOTOR> {
   if (caminhoLocal || !ROTAS_INICIAIS_CLIMA.has(caminho)) return USAR_MOTOR;
   return abertura.executar(caminho, params);
+}
+
+/**
+ * Abertura rápida da saúde (/datasus): contexto (saude_meta, saude_entes), colunas, série de contagens e SIOPS SEM iniciar o motor, do
+ * pacote aberturas.saude (um índice leve e UM Range por recorte). Sem o pacote para este manifesto (ou se algo falhar), a rota segue pelo
+ * motor, mais lenta, com o mesmo resultado. O manifesto é o mesmo da sessão (obterManifesto). Nos testes (motor injetado) o motor é sempre usado.
+ */
+const aberturaSaude = criarAberturaSaude({
+  manifesto: manifestoCompartilhado,
+  url: (caminho, m) => `${BASE}v/${versaoDoManifesto(m)}${REVISAO_CACHE_HTTP}/${caminho}`,
+  buscar: (u, init) => fetch(u, init),
+});
+export const estadoAberturaSaude = () => aberturaSaude.estado();
+export async function executarInicialSaude(caminho: string, params: Params): Promise<unknown | typeof USAR_MOTOR> {
+  if (caminhoLocal) return USAR_MOTOR;
+  return aberturaSaude.executar(caminho, params);
 }
 
 const rotasClima: Record<string, (q: Params) => Promise<unknown>> = {

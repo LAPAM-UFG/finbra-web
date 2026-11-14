@@ -7,6 +7,8 @@ export type ManifestoBruto = {
   gerado_em: string; anos: number[]; base_ipca: number; colunas: Record<string, Record<string, string[]>>;
   ipca_ultimo?: { exercicio: number; meses: number };
   fontes?: Record<string, Record<string, unknown>>;
+  /** Ponteiros técnicos de pacotes de abertura (sem motor), amarrados ao gerado_em deste manifesto; não são fontes de dados. */
+  aberturas?: Record<string, unknown>;
   mapa_indicadores?: Record<string, Record<string, unknown>[]>;
   politica_alertas?: Record<string, unknown>;
 };

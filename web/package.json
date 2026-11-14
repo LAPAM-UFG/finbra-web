@@ -6,6 +6,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
+    "test:saude-abertura": "vite build --ssr testes/saude_abertura.test.ts --outDir testes/.saida/saude_abertura --emptyOutDir --logLevel warn && node --test testes/.saida/saude_abertura/saude_abertura.test.js",
     "test": "vite build --ssr testes/consultas.test.ts --outDir testes/.saida --emptyOutDir --logLevel warn && node --test testes/.saida/consultas.test.js"
   },
   "dependencies": {
