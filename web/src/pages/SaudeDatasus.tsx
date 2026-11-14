@@ -965,7 +965,7 @@ export function SaudeRankings() {
       {vista === 'anual' && escolhido && (
         <div className="destaque-ente" role="status">
           <strong>{String(escolhido.nome)}</strong>: {t(`posição ${posicao.get(escolhido.cod_ibge) ?? '–'} de ${ordenados.length}`, `rank ${posicao.get(escolhido.cod_ibge) ?? '–'} of ${ordenados.length}`)} ({formatar(ind, escolhido._valor)}; {t('mediana dos municípios', 'municipal median')}: {formatar(ind, mediana)}){' · '}
-          <Link to={`/datasus${search}`}>{t('ver o município na visão geral', 'see the municipality in the overview')}</Link>
+          <Link to={`/datasus${search}`}>{t('ver o território na visão geral', 'see the territory in the overview')}</Link>
         </div>
       )}
       {vista === 'anual' && f.alvo && f.alvo.esfera === 'M' && !escolhido && coberto && (dados.dados || atual.dados) && (

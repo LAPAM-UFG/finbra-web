@@ -233,13 +233,13 @@ function Ranking({ dados, carregando, erro, recarregar, ref_, uf, rotulo, alvo, 
         <>
           {alvo && (
             <p className="nota-base">{posicaoAlvo >= 0
-              ? t(`O município selecionado está na posição ${posicaoAlvo + 1} de ${numero(ordenados.length)} nesta ordem.`, `The selected municipality is in position ${posicaoAlvo + 1} of ${numero(ordenados.length)} in this order.`)
-              : t('O município selecionado não tem valor nesta medida no ano (sem repasse ou sem população).', 'The selected municipality has no value for this measure in the year (no transfer or no population).')}</p>
+              ? t(`O território selecionado está na posição ${posicaoAlvo + 1} de ${numero(ordenados.length)} nesta ordem.`, `The selected territory is in position ${posicaoAlvo + 1} of ${numero(ordenados.length)} in this order.`)
+              : t('O território selecionado não tem valor nesta medida no ano (sem repasse ou sem população).', 'The selected territory has no value for this measure in the year (no transfer or no population).')}</p>
           )}
           <div className="rolagem">
             <table>
               <thead><tr>
-                <th>#</th><th style={{ textAlign: 'left' }}>{t('Município', 'Municipality')}</th><th>UF</th><th>{t('Líquido (R$ correntes)', 'Net (current R$)')}</th><th>{t('Por habitante (R$ correntes)', 'Per inhabitant (current R$)')}</th><th>{t('População SVS/MS', 'SVS/MS population')}</th>
+                <th>#</th><th style={{ textAlign: 'left' }}>{t('Município / distrito', 'Municipality / district')}</th><th>UF</th><th>{t('Líquido (R$ correntes)', 'Net (current R$)')}</th><th>{t('Por habitante (R$ correntes)', 'Per inhabitant (current R$)')}</th><th>{t('População SVS/MS', 'SVS/MS population')}</th>
               </tr></thead>
               <tbody>
                 {mostrados.map((l, i) => (

@@ -1774,7 +1774,7 @@ export function Ia() {
   const paineis = PAINEIS;
   const chavePaineis = paineis.join(',');
 
-  // microdados de fato disponíveis (o navegador confere ao preparar as tabelas da IA, o que já adianta a 1ª pergunta)
+  // Disponibilidade conferida no manifesto e no pequeno índice, sem iniciar o motor de consultas.
   const [microdados, setMicrodados] = useState(false);
   useEffect(() => {
     let vivo = true;
@@ -1785,13 +1785,6 @@ export function Ia() {
   }, [chavePaineis]);
   // cadastro de entes: nomes dos territórios das consultas na ficha da resposta
   const [cadastro, setCadastro] = useState<Cadastro | null>(null);
-  useEffect(() => {
-    let vivo = true;
-    carregarCadastro().then((c) => vivo && setCadastro(c), () => undefined);
-    return () => {
-      vivo = false;
-    };
-  }, []);
   const cobertura = useMemo(() => coberturaDe(meta, microdados), [meta, microdados]);
   const territorio = TERRITORIO_ABERTO;
   const ano: number | null = null;
@@ -1805,6 +1798,15 @@ export function Ia() {
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
   const [metas, setMetas] = useState<MetaTurno[]>([]);
   const [resultados, setResultados] = useState<Record<string, Resultado>>({});
+  // O cadastro completo serve às fichas das consultas. Na conversa vazia ele não é usado;
+  // lê-lo ali iniciava DuckDB e baixava os arquivos financeiros antes de qualquer pergunta.
+  const temResultados = Object.keys(resultados).length > 0;
+  useEffect(() => {
+    if (!temResultados) return;
+    let vivo = true;
+    carregarCadastro().then((c) => vivo && setCadastro(c), () => undefined);
+    return () => { vivo = false; };
+  }, [temResultados]);
   const [texto, setTexto] = useState(() => lerGuardado('ia-rascunho', true) ?? '');
   const [rodando, setRodando] = useState<AbortController | null>(null);
   // perguntas escritas enquanto outra roda: cada uma começa quando a anterior termina, na mesma conversa

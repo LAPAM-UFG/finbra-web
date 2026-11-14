@@ -1734,7 +1734,11 @@ const aberturaSaude = criarAberturaSaude({
 export const estadoAberturaSaude = () => aberturaSaude.estado();
 export async function executarInicialSaude(caminho: string, params: Params): Promise<unknown | typeof USAR_MOTOR> {
   if (caminhoLocal) return USAR_MOTOR;
-  return aberturaSaude.executar(caminho, params);
+  // O índice já contém exatamente os contratos de meta e entes, conferidos contra o motor.
+  // O catálogo compartilhado também serve às outras áreas, sem obrigar a página inicial da IA
+  // a baixar o motor e as tabelas financeiras. Sem índice válido, permanece o caminho antigo.
+  const rota = caminho === 'meta' ? 'saude_meta' : caminho === 'entes' ? 'saude_entes' : caminho;
+  return aberturaSaude.executar(rota, params);
 }
 
 const rotasClima: Record<string, (q: Params) => Promise<unknown>> = {
@@ -2121,17 +2125,21 @@ type FonteConsulta = 'micro' | 'cubo_uf' | 'cubo_mun';
 export type IndiceMicro = { rais_vinculos?: Record<string, number[]>; rais_estab?: Record<string, number[]> };
 const env = (import.meta as { env?: Record<string, string | boolean | undefined> }).env;
 let indiceMicro: IndiceMicro | null = null;
+let promessaIndiceMicro: Promise<void> | null = null;
 async function carregarIndiceMicro() {
   if (env?.VITE_MICRODADOS === '0' || lerLocal) return; // nos testes, quem decide é usarMicrodadosNoTeste
-  indiceMicro = await baixar('silver/trabalho/micro/indice.json')
-    .then((b) => JSON.parse(new TextDecoder().decode(b)) as IndiceMicro)
-    .catch(() => null);
+  // O catálogo de disponibilidade não precisa de DuckDB. Compartilha a leitura com iniciar()
+  // quando a primeira consulta acontece; uma falha permite nova tentativa nessa ocasião.
+  promessaIndiceMicro ??= baixar('silver/trabalho/micro/indice.json')
+    .then((b) => { indiceMicro = JSON.parse(new TextDecoder().decode(b)) as IndiceMicro; })
+    .catch(() => { indiceMicro = null; promessaIndiceMicro = null; });
+  await promessaIndiceMicro;
 }
 const temMicro = () => microNoTeste ?? (!!indiceMicro && Object.keys(indiceMicro.rais_vinculos ?? {}).length > 0);
 let microNoTeste: boolean | null = null;
 /** Testes: liga ou desliga os microdados (por padrão, nos testes, a consulta usa as tabelas). */
 export function usarMicrodadosNoTeste(v: boolean) {
-  if (microNoTeste !== v) iaTrabalho = null; // as tabelas da IA são refeitas com a nova escolha
+  if (microNoTeste !== v) { iaTrabalhoBase = null; iaTrabalhoMicro = null; iaTrabalhoPronto = null; } // as tabelas da IA são refeitas com a nova escolha
   microNoTeste = v;
 }
 export function fonteConsulta(escopo: { ente?: unknown; uf?: unknown }): FonteConsulta {
@@ -2713,7 +2721,7 @@ const rotasConsulta: Record<string, (q: Params) => Promise<unknown>> = {
 
 /** Manifesto como veio do servidor (para o Worker local da IA, que não tem o do R2). */
 export async function manifestoDados() {
-  return (await iniciar()).manifesto;
+  return manifestoCompartilhado();
 }
 
 /** Cadastro de entes (municípios, estados, DF e União) para a IA achar e conferir códigos de território. */
@@ -2734,7 +2742,6 @@ export type ContextoTrabalho = {
  * dicionário) e visões sobre arquivos lidos por Range (setores e CAGED por município, tabelas somadas por
  * ano e, no computador local, os microdados por ano e UF, com a lista do indice.json). Devolve o contexto.
  */
-let iaTrabalho: Promise<ContextoTrabalho> | null = null;
 let iaTrabalhoPronto: ContextoTrabalho | null = null;
 
 /**
@@ -2744,7 +2751,8 @@ let iaTrabalhoPronto: ContextoTrabalho | null = null;
  */
 export async function contextoTrabalhoIa(): Promise<ContextoTrabalho> {
   if (iaTrabalhoPronto) return iaTrabalhoPronto;
-  const { manifesto } = await iniciar();
+  const manifesto = await manifestoCompartilhado();
+  await carregarIndiceMicro();
   const f = (manifesto.fontes ?? {}) as Record<string, Record<string, unknown>>;
   const microAnos = ((f.rais_micro?.anos as number[] | undefined) ?? []).filter(Number.isInteger);
   const rais = f.rais as { anos?: number[] } | undefined;
@@ -2791,8 +2799,30 @@ export async function prepararResultadosIa(tabelas: { nome: string; colunas: str
   }
 }
 
-export function tabelasIaTrabalho() {
-  iaTrabalho ??= (async () => {
+type BaseTrabalhoIa = {
+  con: duckdb.AsyncDuckDBConnection; manifesto: Manifesto; f: Record<string, Record<string, unknown>>; microAnos: number[]; escAnos: number[];
+  lista: (caminhos: string[]) => string; sigla: (col: string) => string;
+};
+let iaTrabalhoBase: Promise<BaseTrabalhoIa> | null = null;
+let iaTrabalhoMicro: Promise<ContextoTrabalho> | null = null;
+
+const contextoDaBase = (b: BaseTrabalhoIa, microdados: boolean): ContextoTrabalho => {
+  const rais = b.f.rais as { anos?: number[] } | undefined;
+  const caged = b.f.caged as { de?: number; ate?: number } | undefined;
+  return {
+    rais_anos: rais?.anos ?? [], micro_anos: b.microAnos, caged_de: caged?.de ?? null, caged_ate: caged?.ate ?? null,
+    base_ipca: b.manifesto.base_ipca, microdados, esc_porte_anos: b.escAnos,
+  };
+};
+
+/**
+ * Prepara as tabelas e visões da IA para o trabalho. A base (trab_*, rais_uf, rais_mun, rais_esc_porte) é montada uma vez; a visão
+ * rais_vinculos (centenas de microarquivos registrados) só com comMicro = true, que é o padrão. Uma consulta agregada não precisa dela:
+ * a IA passa comMicro só quando o SQL cita rais_vinculos. Sem comMicro, o contexto devolvido tem a disponibilidade do manifesto/índice
+ * (a mesma de contextoTrabalhoIa); depois que a visão é preparada de verdade, vale o contexto conferido (microdados = a visão existe).
+ */
+export function tabelasIaTrabalho(comMicro = true): Promise<ContextoTrabalho> {
+  iaTrabalhoBase ??= (async (): Promise<BaseTrabalhoIa> => {
     const { con, manifesto } = await iniciar();
     // o que faltar (ex.: dicionário não publicado na web) só deixa a tabela de fora, sem derrubar a conversa
     await tabelasTrabalho().catch(() => undefined);
@@ -2830,6 +2860,13 @@ export function tabelasIaTrabalho() {
              WHEN escolaridade_cod BETWEEN 7 AND 8 THEN 'H3' WHEN escolaridade_cod BETWEEN 9 AND 11 THEN 'H4' ELSE 'ignorada' END AS escolaridade_grupo
         FROM ${fonteEsc}`);
     }
+    return { con, manifesto, f, microAnos, escAnos, lista, sigla };
+  })();
+  iaTrabalhoBase.catch(() => (iaTrabalhoBase = null));
+  const base = iaTrabalhoBase;
+  if (!comMicro) return base.then((b) => iaTrabalhoPronto ?? contextoDaBase(b, temMicro() && b.microAnos.length > 0));
+  iaTrabalhoMicro ??= (async () => {
+    const { con, lista, sigla } = await base;
     let microdados = false;
     if (temMicro()) {
       try {
@@ -2846,15 +2883,11 @@ export function tabelasIaTrabalho() {
         /* sem microdados publicados: a IA usa as tabelas somadas */
       }
     }
-    const rais = f.rais as { anos?: number[] } | undefined;
-    const caged = f.caged as { de?: number; ate?: number } | undefined;
-    return (iaTrabalhoPronto = {
-      rais_anos: rais?.anos ?? [], micro_anos: microAnos, caged_de: caged?.de ?? null, caged_ate: caged?.ate ?? null,
-      base_ipca: manifesto.base_ipca, microdados, esc_porte_anos: escAnos,
-    });
+    const b = await base;
+    return (iaTrabalhoPronto = contextoDaBase(b, microdados));
   })();
-  iaTrabalho.catch(() => (iaTrabalho = null));
-  return iaTrabalho;
+  iaTrabalhoMicro.catch(() => (iaTrabalhoMicro = null));
+  return iaTrabalhoMicro;
 }
 
 /**

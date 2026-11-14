@@ -32,6 +32,7 @@ import { TrabalhoRemuneracao } from './pages/TrabalhoRemuneracao';
 import { TrabalhoMetodologia } from './pages/TrabalhoMetodologia';
 import { TrabalhoPerfil } from './pages/TrabalhoPerfil';
 import { PARAMS_TRABALHO } from './trabalho_comum';
+import { buscaEntreAreas, buscaIaLegada, type Area } from './navegacao';
 
 const menu = (): [string, [string, string][]][] => [
   [t('Receitas', 'Revenue'), [['/receitas', t('Visão geral', 'Overview')], ['/receitas/evolucao', t('Evolução', 'Trends')]]],
@@ -94,7 +95,6 @@ const menuClima = (): [string, [string, string][]][] => [
 // a aba da IA tem uma página só: a lateral fica para o histórico de conversas (o nome já está no topo e nas abas)
 const menuIa = (): [string, [string, string][]][] => [];
 
-type Area = 'financas' | 'trabalho' | 'saude' | 'munic' | 'clima' | 'ia';
 const areaDe = (pathname: string): Area => (pathname === '/ia' ? 'ia' : pathname.startsWith('/trabalho') ? 'trabalho'
   : pathname.startsWith('/datasus') ? 'saude' : pathname.startsWith('/munic') ? 'munic' : pathname.startsWith('/clima') ? 'clima' : 'financas');
 
@@ -199,8 +199,8 @@ export function App() {
   // dentro da área de trabalho o recorte (ocupação, atividade, perfil, agrupamentos) segue entre as páginas
   const dentro = new URLSearchParams(filtros);
   if (area === 'trabalho') for (const k of PARAMS_TRABALHO) if (atuais.get(k)) dentro.set(k, atuais.get(k)!);
-  const busca = filtros.toString() ? `?${filtros}` : '';
   const buscaArea = dentro.toString() ? `?${dentro}` : '';
+  const paraArea = (destino: Exclude<Area, 'ia'>) => buscaEntreAreas(search, area, destino);
   // a aba da IA abre com o tema da área de onde se veio (só ordena os exemplos): território e ano dos filtros do painel não
   // vão junto, porque a pergunta diz o recorte e a IA escolhe as fontes
   const filtrosIa = new URLSearchParams(area === 'ia' ? atuais : undefined);
@@ -222,11 +222,11 @@ export function App() {
         }[area]}</h1>
         <nav className="areas" aria-label={t('Áreas', 'Areas')}>
           <Link to={{ pathname: '/ia', search: buscaIa }} className={area === 'ia' ? 'ativo' : ''} aria-current={area === 'ia' ? 'page' : undefined}>{t('Pergunte aos dados (IA)', 'Ask the data (AI)')}</Link>
-          <Link to={{ pathname: '/receitas', search: busca }} className={area === 'financas' ? 'ativo' : ''} aria-current={area === 'financas' ? 'page' : undefined}>{t('Finanças públicas', 'Public finances')}</Link>
-          <Link to={{ pathname: '/trabalho', search: busca }} className={area === 'trabalho' ? 'ativo' : ''} aria-current={area === 'trabalho' ? 'page' : undefined}>{t('Mercado de trabalho', 'Labour market')}</Link>
-          <Link to={{ pathname: '/datasus', search: busca }} className={area === 'saude' ? 'ativo' : ''} aria-current={area === 'saude' ? 'page' : undefined}>{t('Saúde', 'Health')}</Link>
-          <Link to={{ pathname: '/munic', search: '' }} className={area === 'munic' ? 'ativo' : ''} aria-current={area === 'munic' ? 'page' : undefined}>{t('Gestão pública', 'Public management')}</Link>
-          <Link to={{ pathname: '/clima', search: '' }} className={area === 'clima' ? 'ativo' : ''} aria-current={area === 'clima' ? 'page' : undefined}>{t('Clima', 'Climate')}</Link>
+          <Link to={{ pathname: '/receitas', search: paraArea('financas') }} className={area === 'financas' ? 'ativo' : ''} aria-current={area === 'financas' ? 'page' : undefined}>{t('Finanças públicas', 'Public finances')}</Link>
+          <Link to={{ pathname: '/trabalho', search: paraArea('trabalho') }} className={area === 'trabalho' ? 'ativo' : ''} aria-current={area === 'trabalho' ? 'page' : undefined}>{t('Mercado de trabalho', 'Labour market')}</Link>
+          <Link to={{ pathname: '/datasus', search: paraArea('saude') }} className={area === 'saude' ? 'ativo' : ''} aria-current={area === 'saude' ? 'page' : undefined}>{t('Saúde', 'Health')}</Link>
+          <Link to={{ pathname: '/munic', search: paraArea('munic') }} className={area === 'munic' ? 'ativo' : ''} aria-current={area === 'munic' ? 'page' : undefined}>{t('Gestão pública', 'Public management')}</Link>
+          <Link to={{ pathname: '/clima', search: paraArea('clima') }} className={area === 'clima' ? 'ativo' : ''} aria-current={area === 'clima' ? 'page' : undefined}>{t('Clima', 'Climate')}</Link>
         </nav>
         <div className="topo-controles">
           <AlternarIdioma />
@@ -251,7 +251,7 @@ export function App() {
         <main key={idioma} id="conteudo" tabIndex={-1}>
           <ProvedorDados>
             <Routes>
-              <Route path="/" element={<Navigate to="/ia" replace />} />
+              <Route path="/" element={<Navigate to={{ pathname: '/ia', search: buscaIaLegada(search), hash }} replace />} />
               <Route path="/receitas" element={<ReceitasVisaoGeral />} />
               <Route path="/receitas/evolucao" element={<ReceitasEvolucao />} />
               <Route path="/fpm" element={<Fpm />} />
@@ -278,7 +278,7 @@ export function App() {
               <Route path="/trabalho/remuneracao" element={<TrabalhoRemuneracao />} />
               <Route path="/trabalho/estabelecimentos" element={<TrabalhoEstabelecimentos />} />
               <Route path="/trabalho/metodologia" element={<TrabalhoMetodologia />} />
-              <Route path="/trabalho/ia" element={<Navigate to="/ia?paineis=trabalho" replace />} />
+              <Route path="/trabalho/ia" element={<Navigate to={{ pathname: '/ia', search: buscaIaLegada(search, 'trabalho'), hash }} replace />} />
               <Route path="/datasus" element={<SaudeVisaoGeral />} />
               <Route path="/datasus/evolucao" element={<SaudeEvolucao />} />
               <Route path="/datasus/rankings" element={<SaudeRankings />} />

@@ -1961,7 +1961,7 @@ async function consultaSemLimite(entrada: unknown, paineis: Painel[], sinal: Abo
       if (fnsGuarda) return { erro: fnsGuarda, bloqueada: true };
     }
     // as tabelas do trabalho (trab_*, rais_*) só são preparadas quando alguma consulta as lê
-    if (paineis.includes('trabalho') && /\b(trab_\w+|rais_\w+)/i.test(todas)) await tabelasIaTrabalho();
+    if (paineis.includes('trabalho') && /\b(trab_\w+|rais_\w+)/i.test(todas)) await tabelasIaTrabalho(/\brais_vinculos\b/i.test(todas));
     // a tabela da LRF só é baixada quando alguma consulta a usa; as do SIOPE e do SIOPS, idem
     if (paineis.includes('financas') && /\blrf\b/i.test(todas)) await tabelaLrf();
     if (paineis.includes('financas') && /\bsiop[es]_/i.test(todas)) await tabelasEducacaoSaude();

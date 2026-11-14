@@ -65,6 +65,8 @@ import './perfis.test'; // perfis da RAIS (raça/cor, escolaridade, vínculos): 
 import './munic_painel.test'; // painel automático de gestão pública: funções puras e curadoria
 import './clima.test'; // painel automático de clima: escolha pela URL, lacunas, acumulados, mapa de calor, unidades e exportação (funções puras)
 import './worker_dados.test'; // servidor de dados do Worker (HEAD, Range, Vary, 304) com R2 simulado
+import './filtros_url.test'; // URL e teclado: avisos de recorte, DF/Noronha, busca sem seleção acidental
+import './navegacao.test'; // território entre áreas e links antigos da IA
 import { CURADORIA } from '../src/munic_curadoria';
 import { COD_UF, montarCartoes, selecionar, type DadosPainel, type Escopo, type Modo } from '../src/munic_painel';
 import './saude_painel.test'; // visão geral da saúde: temas, busca, valor/condição e escala do resumo (sem dados)
@@ -132,6 +134,7 @@ function adaptar(db: any) {
   };
 }
 
+let CON_TESTE: { query(sql: string): Promise<any> }; // conexão do teste, para conferir/remover visões
 before(async () => {
   const duckdb = require('@duckdb/duckdb-wasm/blocking');
   const dist = path.dirname(require.resolve('@duckdb/duckdb-wasm'));
@@ -157,6 +160,7 @@ before(async () => {
     if (candidato.fontes?.clima?.painel && manifesto.fontes?.clima) manifesto.fontes = { ...manifesto.fontes, clima: { ...manifesto.fontes.clima, painel: candidato.fontes.clima.painel } }; // só o campo painel
   }
   MANIFESTO_TESTE = manifesto;
+  CON_TESTE = con;
   for (const [nome, arq] of Object.entries({
     entes: 'silver/entes.parquet', indicadores: 'gold/indicadores.parquet', escopos: 'gold/escopos.parquet',
     alertas: 'gold/alertas.parquet', faixas: 'gold/faixas.parquet', ipca: 'gold/ipca.parquet',
@@ -2125,6 +2129,62 @@ describe('IA do mercado de trabalho (tabelas e microdados)', () => {
     assert.equal(painel.linhas[0][0], go.linhas[0][0]);
     const setores = await sql('SELECT sum(empregos) FROM trab_setores WHERE ano = 2013 AND cod_ibge = 5208707');
     assert.ok((setores.linhas[0][0] as number) > 100000);
+  });
+});
+
+describe('IA do mercado de trabalho: rais_vinculos só sob demanda', () => {
+  const semMicro = !existsSync(`${DATA}/gold/trabalho/cubo_uf/ano=2013.parquet`) || !existsSync(`${MICRO}/silver/trabalho/micro/indice.json`);
+  const sql = async (q: string) => {
+    const r = await executarConsulta({ sql: q, objetivo: 'teste' }, ['trabalho']);
+    if ('erro' in r) throw new Error(r.erro);
+    return r;
+  };
+  const visaoExiste = async () => Number((await CON_TESTE.query("SELECT count(*) AS n FROM duckdb_views() WHERE view_name = 'rais_vinculos'")).toArray()[0].toJSON().n) > 0;
+  /** zera as promises da preparação (a escolha dos microdados mudou) e a visão que um teste anterior possa ter deixado */
+  const recomecar = async (micro: boolean) => {
+    usarMicrodadosNoTeste(!micro);
+    usarMicrodadosNoTeste(micro);
+    await CON_TESTE.query('DROP VIEW IF EXISTS rais_vinculos');
+  };
+
+  test('consulta agregada não registra os microarquivos; a de rais_vinculos cria a visão depois; alternar o contexto refaz', { skip: semMicro }, async () => {
+    try {
+      await recomecar(true);
+      const agregada = await sql('SELECT ano, cod_ibge, empregos FROM trab_municipios WHERE cod_ibge = 5208707 AND ano = 2013');
+      assert.equal(agregada.linhas.length, 1);
+      assert.equal(await visaoExiste(), false, 'a consulta agregada não prepara rais_vinculos');
+      // a disponibilidade enviada ao modelo vem do manifesto/índice, mesmo sem a visão materializada
+      const aindaSem = await tabelasIaTrabalho(false);
+      assert.equal(aindaSem.microdados, true);
+      assert.equal(await visaoExiste(), false);
+      // outra agregada (rais_uf) segue sem a visão
+      await sql('SELECT sum(vinculos) FROM rais_uf WHERE ano = 2013 AND uf = 52 AND situacao = 1');
+      assert.equal(await visaoExiste(), false);
+      // a de microdados vem depois e cria a visão sem quebrar o que já estava preparado
+      const micro = await sql('SELECT count(*) AS n FROM rais_vinculos WHERE ano = 2013 AND uf = 52 AND ativo_31_12 = 1');
+      assert.ok((micro.linhas[0][0] as number) > 0);
+      assert.equal(await visaoExiste(), true);
+      const depois = await sql('SELECT empregos FROM trab_municipios WHERE cod_ibge = 5208707 AND ano = 2013');
+      assert.equal(depois.linhas[0][0], agregada.linhas[0][2]);
+      const conferido = await tabelasIaTrabalho();
+      assert.equal(conferido.microdados, true);
+      assert.deepEqual(await tabelasIaTrabalho(false), conferido, 'depois de preparar, vale o contexto conferido');
+
+      // sem microdados no contexto: a agregada funciona, tabelasIaTrabalho() não cria a visão e declara microdados = false
+      await recomecar(false);
+      await sql('SELECT ano, cod_ibge, empregos FROM trab_municipios WHERE cod_ibge = 5208707 AND ano = 2013');
+      assert.equal((await tabelasIaTrabalho(false)).microdados, false);
+      assert.equal((await tabelasIaTrabalho()).microdados, false);
+      assert.equal(await visaoExiste(), false);
+
+      // e de volta: os microdados são preparados de novo quando pedidos
+      await recomecar(true);
+      await sql('SELECT count(*) FROM rais_vinculos WHERE ano = 2013 AND uf = 52');
+      assert.equal(await visaoExiste(), true);
+      assert.equal((await tabelasIaTrabalho()).microdados, true);
+    } finally {
+      usarMicrodadosNoTeste(false);
+    }
   });
 });
 
