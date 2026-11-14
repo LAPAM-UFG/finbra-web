@@ -40,6 +40,7 @@ const NOMES_PAINEIS = (): Record<Painel, string> => ({
   saude: t('Saúde', 'Health'),
   munic: t('Gestão pública', 'Public management'),
   clima: t('Clima', 'Climate'),
+  assistencia: t('Assistência social', 'Social assistance'),
 });
 
 /** Perguntas que podem esperar na fila de uma conversa. */
@@ -138,6 +139,7 @@ function coberturaDe(meta: Meta, microdados: boolean): Cobertura {
     inss: anos(f.inss?.exercicios),
     sim: anos(f.sim?.anos), sinasc: anos(f.sinasc?.anos), sih: anos(f.sih?.anos), icsap: anos(f.icsap?.anos), sia: anos(f.sia?.anos), aps: anos(f.aps?.anos), cnes: anos(f.cnes?.anos), sinan: anos(f.sinan?.anos), siscan: anos(f.siscan?.anos), oncologia: anos(f.oncologia?.anos), resp: anos(f.resp?.anos), vacinacao: anos(f.vacinacao?.anos), popSvs: anos(f.populacao_svs?.anos), fns: anos(f.fns?.anos), munic: anos(f.munic?.anos), estadic: anos(f.estadic?.anos),
     clima: par(f.clima?.anos) && { de: par(f.clima?.anos)!.de, ate: Number(f.clima?.ate) || par(f.clima?.anos)!.ate * 100 + 12 },
+    assistencia: f.assistencia?.fontes ? Object.fromEntries(Object.entries(f.assistencia.fontes as Record<string, { competencias?: number[] }>).map(([k, v]) => [k, v.competencias ?? []])) : undefined,
   };
 }
 
@@ -157,7 +159,7 @@ const recorteEfetivo = (p?: RespostaPronta | null) => (p
 
 /** Temas dos painéis marcados, no subtítulo ("finanças, emprego e saúde"). */
 const TEMAS = (): Record<Painel, string> => ({
-  financas: t('finanças', 'public finances'), trabalho: t('emprego', 'employment'), saude: t('saúde', 'health'), munic: t('gestão pública', 'public management'), clima: t('clima', 'climate'),
+  financas: t('finanças', 'public finances'), trabalho: t('emprego', 'employment'), saude: t('saúde', 'health'), munic: t('gestão pública', 'public management'), clima: t('clima', 'climate'), assistencia: t('assistência social', 'social assistance'),
 });
 const subtitulo = (p: Painel[]) => {
   const temas = p.map((x) => TEMAS()[x]).join(', ').replace(/, ([^,]*)$/, t(' e $1', ' and $1'));
@@ -173,6 +175,9 @@ const descricao = (p: Painel[]) => (p.length > 1
     : p[0] === 'munic'
       ? t('Pergunte em linguagem natural sobre a gestão das prefeituras e dos governos estaduais: estrutura administrativa, conselhos, planos e políticas de saúde, educação, habitação, meio ambiente, segurança e tecnologia. A IA consulta a MUNIC e a ESTADIC, do IBGE, aqui no seu navegador, faz os cálculos com SQL e explica o resultado, com as consultas à vista para conferência.',
         'Ask in plain language about how municipal and state governments are run: administrative structure, councils, plans and policies on health, education, housing, environment, security and technology. The AI queries IBGE’s MUNIC and ESTADIC here in your browser, does the calculations in SQL and explains the result, with the queries in view for checking.')
+    : p[0] === 'assistencia'
+      ? t('Pergunte sobre as famílias e pessoas do CadÚnico, a folha do Bolsa Família e os pagamentos do Bolsa Família e do BPC. A IA usa agregados públicos, confere a referência de cada indicador e mostra as consultas para conferência.',
+        'Ask about Cadastro Único families and people, Bolsa Família payroll and Bolsa Família and BPC payments. The AI uses public aggregates, checks the reference of each indicator and shows its queries for verification.')
     : p[0] === 'clima'
       ? t('Pergunte em linguagem natural sobre chuva, temperatura, umidade do solo, evaporação e radiação solar dos municípios, em comparação com a normal de 1991 a 2020. A IA consulta o CHIRPS e o ERA5-Land aqui no seu navegador, faz os cálculos com SQL e explica o resultado, com as consultas à vista para conferência.',
         'Ask in plain language about rainfall, temperature, soil moisture, evaporation and solar radiation in municipalities, compared with the 1991–2020 normal. The AI queries CHIRPS and ERA5-Land here in your browser, does the calculations in SQL and explains the result, with the queries in view for checking.')
@@ -188,6 +193,7 @@ const FONTES = (): Record<Painel, string> => ({
   saude: t('saúde (SIM, SINASC, SIH, CNES, SINAN, SISCAN, Painel de Oncologia e RESP, Ministério da Saúde/DATASUS; população da SVS/MS)', 'health (SIM, SINASC, SIH, CNES, SINAN, SISCAN, Oncology Panel and RESP, Ministry of Health/DATASUS; SVS/MS population)'),
   munic: t('gestão pública (MUNIC e ESTADIC, IBGE)', 'public management (MUNIC and ESTADIC, IBGE)'),
   clima: t('clima (CHIRPS e ERA5-Land)', 'climate (CHIRPS and ERA5-Land)'),
+  assistencia: t('assistência social (CadÚnico e folha Bolsa Família/MDS; pagamentos Bolsa Família e BPC/CGU; IPCA mensal/IBGE)', 'social assistance (Cadastro Único and Bolsa Família payroll/MDS; Bolsa Família and BPC payments/CGU; monthly IPCA/IBGE)'),
 });
 const fonteIa = (paineis: Painel[]) => t(
   `Painéis LAPAM/UFG: ${paineis.map((p) => FONTES()[p]).join('; ')}. Respostas e consultas geradas por IA (Claude, da Anthropic): confira antes de usar.`,

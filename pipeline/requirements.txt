@@ -5,3 +5,4 @@ pyarrow>=17
 truststore>=0.9
 boto3>=1.35
 xlrd>=2.0
+websocket-client>=1.8

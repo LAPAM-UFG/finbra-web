@@ -21,7 +21,7 @@ const Ctx = createContext<Contexto | null>(null);
  */
 export function ProvedorDados({ children, sobDemanda = false, silencioso = false }: { children: ReactNode; sobDemanda?: boolean; silencioso?: boolean }) {
   const caminho = useLocation().pathname;
-  const precisa = sobDemanda || !(caminho === '/clima' || caminho.startsWith('/clima/'));
+  const precisa = sobDemanda || !(caminho === '/clima' || caminho.startsWith('/clima/') || caminho === '/assistencia' || caminho.startsWith('/assistencia/'));
   // /datasus: contexto completo pelo pacote de abertura da saúde (saude_meta e saude_entes devolvem o mesmo que meta e entes; sem pacote, o motor responde)
   const saude = !sobDemanda && (caminho === '/datasus' || caminho.startsWith('/datasus/'));
   const meta = useApi<Meta>(precisa ? (saude ? 'saude_meta' : 'meta') : null);

@@ -12,6 +12,7 @@ import { CLIMA, contextoClima } from './sistema_clima.js';
 import { MUNIC, contextoMunic } from './sistema_munic.js';
 import { SAUDE, contextoSaude } from './sistema_saude.js';
 import { TRABALHO, contextoTrabalho } from './sistema_trabalho.js';
+import { ASSISTENCIA, contextoAssistencia } from './sistema_assistencia.js';
 
 export const PAINEIS = {
   financas: { nome: 'finanças públicas', secao: FINANCAS },
@@ -19,6 +20,7 @@ export const PAINEIS = {
   saude: { nome: 'saúde', secao: SAUDE },
   munic: { nome: 'gestão pública (MUNIC e ESTADIC)', secao: MUNIC },
   clima: { nome: 'clima (chuva, temperatura e solo)', secao: CLIMA },
+  assistencia: { nome: 'assistência social (CadÚnico, Bolsa Família e BPC)', secao: ASSISTENCIA },
 };
 
 const introducao = (nomes) => `Você analisa dados dos painéis do LAPAM/UFG incluídos nesta conversa: ${nomes}. Cada painel tem a sua seção abaixo, com tabelas, conceitos e regras próprios; use as regras do painel de onde vem cada número.
@@ -170,6 +172,6 @@ export function paineisDoPedido(v) {
 export function instrucoes(paineis, { manifesto, contextoTrabalho: ctxTrabalho }) {
   const nomes = paineis.map((p) => PAINEIS[p].nome).join(', ').replace(/, ([^,]*)$/, ' e $1');
   const fixo = [introducao(nomes), ...paineis.map((p) => PAINEIS[p].secao), ...(paineis.length > 1 ? [cruzamento(paineis)] : []), COMO_RESPONDER].join('\n\n');
-  const dados = paineis.map((p) => (p === 'financas' ? contextoDosDados(manifesto) : p === 'saude' ? contextoSaude(manifesto) : p === 'munic' ? contextoMunic(manifesto) : p === 'clima' ? contextoClima(manifesto) : contextoTrabalho(ctxTrabalho)));
+  const dados = paineis.map((p) => (p === 'financas' ? contextoDosDados(manifesto) : p === 'saude' ? contextoSaude(manifesto) : p === 'munic' ? contextoMunic(manifesto) : p === 'clima' ? contextoClima(manifesto) : p === 'assistencia' ? contextoAssistencia(manifesto) : contextoTrabalho(ctxTrabalho)));
   return [{ type: 'text', text: fixo, cache_control: { type: 'ephemeral' } }, ...dados.map((text) => ({ type: 'text', text }))];
 }

@@ -9,6 +9,7 @@ import { Fpm, FpmFaixas } from './pages/Fpm';
 import { Ia } from './pages/Ia';
 import { MunicEvolucao, MunicMetodologia, MunicTerritorio, MunicVisaoGeral } from './pages/Munic';
 import { ClimaMetodologia, ClimaRankings, ClimaVisaoGeral } from './pages/Clima';
+import { AssistenciaPainel, AssistenciaEvolucao, AssistenciaRankings, AssistenciaTabela, AssistenciaMetodologia } from './pages/Assistencia';
 import { buscaClima } from './clima_comum';
 import { LrfDemonstrativos, LrfIndicadores } from './pages/Lrf';
 import { Deflatores, Qualidade } from './pages/Metodologia';
@@ -95,8 +96,14 @@ const menuClima = (): [string, [string, string][]][] => [
 // a aba da IA tem uma página só: a lateral fica para o histórico de conversas (o nome já está no topo e nas abas)
 const menuIa = (): [string, [string, string][]][] => [];
 
+const menuAssistencia = (): [string, [string, string][]][] => [
+  [t('Assistência social', 'Social assistance'), [['/assistencia', t('Painel de indicadores', 'Indicator dashboard')]]],
+  [t('Explorar os dados', 'Explore the data'), [['/assistencia/evolucao', t('Evolução', 'Trends')], ['/assistencia/rankings', 'Rankings'], ['/assistencia/tabela', t('Tabela e exportações', 'Table and downloads')]]],
+  [t('Metodologia', 'Methodology'), [['/assistencia/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
+];
+
 const areaDe = (pathname: string): Area => (pathname === '/ia' ? 'ia' : pathname.startsWith('/trabalho') ? 'trabalho'
-  : pathname.startsWith('/datasus') ? 'saude' : pathname.startsWith('/munic') ? 'munic' : pathname.startsWith('/clima') ? 'clima' : 'financas');
+  : pathname.startsWith('/datasus') ? 'saude' : pathname.startsWith('/munic') ? 'munic' : pathname.startsWith('/clima') ? 'clima' : pathname.startsWith('/assistencia') ? 'assistencia' : 'financas');
 
 function lerTema(): string | null {
   try {
@@ -218,6 +225,7 @@ export function App() {
           saude: t('Saúde · DATASUS', 'Health · DATASUS'),
           munic: t('Gestão pública · MUNIC e ESTADIC', 'Public management · MUNIC and ESTADIC'),
           clima: t('Clima · CHIRPS e ERA5-Land', 'Climate · CHIRPS and ERA5-Land'),
+          assistencia: t('Assistência social · CadÚnico, Bolsa Família e BPC', 'Social assistance · Cadastro Único, Bolsa Família and BPC'),
           ia: t('Pergunte aos dados · LAPAM/UFG', 'Ask the data · LAPAM/UFG'),
         }[area]}</h1>
         <nav className="areas" aria-label={t('Áreas', 'Areas')}>
@@ -227,6 +235,7 @@ export function App() {
           <Link to={{ pathname: '/datasus', search: paraArea('saude') }} className={area === 'saude' ? 'ativo' : ''} aria-current={area === 'saude' ? 'page' : undefined}>{t('Saúde', 'Health')}</Link>
           <Link to={{ pathname: '/munic', search: paraArea('munic') }} className={area === 'munic' ? 'ativo' : ''} aria-current={area === 'munic' ? 'page' : undefined}>{t('Gestão pública', 'Public management')}</Link>
           <Link to={{ pathname: '/clima', search: paraArea('clima') }} className={area === 'clima' ? 'ativo' : ''} aria-current={area === 'clima' ? 'page' : undefined}>{t('Clima', 'Climate')}</Link>
+          <Link to={{ pathname: '/assistencia', search: paraArea('assistencia') }} className={area === 'assistencia' ? 'ativo' : ''} aria-current={area === 'assistencia' ? 'page' : undefined}>{t('Assistência social', 'Social assistance')}</Link>
         </nav>
         <div className="topo-controles">
           <AlternarIdioma />
@@ -235,11 +244,11 @@ export function App() {
       </header>
       <div className={`casca${area === 'ia' ? ' casca-ia' : ''}`}>
         <nav className={`menu${area === 'ia' ? ' menu-ia' : ''}`} aria-label={t('Páginas', 'Pages')}>
-          {({ financas: menu, trabalho: menuTrabalho, saude: menuSaude, munic: menuMunic, clima: menuClima, ia: menuIa }[area])().map(([grupo, itens]) => (
+          {({ financas: menu, trabalho: menuTrabalho, saude: menuSaude, munic: menuMunic, clima: menuClima, assistencia: menuAssistencia, ia: menuIa }[area])().map(([grupo, itens]) => (
             <div key={grupo} style={{ display: 'contents' }}>
               <h4>{grupo}</h4>
               {itens.map(([para, rotulo]) => (
-                <NavLink key={para} to={{ pathname: para, search: area === 'ia' ? buscaIa : area === 'munic' ? contextoMunic(search, DESTINO_MUNIC[para] ?? 'avancado', EDICOES_MUNIC) : area === 'clima' ? buscaClima(search) : buscaArea }} end className={({ isActive }) => (isActive ? 'ativo' : '')}>
+                <NavLink key={para} to={{ pathname: para, search: area === 'ia' ? buscaIa : area === 'munic' ? contextoMunic(search, DESTINO_MUNIC[para] ?? 'avancado', EDICOES_MUNIC) : area === 'clima' ? buscaClima(search) : area === 'assistencia' ? buscaEntreAreas(search, 'assistencia', 'assistencia') : buscaArea }} end className={({ isActive }) => (isActive ? 'ativo' : '')}>
                   {rotulo}
                 </NavLink>
               ))}
@@ -296,6 +305,11 @@ export function App() {
               <Route path="/clima" element={<ClimaVisaoGeral />} />
               <Route path="/clima/rankings" element={<ClimaRankings />} />
               <Route path="/clima/metodologia" element={<ClimaMetodologia />} />
+              <Route path="/assistencia" element={<AssistenciaPainel />} />
+              <Route path="/assistencia/evolucao" element={<AssistenciaEvolucao />} />
+              <Route path="/assistencia/rankings" element={<AssistenciaRankings />} />
+              <Route path="/assistencia/tabela" element={<AssistenciaTabela />} />
+              <Route path="/assistencia/metodologia" element={<AssistenciaMetodologia />} />
               <Route path="/deflatores" element={<Deflatores />} />
               <Route path="/qualidade" element={<Qualidade />} />
               <Route path="*" element={<p className="vazio">{t('Página não encontrada.', 'Page not found.')}</p>} />

@@ -1642,6 +1642,23 @@ export function tabelasIaClima() {
 }
 
 const NORMAL_DE = 1991;
+/** Assistência social: visões sobre agregados, por Range, somente quando uma pergunta usar social_*. */
+let iaAssistencia: Promise<void> | null = null;
+export function tabelasIaAssistencia() {
+  iaAssistencia ??= (async () => {
+    const { con } = await iniciar();
+    const m = await manifestoDados();
+    const arquivos = m.fontes?.assistencia?.arquivos as Record<string, { caminho: string }> | undefined;
+    if (!arquivos) throw new Error('Dados de assistência social ainda não publicados.');
+    for (const nome of ['catalogo', 'territorios', 'cadunico', 'pbf', 'bpc']) {
+      const path = arquivos[nome]?.caminho;
+      if (!path || !new RegExp(`^gold/assistencia/${nome}_[0-9a-f]{12}\\.parquet$`).test(path)) throw new Error('Catálogo de assistência social inválido.');
+      await con.query(`CREATE OR REPLACE VIEW social_${nome} AS SELECT * FROM read_parquet(${arq(path)})`);
+    }
+  })();
+  iaAssistencia.catch(() => { iaAssistencia = null; });
+  return iaAssistencia;
+}
 const NORMAL_ATE = 2020;
 const variavelClima = (q: Params) => String(q.variavel ?? 'chuva_mm');
 /** Município (cod) ou grupo: 'BR' ou a sigla de uma UF. */

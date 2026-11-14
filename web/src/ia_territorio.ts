@@ -66,6 +66,7 @@ const comFinancas = (p: Paineis) => p.includes('financas');
 const comSaude = (p: Paineis) => p.includes('saude');
 const comMunic = (p: Paineis) => p.includes('munic');
 const comClima = (p: Paineis) => p.includes('clima');
+const comAssistencia = (p: Paineis) => p.includes('assistencia');
 /** "a, b e c". */
 const emLista = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} e ${xs.at(-1)}` : xs.join(''));
 
@@ -77,6 +78,7 @@ export function codigosDoMunicipio(cod: number, paineis: Paineis): string {
   if (comTrabalho(paineis)) partes.push(`municipio = ${Math.floor(cod / 10)} (6 dígitos) só em rais_mun e rais_vinculos`);
   if (comMunic(paineis)) partes.push(`cod = ${cod} (7 dígitos) em munic_territorio e munic_respostas (MUNIC)`);
   if (comClima(paineis)) partes.push(`cod = ${cod} (7 dígitos) em clima_territorio, clima_anual, clima_mensal e clima_normal`);
+  if (comAssistencia(paineis)) partes.push(`grupo = '${cod}' ou cod_ibge = ${cod} em social_cadunico, social_pbf e social_bpc (nivel='M')`);
   return `Códigos: ${partes.join('; ')}.`;
 }
 
@@ -90,6 +92,7 @@ export function codigosDaUf(uf: string, cod: number, paineis: Paineis): string {
   if (comFinancas(paineis)) partes.push(`governo estadual: cod_ibge = ${cod} (esfera 'E'); municípios da UF: uf = '${uf}' com esfera 'M'`);
   if (comSaude(paineis)) partes.push(`uf = '${uf}' (sigla) em saude_municipios (inclui as linhas de município ignorado da UF), em fns_municipios e em fns_composicao`);
   if (comClima(paineis)) partes.push(`grupo = '${uf}' (sigla) em clima_agregado; municípios da UF: uf = '${uf}' em clima_territorio`);
+  if (comAssistencia(paineis)) partes.push(`grupo = '${uf}' em social_cadunico, social_pbf e social_bpc: agregado da UF pronto; municípios: uf='${uf}' AND nivel='M'`);
   if (comMunic(paineis)) partes.push(`uf = '${uf}' (sigla) em munic_territorio; grupo = '${uf}' no corte 'uf' de munic_agregados; na ESTADIC, cod = ${cod} em munic_territorio e munic_respostas (pesquisa = 'estadic')`);
   return `Códigos: ${partes.join('; ')}.`;
 }
@@ -100,6 +103,7 @@ export function codigosDoDf(paineis: Paineis): string {
   if (comFinancas(paineis)) partes.push("nas finanças, cod_ibge = 53 (esfera 'D')");
   if (comTrabalho(paineis)) partes.push("no trabalho, Brasília: cod_ibge = 5300108 nas tabelas trab_*, municipio = 530010 em rais_mun e rais_vinculos, uf = 53 ou uf_sigla = 'DF' nas tabelas rais_*, escopo = 'DF' nas tabelas por UF");
   if (comSaude(paineis)) partes.push("na saúde, o DF inteiro é Brasília: cod_ibge = 5300108 (ou uf = 'DF') em saude_municipios e fns_municipios (no FNS, só a Secretaria e o Fundo de Saúde do DF; municipio = 530010 em fns_composicao)");
+  if (comAssistencia(paineis)) partes.push("na assistência social, use grupo='DF' (UF) ou grupo='5300108' (M): mesmo território, nunca somar os dois");
   if (comMunic(paineis)) partes.push("na gestão pública, Brasília é o município 5300108 (cod em munic_territorio e munic_respostas, pesquisa = 'munic'); o governo do DF, na ESTADIC (pesquisa = 'estadic'), é cod = 53; uf = 'DF' / grupo = 'DF' nos cortes por UF");
   return `Códigos: ${partes.join('; ')}.`;
 }
@@ -175,7 +179,7 @@ export function executarLocalizacao(entrada: unknown, cad: Cadastro, paineis: Pa
   const e = (entrada ?? {}) as { nome?: unknown; uf?: unknown };
   const nome = typeof e.nome === 'string' ? e.nome.slice(0, 120) : '';
   if (!nome.trim()) return { modelo: JSON.stringify({ erro: 'informe o nome do município ou da UF' }), tabela: { erro: 'nome vazio' }, erro: true };
-  const r = localizar(nome, typeof e.uf === 'string' ? e.uf : '', comSaude(paineis) ? comNoronhaFns(cad) : cad);
+  const r = localizar(nome, typeof e.uf === 'string' ? e.uf : '', comSaude(paineis) || comAssistencia(paineis) ? comNoronhaFns(cad) : cad);
   for (const l of [...r.encontrados, ...r.sugestoes]) if (l.cod === NORONHA.cod) l.tipo = 'distrito';
   const lista = r.encontrados.length ? r.encontrados : r.sugestoes;
   const tabela = {
@@ -219,7 +223,7 @@ const TABELAS_COM_UF_EM_COD = /\b(entes|indicadores|alertas|escopos|lrf)\b/;
  */
 export function conferirCodigos(sql: string, cad: Cadastro): string | null {
   const s = sqlSemTextos(sql);
-  if (consultaSoFns(s)) cad = comNoronhaFns(cad);
+  if (consultaSoFns(s) || /\bsocial_(cadunico|pbf|bpc|territorios)\b/.test(s)) cad = comNoronhaFns(cad);
   const comTextos = sql.toLowerCase();
   const problemas: string[] = [];
   const pares: [string, number][] = [];

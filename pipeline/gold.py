@@ -429,6 +429,7 @@ def fontes(con):
         **fonte_educacao_saude(con),
         **fonte_datasus(con),
         **fonte_fns(con),
+        **fonte_assistencia_publicada(),
     }
 
 
@@ -437,6 +438,11 @@ def fonte_datasus(con):
     from saude import fonte_saude
 
     return fonte_saude(con)
+
+
+def fonte_assistencia_publicada():
+    from assistencia_fonte import fonte_assistencia
+    return fonte_assistencia(GOLD)
 
 
 def fonte_fns(con):

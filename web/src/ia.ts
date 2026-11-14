@@ -12,7 +12,7 @@
  * confere os códigos de território (conferirCodigos); lugares citados pelo nome passam pela ferramenta
  * "localizar", que usa o cadastro de entes.
  */
-import { abandonarConsultaIa, consultaLivre, prepararResultadosIa, contextoTrabalhoIa, manifestoDados, tabelaDespesaFuncao, tabelaLrf, tabelasEducacaoSaude, tabelasFns, tabelasIaClima, tabelasVacinacao, tabelasIaMunic, tabelasIaTrabalho, tabelasSaude } from './dados';
+import { abandonarConsultaIa, consultaLivre, prepararResultadosIa, contextoTrabalhoIa, manifestoDados, tabelaDespesaFuncao, tabelaLrf, tabelasEducacaoSaude, tabelasFns, tabelasIaClima, tabelasIaAssistencia, tabelasVacinacao, tabelasIaMunic, tabelasIaTrabalho, tabelasSaude } from './dados';
 import { guardaFns } from './ia_fns';
 import { t } from './idioma';
 import {
@@ -123,13 +123,13 @@ export async function estadoIa(): Promise<EstadoIa | null> {
 }
 
 /** Painéis que a IA pode consultar (aba "Pergunte aos dados"); cada um tem tabelas e instruções próprias. */
-export type Painel = 'financas' | 'trabalho' | 'saude' | 'munic' | 'clima';
-export const PAINEIS: Painel[] = ['financas', 'trabalho', 'saude', 'munic', 'clima'];
+export type Painel = 'financas' | 'trabalho' | 'saude' | 'munic' | 'clima' | 'assistencia';
+export const PAINEIS: Painel[] = ['financas', 'trabalho', 'saude', 'munic', 'clima', 'assistencia'];
 
 export async function chamarIa(mensagens: Mensagem[], idioma: string, paineis: Painel[] = PAINEIS, sinal?: AbortSignal, modelo: EscolhaModelo = MODELO_PADRAO): Promise<RespostaIa> {
   const contexto = paineis.includes('trabalho') ? await contextoTrabalhoIa() : undefined;
   // o manifesto só é usado pelo Worker local (wrangler dev), que não tem o do R2
-  const manifesto = emLocalhost() && (paineis.includes('financas') || paineis.includes('saude') || paineis.includes('munic') || paineis.includes('clima')) ? await manifestoDados() : undefined;
+  const manifesto = emLocalhost() && (paineis.includes('financas') || paineis.includes('saude') || paineis.includes('munic') || paineis.includes('clima') || paineis.includes('assistencia')) ? await manifestoDados() : undefined;
   const enviar = () => fetch(`${servidor}/api/ia`, {
     method: 'POST',
     redirect: 'manual',
@@ -201,6 +201,9 @@ export function disponibilidadeNoAno(ano: number, paineis: Painel[], c: Cobertur
   const tem: string[] = [];
   const nao: string[] = [];
   const marcar = (nome: string, ok: boolean, detalhe = '') => (ok ? tem : nao).push(`${nome}${detalhe}`);
+  if (paineis.includes('assistencia')) for (const [nome, meses] of Object.entries(c.assistencia ?? {})) {
+    marcar(nome, meses.some(m => Math.floor(m / 100) === ano), ' (cobertura varia por indicador)');
+  }
   if (paineis.includes('trabalho')) {
     marcar('RAIS', c.rais.includes(ano), c.rais.length ? ` (${c.rais[0]}–${c.rais.at(-1)})` : '');
     if (c.caged) {
@@ -282,6 +285,7 @@ export function contextoParaModelo(c: ContextoIa, cobertura?: Cobertura | null):
  * "Dados disponíveis" e para marcar nas tabelas o período pedido que a fonte não tem.
  */
 export type Cobertura = {
+  assistencia?: Record<string, number[]>;
   rais: number[]; caged: { de: number; ate: number } | null; microdados: boolean; dca: number[];
   pib?: { de: number; ate: number; setorial_ate?: number } | null; siope?: number[]; siopeRemuneracao?: number[]; siops?: number[];
   lrf?: { de: number; ate: number; parciais?: number[] } | null; bolsa?: { de: number; ate: number; mes: number } | null; inss?: number[];
@@ -345,6 +349,12 @@ export function sugestoes(paineis: Painel[], tr: Territorio, c: Cobertura, ano: 
     cruzamento: t('Entre bases', 'Across datasets'),
   };
   const grupos: Sugestao[][] = [];
+  if (paineis.includes('assistencia') && c.assistencia) grupos.push([
+    { titulo: t('Famílias e pessoas no CadÚnico', 'Families and people in Cadastro Único'), tema: t('Assistência social', 'Social assistance'),
+      texto: t(`Quantas famílias e pessoas estão no Cadastro Único ${f.em}, na última referência disponível? Mostre a data e os perfis de renda, sexo e raça/cor.`, `How many families and people are registered in Cadastro Único ${f.em}, at the latest available reference? Show the date and income, sex and race/colour profiles.`), paineis: ['assistencia'] },
+    { titulo: t('Evolução dos pagamentos do BPC', 'BPC payment trends'), tema: t('Assistência social', 'Social assistance'),
+      texto: t(`Mostre a evolução mensal dos benefícios do BPC com pagamento e do valor pago ${f.em} nos últimos três anos disponíveis, com valores nominais e corrigidos pelo IPCA.`, `Show monthly BPC benefits with payments and amounts paid ${f.em} over the latest three available years, in nominal and IPCA-adjusted values.`), paineis: ['assistencia'] },
+  ]);
   if (trabalho) {
     const a = ult(c.rais);
     const a10 = recuo(c.rais, 10);
@@ -538,6 +548,9 @@ export function coberturaPorAno(c: Cobertura, paineis: Painel[]): Map<number, { 
   }
   if (paineis.includes('munic')) fechadas([...(c.munic ?? []), ...(c.estadic ?? [])]);
   if (paineis.includes('clima') && c.clima) mensal('Clima', c.clima.de * 100 + 1, c.clima.ate);
+  if (paineis.includes('assistencia')) for (const [nome, meses] of Object.entries(c.assistencia ?? {})) {
+    if (meses.length) mensal(nome, meses[0], meses.at(-1)!);
+  }
   if (paineis.includes('saude')) fechadas([...(c.sim ?? []), ...(c.sinasc ?? []), ...(c.sih ?? []), ...(c.icsap ?? []), ...(c.sia ?? []), ...(c.aps ?? []), ...(c.cnes ?? []), ...(c.sinan ?? []), ...(c.siscan ?? []), ...(c.oncologia ?? []), ...(c.resp ?? []), ...(c.vacinacao ?? []), ...(c.popSvs ?? []), ...(c.fns ?? [])]);
   return anos;
 }
@@ -658,6 +671,10 @@ export function descreverCobertura(paineis: Painel[], c: Cobertura): string[] {
   if (paineis.includes('clima') && c.clima) {
     linhas.push(t(`Clima ${faixa(c.clima.de, Math.floor(c.clima.ate / 100))}: chuva (CHIRPS, desde 1981), temperatura, ponto de orvalho, umidade do solo, evaporação e radiação solar (ERA5-Land) por município e mês, com a normal de 1991 a 2020 (estimativas de satélite e reanálise, não de estações)`,
       `Climate ${faixa(c.clima.de, Math.floor(c.clima.ate / 100))}: rainfall (CHIRPS, since 1981), temperature, dew point, soil moisture, evaporation and solar radiation (ERA5-Land) by municipality and month, with the 1991–2020 normal (satellite and reanalysis estimates, not station data)`));
+  }
+  if (paineis.includes('assistencia')) for (const [nome, meses] of Object.entries(c.assistencia ?? {})) {
+    if (meses.length) linhas.push(t(`${nome}: ${rotuloCompetencia(meses[0])}–${rotuloCompetencia(meses.at(-1)!)}; referências e lacunas variam por indicador; cadastro, folha e pagamento têm definições distintas.`,
+      `${nome}: ${rotuloCompetencia(meses[0])}–${rotuloCompetencia(meses.at(-1)!)}; dates and gaps vary by indicator; registration, payroll and payment have different definitions.`));
   }
   if (paineis.includes('munic') && c.estadic?.length) {
     linhas.push(t(`ESTADIC ${anosLista(c.estadic)}: o mesmo para os 27 governos estaduais`, `ESTADIC ${anosLista(c.estadic)}: the same for the 27 state governments`));
@@ -1971,6 +1988,7 @@ async function consultaSemLimite(entrada: unknown, paineis: Painel[], sinal: Abo
     if (paineis.includes('saude') && /\bfns_(municipios|composicao|anos)\b/i.test(todas)) await tabelasFns();
     if (paineis.includes('munic') && /\bmunic_\w+/i.test(todas)) await tabelasIaMunic();
     if (paineis.includes('clima') && /\bclima_\w+/i.test(todas)) await tabelasIaClima();
+    if (paineis.includes('assistencia') && /\bsocial_\w+/i.test(todas)) await tabelasIaAssistencia();
     // resultados já apurados na conversa, lidos como tabelas (res_C1…): só os completos, da mesma versão dos dados e desta conversa
     const citadas = citadasNoSql(todas);
     if (citadas.length) {

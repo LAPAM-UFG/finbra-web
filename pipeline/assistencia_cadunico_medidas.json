@@ -1,0 +1,642 @@
+[
+  {
+    "id": "ssSmhpv",
+    "nome": "im_familia_indigena",
+    "qMeasure": {
+      "qDef": "if( v_usar_restricao_lgpd = 1 AND sum({<IN_FAMILIA_INDIGENA_FAM = {'Sim'}>}qtd_familias) < qtd_fam_lgpd AND sum({<IN_FAMILIA_INDIGENA_FAM = {'Sim'}>}qtd_familias) > 0, -1, sum({<IN_FAMILIA_INDIGENA_FAM = {'Sim'}>}qtd_familias))\r\n\n\n\n/*if(v_usar_restricao_lgpd = 1, -1, sum({<IN_FAMILIA_INDIGENA_FAM = {'Sim'}>} qtd_familias))\n",
+      "qLabel": "im_familia_indigena"
+    }
+  },
+  {
+    "id": "0292f8a0-25c3-45e6-80d1-b9017c62e348",
+    "nome": "im_qtd_pessoas_pbf",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum({<MARC_PBF={1}>}qtd_pessoas) < qtd_pes_lgpd AND \nsum({<MARC_PBF={1}>}qtd_pessoas) > 0, \nv_valor_restricao_lgpd, \nsum({<MARC_PBF={1}>}qtd_pessoas)\n)\n",
+      "qLabel": "im_qtd_pessoas_pbf"
+    }
+  },
+  {
+    "id": "05df2567-cf1a-4e51-b925-dcf6d72a3d2f",
+    "nome": "im_raca_cor_04_Parda",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(raca_cor_04_Parda*qtd_familias) < qtd_pes_lgpd AND \nsum(raca_cor_04_Parda*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(raca_cor_04_Parda*qtd_familias)\n)\n",
+      "qLabel": "im_raca_cor_04_Parda"
+    }
+  },
+  {
+    "id": "0895eff4-24f3-4cb0-b8bd-dcb088e73b3d",
+    "nome": "im_faixa_etaria_08_Entre40a44",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(faixa_etaria_08_40a44*qtd_familias) < qtd_pes_lgpd AND \nsum(faixa_etaria_08_40a44*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(faixa_etaria_08_40a44*qtd_familias)\n)",
+      "qLabel": "im_faixa_etaria_08_Entre40a44"
+    }
+  },
+  {
+    "id": "0b41970c-4969-4685-9691-d1bb2fdebfe3",
+    "nome": "im_qtd_pessoas_cuidados_permanentes",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(ajuda_memb*qtd_familias) < qtd_pes_lgpd AND \nsum(ajuda_memb*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(ajuda_memb*qtd_familias))",
+      "qLabel": "im_qtd_pessoas_cuidados_permanentes"
+    }
+  },
+  {
+    "id": "10025a98-bf36-4a8b-a3df-bd5becaeaccb",
+    "nome": "im_raca_cor_05_Indígena",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(raca_cor_05_Indígena*qtd_familias) < qtd_pes_lgpd AND \nsum(raca_cor_05_Indígena*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(raca_cor_05_Indígena*qtd_familias)\n)",
+      "qLabel": "im_raca_cor_05_Indígena"
+    }
+  },
+  {
+    "id": "1d9dafd8-0d59-4db5-9c2c-3001ccb32128",
+    "nome": "im_rf_raca_cor_99_sem_resposta",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(rf_raca_cor_99_sem_resposta*qtd_familias) < qtd_pes_lgpd AND \nsum(rf_raca_cor_99_sem_resposta*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(rf_raca_cor_99_sem_resposta*qtd_familias))\n",
+      "qLabel": "im_rf_raca_cor_99_sem_resposta"
+    }
+  },
+  {
+    "id": "2865da65-5dd9-4848-bd8e-3dfee766e578",
+    "nome": "im_qtd_pessoas_deficiencia",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(deficiencia*qtd_familias) < qtd_pes_lgpd AND \nsum(deficiencia*qtd_familias)>0, \nv_valor_restricao_lgpd, \nsum(deficiencia*qtd_familias)\n)",
+      "qLabel": "im_qtd_pessoas_deficiencia"
+    }
+  },
+  {
+    "id": "305a6177-b82d-43a9-bb19-a1ed12a26e1f",
+    "nome": "im_raca_cor_03_Amarela",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(raca_cor_03_Amarela*qtd_familias) < qtd_pes_lgpd AND \nsum(raca_cor_03_Amarela*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(raca_cor_03_Amarela*qtd_familias)\n)",
+      "qLabel": "im_raca_cor_03_Amarela"
+    }
+  },
+  {
+    "id": "3b1543b5-f08e-44f6-bb28-ed6e2bc6d279",
+    "nome": "im_faixa_etaria_04_Entre16a17",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(faixa_etaria_04_16a17*qtd_familias) < qtd_pes_lgpd AND \nsum(faixa_etaria_04_16a17*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(faixa_etaria_04_16a17*qtd_familias)\n)",
+      "qLabel": "im_faixa_etaria_04_Entre16a17"
+    }
+  },
+  {
+    "id": "3d4f02fd-2f8b-4928-9bdf-65a285799d4d",
+    "nome": "im_familia_04a06",
+    "qMeasure": {
+      "qDef": "if ( \r\nv_usar_restricao_lgpd = 1 AND \nsum(if (faixa_etaria_02_04a06>0,qtd_familias,0)) < qtd_fam_lgpd AND \nsum(if (faixa_etaria_02_04a06>0,qtd_familias,0)) > 0, \nv_valor_restricao_lgpd, \nsum(if (faixa_etaria_02_04a06>0,qtd_familias,0))\n)\n",
+      "qLabel": "im_familia_04a06"
+    }
+  },
+  {
+    "id": "3f9d571d-79f6-4b22-a5fa-1493b89ba801",
+    "nome": "im_rf_raca_cor_02_Preta",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(rf_raca_cor_02_Preta*qtd_familias) < qtd_pes_lgpd AND \nsum(rf_raca_cor_02_Preta*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(rf_raca_cor_02_Preta*qtd_familias))\n",
+      "qLabel": "im_rf_raca_cor_02_Preta"
+    }
+  },
+  {
+    "id": "43740322-69be-4515-b7c1-edb52a3ed08c",
+    "nome": "im_rf_raca_cor_04_Parda",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(rf_raca_cor_04_Parda*qtd_familias) < qtd_pes_lgpd AND \nsum(rf_raca_cor_04_Parda*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(rf_raca_cor_04_Parda*qtd_familias))\n",
+      "qLabel": "im_rf_raca_cor_04_Parda"
+    }
+  },
+  {
+    "id": "47e5e24d-3ef2-404e-9767-5d82be95e4e4",
+    "nome": "im_qtd_pessoas_trabalho_infantil",
+    "qMeasure": {
+      "qDef": "if(\r\nv_usar_restricao_lgpd = 1 AND \nsum(trabalho_infantil*qtd_familias) < qtd_pes_lgpd AND\nsum(trabalho_infantil*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(trabalho_infantil*qtd_familias)\n)\n\n\n\n/*if(\nv_usar_restricao_lgpd = 1 AND \nsum(trabalho_infantil) < qtd_pes_lgpd AND\nsum(trabalho_infantil) > 0, \nv_valor_restricao_lgpd, \nsum(trabalho_infantil)\n)*/\n",
+      "qLabel": "im_qtd_pessoas_trabalho_infantil"
+    }
+  },
+  {
+    "id": "49ec9d1d-043c-48ca-b401-bea72e33550e",
+    "nome": "im_ivcad__geral",
+    "qMeasure": {
+      "qDef": "if(\r\nv_usar_restricao_lgpd = 1 \nAND sum(if(Not IsNull(ivcad), qtd_familias,0)) < qtd_fam_lgpd \nAND sum(if(Not IsNull(ivcad), qtd_familias,0))>0, \nv_valor_restricao_lgpd, \nsum(\n\t\tif(Not IsNull(ivcad), ivcad * qtd_familias,0)\n   )\n/\nsum(\n\t\tif(Not IsNull(ivcad), qtd_familias,0)\n   )\n)",
+      "qLabel": "im_ivcad__geral"
+    }
+  },
+  {
+    "id": "4a6d483d-c187-4872-93b8-d5f57bec7c62",
+    "nome": "im_raca_cor_02_Preta",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(raca_cor_02_Preta*qtd_familias) < qtd_pes_lgpd AND \nsum(raca_cor_02_Preta*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(raca_cor_02_Preta*qtd_familias)\n)",
+      "qLabel": "im_raca_cor_02_Preta"
+    }
+  },
+  {
+    "id": "4d8a8b84-c571-408a-92aa-8696d8010a93",
+    "nome": "im_qtd_pessoas_fisica",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(def_fisica*qtd_familias) < qtd_pes_lgpd AND \nsum(def_fisica*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(def_fisica*qtd_familias)\n)",
+      "qLabel": "im_qtd_pessoas_fisica"
+    }
+  },
+  {
+    "id": "5693574b-1702-4a23-9c8f-b868b601235e",
+    "nome": "im_qtd_familias_situacao_rua",
+    "qMeasure": {
+      "qDef": "if(v_usar_restricao_lgpd = 1 AND \r\nsum(if(situacao_rua >= 1, qtd_familias, 0)) < qtd_fam_lgpd AND\nsum(if(situacao_rua >= 1, qtd_familias, 0)) > 0, \nv_valor_restricao_lgpd, \nsum(if(situacao_rua >= 1, qtd_familias, 0)))\n",
+      "qLabel": "im_qtd_familias_situacao_rua"
+    }
+  },
+  {
+    "id": "58da9550-1261-41e1-b4d4-deadbc188ac9",
+    "nome": "im_faixa_etaria_10_Entre50a54",
+    "qMeasure": {
+      "qDef": "if(\r\nv_usar_restricao_lgpd = 1 AND \nsum(faixa_etaria_10_50a54*qtd_familias) < qtd_pes_lgpd AND \nsum(faixa_etaria_10_50a54*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(faixa_etaria_10_50a54*qtd_familias)\n)",
+      "qLabel": "im_faixa_etaria_10_Entre50a54"
+    }
+  },
+  {
+    "id": "5f4d7791-5f50-40c5-8b05-ab7e846f487b",
+    "nome": "im_faixa_etaria_05_Entre18a24",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(faixa_etaria_05_18a24*qtd_familias) < qtd_pes_lgpd AND \nsum(faixa_etaria_05_18a24*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(faixa_etaria_05_18a24*qtd_familias)\n)",
+      "qLabel": "im_faixa_etaria_05_Entre18a24"
+    }
+  },
+  {
+    "id": "5fe62d7c-80ec-4c07-ae1d-d0a6b505ba2e",
+    "nome": "im_faixa_etaria_09_Entre45a49",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(faixa_etaria_09_45a49*qtd_familias) < qtd_pes_lgpd AND \nsum(faixa_etaria_09_45a49*qtd_familias) > 0, \nv_valor_restricao_lgpd,\nsum(faixa_etaria_09_45a49*qtd_familias)\n)",
+      "qLabel": "im_faixa_etaria_09_Entre45a49"
+    }
+  },
+  {
+    "id": "62b60b2e-7a49-456c-806c-d7442e62a194",
+    "nome": "im_faixa_etaria_12_Entre60a64",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(faixa_etaria_12_60a64*qtd_familias) < qtd_pes_lgpd AND \nsum(faixa_etaria_12_60a64*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(faixa_etaria_12_60a64*qtd_familias)\n)",
+      "qLabel": "im_faixa_etaria_12_Entre60a64"
+    }
+  },
+  {
+    "id": "640c2d20-1b66-4c7c-8af3-5c789d17bb03",
+    "nome": "im_qtd_familias_gpte",
+    "qMeasure": {
+      "qDef": "if(\tv_usar_restricao_lgpd = 1 AND\r\n\tsum(if(DS_FAM_GPTE = 'Sim', qtd_familias, 0)) < qtd_fam_lgpd AND\n    sum(if(DS_FAM_GPTE = 'Sim', qtd_familias, 0)) > 0, \n    v_valor_restricao_lgpd, \n\tsum(if(DS_FAM_GPTE = 'Sim', qtd_familias, 0)))",
+      "qLabel": "im_qtd_familias_gpte"
+    }
+  },
+  {
+    "id": "6d6c43d4-775e-4fb3-be00-b790c9502d45",
+    "nome": "im_rf_sexo_masculino",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(rf_sexo_masculino*qtd_familias) < qtd_pes_lgpd AND \nsum(rf_sexo_masculino*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(rf_sexo_masculino*qtd_familias))\n",
+      "qLabel": "im_rf_sexo_masculino"
+    }
+  },
+  {
+    "id": "7436a2a3-ec17-4cd0-84a9-f9fce4306a25",
+    "nome": "im_qtd_pessoas_baixa_visao",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(def_baixa_visao*qtd_familias) < qtd_pes_lgpd AND \nsum(def_baixa_visao*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(def_baixa_visao*qtd_familias)\n)",
+      "qLabel": "im_qtd_pessoas_baixa_visao"
+    }
+  },
+  {
+    "id": "8772e911-44d8-4189-bfed-83e696866950",
+    "nome": "im_qtd_pessoas_sexo_feminino",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(sexo_2_Feminino*qtd_familias) < qtd_pes_lgpd AND \nsum(sexo_2_Feminino*qtd_familias) > 0,\nv_valor_restricao_lgpd, \nsum(sexo_2_Feminino*qtd_familias)\n)",
+      "qLabel": "im_qtd_pessoas_sexo_feminino"
+    }
+  },
+  {
+    "id": "97d15d83-9f7e-4d42-a288-8803046f77ab",
+    "nome": "im_faixa_etaria_11_Entre55a59",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(faixa_etaria_11_55a59*qtd_familias) < qtd_pes_lgpd AND \nsum(faixa_etaria_11_55a59*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(faixa_etaria_11_55a59*qtd_familias)\n)",
+      "qLabel": "im_faixa_etaria_11_Entre55a59"
+    }
+  },
+  {
+    "id": "98333556-7e50-405e-b7a3-392fc31da3d7",
+    "nome": "im_faixa_etaria_03_Entre7a15",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(faixa_etaria_03_07a15*qtd_familias) < qtd_pes_lgpd AND \nsum(faixa_etaria_03_07a15*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(faixa_etaria_03_07a15*qtd_familias)\n)",
+      "qLabel": "im_faixa_etaria_03_Entre7a15"
+    }
+  },
+  {
+    "id": "9d1c902f-ebf7-414d-873b-18084b4a4bc7",
+    "nome": "im_rf_raca_cor_01_Branca",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(rf_raca_cor_01_Branca*qtd_familias) < qtd_pes_lgpd AND \nsum(rf_raca_cor_01_Branca*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(rf_raca_cor_01_Branca*qtd_familias))\n",
+      "qLabel": "im_rf_raca_cor_01_Branca"
+    }
+  },
+  {
+    "id": "BjkBHk",
+    "nome": "im_qtd_pessoas_surdez_profunda",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(def_surdez_profunda*qtd_familias) < qtd_pes_lgpd AND \nsum(def_surdez_profunda*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(def_surdez_profunda*qtd_familias)\n)",
+      "qLabel": "im_qtd_pessoas_surdez_profunda"
+    }
+  },
+  {
+    "id": "DacCs",
+    "nome": "im_escola_nunca_frequentou",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(nunca_frequentou*qtd_familias) < qtd_pes_lgpd AND \nsum(nunca_frequentou*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(nunca_frequentou*qtd_familias)\n)",
+      "qLabel": "im_escola_nunca_frequentou"
+    }
+  },
+  {
+    "id": "FTnmHMB",
+    "nome": "im_qtd_familias_estrangeiros",
+    "qMeasure": {
+      "qDef": "if ( v_usar_restricao_lgpd = 1 AND \r\nsum(if (estrangeiros>0,qtd_familias,0)) < qtd_fam_lgpd AND \nsum(if (estrangeiros>0,qtd_familias,0)) > 0, \nv_valor_restricao_lgpd, \nsum(if (estrangeiros>0,qtd_familias,0)))\n",
+      "qLabel": "im_qtd_familias_estrangeiros"
+    }
+  },
+  {
+    "id": "JBmfU",
+    "nome": "im_qtd_familias",
+    "qMeasure": {
+      "qDef": "if(\r\nv_usar_restricao_lgpd = 1 AND \nsum(qtd_familias) < qtd_fam_lgpd AND \nsum(qtd_familias) > 0,\nv_valor_restricao_lgpd, \nsum(qtd_familias)\n)",
+      "qLabel": "im_qtd_familias"
+    }
+  },
+  {
+    "id": "JsQcVFJ",
+    "nome": "im_escolaridade_indefinida",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(escolaridade_indefinida*qtd_familias) < qtd_pes_lgpd AND \nsum(escolaridade_indefinida*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(escolaridade_indefinida*qtd_familias)\n)",
+      "qLabel": "im_escolaridade_indefinida"
+    }
+  },
+  {
+    "id": "MHDmuY",
+    "nome": "im_empregado_formal",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(empregado_formal*qtd_familias) < qtd_pes_lgpd AND \nsum(empregado_formal*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(empregado_formal*qtd_familias)\n)",
+      "qLabel": "im_empregado_formal"
+    }
+  },
+  {
+    "id": "NmPHWH",
+    "nome": "im_qtd_pessoas_surdez_leve",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(def_surdez_leve*qtd_familias) < qtd_pes_lgpd AND \nsum(def_surdez_leve*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(def_surdez_leve*qtd_familias)\n)",
+      "qLabel": "im_qtd_pessoas_surdez_leve"
+    }
+  },
+  {
+    "id": "PJycVt",
+    "nome": "im_qtd_pessoas",
+    "qMeasure": {
+      "qDef": "if( v_usar_restricao_lgpd = 1 AND \r\n\tsum(qtd_pessoas) < qtd_pes_lgpd AND \n    sum(qtd_pessoas) > 0, \n    v_valor_restricao_lgpd, \n    sum(qtd_pessoas)\n)",
+      "qLabel": "im_qtd_pessoas"
+    }
+  },
+  {
+    "id": "QkDAspd",
+    "nome": "im_atividade_nao_remunerado",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(funcao_7_trabalhador_não_remunerado*qtd_familias) < qtd_pes_lgpd AND \nsum(funcao_7_trabalhador_não_remunerado*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(funcao_7_trabalhador_não_remunerado*qtd_familias))",
+      "qLabel": "im_atividade_nao_remunerado"
+    }
+  },
+  {
+    "id": "TNuFcn",
+    "nome": "im_qtd_pessoas_trasntorno_mental",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(def_transtorno_mental*qtd_familias) < qtd_pes_lgpd AND \nsum(def_transtorno_mental*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(def_transtorno_mental*qtd_familias)\n)",
+      "qLabel": "im_qtd_pessoas_trasntorno_mental"
+    }
+  },
+  {
+    "id": "UsKWWa",
+    "nome": "im_atividade_trabalho_conta_propria",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(funcao_1_trabalhador_por_conta_propria*qtd_familias) < qtd_pes_lgpd AND \nsum(funcao_1_trabalhador_por_conta_propria*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(funcao_1_trabalhador_por_conta_propria*qtd_familias)\n)",
+      "qLabel": "im_atividade_trabalho_conta_propria"
+    }
+  },
+  {
+    "id": "UwweQER",
+    "nome": "im_instrucao_fundamental_completo",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(fundamental_completo*qtd_familias) < qtd_pes_lgpd AND \nsum(fundamental_completo*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(fundamental_completo*qtd_familias)\n)",
+      "qLabel": "im_instrucao_fundamental_completo"
+    }
+  },
+  {
+    "id": "VXXEDWg",
+    "nome": "im_escola_rede_particular",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(frequenta_escola_rede_particular*qtd_familias) < qtd_pes_lgpd AND \nsum(frequenta_escola_rede_particular*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(frequenta_escola_rede_particular*qtd_familias)\n)",
+      "qLabel": "im_escola_rede_particular"
+    }
+  },
+  {
+    "id": "WANHVGz",
+    "nome": "im_escola_nao_frequenta_mas_ja_frequentou",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(nao_frequenta_mas_ja_frequentou*qtd_familias) < qtd_pes_lgpd AND \nsum(nao_frequenta_mas_ja_frequentou*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(nao_frequenta_mas_ja_frequentou*qtd_familias)\n)",
+      "qLabel": "im_escola_nao_frequenta_mas_ja_frequentou"
+    }
+  },
+  {
+    "id": "WYBpz",
+    "nome": "im_pessoas_que_trabalham",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(trabalha*qtd_familias) < qtd_pes_lgpd AND \nsum(trabalha*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(trabalha*qtd_familias)\n)",
+      "qLabel": "im_pessoas_que_trabalham"
+    }
+  },
+  {
+    "id": "WjqpcH",
+    "nome": "im_familia_60oumais",
+    "qMeasure": {
+      "qDef": "if ( \r\nv_usar_restricao_lgpd = 1 AND \nsum(if (faixa_etaria_12_60a64 + faixa_etaria_13_65ouMais>0,qtd_familias,0)) < qtd_fam_lgpd AND \nsum(if (faixa_etaria_12_60a64 + faixa_etaria_13_65ouMais>0,qtd_familias,0)) > 0, \nv_valor_restricao_lgpd, \nsum(if (faixa_etaria_12_60a64 + faixa_etaria_13_65ouMais>0,qtd_familias,0)))",
+      "qLabel": "im_familia_60oumais"
+    }
+  },
+  {
+    "id": "WsCWy",
+    "nome": "im_atividade_estagiario",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(funcao_10_estagiario*qtd_familias) < qtd_pes_lgpd AND \nsum(funcao_10_estagiario*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(funcao_10_estagiario*qtd_familias))",
+      "qLabel": "im_atividade_estagiario"
+    }
+  },
+  {
+    "id": "XqJPyBc",
+    "nome": "im_qtd_pessoas_sexo_masculino",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(sexo_1_Masculino*qtd_familias) < qtd_pes_lgpd AND \nsum(sexo_1_Masculino*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(sexo_1_Masculino*qtd_familias)\n)\n",
+      "qLabel": "im_qtd_pessoas_sexo_masculino"
+    }
+  },
+  {
+    "id": "ZMJYjF",
+    "nome": "im_qtd_familias_pbf",
+    "qMeasure": {
+      "qDef": "\nif( v_usar_restricao_lgpd = 1 AND sum({<MARC_PBF={1}>}qtd_familias) < qtd_fam_lgpd AND sum({<MARC_PBF={1}>}qtd_familias) > 0, v_valor_restricao_lgpd, sum({<MARC_PBF={1}>}qtd_familias))\n",
+      "qLabel": "im_qtd_familias_pbf"
+    }
+  },
+  {
+    "id": "ZRnQpWy",
+    "nome": "im_raca_cor_01_Branca",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(raca_cor_01_Branca*qtd_familias) < qtd_pes_lgpd AND \nsum(raca_cor_01_Branca*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(raca_cor_01_Branca*qtd_familias))\n",
+      "qLabel": "im_raca_cor_01_Branca"
+    }
+  },
+  {
+    "id": "ZgbMRD",
+    "nome": "im_familia_18a59",
+    "qMeasure": {
+      "qDef": "if(\r\nv_usar_restricao_lgpd = 1 AND \nsum(if (faixa_etaria_05_18a24 + faixa_etaria_06_25a34 + faixa_etaria_07_35a39 + faixa_etaria_08_40a44 + faixa_etaria_09_45a49 + faixa_etaria_10_50a54 + faixa_etaria_11_55a59 >=1,qtd_familias,0)) < qtd_pes_lgpd AND \nsum(if (faixa_etaria_05_18a24 + faixa_etaria_06_25a34 + faixa_etaria_07_35a39 + faixa_etaria_08_40a44 + faixa_etaria_09_45a49 + faixa_etaria_10_50a54 + faixa_etaria_11_55a59 >=1,qtd_familias,0)) > 0, \nv_valor_restricao_lgpd, \nsum(if (faixa_etaria_05_18a24 + faixa_etaria_06_25a34 + faixa_etaria_07_35a39 + faixa_etaria_08_40a44 + faixa_etaria_09_45a49 + faixa_etaria_10_50a54 + faixa_etaria_11_55a59 >=1,qtd_familias,0))\n)\n\n\n",
+      "qLabel": "im_familia_18a59"
+    }
+  },
+  {
+    "id": "a16aa6ec-5fe2-454a-b356-a03c56d3ed81",
+    "nome": "im_faixa_etaria_07_Entre35a39",
+    "qMeasure": {
+      "qDef": "if( v_usar_restricao_lgpd = 1 AND \r\nsum(faixa_etaria_07_35a39*qtd_familias) < qtd_pes_lgpd AND \nsum(faixa_etaria_07_35a39*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(faixa_etaria_07_35a39*qtd_familias)\n)",
+      "qLabel": "im_faixa_etaria_07_Entre35a39"
+    }
+  },
+  {
+    "id": "a52c803b-27f9-4bbc-8cb7-1d158e033088",
+    "nome": "im_rf_raca_cor_05_Indígena",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum([rf_raca_cor_05_Indígena]*qtd_familias) < qtd_pes_lgpd AND \nsum([rf_raca_cor_05_Indígena]*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum([rf_raca_cor_05_Indígena]*qtd_familias))\n",
+      "qLabel": "im_rf_raca_cor_05_Indígena"
+    }
+  },
+  {
+    "id": "aFSWA",
+    "nome": "im_instrucao_medio_incompleto",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(medio_incompleto*qtd_familias) < qtd_pes_lgpd AND \nsum(medio_incompleto*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(medio_incompleto*qtd_familias)\n)",
+      "qLabel": "im_instrucao_medio_incompleto"
+    }
+  },
+  {
+    "id": "accbe4d7-f658-4c69-83e2-ad0a78206db2",
+    "nome": "im_rf_raca_cor_03_Amarela",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(rf_raca_cor_03_Amarela*qtd_familias) < qtd_pes_lgpd AND \nsum(rf_raca_cor_03_Amarela*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(rf_raca_cor_03_Amarela*qtd_familias))\n",
+      "qLabel": "im_rf_raca_cor_03_Amarela"
+    }
+  },
+  {
+    "id": "bWxxuUP",
+    "nome": "im_nao_sabe_ler_escrever",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(nao_sabe_ler_escrever*qtd_familias) < qtd_pes_lgpd AND \nsum(nao_sabe_ler_escrever*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(nao_sabe_ler_escrever*qtd_familias)\n)",
+      "qLabel": "im_nao_sabe_ler_escrever"
+    }
+  },
+  {
+    "id": "bkjHDr",
+    "nome": "im_escola_rede_publica",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(frequenta_escola_rede_publica*qtd_familias) < qtd_pes_lgpd AND \nsum(frequenta_escola_rede_publica*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(frequenta_escola_rede_publica*qtd_familias)\n)",
+      "qLabel": "im_escola_rede_publica"
+    }
+  },
+  {
+    "id": "c059dc95-6fc9-403d-91a3-56d55862c597",
+    "nome": "im_faixa_etaria_02_Entre4a6",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(faixa_etaria_02_04a06*qtd_familias) < qtd_pes_lgpd AND \nsum(faixa_etaria_02_04a06*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(faixa_etaria_02_04a06*qtd_familias)\n)",
+      "qLabel": "im_faixa_etaria_02_Entre4a6"
+    }
+  },
+  {
+    "id": "c898b876-2203-4946-98c5-98eb48b27990",
+    "nome": "im_raca_cor_99_sem_resposta",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(raca_cor_99_sem_resposta*qtd_familias) < qtd_pes_lgpd AND \nsum(raca_cor_99_sem_resposta*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(raca_cor_99_sem_resposta*qtd_familias)\n)",
+      "qLabel": "im_raca_cor_99_sem_resposta"
+    }
+  },
+  {
+    "id": "cMWFbG",
+    "nome": "im_qtd_pessoas_sindrome_down",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(def_sindrome_down*qtd_familias) < qtd_pes_lgpd AND \nsum(def_sindrome_down*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(def_sindrome_down*qtd_familias)\n)\n",
+      "qLabel": "im_qtd_pessoas_sindrome_down"
+    }
+  },
+  {
+    "id": "ca6fface-6fa9-4c36-88d8-fcda5bf6268d",
+    "nome": "im_faixa_etaria_13_MaiorQue65",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(faixa_etaria_13_65ouMais*qtd_familias) < qtd_pes_lgpd AND \nsum(faixa_etaria_13_65ouMais*qtd_familias) > 0, \nv_valor_restricao_lgpd,\nsum(faixa_etaria_13_65ouMais*qtd_familias)\n)",
+      "qLabel": "im_faixa_etaria_13_MaiorQue65"
+    }
+  },
+  {
+    "id": "cxEd",
+    "nome": "im_faixa_etaria_01_Entre0e3",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(faixa_etaria_01_00e03*qtd_familias) < qtd_pes_lgpd AND \nsum(faixa_etaria_01_00e03*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(faixa_etaria_01_00e03*qtd_familias)\n)",
+      "qLabel": "im_faixa_etaria_01_Entre0e3"
+    }
+  },
+  {
+    "id": "e834bd9f-5efa-416e-852f-aea461efe282",
+    "nome": "im_qtd_pessoas_situacao_rua",
+    "qMeasure": {
+      "qDef": "if(\r\nv_usar_restricao_lgpd = 1 AND \nsum(situacao_rua*qtd_familias) < qtd_pes_lgpd AND\nsum(situacao_rua*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(situacao_rua*qtd_familias)\n)\n",
+      "qLabel": "im_qtd_pessoas_situacao_rua"
+    }
+  },
+  {
+    "id": "fb0a8ef3-ef9b-488e-9d4f-baea3421da2c",
+    "nome": "im_rf_sexo_feminino",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(rf_sexo_feminino*qtd_familias) < qtd_pes_lgpd AND \nsum(rf_sexo_feminino*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(rf_sexo_feminino*qtd_familias))\n",
+      "qLabel": "im_rf_sexo_feminino"
+    }
+  },
+  {
+    "id": "fd32dd27-fdd1-41df-acda-d6525ef71114",
+    "nome": "im_faixa_etaria_06_Entre25a34",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(faixa_etaria_06_25a34*qtd_familias) < qtd_pes_lgpd AND \nsum(faixa_etaria_06_25a34*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(faixa_etaria_06_25a34*qtd_familias)\n)",
+      "qLabel": "im_faixa_etaria_06_Entre25a34"
+    }
+  },
+  {
+    "id": "gtKq",
+    "nome": "im_instrucao_medio_completo",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(medio_completo*qtd_familias) < qtd_pes_lgpd AND \nsum(medio_completo*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(medio_completo*qtd_familias)\n)",
+      "qLabel": "im_instrucao_medio_completo"
+    }
+  },
+  {
+    "id": "hcNhtL",
+    "nome": "im_sem_escolaridade",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(sem_escolaridade*qtd_familias) < qtd_pes_lgpd AND \nsum(sem_escolaridade*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(sem_escolaridade*qtd_familias)\n)",
+      "qLabel": "im_sem_escolaridade"
+    }
+  },
+  {
+    "id": "hdzZjr",
+    "nome": "im_qtd_pessoas_cegueira",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(def_cegueira*qtd_familias) < qtd_pes_lgpd AND \nsum(def_cegueira*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(def_cegueira*qtd_familias)\n)\n",
+      "qLabel": "im_qtd_pessoas_cegueira"
+    }
+  },
+  {
+    "id": "jBZuxJ",
+    "nome": "im_familia_07a17",
+    "qMeasure": {
+      "qDef": "if ( \r\nv_usar_restricao_lgpd = 1 AND \nsum(if (faixa_etaria_03_07a15 + faixa_etaria_04_16a17>0,qtd_familias,0)) < qtd_fam_lgpd AND \nsum(if (faixa_etaria_03_07a15 + faixa_etaria_04_16a17>0,qtd_familias,0)) > 0, \nv_valor_restricao_lgpd, \nsum(if (faixa_etaria_03_07a15 + faixa_etaria_04_16a17>0,qtd_familias,0))\n)",
+      "qLabel": "im_familia_07a17"
+    }
+  },
+  {
+    "id": "jPvmjNP",
+    "nome": "im_instrucao_superior_incompleto_ou_mais",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(superior_incompleto_ou_mais*qtd_familias) < qtd_pes_lgpd AND \nsum(superior_incompleto_ou_mais*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(superior_incompleto_ou_mais*qtd_familias)\n)\n",
+      "qLabel": "im_instrucao_superior_incompleto_ou_mais"
+    }
+  },
+  {
+    "id": "kcuZPFz",
+    "nome": "im_sabe_ler_escrever",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(sabe_ler_escrever*qtd_familias) < qtd_pes_lgpd AND \nsum(sabe_ler_escrever*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(sabe_ler_escrever*qtd_familias)\n)",
+      "qLabel": "im_sabe_ler_escrever"
+    }
+  },
+  {
+    "id": "mBrUuMP",
+    "nome": "im_qtd_pessoas_mental",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(def_mental*qtd_familias) < qtd_pes_lgpd AND \nsum(def_mental*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(def_mental*qtd_familias)\n)",
+      "qLabel": "im_qtd_pessoas_mental"
+    }
+  },
+  {
+    "id": "mLXUF",
+    "nome": "im_qtd_pessoas_bpc",
+    "qMeasure": {
+      "qDef": "if(\r\nv_usar_restricao_lgpd = 1 AND \nsum(beneficiarios_bpc*qtd_familias) < qtd_pes_lgpd AND \nsum(beneficiarios_bpc*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(beneficiarios_bpc*qtd_familias)\n)",
+      "qLabel": "im_qtd_pessoas_bpc"
+    }
+  },
+  {
+    "id": "pKXNR",
+    "nome": "im_atividade_empregador",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(funcao_9_empregador*qtd_familias) < qtd_pes_lgpd AND \nsum(funcao_9_empregador*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(funcao_9_empregador*qtd_familias)\n)",
+      "qLabel": "im_atividade_empregador"
+    }
+  },
+  {
+    "id": "pLfFn",
+    "nome": "im_atividade_aprendiz",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(funcao_11_aprendiz*qtd_familias) < qtd_pes_lgpd AND \nsum(funcao_11_aprendiz*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(funcao_11_aprendiz*qtd_familias)\n)",
+      "qLabel": "im_atividade_aprendiz"
+    }
+  },
+  {
+    "id": "qnhf",
+    "nome": "im_pessoas_por_familia",
+    "qMeasure": {
+      "qDef": "if( v_usar_restricao_lgpd = 1 AND sum(qtd_pessoas) < qtd_pes_lgpd AND sum(qtd_pessoas) > 0, v_valor_restricao_lgpd, sum(qtd_pessoas)/sum(qtd_familias))\n",
+      "qLabel": "im_pessoas_por_familia"
+    }
+  },
+  {
+    "id": "rRgDv",
+    "nome": "im_familia_quilombola",
+    "qMeasure": {
+      "qDef": "if( v_usar_restricao_lgpd = 1 AND sum({<IN_FAMILIA_QUILOMBOLA_FAM = {'Sim'}>}qtd_familias) < qtd_fam_lgpd AND sum({<IN_FAMILIA_QUILOMBOLA_FAM = {'Sim'}>}qtd_familias) > 0, -1, sum({<IN_FAMILIA_QUILOMBOLA_FAM = {'Sim'}>}qtd_familias))\r\n\n\n/*if(v_usar_restricao_lgpd = 1, -1, sum({<IN_FAMILIA_QUILOMBOLA_FAM = {'Sim'}>} qtd_familias))\n",
+      "qLabel": "im_familia_quilombola"
+    }
+  },
+  {
+    "id": "rncg",
+    "nome": "im_familia_apenas_18a59",
+    "qMeasure": {
+      "qDef": "if(\r\nv_usar_restricao_lgpd = 1 AND \nsum(if (faixa_etaria_05_18a24 + faixa_etaria_06_25a34 + faixa_etaria_07_35a39 + faixa_etaria_08_40a44 + faixa_etaria_09_45a49 + faixa_etaria_10_50a54 + faixa_etaria_11_55a59 >=1 AND faixa_etaria_01_00e03 + faixa_etaria_02_04a06 + faixa_etaria_03_07a15 + faixa_etaria_04_16a17 + faixa_etaria_12_60a64 + faixa_etaria_13_65ouMais = 0,qtd_familias,0)) < qtd_pes_lgpd AND \nsum(if (faixa_etaria_05_18a24 + faixa_etaria_06_25a34 + faixa_etaria_07_35a39 + faixa_etaria_08_40a44 + faixa_etaria_09_45a49 + faixa_etaria_10_50a54 + faixa_etaria_11_55a59 >=1 AND faixa_etaria_01_00e03 + faixa_etaria_02_04a06 + faixa_etaria_03_07a15 + faixa_etaria_04_16a17 + faixa_etaria_12_60a64 + faixa_etaria_13_65ouMais = 0,qtd_familias,0)) > 0, \nv_valor_restricao_lgpd, \nsum(if (faixa_etaria_05_18a24 + faixa_etaria_06_25a34 + faixa_etaria_07_35a39 + faixa_etaria_08_40a44 + faixa_etaria_09_45a49 + faixa_etaria_10_50a54 + faixa_etaria_11_55a59 >=1 AND faixa_etaria_01_00e03 + faixa_etaria_02_04a06 + faixa_etaria_03_07a15 + faixa_etaria_04_16a17 + faixa_etaria_12_60a64 + faixa_etaria_13_65ouMais = 0,qtd_familias,0))\n)\n\n\n",
+      "qLabel": "im_familia_apenas_18a59"
+    }
+  },
+  {
+    "id": "sfYPmh",
+    "nome": "im_instrucao_fundamental_incompleto",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(fundamental_incompleto*qtd_familias) < qtd_pes_lgpd AND \nsum(fundamental_incompleto*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(fundamental_incompleto*qtd_familias)\n)",
+      "qLabel": "im_instrucao_fundamental_incompleto"
+    }
+  },
+  {
+    "id": "sqkqZZ",
+    "nome": "im_empregado_informal",
+    "qMeasure": {
+      "qDef": "if( \r\nv_usar_restricao_lgpd = 1 AND \nsum(empregado_informal*qtd_familias) < qtd_pes_lgpd AND \nsum(empregado_informal*qtd_familias) > 0, \nv_valor_restricao_lgpd, \nsum(empregado_informal*qtd_familias)\n)",
+      "qLabel": "im_empregado_informal"
+    }
+  },
+  {
+    "id": "uJVKgn",
+    "nome": "im_familia_00a03",
+    "qMeasure": {
+      "qDef": "if ( \r\nv_usar_restricao_lgpd = 1 AND \nsum(if (faixa_etaria_01_00e03>0,qtd_familias,0)) < qtd_fam_lgpd AND \nsum(if (faixa_etaria_01_00e03>0,qtd_familias,0)) > 0, \nv_valor_restricao_lgpd, \nsum(if (faixa_etaria_01_00e03>0,qtd_familias,0))\n)\n",
+      "qLabel": "im_familia_00a03"
+    }
+  }
+]
