@@ -1,3 +1,4 @@
+import {ajustarIndicadorRede} from '../src/educacao_rede';
 import {criarLeitorFinanceiro} from '../src/educacao_financeira';
 import {USAR_MOTOR} from '../src/clima_abertura';
 import {createHash} from 'node:crypto';
@@ -70,4 +71,13 @@ test('SIOPE pronto conserva cobertura e ignora atualização de outra fonte',asy
 test('SIOPE atualizado ou trecho corrompido volta ao motor, sem mostrar pacote antigo',async()=>{
  assert.equal(await financeiroFixture(true).reader.executar('educacao_fin_grupo',{uf:'GO'}),USAR_MOTOR);
  assert.equal(await financeiroFixture(false,true).reader.executar('educacao_fin_grupo',{uf:'GO'}),USAR_MOTOR);
+});
+
+test('trocar de rede ajusta a medida estadual explícita, preservando as outras escolhas',()=>{
+ for(const id of ['ideb_medio_estadual','saeb_lp_medio_estadual','saeb_mat_medio_estadual']){
+  assert.equal(ajustarIndicadorRede(id,'municipal'),id.replace(/_estadual$/,''));
+  assert.equal(ajustarIndicadorRede(id,'todas'),id);
+ }
+ assert.equal(ajustarIndicadorRede('saeb_lp_ai','privada'),'saeb_lp_ai');
+ assert.equal(ajustarIndicadorRede(null,'publica'),null);
 });

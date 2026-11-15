@@ -1,3 +1,4 @@
+import {ajustarIndicadorRede} from '../educacao_rede';
 import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import '../educacao.css';
@@ -102,7 +103,7 @@ function EducacaoBase({ pagina, historico = false, children }: { pagina: string;
         <option value="">{t('Brasil · todos os estados','Brazil · all states')}</option>{m.territorios.filter(x=>x.nivel==='UF').map(x=><option value={x.grupo} key={x.grupo}>{x.nome}</option>)}
       </select></label>
       <BuscaMunicipio key={uf} uf={uf} cod={cod} items={municipios.dados} onEscolher={code=>mudar({cod:code || null,...(code ? {uf:ufMunicipioEducacao(code) ?? null} : {})})} />
-      <label>{t('Rede de ensino','School sector')}<select aria-label={t('Rede de ensino','School sector')} value={rede} onChange={e=>mudar({rede:e.target.value==='todas'?null:e.target.value})}>{REDES_EDUCACAO.filter(r=>r==='todas'||m.redes?.[r]).map(r=><option key={r} value={r}>{nomeRede(r)}</option>)}</select></label>
+      <label>{t('Rede de ensino','School sector')}<select aria-label={t('Rede de ensino','School sector')} value={rede} onChange={e=>{const r=e.target.value as RedeEducacao;mudar({rede:r==='todas'?null:r,ind:ajustarIndicadorRede(sp.get('ind'),r)});}}>{REDES_EDUCACAO.filter(r=>r==='todas'||m.redes?.[r]).map(r=><option key={r} value={r}>{nomeRede(r)}</option>)}</select></label>
       {!historico && <label>{t('Ano de referência','Reference year')}<select aria-label={t('Ano de referência','Reference year')} value={pedido ?? ''} onChange={e=>mudar({ano:e.target.value})}>
         <option value="">{t('Último ano de cada indicador','Latest year for each indicator')}</option>{foraDaBase && <option value={anoPedido!}>{anoPedido}</option>}{[...m.anos].reverse().map(y=><option value={y} key={y}>{y}</option>)}
       </select></label>}
@@ -215,7 +216,7 @@ function Seletor({ c }: { c: Ctx }) {
   const items=metricas(c.meta).filter(i=>!(c.rede!=='todas' && i.rede==='estadual') && (i.id===id||!q||normalizarBuscaEducacao(`${nome(i)} ${i.variavel}`).includes(q)));
   return <><label>{t('Buscar indicador','Find an indicator')}<input type="search" value={busca} placeholder={t('Nome ou código da variável…','Name or variable code…')} onChange={e=>setBusca(e.target.value)} /></label><label>{t('Indicador','Indicator')}<select aria-label={t('Indicador','Indicator')} value={items.some(i=>i.id===id)?id:''} onChange={e=>c.mudar({ind:e.target.value})}><option disabled value="">{t('Escolha um indicador','Choose an indicator')}</option>{TEMAS.map(([tema,pt,en])=>{const list=items.filter(i=>i.tema===tema);return list.length?<optgroup label={t(pt,en)} key={tema}>{list.map(i=><option key={i.id} value={i.id}>{nome(i)}</option>)}</optgroup>:null;})}</select></label></>;
 }
-function escolhido(c: Ctx) { return metricas(c.meta).find(i=>i.id===(c.sp.get('ind')??'mat_total')); }
+function escolhido(c: Ctx) { return metricas(c.meta).find(i=>i.id===(c.sp.get('ind')??'mat_total') && !(i.rede==='estadual'&&c.rede!=='todas')); }
 function condicaoLinha(c:Ctx,i:IndicadorEducacao,r:(number|null)[]) {
   if(anoSemEdicaoEducacao(c.meta,i,r[0]))return t('Ano sem edição','Year without an edition');
   const note=ressalvaSaeb(flagSaeb(c,i,r));if(note)return note;
