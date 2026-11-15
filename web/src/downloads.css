@@ -150,8 +150,13 @@
 .dl-tema { min-width: 0; background: var(--superficie); border: 1px solid var(--borda); border-radius: 10px; padding: 0 10px 10px; }
 .dl-tema .dl-arq { border: 0; box-shadow: none; padding-left: 4px; padding-right: 4px; flex-direction: column; align-items: stretch; }
 .dl-tema > button { margin: 0 4px 6px; }
+.dl-api-grade { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.dl-api-exemplo { min-width: 0; padding: 12px; border: 1px solid var(--borda); border-radius: 10px; background: var(--superficie); }
+.dl-api-exemplo h4 { margin: 0 0 8px; }
+.dl-api-exemplo pre { max-width: 100%; overflow-x: auto; padding: 10px; border-radius: 6px; background: var(--superficie-2); color: var(--tinta); font-size: 12px; white-space: pre; }
+.dl-api-exemplo button { min-height: 40px; }
 @media (max-width: 650px) {
- .dl-escolhas, .dl-temas-grade { grid-template-columns: 1fr; }
+ .dl-escolhas, .dl-temas-grade, .dl-api-grade { grid-template-columns: 1fr; }
  .dl-escolhas { gap: 7px; }
  .dl-amostra { font-size: 12px; }
  .dl-amostra th, .dl-amostra td { padding: 6px 4px; }

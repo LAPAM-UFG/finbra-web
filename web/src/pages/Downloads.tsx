@@ -40,6 +40,7 @@ function useJson<T>(url: string, ativo: boolean, ler: (bruto: unknown) => T) {
 const pick = (pt: string, en: string) => (idioma() === 'en' && en ? en : pt);
 
 const FORMATO: Record<Formato, { nome: () => string; dica: () => string }> = {
+  rds: { nome: () => 'R (.rds)', dica: () => t('Arquivo nativo do R, sem pacotes extras para ler', 'Native R file; no extra packages needed to read') },
   dta: { nome: () => 'Stata (.dta)', dica: () => t('Abre direto no Stata 14 ou mais recente, com rótulos', 'Opens directly in Stata 14 or later, with labels') },
   'csv.zip': { nome: () => 'CSV (.zip)', dica: () => t('Extraia para importar. No Excel, prefira um recorte por UF ou tema.', 'Extract to import. For Excel, prefer a state or topic subset.') },
   parquet: { nome: () => 'Parquet', dica: () => t('Formato compacto para R e Python', 'Compact format for R and Python') },
@@ -185,8 +186,36 @@ function Variavel({ e, nomeArea, onEscolher }: { e: EntradaDic; nomeArea: (id: s
   );
 }
 
+function ApiDados({ uf, area }: { uf: string; area: string }) {
+  const [mensagem, setMensagem] = useState('');
+  const base = `${location.origin}/api/dados/v1`;
+  const localEscolhido = uf || 'BR';
+  const tema = area || 'todos';
+  const stata = `use "${base}/painel/${localEscolhido}/${tema}.dta", clear`;
+  const r = `source("${base}/cliente.R")\ndados <- finbra(uf = "${localEscolhido}", tema = "${tema}")`;
+  const copiar = async (codigo: string) => {
+    try { await navigator.clipboard.writeText(codigo); setMensagem(t('Código copiado.', 'Code copied.')); }
+    catch { setMensagem(t('Selecione e copie o código abaixo.', 'Select and copy the code below.')); }
+  };
+  return <Secao id="dl-api" titulo={t('Usar direto no Stata e no R', 'Use directly in Stata and R')}
+    intro={t('Execute os comandos para carregar os dados do site. Os exemplos acompanham o conteúdo e a localização escolhidos acima.', 'Run these commands to load data from the site. Examples follow the content and location chosen above.')}>
+    <div className="dl-api-grade">
+      <div className="dl-api-exemplo"><h4>Stata</h4><pre><code>{stata}</code></pre><button type="button" className="botao-leve" onClick={() => copiar(stata)}>{t('Copiar código Stata', 'Copy Stata code')}</button>
+        <p className="dl-ajuda">{t('O arquivo mantém os rótulos e o painel declarado. A opção clear substitui os dados em memória. Para um período: keep if inrange(ano, 2019, 2024).', 'The file keeps labels and panel settings. The clear option replaces data in memory. For a period: keep if inrange(ano, 2019, 2024).')}</p>
+      </div>
+      <div className="dl-api-exemplo"><h4>R</h4><pre><code>{r}</code></pre><button type="button" className="botao-leve" onClick={() => copiar(r)}>{t('Copiar código R', 'Copy R code')}</button>
+        <p className="dl-ajuda">{t('O cliente usa apenas R base e lê o formato nativo .rds. Também aceita municipio, anos e variaveis; por exemplo, anos = 2019:2024.', 'The client uses only base R and reads native .rds files. It also accepts municipio, anos and variaveis; for example, anos = 2019:2024.')}</p>
+      </div>
+    </div>
+    <p className="dl-ajuda">{t('UF e tema reduzem o arquivo transferido. Filtros de ano, município e variável são aplicados no seu programa. As URLs entregam a edição atual; o catálogo registra também o endereço imutável e SHA-256 para reprodução.', 'State and topic reduce the transferred file. Year, municipality and variable filters run in your program. URLs serve the current edition; the catalog also records the immutable address and SHA-256 for reproducibility.')}</p>
+    <p className="dl-acoes"><a href={`${base}/catalogo.json?uf=${localEscolhido}&tema=${tema}`} target="_blank" rel="noreferrer">{t('Catálogo da API (JSON)', 'API catalog (JSON)')}</a><a href={`${base}/dicionario.json${area ? '?tema='+area : ''}`} target="_blank" rel="noreferrer">{t('Dicionário pela API', 'Dictionary via API')}</a></p>
+    <p role="status" aria-live="polite">{mensagem}</p>
+  </Secao>;
+}
+
 function Guia({ m, metodologia, base }: { m: ManifestoDl; metodologia: ArquivoDl[]; base: number }) {
   const itens: [string, ReactNode][] = [
+    ...(m.arquivos.some((a) => a.formato === 'rds') ? [[t('Abrir no R', 'Open in R'), t('Depois de baixar, use dados <- readRDS("arquivo.rds"). Para carregar direto do site, use os comandos da seção Stata / R (API). Nenhum pacote adicional é necessário.', 'After downloading, use dados <- readRDS("file.rds"). To load directly from the site, use the Stata / R (API) section. No extra packages are required.')] as [string, ReactNode]] : []),
     [t('Abrir no Excel', 'Open in Excel'), t(
       'Extraia o .zip e use Dados › De texto/CSV. Os CSV estão em UTF-8 com BOM, separador ponto e vírgula e decimal com vírgula.',
       'Extract the .zip and use Data › From Text/CSV. CSV files are UTF-8 with BOM, semicolon-separated, with decimal commas.')],
@@ -275,7 +304,7 @@ function Conteudo({ m, descartados }: { m: ManifestoDl; descartados: number }) {
   const temas=arquivos.filter((a) => a.tipo==='area' && a.uf===(uf || null) && a.formato===fmt);
   const temasF=q.trim() ? temas.filter((a) => areasBusca.has(a.area ?? '') || filtrarArquivos([a],{texto:q,area:'',uf:''},en).length) : temas;
   const detalhes=ordenarDetalhados(filtrarArquivos(m.arquivos.filter((a) => a.tipo==='detalhado'),{texto:q,area:'',uf:''},en));
-  const dicionarios=m.arquivos.filter((a) => a.tipo==='dicionario' && a.escopo!=='detalhado').sort((a,b) => ['xlsx','csv.zip','json'].indexOf(a.formato)-['xlsx','csv.zip','json'].indexOf(b.formato));
+  const dicionarios=m.arquivos.filter((a) => a.tipo==='dicionario' && a.escopo!=='detalhado').sort((a,b) => ['xlsx','rds','csv.zip','json'].indexOf(a.formato)-['xlsx','rds','csv.zip','json'].indexOf(b.formato));
   const excel=dicionarios.find((a) => a.formato==='xlsx');
   const pacotes=m.arquivos.filter((a) => a.tipo==='pacote');
   const leve=pacotes.filter((a) => a.conteudo===fmt);
@@ -292,11 +321,11 @@ function Conteudo({ m, descartados }: { m: ManifestoDl; descartados: number }) {
       <div className="dl-escolhas">
         <div className="dl-campo"><label htmlFor={id+'-area'}>{t('Conteúdo','Content')}</label><select id={id+'-area'} value={area} onChange={(e) => setArea(e.target.value)}><option value="">{t('Todos os temas · base completa','All topics · complete base')}</option>{m.areas.map((a) => <option value={a.id} key={a.id}>{pick(a.nome,a.nome_en)}</option>)}</select></div>
         <div className="dl-campo"><label htmlFor={id+'-uf'}>{t('Localização','Location')}</label><select id={id+'-uf'} value={uf} onChange={(e) => setUf(e.target.value)}><option value="">{t('Brasil · todos os municípios','Brazil · all municipalities')}</option>{ufs.map((u) => <option key={u} value={u}>{rotuloUf(u)}</option>)}</select></div>
-        <div className="dl-campo"><label htmlFor={id+'-fmt'}>{t('Formato','Format')}</label><select id={id+'-fmt'} value={fmt} onChange={(e) => setFormato(e.target.value as FormatoBase)}>{formatos.map((f) => <option key={f} value={f}>{f==='csv.zip' ? t('Excel: CSV (.zip)','Excel: CSV (.zip)') : f==='parquet' ? 'R / Python: Parquet' : 'Stata (.dta)'}</option>)}</select></div>
+        <div className="dl-campo"><label htmlFor={id+'-fmt'}>{t('Formato','Format')}</label><select id={id+'-fmt'} value={fmt} onChange={(e) => setFormato(e.target.value as FormatoBase)}>{formatos.map((f) => <option key={f} value={f}>{f==='csv.zip' ? t('Excel: CSV (.zip)','Excel: CSV (.zip)') : f==='parquet' ? 'R / Python: Parquet' : f==='rds' ? 'R (.rds)' : 'Stata (.dta)'}</option>)}</select></div>
       </div>
       {escolhido ? <>
         <ul className="dl-lista"><Arquivo a={escolhido} base={BASE_DADOS} destaque /></ul>
-        <div className="dl-acoes"><button type="button" className="botao-leve" onClick={() => mostrarDic(area)}>{t(area ? `Ver ${escolhido.variaveis} variáveis do tema` : `Ver ${escolhido.variaveis} indicadores e 6 identificadores`,area ? `View ${escolhido.variaveis} topic variables` : `View ${escolhido.variaveis} indicators and 6 identifiers`)}</button><span className="dl-ajuda">{fmt==='dta' ? m.stata?.painel_declarado ? t('Abre no Stata, com rótulos e painel declarado.','Opens in Stata, with labels and panel settings.') : t('Abre no Stata, com rótulos.','Opens in Stata, with labels.') : fmt==='csv.zip' ? t('Extraia o ZIP e importe o CSV no Excel.','Extract the ZIP and import the CSV in Excel.') : t('Formato compacto para R e Python.','Compact format for R and Python.')}</span></div>
+        <div className="dl-acoes"><button type="button" className="botao-leve" onClick={() => mostrarDic(area)}>{t(area ? `Ver ${escolhido.variaveis} variáveis do tema` : `Ver ${escolhido.variaveis} indicadores e 6 identificadores`,area ? `View ${escolhido.variaveis} topic variables` : `View ${escolhido.variaveis} indicators and 6 identifiers`)}</button><span className="dl-ajuda">{fmt==='dta' ? m.stata?.painel_declarado ? t('Abre no Stata, com rótulos e painel declarado.','Opens in Stata, with labels and panel settings.') : t('Abre no Stata, com rótulos.','Opens in Stata, with labels.') : fmt==='rds' ? t('Formato nativo do R; usa apenas o R base.','Native R format; uses only base R.') : fmt==='csv.zip' ? t('Extraia o ZIP e importe o CSV no Excel.','Extract the ZIP and import the CSV in Excel.') : t('Formato compacto para R e Python.','Compact format for R and Python.')}</span></div>
         <Previa key={escolhido.previa?.caminho ?? escolhido.id} arquivo={escolhido} pedido={pedidoPrevia.area===area && pedidoPrevia.uf===uf ? pedidoPrevia.sequencia : 0} />
         {escolhido.ano_ate===new Date(m.gerado_em).getFullYear() && <p className="dl-ajuda">{t(`${escolhido.ano_ate} pode estar parcial. A prévia e o dicionário mostram a cobertura de cada variável.`,`${escolhido.ano_ate} may be partial. Preview and dictionary show each variable’s coverage.`)}</p>}
       </> : area && uf && catalogo.carregando ? <p role="status">{t('Carregando a lista de arquivos prontos desta UF…','Loading this state’s ready-to-download file list…')}</p> : <p className="dl-aviso">{t('Não há arquivo para essa combinação. Escolha outro tema ou a base completa desta UF.','No file is available for this combination. Choose another topic or this state’s complete base.')} <button type="button" className="botao-leve" onClick={() => setArea('')}>{t('Ver base completa da UF','See complete state base')}</button></p>}
@@ -305,21 +334,22 @@ function Conteudo({ m, descartados }: { m: ManifestoDl; descartados: number }) {
     <details className="dl-sobre"><summary>{t(`Sobre a base nacional: ${r.variaveis} indicadores + 6 identificadores`,`About the national base: ${r.variaveis} indicators + 6 identifiers`)}</summary>
       <ul className="dl-resumo" aria-label={t('Resumo nacional','National summary')}><li><strong>{numero(r.municipios)}</strong><span>{t('municípios e unidades especiais','municipalities and special territories')}</span></li><li><strong>{r.ano_de}–{r.ano_ate}</strong><span>{t('período total; varia por fonte','total period; varies by source')}</span></li><li><strong>{numero(r.variaveis)}</strong><span>{t('indicadores + 6 identificadores','indicators + 6 identifiers')}</span></li><li><strong>{numero(r.linhas)}</strong><span>{t('linhas de município × ano','municipality × year rows')}</span></li></ul>
     </details>
-    <nav className="dl-ancoras" aria-label={t('Nesta página','On this page')}>{[['dl-base',t('Baixar','Download')],['dl-dicionario',t('Buscar / dicionário','Search / dictionary')],['dl-temas',t('Por tema','By topic')],['dl-pacotes',t('Pacotes','Packages')],['dl-guia',t('Como usar','How to use')],['dl-detalhes',t('Dados detalhados','Detailed data')]].map(([id,nome]) => <button key={id} type="button" onClick={() => {if(id==='dl-detalhes')setDetalhesAbertos(true);requestAnimationFrame(() => rolar(id));}}>{nome}</button>)}</nav>
+    <nav className="dl-ancoras" aria-label={t('Nesta página','On this page')}>{[['dl-base',t('Baixar','Download')],['dl-dicionario',t('Buscar / dicionário','Search / dictionary')],['dl-temas',t('Por tema','By topic')],['dl-api',t('Stata / R (API)','Stata / R (API)')],['dl-pacotes',t('Pacotes','Packages')],['dl-guia',t('Como usar','How to use')],['dl-detalhes',t('Dados detalhados','Detailed data')]].map(([id,nome]) => <button key={id} type="button" onClick={() => {if(id==='dl-detalhes')setDetalhesAbertos(true);requestAnimationFrame(() => rolar(id));}}>{nome}</button>)}</nav>
     <Secao id="dl-dicionario" titulo={t('Encontre indicadores e arquivos','Find indicators and files')} intro={t('Uma busca para nomes, códigos, descrições e arquivos detalhados. A base principal tem 254 indicadores e seis identificadores (260 colunas). As descrições das fontes estão em português.','One search for names, codes, descriptions and detailed files. The main base has 254 indicators and six identifiers (260 columns). Source descriptions are in Portuguese.')}>
       <div className="dl-filtros"><div className="dl-campo dl-campo-larga"><label htmlFor={id+'-busca'}>{t('Buscar indicador ou arquivo','Search indicator or file')}</label><input type="search" id={id+'-busca'} value={busca} placeholder={t('Ex.: mortalidade, salário, PIB, MUNIC 2024','E.g. mortalidade, salário, PIB, MUNIC 2024')} onChange={(e) => {setBusca(e.target.value);setDicArea('');}} /></div>{busca && <button type="button" className="botao-leve" onClick={() => setBusca('')}>{t('Limpar busca','Clear search')}</button>}</div>
       <div className="dl-acoes">{!dicAberto && !q && <button type="button" className="botao-leve" onClick={() => setDicAberto(true)}>{t('Explorar todas as variáveis','Explore all variables')}</button>}{excel && <a className="botao-leve" href={urlArquivo(excel.caminho,BASE_DADOS) ?? undefined} download>{t('Baixar dicionário Excel','Download Excel dictionary')}</a>}</div>
       {(dicAberto || !!q) && <>{dic.carregando && <p role="status">{t('Buscando no dicionário leve…','Searching the compact dictionary…')}</p>}{dic.erro && <Estado erro={dic.erro} mensagem={t('A busca não carregou. Os downloads continuam disponíveis.','Search could not load. Downloads remain available.')} tentarNovamente={dic.recarregar} />}{dic.dados && <Dicionario key={q+'|'+dicArea} indice={dic.dados} busca={q} area={dicArea} m={m} onTodos={() => setDicArea('')} onEscolher={escolherArea} />}</>}
-      <details className="dl-dic-downloads"><summary>{t('Dicionário em CSV e JSON','Dictionary in CSV and JSON')}</summary><Lista arquivos={dicionarios.filter((a) => a.formato!=='xlsx')} base={BASE_DADOS} /></details>
+      <details className="dl-dic-downloads"><summary>{t('Outros formatos do dicionário: R, CSV e JSON','Other dictionary formats: R, CSV and JSON')}</summary><Lista arquivos={dicionarios.filter((a) => a.formato!=='xlsx')} base={BASE_DADOS} /></details>
     </Secao>
     <Secao id="dl-temas" titulo={t('Baixar por tema','Download by topic')} intro={uf ? t(`Arquivos dos municípios de ${rotuloUf(uf)}. O formato é o escolhido no início da página.`,`Municipal data for ${rotuloUf(uf)}. Format follows your selection at the top.`) : t('Arquivos nacionais (Brasil). Escolha uma UF no início para baixar os temas só daquele estado.','National files (Brazil). Choose a state at the top to download its topic subsets.')}>
       {uf && catalogo.carregando ? <p role="status">{t('Carregando os temas desta UF…','Loading this state’s topics…')}</p> : temasF.length ? <ul className="dl-lista dl-temas-grade">{temasF.map((a) => <li className="dl-tema" key={a.id}><ul className="dl-lista"><Arquivo a={a} base={BASE_DADOS} /></ul><button className="botao-leve" type="button" onClick={() => mostrarDic(a.area ?? '')}>{t(`Ver ${a.variaveis} variáveis do tema`,`View ${a.variaveis} topic variables`)}</button><button className="botao-leve" type="button" onClick={() => escolherArea(a.area ?? '',true)}>{t('Ver prévia e cobertura','See preview and coverage')}</button></li>)}</ul> : <p className="dl-vazio">{t('Nenhum tema com esse recorte e busca. Tente outra palavra ou escolha a base completa.','No topics match this subset and search. Try another word or choose the complete base.')}</p>}
     </Secao>
     <Secao id="dl-pacotes" titulo={t('Base nacional com dicionário','National base with dictionary')} intro={t('Brasil, todos os temas. O pacote inclui apenas o formato escolhido no início, mais dicionário e instruções.','Brazil, all topics. The package contains only the format chosen at the top, plus dictionary and instructions.')}>
       <Lista arquivos={leve} base={BASE_DADOS} />
-      {completos.length>0 && <details className="dl-dic-downloads"><summary>{t('Também disponível: pacote com os três formatos','Also available: package with all three formats')}</summary><Lista arquivos={completos} base={BASE_DADOS} /></details>}
+      {completos.length>0 && <details className="dl-dic-downloads"><summary>{t('Pacote conjunto: Stata, CSV e Parquet','Combined package: Stata, CSV and Parquet')}</summary><Lista arquivos={completos} base={BASE_DADOS} /></details>}
     </Secao>
     <details id="dl-detalhes" className="dl-avancado" open={detalhesAbertos} onToggle={(e) => setDetalhesAbertos(e.currentTarget.open)}><summary>{t('Dados detalhados nacionais (opcional)','Detailed national data (optional)')}</summary><p className="dl-intro">{t('MUNIC completa e contas DCA, desde 2013, em CSV e Parquet. Estes arquivos são do Brasil inteiro, independentemente da UF escolhida acima. Edições mais recentes aparecem primeiro.','Full MUNIC and DCA accounts from 2013 onwards, in CSV and Parquet. These cover all of Brazil, regardless of the state selected above. Latest editions appear first.')}</p>{!grupos.length && <p className="dl-vazio">{t('Nenhum arquivo detalhado com essa busca.','No detailed files match this search.')}</p>}{grupos.map((g) => <div className="dl-grupo" key={g.area.id}><h4 className="dl-sub">{pick(g.area.nome,g.area.nome_en)}</h4><Lista arquivos={g.itens} base={BASE_DADOS} limite={q ? 50 : 6} /></div>)}<h4 className="dl-sub">{t('Dicionário dos complementos','Supplement dictionary')}</h4><Lista arquivos={m.arquivos.filter((a) => a.tipo==='dicionario' && a.escopo==='detalhado')} base={BASE_DADOS} /></details>
+    <ApiDados uf={uf} area={area} />
     <Secao id="dl-guia" titulo={t('Como usar os arquivos','How to use the files')}><Guia m={m} metodologia={metodologia} base={m.base_ipca} /></Secao>
     <p className="dl-rodape">{t(`Arquivos gerados em ${quando}. Todos são pré-calculados; escolher e baixar não executa consultas.`,`Files generated on ${quando}. All files are pre-computed; choosing and downloading runs no queries.`)}</p>
     <Integridade m={{...m,arquivos}} />

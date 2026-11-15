@@ -4,12 +4,14 @@
  * /api/ia* são as perguntas à base com o Claude (ia.js), só com login.
  */
 import { rotaIa } from './ia.js';
+import { rotaDados } from './dados.js';
 
 const PREFIXOS_PUBLICOS = /^(silver|gold)\//;
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname === '/api/dados' || url.pathname.startsWith('/api/dados/')) return rotaDados(request, env, url, servirDados);
     if (url.pathname.startsWith('/dados/')) return servirDados(request, env, url);
     if (url.pathname === '/api/ia' || url.pathname.startsWith('/api/ia/')) return rotaIa(request, env, url);
     return env.ASSETS.fetch(request);

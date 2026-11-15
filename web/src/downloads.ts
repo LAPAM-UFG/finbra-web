@@ -4,7 +4,7 @@
  * caminho sob gold/downloads/, sem "..", sem esquema, sem barra invertida e com sha256 válido.
  */
 export const TIPOS = ['painel', 'area', 'detalhado', 'dicionario', 'pacote', 'metodologia'] as const;
-export const FORMATOS = ['dta', 'csv.zip', 'parquet', 'xlsx', 'zip', 'json', 'txt', 'do'] as const;
+export const FORMATOS = ['dta', 'rds', 'csv.zip', 'parquet', 'xlsx', 'zip', 'json', 'txt', 'do'] as const;
 export type Tipo = (typeof TIPOS)[number];
 export type Formato = (typeof FORMATOS)[number];
 
@@ -205,7 +205,7 @@ export function filtrarDicionario(idx: IndiceDic, busca: string, area: string): 
 
 export const POR_PAGINA = 40;
 
-export const FORMATOS_BASE = ['dta', 'csv.zip', 'parquet'] as const;
+export const FORMATOS_BASE = ['dta', 'rds', 'csv.zip', 'parquet'] as const;
 export type FormatoBase = (typeof FORMATOS_BASE)[number];
 export const formatosBase = (arquivos: ArquivoDl[]): FormatoBase[] => FORMATOS_BASE.filter((f) => arquivos.some((a) => a.formato === f));
 export const formatoDisponivel = (pedido: FormatoBase, arquivos: ArquivoDl[]): FormatoBase => {
@@ -228,7 +228,7 @@ export type ColunaPrevia = { variavel: string; nome: string; unidade: string; an
 export type PreviaDl = { versao: 1; id: string; area: string | null; uf: string | null; linhas_total: number; ano_de: number; ano_ate: number; colunas: ColunaPrevia[]; amostra: Record<string, string | number | boolean | null>[] };
 export function validarPrevia(bruto: unknown, arquivo: ArquivoDl): PreviaDl {
  const fail = () => { throw new Error('Prévia inválida para o arquivo escolhido'); };
- if (!registro(bruto) || bruto.versao !== 1 || bruto.id !== arquivo.id.replace(/_(parquet|csv_zip|dta)$/, '') || bruto.uf !== arquivo.uf || bruto.area !== arquivo.area || bruto.linhas_total !== arquivo.linhas || bruto.ano_de !== arquivo.ano_de || bruto.ano_ate !== arquivo.ano_ate || !Array.isArray(bruto.colunas) || !Array.isArray(bruto.amostra)) return fail();
+ if (!registro(bruto) || bruto.versao !== 1 || bruto.id !== arquivo.id.replace(/_(parquet|csv_zip|dta|rds)$/, '') || bruto.uf !== arquivo.uf || bruto.area !== arquivo.area || bruto.linhas_total !== arquivo.linhas || bruto.ano_de !== arquivo.ano_de || bruto.ano_ate !== arquivo.ano_ate || !Array.isArray(bruto.colunas) || !Array.isArray(bruto.amostra)) return fail();
  const cols = bruto.colunas; const rows = bruto.amostra;
  if (cols.length !== (arquivo.variaveis ?? 0) + 6 || rows.length < 1 || rows.length > 5) return fail();
  const names = new Set<string>();

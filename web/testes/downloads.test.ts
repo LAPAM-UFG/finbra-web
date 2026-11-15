@@ -88,8 +88,15 @@ test('prévia mantém zero e nulo distintos e não aceita outro arquivo',()=>{
  const values={cod_ibge:5208707,municipio:'Goiânia',uf:'GO',regiao:'Centro-Oeste',tipo_territorio:'município',ano:2020,valor:0};
  const preview={versao:1,id:'painel_go',uf:'GO',area:null,linhas_total:2,ano_de:2020,ano_ate:2024,colunas:Object.keys(values).map(k=>({variavel:k,nome:k,unidade:'número',anos:[2020],preenchidas:1})),amostra:[values,{...values,ano:2024,valor:null}]};
  const result=validarPrevia(preview,a);assert.equal(result.amostra[0].valor,0);assert.equal(result.amostra[1].valor,null);
+ assert.equal(validarPrevia(preview,{...a,id:'painel_go_rds',formato:'rds'}).amostra[0].valor,0);
  assert.throws(()=>validarPrevia({...preview,uf:'SP'},a));
  assert.throws(()=>validarPrevia({...preview,amostra:[{...values,valor:{html:'mal'}}]},a));
+});
+
+test('RDS nativo aparece entre os formatos e mantém os recortes separados',()=>{
+ const parsed=validarManifesto({...manifesto,arquivos:[arquivo,{...arquivo,id:'nativo_r',formato:'rds',caminho:'gold/downloads/painel.rds'}]});
+ assert.equal(parsed.descartados,0);assert.deepEqual(formatosBase(parsed.manifesto.arquivos),['rds','csv.zip']);
+ assert.equal(formatoDisponivel('rds',parsed.manifesto.arquivos),'rds');
 });
 
 test('MUNIC recente aparece primeiro sem alterar a lista recebida',()=>{
