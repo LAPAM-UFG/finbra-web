@@ -1,8 +1,8 @@
 import { useCallback, useDeferredValue, useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 import '../downloads.css';
 import {
-  COD_BRASILIA, COD_NORONHA, faixaAnos, filtrarArquivos, filtrarDicionario, filtroVazio, formatoDisponivel, formatosBase, indexarDicionario, POR_PAGINA, tamanho, urlArquivo, validarDicionario, validarManifesto,
-  type ArquivoDl, type AreaDl, type EntradaDic, type Filtro, type Formato, type FormatoBase, type IndiceDic, type ManifestoDl,
+  arquivoDoRecorte, ordenarDetalhados, validarCatalogo, validarPrevia, COD_BRASILIA, COD_NORONHA, faixaAnos, filtrarArquivos, filtrarDicionario, formatoDisponivel, formatosBase, indexarDicionario, POR_PAGINA, tamanho, urlArquivo, validarDicionario, validarManifesto,
+  type PreviaDl, type ArquivoDl, type EntradaDic, type Formato, type FormatoBase, type IndiceDic, type ManifestoDl,
 } from '../downloads';
 import { Estado } from '../components/Kpi';
 import { numero } from '../format';
@@ -14,26 +14,27 @@ const URL_MANIFESTO = `${BASE_DADOS}gold/downloads/manifesto.json`;
 
 /** Busca um JSON só quando `ativo`; "recarregar" repete (Tentar de novo). Nada aqui usa o motor de consultas. */
 function useJson<T>(url: string, ativo: boolean, ler: (bruto: unknown) => T) {
-  const [estado, setEstado] = useState<{ dados?: T; erro?: string }>({});
+  const [estado, setEstado] = useState<{ url?: string; dados?: T; erro?: string }>({});
   const [tentativa, setTentativa] = useState(0);
   useEffect(() => {
     if (!ativo) return;
     const ctl = new AbortController();
-    setEstado({});
+    setEstado({ url });
     fetch(url, { signal: ctl.signal, cache: 'no-cache' })
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
       })
-      .then((bruto) => setEstado({ dados: ler(bruto) }))
+      .then((bruto) => { if (!ctl.signal.aborted) setEstado({ url, dados: ler(bruto) }); })
       .catch((e: unknown) => {
-        if (!ctl.signal.aborted) setEstado({ erro: e instanceof Error ? e.message : String(e) });
+        if (!ctl.signal.aborted) setEstado({ url, erro: e instanceof Error ? e.message : String(e) });
       });
     return () => ctl.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url, ativo, tentativa]);
   const recarregar = useCallback(() => setTentativa((n) => n + 1), []);
-  return { ...estado, carregando: ativo && !estado.dados && !estado.erro, recarregar };
+  const atual = estado.url === url ? estado : {};
+  return { ...atual, carregando: ativo && !atual.dados && !atual.erro, recarregar };
 }
 
 const pick = (pt: string, en: string) => (idioma() === 'en' && en ? en : pt);
@@ -76,7 +77,7 @@ function Arquivo({ a, base, destaque = false }: { a: ArquivoDl; base: string; de
           {a.linhas !== null && <span>{numero(a.linhas)} {t('linhas', 'rows')}</span>}
           {a.variaveis !== null && <span>{numero(a.variaveis)} {t('variáveis', 'variables')}</span>}
           {anos && <span>{anos}</span>}
-          {a.uf && <span>{a.uf}</span>}
+          {['painel', 'area', 'detalhado', 'pacote'].includes(a.tipo) && <span className="dl-escopo">{a.uf ? rotuloUf(a.uf) : t('Brasil · todos os municípios', 'Brazil · all municipalities')}</span>}
           {typeof a.bytes_extraido === 'number' && <span>{t(`${tamanho(a.bytes_extraido, local())} após extrair`, `${tamanho(a.bytes_extraido, local())} extracted`)}</span>}
         </p>
       </div>
@@ -117,100 +118,51 @@ function Secao({ id, titulo, intro, children }: { id: string; titulo: string; in
   );
 }
 
-function BaseIntegrada({ arquivos, base }: { arquivos: ArquivoDl[]; base: string }) {
-  const [uf, setUf] = useState('');
-  const idUf = useId();
-  const nacionais = arquivos.filter((a) => !a.uf);
-  const porUf = arquivos.filter((a) => a.uf);
-  const ufs = [...new Set(porUf.map((a) => a.uf!))].sort((x, y) => x.localeCompare(y));
-  return (
-    <>
-      <p className="dl-aviso">{t('Uma linha por município e ano. Você pode baixar o Brasil inteiro ou escolher uma UF. Os formatos têm as mesmas variáveis.', 'One row per municipality and year. Download all of Brazil or choose a state. Formats contain the same variables.')}</p>
-      {nacionais.length ? (
-        <ul className="dl-lista dl-grade">{nacionais.map((a) => <Arquivo key={a.id} a={a} base={base} destaque />)}</ul>
-      ) : (
-        <p className="dl-vazio">{t('A base integrada nacional não está disponível agora.', 'The national integrated base is not available right now.')}</p>
-      )}
-      {ufs.length > 0 && (
-        <div className="dl-uf">
-          <div className="dl-campo">
-            <label htmlFor={idUf}>{t('Prefere só um estado?', 'Prefer a single state?')}</label>
-            <select id={idUf} value={uf} onChange={(e) => setUf(e.target.value)}>
-              <option value="">{t('Escolha a UF…', 'Choose a state…')}</option>
-              {ufs.map((u) => <option key={u} value={u}>{rotuloUf(u)}</option>)}
-            </select>
-          </div>
-          {uf && <ul className="dl-lista">{porUf.filter((a) => a.uf === uf).map((a) => <Arquivo key={a.id} a={a} base={base} />)}</ul>}
-        </div>
-      )}
-    </>
-  );
+function Previa({ arquivo, pedido }: { arquivo: ArquivoDl; pedido: number }) {
+  const [aberta, setAberta] = useState(false);
+  useEffect(() => { if (pedido > 0) setAberta(true); }, [pedido]);
+  const [variavel, setVariavel] = useState('');
+  const id = useId();
+  const url = arquivo.previa ? urlArquivo(arquivo.previa.caminho, BASE_DADOS) ?? '' : '';
+  const ler = useCallback((b: unknown) => validarPrevia(b, arquivo), [arquivo]);
+  const dados = useJson<PreviaDl>(url, aberta && !!url, ler);
+  const colunas = dados.dados?.colunas.filter((c) => !['cod_ibge','municipio','uf','regiao','tipo_territorio','ano'].includes(c.variavel)) ?? [];
+  const coluna = colunas.find((c) => c.variavel === variavel) ?? colunas[0];
+  const valor = (v: string | number | boolean | null | undefined) => {
+    if (v === null || v === undefined) return t('Sem dado', 'Missing');
+    if (typeof v === 'boolean') return v ? t('Sim','Yes') : t('Não','No');
+    if (typeof v !== 'number') return v;
+    return new Intl.NumberFormat(local(), v !== 0 && Math.abs(v) < 0.001 ? {notation:'scientific',maximumSignificantDigits:4} : {maximumFractionDigits:3}).format(v);
+  };
+  if (!url) return null;
+  return <details className="dl-previa" open={aberta} onToggle={(e) => setAberta(e.currentTarget.open)}>
+    <summary>{t('Prévia e cobertura dos dados', 'Preview and data coverage')}</summary>
+    {dados.carregando && <p role="status">{t('Carregando uma pequena amostra…', 'Loading a small sample…')}</p>}
+    {dados.erro && <Estado erro={dados.erro} mensagem={t('A prévia não carregou. O arquivo para baixar continua disponível.', 'Preview unavailable. The download remains available.')} tentarNovamente={dados.recarregar} />}
+    {dados.dados && coluna && <>
+      <p className="dl-intro">{t('Até cinco linhas reais de um município do arquivo escolhido. Os vazios foram preservados. Escolha uma variável para ver a unidade e a cobertura no arquivo inteiro.', 'Up to five actual rows from one municipality in the selected file. Missing values are preserved. Choose a variable to see its unit and coverage across the full file.')}</p>
+      <div className="dl-campo"><label htmlFor={id}>{t('Variável da prévia', 'Preview variable')}</label><select id={id} value={coluna.variavel} onChange={(e) => setVariavel(e.target.value)}>{colunas.map((c) => <option key={c.variavel} value={c.variavel}>{c.nome} · {c.variavel}</option>)}</select></div>
+      <p className="dl-cobertura"><strong>{coluna.nome}</strong><br />{coluna.unidade} · {faixaAnos({ano_de:null,ano_ate:null,anos_observados:coluna.anos}) ?? t('Sem valores observados','No observed values')}<br />{t(`${numero(coluna.preenchidas)} de ${numero(dados.dados.linhas_total)} células preenchidas neste arquivo.`, `${numero(coluna.preenchidas)} of ${numero(dados.dados.linhas_total)} cells filled in this file.`)}</p>
+      <div className="dl-tabela-wrap"><table className="dl-amostra"><caption>{t('Amostra do recorte selecionado', 'Sample of the selected subset')}</caption><thead><tr><th>{t('Município','Municipality')}</th><th>UF</th><th>{t('Ano','Year')}</th><th>{coluna.nome}</th></tr></thead><tbody>{dados.dados.amostra.map((row,i) => <tr key={i}><th scope="row">{String(row.municipio)}</th><td>{String(row.uf)}</td><td>{String(row.ano)}</td><td>{valor(row[coluna.variavel])}</td></tr>)}</tbody></table></div>
+      <p className="dl-ajuda">{t('Decimais são arredondados apenas nesta amostra; o download preserva os valores completos. Células preenchidas não substituem as condições e notas de cada indicador. O arquivo contém todas as linhas e variáveis do recorte.', 'Decimals are rounded only in this sample; downloads preserve full values. Filled cells do not replace each indicator’s status and notes. The file contains every row and variable in the subset.')}</p>
+    </>}
+  </details>;
 }
 
-function Dicionario({ m, base }: { m: ManifestoDl; base: string }) {
-  const [aberto, setAberto] = useState(false);
-  const [busca, setBusca] = useState('');
-  const [area, setArea] = useState('');
+function Dicionario({ indice, busca, area, m, onTodos, onEscolher }: { indice: IndiceDic; busca: string; area: string; m: ManifestoDl; onTodos: () => void; onEscolher: (area: string) => void }) {
   const [pagina, setPagina] = useState(0);
-  const idBusca = useId();
-  const idArea = useId();
-  const url = urlArquivo(m.dicionario.caminho, base) ?? '';
-  const dic = useJson<IndiceDic>(url, aberto && url !== '', (b) => indexarDicionario(validarDicionario(b)));
-  const adiado = useDeferredValue(busca);
-  const nomeArea = useCallback((id: string) => { if (id === 'identificacao') return t('Identificação', 'Identifiers'); const a = m.areas.find((x) => x.id === id); return a ? pick(a.nome, a.nome_en) : id; }, [m.areas]);
-  const areas = useMemo(() => [...new Set((dic.dados?.entradas ?? []).map((e) => e.area).filter(Boolean))].sort((x, y) => nomeArea(x).localeCompare(nomeArea(y), local())), [dic.dados, nomeArea]);
-  const achadas = useMemo(() => (dic.dados ? filtrarDicionario(dic.dados, adiado, area) : []), [dic.dados, adiado, area]);
-  const paginas = Math.max(1, Math.ceil(achadas.length / POR_PAGINA));
-  const atual = Math.min(pagina, paginas - 1);
-  const ver = achadas.slice(atual * POR_PAGINA, (atual + 1) * POR_PAGINA);
-
-  if (!aberto) {
-    return (
-      <button type="button" className="botao dl-abrir" onClick={() => setAberto(true)} disabled={!url}>
-        <Ico nome="busca" /> {t('Pesquisar variáveis', 'Search variables')} <small>({tamanho(m.dicionario.bytes, local())})</small>
-      </button>
-    );
-  }
-  return (
-    <div className="dl-dic">
-      {dic.erro && <Estado erro={dic.erro} mensagem={t('Não foi possível carregar o dicionário.', 'Could not load the dictionary.')} tentarNovamente={dic.recarregar} />}
-      {dic.carregando && <p className="carregando" role="status">{t('Carregando o dicionário…', 'Loading the dictionary…')}</p>}
-      {dic.dados && (
-        <>
-          <div className="dl-filtros">
-            <div className="dl-campo dl-campo-larga">
-              <label htmlFor={idBusca}>{t('Buscar variável', 'Search variable')}</label>
-              <input id={idBusca} type="search" value={busca} placeholder={t('Nome, código ou descrição (ex.: saneamento)', 'Name, code or description (e.g. saneamento)')}
-                onChange={(e) => { setBusca(e.target.value); setPagina(0); }} />
-            </div>
-            <div className="dl-campo">
-              <label htmlFor={idArea}>{t('Tema', 'Theme')}</label>
-              <select id={idArea} value={area} onChange={(e) => { setArea(e.target.value); setPagina(0); }}>
-                <option value="">{t('Todos', 'All')}</option>
-                {areas.map((a) => <option key={a} value={a}>{nomeArea(a)}</option>)}
-              </select>
-            </div>
-          </div>
-          <p className="dl-contagem" role="status" aria-live="polite">
-            {t(`${numero(achadas.length)} de ${numero(dic.dados.entradas.length)} variáveis`, `${numero(achadas.length)} of ${numero(dic.dados.entradas.length)} variables`)}
-          </p>
-          {ver.length === 0 ? <p className="dl-vazio">{t('Nenhuma variável encontrada. Tente outra palavra ou limpe o tema.', 'No variables found. Try another word or clear the theme.')}</p> : (
-            <ul className="dl-vars">{ver.map((e, i) => <Variavel key={`${atual}-${i}`} e={e} nomeArea={nomeArea} />)}</ul>
-          )}
-          {paginas > 1 && (
-            <nav className="dl-pag" aria-label={t('Páginas do dicionário', 'Dictionary pages')}>
-              <button type="button" className="botao-leve" disabled={atual === 0} onClick={() => setPagina(atual - 1)}>{t('Anterior', 'Previous')}</button>
-              <span>{t(`Página ${atual + 1} de ${paginas}`, `Page ${atual + 1} of ${paginas}`)}</span>
-              <button type="button" className="botao-leve" disabled={atual >= paginas - 1} onClick={() => setPagina(atual + 1)}>{t('Próxima', 'Next')}</button>
-            </nav>
-          )}
-        </>
-      )}
-    </div>
-  );
+  const achadas = useMemo(() => filtrarDicionario(indice, busca, area), [indice,busca,area]);
+  const paginas = Math.max(1,Math.ceil(achadas.length/POR_PAGINA));
+  const atual = Math.min(pagina,paginas-1);
+  const nomeArea = (id: string) => id === 'identificacao' ? t('Identificação','Identifiers') : (() => { const a=m.areas.find((a) => a.id===id); return a ? pick(a.nome,a.nome_en) : id; })();
+  return <div className="dl-dic">
+    <p className="dl-contagem" role="status" aria-live="polite">{t(`${numero(achadas.length)} campos encontrados`, `${numero(achadas.length)} fields found`)}{area && <> · {nomeArea(area)} <button type="button" className="botao-leve" onClick={onTodos}>{t('Ver todos os temas','See all topics')}</button></>}</p>
+    {achadas.length === 0 ? <p className="dl-vazio">{t('Nenhuma variável da base principal com essa busca. Confira também os arquivos detalhados abaixo ou tente outra palavra.', 'No main-base variables match this search. Also check the detailed files below or try another word.')}</p> : <ul className="dl-vars">{achadas.slice(atual*POR_PAGINA,(atual+1)*POR_PAGINA).map((e) => <Variavel key={e.variavel} e={e} nomeArea={nomeArea} onEscolher={onEscolher} />)}</ul>}
+    {paginas>1 && <nav className="dl-pag" aria-label={t('Páginas do dicionário','Dictionary pages')}><button type="button" className="botao-leve" disabled={atual===0} onClick={() => setPagina(atual-1)}>{t('Anterior','Previous')}</button><span>{t(`Página ${atual+1} de ${paginas}`,`Page ${atual+1} of ${paginas}`)}</span><button type="button" className="botao-leve" disabled={atual>=paginas-1} onClick={() => setPagina(atual+1)}>{t('Próxima','Next')}</button></nav>}
+  </div>;
 }
 
-function Variavel({ e, nomeArea }: { e: EntradaDic; nomeArea: (id: string) => string }) {
+function Variavel({ e, nomeArea, onEscolher }: { e: EntradaDic; nomeArea: (id: string) => string; onEscolher: (area: string) => void }) {
   const anos = faixaAnos(e);
   const linhas: [string, string][] = ([
     [t('Descrição', 'Description'), e.descricao], [t('Fonte', 'Source'), e.fonte], [t('Tipo', 'Type'), e.tipo], [t('Regra para o ano', 'Annual rule'), e.regra_anual],
@@ -226,9 +178,8 @@ function Variavel({ e, nomeArea }: { e: EntradaDic; nomeArea: (id: string) => st
           <code>{e.variavel}</code>
           <span className="dl-var-meta">{[e.area && nomeArea(e.area), e.unidade, anos].filter(Boolean).join(' · ')}</span>
         </summary>
-        {linhas.length > 0 && (
-          <dl>{linhas.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
-        )}
+        {linhas.length > 0 && <dl>{linhas.map(([k,v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}</dl>}
+        <button type="button" className="botao-leve dl-usar-variavel" onClick={() => onEscolher(e.area)}>{t('Ver arquivo com esta variável', 'See file containing this variable')}</button>
       </details>
     </li>
   );
@@ -300,159 +251,84 @@ function Integridade({ m }: { m: ManifestoDl }) {
 const rolar = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
 
 function Conteudo({ m, descartados }: { m: ManifestoDl; descartados: number }) {
-  const en = idioma() === 'en';
-  const [filtro, setFiltro] = useState<Filtro>(filtroVazio);
-  const [formato, setFormato] = useState<FormatoBase>('dta');
-  const [detalhesAbertos, setDetalhesAbertos] = useState(false);
-  const adiado = useDeferredValue(filtro);
-  const idFormato = useId();
-  const idTexto = useId();
-  const idTema = useId();
-  const idUf = useId();
-  const por = (tipo: ArquivoDl['tipo']) => m.arquivos.filter((a) => a.tipo === tipo);
-  const painel = por('painel');
-  const opcoesFormato = formatosBase(painel);
-  const formatoAtual = formatoDisponivel(formato, painel);
-  const temas = por('area').filter((a) => a.formato === formatoAtual);
-  const detalhes = por('detalhado');
-  const pacotes = por('pacote');
-  const dicionarios = por('dicionario').filter((a) => a.escopo !== 'detalhado');
-  const dicionariosDetalhados = por('dicionario').filter((a) => a.escopo === 'detalhado');
-  const metodologia = por('metodologia');
-  const explorar = [...temas, ...detalhes];
-  const areasUsadas = m.areas.filter((a) => explorar.some((f) => f.area === a.id));
-  const ufsUsadas = [...new Set(explorar.map((f) => f.uf).filter((u): u is string => !!u))].sort();
-  const filtrado = adiado.texto || adiado.area || adiado.uf;
-  const temasF = filtrarArquivos(temas, adiado, en);
-  const detalhesF = filtrarArquivos(detalhes, adiado, en);
-  const r = m.resumo;
-  const quando = (() => { const d = new Date(m.gerado_em); return Number.isNaN(d.getTime()) ? m.gerado_em : d.toLocaleDateString(local(), { day: 'numeric', month: 'long', year: 'numeric' }); })();
-  useEffect(() => { if (/munic|anexo|dca/i.test(adiado.texto)) setDetalhesAbertos(true); }, [adiado.texto]);
-
-  // detalhados agrupados pelo tema, na ordem do manifesto
-  const grupos: { area: AreaDl | null; itens: ArquivoDl[] }[] = [];
-  for (const f of detalhesF) {
-    const area = m.areas.find((x) => x.id === f.area) ?? null;
-    const g = grupos.find((x) => x.area === area);
-    if (g) g.itens.push(f);
-    else grupos.push({ area, itens: [f] });
-  }
-  const secoes: [string, string, boolean][] = [
-    ['dl-base', t('Base principal', 'Main base'), painel.length > 0],
-    ['dl-temas', t('Por tema', 'By theme'), temas.length > 0], ['dl-dicionario', t('Dicionário', 'Dictionary'), true], ['dl-guia', t('Como usar', 'How to use'), true],
-    ['dl-detalhes', t('Dados detalhados', 'Detailed data'), detalhes.length > 0],
-  ];
-
-  return (
-    <>
-      <ul className="dl-resumo" aria-label={t('Resumo da base', 'Base summary')}>
-        <li><strong>{numero(r.municipios)}</strong><span>{t('municípios e unidades especiais', 'municipalities and special territories')}</span></li>
-        <li><strong>{r.ano_de}–{r.ano_ate}</strong><span>{t('período total; varia por fonte', 'total period; varies by source')}</span></li>
-        <li><strong>{numero(r.variaveis)}</strong><span>{t('variáveis na base integrada', 'variables in the integrated base')}</span></li>
-        <li><strong>{numero(r.linhas)}</strong><span>{t('linhas (município × ano)', 'rows (municipality × year)')}</span></li>
-      </ul>
-      <nav className="dl-ancoras" aria-label={t('Nesta página', 'On this page')}>
-        {secoes.filter(([, , ok]) => ok).map(([id, nome]) => <button key={id} type="button" onClick={() => { if (id === 'dl-detalhes') { setDetalhesAbertos(true); requestAnimationFrame(() => rolar(id)); } else rolar(id); }}>{nome}</button>)}
-      </nav>
-      {descartados > 0 && (
-        <p className="dl-aviso" role="status">
-          {t(`${descartados} arquivo(s) da lista falharam na verificação e não aparecem aqui.`, `${descartados} file(s) in the list failed verification and are not shown.`)}
-        </p>
-      )}
-
-      <Secao id="dl-base" titulo={m.edicao === 'enxuta_2013' ? t('Base enxuta', 'Compact base') : t('Base integrada', 'Integrated base')}
-        intro={t('Uma linha por município e ano, com indicadores selecionados dos seis temas. Os cálculos estão prontos e os vazios foram preservados.', 'One row per municipality and year, with selected indicators from the six themes. Calculations are ready and missing values are preserved.')}>
-        {opcoesFormato.length > 0 && <fieldset className="dl-formatos"><legend>{t('Escolha o formato', 'Choose a format')}</legend>
-          {opcoesFormato.map((f) => <label key={f}><input type="radio" name={idFormato} value={f} checked={f === formatoAtual} onChange={() => setFormato(f)} />{FORMATO[f].nome()}</label>)}
-        </fieldset>}
-        {formatoAtual === 'dta' && m.stata?.painel_declarado && <p className="dl-intro">{t('Abre diretamente no Stata, com rótulos e o painel município × ano já declarado.', 'Opens directly in Stata, with labels and the municipality × year panel already declared.')}</p>}
-        <BaseIntegrada arquivos={painel.filter((a) => a.formato === formatoAtual)} base={BASE_DADOS} />
-        {pacotes.length > 0 && (
-          <>
-            <h4 className="dl-sub">{t('Pacote da base principal e dicionário', 'Main base and dictionary package')}</h4>
-            <ul className="dl-lista">{pacotes.map((a) => <Arquivo key={a.id} a={a} base={BASE_DADOS} />)}</ul>
-          </>
-        )}
-      </Secao>
-
-      {explorar.length > 0 && (
-        <div className="dl-filtros" role="search" aria-label={t('Procurar arquivos', 'Find files')}>
-          <div className="dl-campo dl-campo-larga">
-            <label htmlFor={idTexto}>{t('Procurar arquivos', 'Find files')}</label>
-            <input id={idTexto} type="search" value={filtro.texto} placeholder={t('Ex.: saúde, MUNIC 2021, anexo I-C', 'E.g. health, MUNIC 2021, annex I-C')}
-              onChange={(e) => setFiltro({ ...filtro, texto: e.target.value })} />
-          </div>
-          {areasUsadas.length > 1 && (
-            <div className="dl-campo">
-              <label htmlFor={idTema}>{t('Tema', 'Theme')}</label>
-              <select id={idTema} value={filtro.area} onChange={(e) => setFiltro({ ...filtro, area: e.target.value })}>
-                <option value="">{t('Todos', 'All')}</option>
-                {areasUsadas.map((a) => <option key={a.id} value={a.id}>{pick(a.nome, a.nome_en)}</option>)}
-              </select>
-            </div>
-          )}
-          {ufsUsadas.length > 0 && (
-            <div className="dl-campo">
-              <label htmlFor={idUf}>UF</label>
-              <select id={idUf} value={filtro.uf} onChange={(e) => setFiltro({ ...filtro, uf: e.target.value })}>
-                <option value="">{t('Todas', 'All')}</option>
-                {ufsUsadas.map((u) => <option key={u} value={u}>{rotuloUf(u)}</option>)}
-              </select>
-            </div>
-          )}
-          {filtrado && <button type="button" className="botao-leve" onClick={() => setFiltro(filtroVazio)}>{t('Limpar', 'Clear')}</button>}
-        </div>
-      )}
-
-      {temas.length > 0 && (
-        <Secao id="dl-temas" titulo={t('Por tema', 'By theme')}
-          intro={t('A mesma chave (município × ano), mas só com as variáveis de um assunto. Cada arquivo mostra os anos e o número de variáveis que de fato contém.', 'The same key (municipality × year), with only the variables of one subject. Each file shows the years and the number of variables it actually contains.')}>
-          <Lista arquivos={temasF} base={BASE_DADOS} limite={filtrado ? 50 : 8} vazio={t('Nenhum arquivo com esse filtro.', 'No files match this filter.')} />
-        </Secao>
-      )}
-
-      <Secao id="dl-dicionario" titulo={t('Dicionário de variáveis', 'Variable dictionary')}
-        intro={<>{t('Nome, descrição, fonte, unidade, anos disponíveis e regra de agregação anual de cada variável.', 'Name, description, source, unit, available years and annual aggregation rule for each variable.')}{' '}
-          {t('As descrições das fontes estão em português.', 'Source descriptions are in Portuguese.')}</>}>
-        {dicionarios.length > 0 && <ul className="dl-lista">{dicionarios.map((a) => <Arquivo key={a.id} a={a} base={BASE_DADOS} />)}</ul>}
-        <Dicionario m={m} base={BASE_DADOS} />
-      </Secao>
-
-      {detalhes.length > 0 && <details id="dl-detalhes" className="dl-avancado" open={detalhesAbertos} onToggle={(e) => setDetalhesAbertos(e.currentTarget.open)}>
-        <summary>{t('Dados detalhados (opcional)', 'Detailed data (optional)')}</summary>
-        <p className="dl-intro">{t('Questionários completos da MUNIC e contas anuais DCA, em CSV e Parquet. Também estão limitados aos anos desde 2013. São arquivos separados, com mais variáveis que a base principal.', 'Full MUNIC questionnaires and DCA annual accounts, in CSV and Parquet. Also restricted to years from 2013 onwards. These are separate files, with more variables than the main base.')}</p>
-        {grupos.length === 0 ? <p className="dl-vazio">{t('Nenhum arquivo com esse filtro.', 'No files match this filter.')}</p> : grupos.map((g) => (
-          <div key={g.area?.id ?? 'outros'} className="dl-grupo"><h4 className="dl-sub">{g.area ? pick(g.area.nome, g.area.nome_en) : t('Outros', 'Other')}</h4>
-            <Lista arquivos={g.itens} base={BASE_DADOS} limite={filtrado ? 50 : 6} />
-          </div>
-        ))}
-        {dicionariosDetalhados.length > 0 && <><h4 className="dl-sub">{t('Dicionário dos complementos', 'Supplement dictionary')}</h4><Lista arquivos={dicionariosDetalhados} base={BASE_DADOS} /></>}
-      </details>}
-
-      <Secao id="dl-guia" titulo={t('Como usar os arquivos', 'How to use the files')}>
-        <Guia m={m} metodologia={metodologia} base={m.base_ipca} />
-      </Secao>
-
-      <p className="dl-rodape">{t(`Arquivos gerados em ${quando}. Eles são pré-calculados: baixar não executa nenhuma consulta.`, `Files generated on ${quando}. They are pre-computed: downloading runs no query.`)}</p>
-      <Integridade m={m} />
-    </>
-  );
+  const en=idioma()==='en';
+  const [area,setArea]=useState(''); const [uf,setUf]=useState('');
+  const [formato,setFormato]=useState<FormatoBase>('dta');
+  const [busca,setBusca]=useState(''); const q=useDeferredValue(busca);
+  const [dicAberto,setDicAberto]=useState(false); const [dicArea,setDicArea]=useState('');
+  const [detalhesAbertos,setDetalhesAbertos]=useState(false);
+  const [pedidoPrevia,setPedidoPrevia]=useState({area:'',uf:'',sequencia:0});
+  const id=useId(); const r=m.resumo;
+  const painel=m.arquivos.filter((a) => a.tipo==='painel');
+  const formatos=formatosBase(painel); const fmt=formatoDisponivel(formato,painel);
+  const refUf=uf ? m.recortes_uf?.[uf] : undefined;
+  const catalogUrl=refUf ? urlArquivo(refUf.caminho,BASE_DADOS) ?? '' : '';
+  const lerCatalogo=useCallback((b: unknown) => validarCatalogo(b,m,uf),[m,uf]);
+  const catalogo=useJson<ArquivoDl[]>(catalogUrl,!!catalogUrl,lerCatalogo);
+  const arquivos=[...m.arquivos,...(uf ? catalogo.dados ?? [] : [])];
+  const escolhido=arquivoDoRecorte(arquivos,area,uf,fmt);
+  const ufs=[...new Set(painel.map((a) => a.uf).filter((u): u is string => !!u))].sort();
+  const lerDic=useCallback((b: unknown) => indexarDicionario(validarDicionario(b)),[]);
+  const dic=useJson<IndiceDic>(urlArquivo(m.dicionario.caminho,BASE_DADOS) ?? '',dicAberto || !!q.trim(),lerDic);
+  const matches=useMemo(() => dic.dados && q.trim() ? filtrarDicionario(dic.dados,q,'') : [],[dic.dados,q]);
+  const areasBusca=new Set(matches.map((e) => e.area));
+  const temas=arquivos.filter((a) => a.tipo==='area' && a.uf===(uf || null) && a.formato===fmt);
+  const temasF=q.trim() ? temas.filter((a) => areasBusca.has(a.area ?? '') || filtrarArquivos([a],{texto:q,area:'',uf:''},en).length) : temas;
+  const detalhes=ordenarDetalhados(filtrarArquivos(m.arquivos.filter((a) => a.tipo==='detalhado'),{texto:q,area:'',uf:''},en));
+  const dicionarios=m.arquivos.filter((a) => a.tipo==='dicionario' && a.escopo!=='detalhado').sort((a,b) => ['xlsx','csv.zip','json'].indexOf(a.formato)-['xlsx','csv.zip','json'].indexOf(b.formato));
+  const excel=dicionarios.find((a) => a.formato==='xlsx');
+  const pacotes=m.arquivos.filter((a) => a.tipo==='pacote');
+  const leve=pacotes.filter((a) => a.conteudo===fmt);
+  const completos=pacotes.filter((a) => !a.conteudo);
+  const metodologia=m.arquivos.filter((a) => a.tipo==='metodologia');
+  const mostrarDic=(tema: string) => {setDicArea(tema);setDicAberto(true);setBusca('');requestAnimationFrame(() => rolar('dl-dicionario'));};
+  const escolherArea=(tema: string, abrirPrevia=false) => {const nova=m.areas.some((a) => a.id===tema) ? tema : '';setArea(nova);if(abrirPrevia)setPedidoPrevia((p) => ({area:nova,uf,sequencia:p.sequencia+1}));rolar('dl-base');};
+  const quando=new Date(m.gerado_em).toLocaleDateString(local(),{day:'numeric',month:'long',year:'numeric'});
+  useEffect(() => {if (/munic|anexo|dca/i.test(q)) setDetalhesAbertos(true);},[q]);
+  const grupos=m.areas.map((a) => ({area:a,itens:detalhes.filter((d) => d.area===a.id)})).filter((g) => g.itens.length);
+  return <>
+    {descartados>0 && <p className="dl-aviso" role="status">{t(`${descartados} arquivo(s) inválido(s) não foram exibidos.`,`${descartados} invalid file(s) were not displayed.`)}</p>}
+    <Secao id="dl-base" titulo={t('Escolha e baixe','Choose and download')}>
+      <div className="dl-escolhas">
+        <div className="dl-campo"><label htmlFor={id+'-area'}>{t('Conteúdo','Content')}</label><select id={id+'-area'} value={area} onChange={(e) => setArea(e.target.value)}><option value="">{t('Todos os temas · base completa','All topics · complete base')}</option>{m.areas.map((a) => <option value={a.id} key={a.id}>{pick(a.nome,a.nome_en)}</option>)}</select></div>
+        <div className="dl-campo"><label htmlFor={id+'-uf'}>{t('Localização','Location')}</label><select id={id+'-uf'} value={uf} onChange={(e) => setUf(e.target.value)}><option value="">{t('Brasil · todos os municípios','Brazil · all municipalities')}</option>{ufs.map((u) => <option key={u} value={u}>{rotuloUf(u)}</option>)}</select></div>
+        <div className="dl-campo"><label htmlFor={id+'-fmt'}>{t('Formato','Format')}</label><select id={id+'-fmt'} value={fmt} onChange={(e) => setFormato(e.target.value as FormatoBase)}>{formatos.map((f) => <option key={f} value={f}>{f==='csv.zip' ? t('Excel: CSV (.zip)','Excel: CSV (.zip)') : f==='parquet' ? 'R / Python: Parquet' : 'Stata (.dta)'}</option>)}</select></div>
+      </div>
+      {escolhido ? <>
+        <ul className="dl-lista"><Arquivo a={escolhido} base={BASE_DADOS} destaque /></ul>
+        <div className="dl-acoes"><button type="button" className="botao-leve" onClick={() => mostrarDic(area)}>{t(area ? `Ver ${escolhido.variaveis} variáveis do tema` : `Ver ${escolhido.variaveis} indicadores e 6 identificadores`,area ? `View ${escolhido.variaveis} topic variables` : `View ${escolhido.variaveis} indicators and 6 identifiers`)}</button><span className="dl-ajuda">{fmt==='dta' ? m.stata?.painel_declarado ? t('Abre no Stata, com rótulos e painel declarado.','Opens in Stata, with labels and panel settings.') : t('Abre no Stata, com rótulos.','Opens in Stata, with labels.') : fmt==='csv.zip' ? t('Extraia o ZIP e importe o CSV no Excel.','Extract the ZIP and import the CSV in Excel.') : t('Formato compacto para R e Python.','Compact format for R and Python.')}</span></div>
+        <Previa key={escolhido.previa?.caminho ?? escolhido.id} arquivo={escolhido} pedido={pedidoPrevia.area===area && pedidoPrevia.uf===uf ? pedidoPrevia.sequencia : 0} />
+        {escolhido.ano_ate===new Date(m.gerado_em).getFullYear() && <p className="dl-ajuda">{t(`${escolhido.ano_ate} pode estar parcial. A prévia e o dicionário mostram a cobertura de cada variável.`,`${escolhido.ano_ate} may be partial. Preview and dictionary show each variable’s coverage.`)}</p>}
+      </> : area && uf && catalogo.carregando ? <p role="status">{t('Carregando a lista de arquivos prontos desta UF…','Loading this state’s ready-to-download file list…')}</p> : <p className="dl-aviso">{t('Não há arquivo para essa combinação. Escolha outro tema ou a base completa desta UF.','No file is available for this combination. Choose another topic or this state’s complete base.')} <button type="button" className="botao-leve" onClick={() => setArea('')}>{t('Ver base completa da UF','See complete state base')}</button></p>}
+      {catalogo.erro && <Estado erro={catalogo.erro} mensagem={t('A lista de temas desta UF não carregou.','This state’s topic list could not load.')} tentarNovamente={catalogo.recarregar} />}
+    </Secao>
+    <details className="dl-sobre"><summary>{t(`Sobre a base nacional: ${r.variaveis} indicadores + 6 identificadores`,`About the national base: ${r.variaveis} indicators + 6 identifiers`)}</summary>
+      <ul className="dl-resumo" aria-label={t('Resumo nacional','National summary')}><li><strong>{numero(r.municipios)}</strong><span>{t('municípios e unidades especiais','municipalities and special territories')}</span></li><li><strong>{r.ano_de}–{r.ano_ate}</strong><span>{t('período total; varia por fonte','total period; varies by source')}</span></li><li><strong>{numero(r.variaveis)}</strong><span>{t('indicadores + 6 identificadores','indicators + 6 identifiers')}</span></li><li><strong>{numero(r.linhas)}</strong><span>{t('linhas de município × ano','municipality × year rows')}</span></li></ul>
+    </details>
+    <nav className="dl-ancoras" aria-label={t('Nesta página','On this page')}>{[['dl-base',t('Baixar','Download')],['dl-dicionario',t('Buscar / dicionário','Search / dictionary')],['dl-temas',t('Por tema','By topic')],['dl-pacotes',t('Pacotes','Packages')],['dl-guia',t('Como usar','How to use')],['dl-detalhes',t('Dados detalhados','Detailed data')]].map(([id,nome]) => <button key={id} type="button" onClick={() => {if(id==='dl-detalhes')setDetalhesAbertos(true);requestAnimationFrame(() => rolar(id));}}>{nome}</button>)}</nav>
+    <Secao id="dl-dicionario" titulo={t('Encontre indicadores e arquivos','Find indicators and files')} intro={t('Uma busca para nomes, códigos, descrições e arquivos detalhados. A base principal tem 254 indicadores e seis identificadores (260 colunas). As descrições das fontes estão em português.','One search for names, codes, descriptions and detailed files. The main base has 254 indicators and six identifiers (260 columns). Source descriptions are in Portuguese.')}>
+      <div className="dl-filtros"><div className="dl-campo dl-campo-larga"><label htmlFor={id+'-busca'}>{t('Buscar indicador ou arquivo','Search indicator or file')}</label><input type="search" id={id+'-busca'} value={busca} placeholder={t('Ex.: mortalidade, salário, PIB, MUNIC 2024','E.g. mortalidade, salário, PIB, MUNIC 2024')} onChange={(e) => {setBusca(e.target.value);setDicArea('');}} /></div>{busca && <button type="button" className="botao-leve" onClick={() => setBusca('')}>{t('Limpar busca','Clear search')}</button>}</div>
+      <div className="dl-acoes">{!dicAberto && !q && <button type="button" className="botao-leve" onClick={() => setDicAberto(true)}>{t('Explorar todas as variáveis','Explore all variables')}</button>}{excel && <a className="botao-leve" href={urlArquivo(excel.caminho,BASE_DADOS) ?? undefined} download>{t('Baixar dicionário Excel','Download Excel dictionary')}</a>}</div>
+      {(dicAberto || !!q) && <>{dic.carregando && <p role="status">{t('Buscando no dicionário leve…','Searching the compact dictionary…')}</p>}{dic.erro && <Estado erro={dic.erro} mensagem={t('A busca não carregou. Os downloads continuam disponíveis.','Search could not load. Downloads remain available.')} tentarNovamente={dic.recarregar} />}{dic.dados && <Dicionario key={q+'|'+dicArea} indice={dic.dados} busca={q} area={dicArea} m={m} onTodos={() => setDicArea('')} onEscolher={escolherArea} />}</>}
+      <details className="dl-dic-downloads"><summary>{t('Dicionário em CSV e JSON','Dictionary in CSV and JSON')}</summary><Lista arquivos={dicionarios.filter((a) => a.formato!=='xlsx')} base={BASE_DADOS} /></details>
+    </Secao>
+    <Secao id="dl-temas" titulo={t('Baixar por tema','Download by topic')} intro={uf ? t(`Arquivos dos municípios de ${rotuloUf(uf)}. O formato é o escolhido no início da página.`,`Municipal data for ${rotuloUf(uf)}. Format follows your selection at the top.`) : t('Arquivos nacionais (Brasil). Escolha uma UF no início para baixar os temas só daquele estado.','National files (Brazil). Choose a state at the top to download its topic subsets.')}>
+      {uf && catalogo.carregando ? <p role="status">{t('Carregando os temas desta UF…','Loading this state’s topics…')}</p> : temasF.length ? <ul className="dl-lista dl-temas-grade">{temasF.map((a) => <li className="dl-tema" key={a.id}><ul className="dl-lista"><Arquivo a={a} base={BASE_DADOS} /></ul><button className="botao-leve" type="button" onClick={() => mostrarDic(a.area ?? '')}>{t(`Ver ${a.variaveis} variáveis do tema`,`View ${a.variaveis} topic variables`)}</button><button className="botao-leve" type="button" onClick={() => escolherArea(a.area ?? '',true)}>{t('Ver prévia e cobertura','See preview and coverage')}</button></li>)}</ul> : <p className="dl-vazio">{t('Nenhum tema com esse recorte e busca. Tente outra palavra ou escolha a base completa.','No topics match this subset and search. Try another word or choose the complete base.')}</p>}
+    </Secao>
+    <Secao id="dl-pacotes" titulo={t('Base nacional com dicionário','National base with dictionary')} intro={t('Brasil, todos os temas. O pacote inclui apenas o formato escolhido no início, mais dicionário e instruções.','Brazil, all topics. The package contains only the format chosen at the top, plus dictionary and instructions.')}>
+      <Lista arquivos={leve} base={BASE_DADOS} />
+      {completos.length>0 && <details className="dl-dic-downloads"><summary>{t('Também disponível: pacote com os três formatos','Also available: package with all three formats')}</summary><Lista arquivos={completos} base={BASE_DADOS} /></details>}
+    </Secao>
+    <details id="dl-detalhes" className="dl-avancado" open={detalhesAbertos} onToggle={(e) => setDetalhesAbertos(e.currentTarget.open)}><summary>{t('Dados detalhados nacionais (opcional)','Detailed national data (optional)')}</summary><p className="dl-intro">{t('MUNIC completa e contas DCA, desde 2013, em CSV e Parquet. Estes arquivos são do Brasil inteiro, independentemente da UF escolhida acima. Edições mais recentes aparecem primeiro.','Full MUNIC and DCA accounts from 2013 onwards, in CSV and Parquet. These cover all of Brazil, regardless of the state selected above. Latest editions appear first.')}</p>{!grupos.length && <p className="dl-vazio">{t('Nenhum arquivo detalhado com essa busca.','No detailed files match this search.')}</p>}{grupos.map((g) => <div className="dl-grupo" key={g.area.id}><h4 className="dl-sub">{pick(g.area.nome,g.area.nome_en)}</h4><Lista arquivos={g.itens} base={BASE_DADOS} limite={q ? 50 : 6} /></div>)}<h4 className="dl-sub">{t('Dicionário dos complementos','Supplement dictionary')}</h4><Lista arquivos={m.arquivos.filter((a) => a.tipo==='dicionario' && a.escopo==='detalhado')} base={BASE_DADOS} /></details>
+    <Secao id="dl-guia" titulo={t('Como usar os arquivos','How to use the files')}><Guia m={m} metodologia={metodologia} base={m.base_ipca} /></Secao>
+    <p className="dl-rodape">{t(`Arquivos gerados em ${quando}. Todos são pré-calculados; escolher e baixar não executa consultas.`,`Files generated on ${quando}. All files are pre-computed; choosing and downloading runs no queries.`)}</p>
+    <Integridade m={{...m,arquivos}} />
+  </>;
 }
 
 export function Downloads() {
   useIdioma();
-  const lido = useCallback((b: unknown) => validarManifesto(b), []);
-  const man = useJson(URL_MANIFESTO, true, lido);
-  return (
-    <div className="downloads-painel">
-      <h2>{t('Baixar dados municipais', 'Download municipal data')}</h2>
-      <p className="dl-sub-titulo">
-        {man.dados?.manifesto.edicao === 'enxuta_2013' ? t('Base enxuta desde 2013: finanças, saúde, trabalho, gestão pública, clima e assistência. Disponível em Stata, CSV e Parquet, com um dicionário curto.',
-          'A compact base from 2013 onwards: finance, health, labour, public management, climate and social assistance. Available in Stata, CSV and Parquet, with a short dictionary.') : t('Finanças, saúde, trabalho, gestão pública, clima e assistência, com uma linha por município e ano e dicionário.', 'Finance, health, labour, public management, climate and social assistance, with one row per municipality and year and a dictionary.')}
-      </p>
-      {man.erro && <Estado erro={man.erro} mensagem={t('Não foi possível carregar a lista de arquivos.', 'Could not load the file list.')} tentarNovamente={man.recarregar} />}
-      {man.carregando && <p className="carregando" role="status">{t('Carregando a lista de arquivos…', 'Loading the file list…')}</p>}
-      {man.dados && <Conteudo m={man.dados.manifesto} descartados={man.dados.descartados} />}
-    </div>
-  );
+  const lido=useCallback((b: unknown) => validarManifesto(b),[]);
+  const man=useJson(URL_MANIFESTO,true,lido);
+  return <div className="downloads-painel"><h2>{t('Baixar dados municipais','Download municipal data')}</h2><p className="dl-sub-titulo">{t('Desde 2013, com uma linha por município e ano. Escolha o conteúdo, o local e o formato.','From 2013 onwards, one row per municipality and year. Choose content, location and format.')}</p>{man.erro && <Estado erro={man.erro} mensagem={t('Não foi possível carregar a lista de arquivos.','Could not load the file list.')} tentarNovamente={man.recarregar} />}{man.carregando && <p role="status">{t('Carregando a lista de arquivos…','Loading the file list…')}</p>}{man.dados && <Conteudo m={man.dados.manifesto} descartados={man.dados.descartados} />}</div>;
 }

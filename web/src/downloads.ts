@@ -9,11 +9,14 @@ export type Tipo = (typeof TIPOS)[number];
 export type Formato = (typeof FORMATOS)[number];
 
 export type AreaDl = { id: string; nome: string; nome_en: string; descricao: string; descricao_en: string };
+export type ReferenciaDl = { caminho: string; bytes: number; sha256: string };
 export type ArquivoDl = {
   id: string; tipo: Tipo; area: string | null; nome: string; nome_en: string; descricao: string; descricao_en: string; formato: Formato;
   caminho: string; bytes: number; sha256: string; linhas: number | null; variaveis: number | null; ano_de: number | null; ano_ate: number | null; uf: string | null;
   bytes_extraido?: number;
   escopo?: 'principal' | 'detalhado';
+  previa?: ReferenciaDl;
+  conteudo?: FormatoBase;
 };
 export type ManifestoDl = {
   versao: 1; gerado_em: string; base_gerado_em: string; base_sha256: string; base_ipca: number;
@@ -22,6 +25,7 @@ export type ManifestoDl = {
   dicionario: { caminho: string; bytes: number; sha256: string };
   edicao?: 'enxuta_2013';
   stata?: { versao: number; minimo: number; painel_declarado: boolean; chave: string[] };
+  recortes_uf?: Record<string, ReferenciaDl>;
 };
 
 export const PREFIXO = 'gold/downloads/';
@@ -51,6 +55,7 @@ const natural = (v: unknown): v is number => typeof v === 'number' && Number.isF
 const naturalOuNulo = (v: unknown): v is number | null => v === null || natural(v);
 const anoOuNulo = (v: unknown): v is number | null => v === null || (typeof v === 'number' && Number.isInteger(v) && v >= 1900 && v <= 2200);
 const registro = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+const referenciaValida = (v: unknown): v is ReferenciaDl => registro(v) && caminhoSeguro(v.caminho) && natural(v.bytes) && texto(v.sha256) && SHA.test(v.sha256);
 
 /**
  * Valida o manifesto. Estrutura geral inválida: erro (a página mostra "Tentar de novo"). Arquivo individual inválido
@@ -67,6 +72,7 @@ export function validarManifesto(bruto: unknown): { manifesto: ManifestoDl; desc
   if (bruto.edicao === 'enxuta_2013' && (resumo.ano_de < 2013 || (resumo.variaveis as number) > 300)) throw falha('recorte da base enxuta');
   if (!Array.isArray(areas) || !Array.isArray(arquivos) || !Array.isArray(notas)) throw falha('listas');
   if (!registro(dicionario) || !caminhoSeguro(dicionario.caminho) || !natural(dicionario.bytes) || !texto(dicionario.sha256) || !SHA.test(dicionario.sha256)) throw falha('dicionário');
+  if (bruto.recortes_uf !== undefined && (!registro(bruto.recortes_uf) || Object.entries(bruto.recortes_uf).some(([uf, ref]) => !/^[A-Z]{2}$/.test(uf) || !referenciaValida(ref)))) throw falha('catálogos por UF');
 
   const areasOk: AreaDl[] = [];
   for (const a of areas) {
@@ -81,6 +87,8 @@ export function validarManifesto(bruto: unknown): { manifesto: ManifestoDl; desc
       && caminhoSeguro(f.caminho) && natural(f.bytes) && texto(f.sha256) && SHA.test(f.sha256) && naturalOuNulo(f.linhas) && naturalOuNulo(f.variaveis)
       && (f.bytes_extraido === undefined || natural(f.bytes_extraido))
       && (f.escopo === undefined || f.escopo === 'principal' || f.escopo === 'detalhado')
+      && (f.previa === undefined || referenciaValida(f.previa))
+      && (f.conteudo === undefined || (FORMATOS_BASE as readonly unknown[]).includes(f.conteudo))
       && anoOuNulo(f.ano_de) && anoOuNulo(f.ano_ate) && (f.uf === null || (texto(f.uf) && /^[A-Z]{2}$/.test(f.uf)));
     const recorte = bruto.edicao !== 'enxuta_2013' || !registro(f) || !['painel', 'area', 'detalhado'].includes(String(f.tipo)) || (typeof f.ano_de === 'number' && f.ano_de >= 2013);
     if (bom && recorte) {
@@ -173,7 +181,11 @@ export function indexarDicionario(entradas: EntradaDic[]): IndiceDic {
   return {
     entradas,
     variaveis: entradas.map((e) => normalizar(e.variavel)),
-    textos: entradas.map((e) => normalizar(`${e.variavel} ${e.variavel_original ?? ''} ${e.nome} ${e.descricao} ${e.fonte} ${e.unidade} ${e.tabela}`)),
+    textos: entradas.map((e) => {
+      const original=e.variavel_original ?? e.variavel;
+      const aliases=[/remuneracao|rem_media/.test(original) ? 'salário salário médio wages salary' : '', /^(soc_)?pbf_/.test(original) ? 'Bolsa Família' : '', /^(soc_)?cad_/.test(original) ? 'CadÚnico Cadastro Único' : '', /^(soc_)?bpc_/.test(original) ? 'Benefício de Prestação Continuada' : '', /pib/.test(original) ? 'Produto Interno Bruto GDP' : '', /raca/.test(original) ? 'raça cor etnia' : '', /escolar/.test(original) ? 'educação escolaridade estudo' : '', /rais_vinculo_mte_1_/.test(original) ? 'CLT celetista' : ''].join(' ');
+      return normalizar(`${e.variavel} ${original} ${e.nome} ${e.descricao} ${e.fonte} ${e.unidade} ${e.tabela} ${aliases}`);
+    }),
   };
 }
 
@@ -200,3 +212,34 @@ export const formatoDisponivel = (pedido: FormatoBase, arquivos: ArquivoDl[]): F
  const disponiveis = formatosBase(arquivos);
  return disponiveis.includes(pedido) ? pedido : disponiveis[0] ?? 'csv.zip';
 };
+
+/** Nunca troca silenciosamente uma UF por Brasil, nem um tema pela base completa. */
+export const arquivoDoRecorte = (arquivos: ArquivoDl[], area: string, uf: string, formato: FormatoBase): ArquivoDl | undefined =>
+ arquivos.find((a) => a.tipo === (area ? 'area' : 'painel') && a.area === (area || null) && a.uf === (uf || null) && a.formato === formato);
+
+export function validarCatalogo(bruto: unknown, m: ManifestoDl, uf: string): ArquivoDl[] {
+ if (!registro(bruto) || bruto.versao !== 1 || bruto.uf !== uf || !Array.isArray(bruto.arquivos)) throw new Error('Catálogo de UF inválido');
+ const result = validarManifesto({ ...m, arquivos: bruto.arquivos });
+ if (result.descartados || result.manifesto.arquivos.some((a) => a.uf !== uf || a.tipo !== 'area')) throw new Error('Catálogo contém outro recorte');
+ return result.manifesto.arquivos;
+}
+
+export type ColunaPrevia = { variavel: string; nome: string; unidade: string; anos: number[]; preenchidas: number };
+export type PreviaDl = { versao: 1; id: string; area: string | null; uf: string | null; linhas_total: number; ano_de: number; ano_ate: number; colunas: ColunaPrevia[]; amostra: Record<string, string | number | boolean | null>[] };
+export function validarPrevia(bruto: unknown, arquivo: ArquivoDl): PreviaDl {
+ const fail = () => { throw new Error('Prévia inválida para o arquivo escolhido'); };
+ if (!registro(bruto) || bruto.versao !== 1 || bruto.id !== arquivo.id.replace(/_(parquet|csv_zip|dta)$/, '') || bruto.uf !== arquivo.uf || bruto.area !== arquivo.area || bruto.linhas_total !== arquivo.linhas || bruto.ano_de !== arquivo.ano_de || bruto.ano_ate !== arquivo.ano_ate || !Array.isArray(bruto.colunas) || !Array.isArray(bruto.amostra)) return fail();
+ const cols = bruto.colunas; const rows = bruto.amostra;
+ if (cols.length !== (arquivo.variaveis ?? 0) + 6 || rows.length < 1 || rows.length > 5) return fail();
+ const names = new Set<string>();
+ for (const c of cols) {
+  if (!registro(c) || !texto(c.variavel) || !/^[a-z][a-z0-9_]{0,31}$/.test(c.variavel) || names.has(c.variavel) || !texto(c.nome) || !texto(c.unidade) || !natural(c.preenchidas) || c.preenchidas > (arquivo.linhas ?? 0) || !Array.isArray(c.anos) || c.anos.some((y) => typeof y !== 'number' || !Number.isInteger(y) || y < (arquivo.ano_de ?? 2013) || y > (arquivo.ano_ate ?? 2200))) return fail();
+  names.add(c.variavel);
+ }
+ for (const row of rows) {
+  if (!registro(row) || Object.keys(row).length !== names.size || Object.entries(row).some(([k,v]) => !names.has(k) || (v !== null && typeof v !== 'string' && typeof v !== 'boolean' && (typeof v !== 'number' || !Number.isFinite(v)))) || typeof row.ano !== 'number' || row.ano < (arquivo.ano_de ?? 2013) || row.ano > (arquivo.ano_ate ?? 2200) || (arquivo.uf && row.uf !== arquivo.uf)) return fail();
+ }
+ return bruto as unknown as PreviaDl;
+}
+
+export const ordenarDetalhados = (arquivos: ArquivoDl[]): ArquivoDl[] => [...arquivos].sort((a,b) => (b.ano_ate ?? 0) - (a.ano_ate ?? 0) || a.nome.localeCompare(b.nome, 'pt-BR') || a.formato.localeCompare(b.formato));

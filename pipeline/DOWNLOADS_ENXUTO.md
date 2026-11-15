@@ -1,5 +1,7 @@
 # Downloads municipais desde 2013
 
+A navegação, os recortes UF × tema e as prévias sob demanda são preparados depois desta seleção: ver [DOWNLOADS_NAVEGACAO.md](DOWNLOADS_NAVEGACAO.md).
+
 `/downloads` usa a edição enxuta: **254 variáveis principais e seis identificadores**, somente desde 2013. Brasil, 27 UFs e seis temas têm os mesmos nomes em Stata, CSV e Parquet. MUNIC/DCA completas ficam recolhidas em uma seção opcional; edições anteriores a 2013 não entram na lista.
 
 A abertura lê apenas `gold/downloads/manifesto.json`. A busca carrega o dicionário das 260 colunas principais; o dicionário grande dos complementos é separado. Não se inicia DuckDB. O manifesto global e os pacotes rápidos dos outros painéis são preservados.
