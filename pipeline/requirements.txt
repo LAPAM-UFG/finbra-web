@@ -5,4 +5,6 @@ pyarrow>=17
 truststore>=0.9
 boto3>=1.35
 xlrd>=2.0
+openpyxl>=3.1
+python-calamine>=0.3
 websocket-client>=1.8

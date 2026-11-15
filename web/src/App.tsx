@@ -5,6 +5,7 @@ import { ProvedorDados } from './contexto';
 import { definirIdioma, t, useIdioma } from './idioma';
 import { Demonstrativos } from './pages/Demonstrativos';
 import { Downloads } from './pages/Downloads';
+import { EducacaoPainel, EducacaoEvolucao, EducacaoRankings, EducacaoTabela, EducacaoMetodologia } from './pages/EducacaoPainel';
 import { DespesasEvolucao, DespesasNaturezaEvolucao, DespesasNaturezaVisaoGeral, DespesasVisaoGeral } from './pages/Despesas';
 import { Fpm, FpmFaixas } from './pages/Fpm';
 import { Ia } from './pages/Ia';
@@ -43,7 +44,7 @@ const menu = (): [string, [string, string][]][] => [
   [t('Despesas por função', 'Expenditure by function'), [['/despesas', t('Visão geral', 'Overview')], ['/despesas/evolucao', t('Evolução', 'Trends')]]],
   [t('Responsabilidade fiscal', 'Fiscal responsibility'), [['/lrf', t('Indicadores da LRF', 'LRF indicators')], ['/lrf/demonstrativos', t('Demonstrativos RREO e RGF', 'RREO and RGF statements')]]],
   [t('Saúde e educação', 'Health and education'), [
-    ['/educacao', t('Educação (SIOPE)', 'Education (SIOPE)')],
+    ['/educacao/financiamento', t('Educação (SIOPE)', 'Education (SIOPE)')],
     ['/educacao/profissionais', t('Profissionais da educação', 'Education staff')],
     ['/saude', t('Saúde (SIOPS)', 'Health (SIOPS)')],
   ]],
@@ -108,8 +109,15 @@ const menuDownloads = (): [string, [string, string][]][] => [
   [t('Dados abertos', 'Open data'), [['/downloads', t('Baixar dados municipais', 'Download municipal data')]]],
 ];
 
+const menuEducacao = (): [string, [string, string][]][] => [
+  [t('Educação', 'Education'), [['/educacao', t('Painel de indicadores', 'Indicator dashboard')]]],
+  [t('Explorar os dados', 'Explore the data'), [['/educacao/evolucao', t('Evolução', 'Trends')], ['/educacao/rankings', 'Rankings'], ['/educacao/tabela', t('Tabela e exportações', 'Table and downloads')]]],
+  [t('Financiamento', 'Funding'), [['/educacao/financiamento', t('Gastos e aplicação · SIOPE', 'Expenditure and allocation · SIOPE')], ['/educacao/profissionais', t('Profissionais da educação', 'Education staff')]]],
+  [t('Metodologia', 'Methodology'), [['/educacao/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
+];
+
 const areaDe = (pathname: string): Area => (pathname === '/ia' ? 'ia' : pathname === '/downloads' || pathname.startsWith('/downloads/') ? 'downloads' : pathname.startsWith('/trabalho') ? 'trabalho'
-  : pathname.startsWith('/datasus') ? 'saude' : pathname.startsWith('/munic') ? 'munic' : pathname.startsWith('/clima') ? 'clima' : pathname.startsWith('/assistencia') ? 'assistencia' : 'financas');
+  : pathname.startsWith('/datasus') ? 'saude' : pathname.startsWith('/educacao') ? 'educacao' : pathname.startsWith('/munic') ? 'munic' : pathname.startsWith('/clima') ? 'clima' : pathname.startsWith('/assistencia') ? 'assistencia' : 'financas');
 
 function lerTema(): string | null {
   try {
@@ -217,7 +225,7 @@ export function App() {
   // a aba da IA abre com o tema da área de onde se veio (só ordena os exemplos): território e ano dos filtros do painel não
   // vão junto, porque a pergunta diz o recorte e a IA escolhe as fontes
   const filtrosIa = new URLSearchParams(area === 'ia' ? atuais : undefined);
-  if (area !== 'ia' && area !== 'munic' && area !== 'clima' && area !== 'downloads') filtrosIa.set('paineis', area);
+  if (area !== 'ia' && area !== 'munic' && area !== 'clima' && area !== 'downloads' && area !== 'educacao') filtrosIa.set('paineis', area);
   const buscaIa = `?${filtrosIa}`;
 
   return (
@@ -229,6 +237,7 @@ export function App() {
           financas: `${t('Finanças municipais', 'Municipal finances')} · SICONFI`,
           trabalho: t('Mercado de trabalho · RAIS e CAGED', 'Labour market · RAIS and CAGED'),
           saude: t('Saúde · DATASUS', 'Health · DATASUS'),
+          educacao: t('Educação · Inep e SIOPE', 'Education · Inep and SIOPE'),
           munic: t('Gestão pública · MUNIC e ESTADIC', 'Public management · MUNIC and ESTADIC'),
           clima: t('Clima · CHIRPS e ERA5-Land', 'Climate · CHIRPS and ERA5-Land'),
           assistencia: t('Assistência social · CadÚnico, Bolsa Família e BPC', 'Social assistance · Cadastro Único, Bolsa Família and BPC'),
@@ -240,6 +249,7 @@ export function App() {
           <Link to={{ pathname: '/receitas', search: paraArea('financas') }} className={area === 'financas' ? 'ativo' : ''} aria-current={area === 'financas' ? 'page' : undefined}>{t('Finanças públicas', 'Public finances')}</Link>
           <Link to={{ pathname: '/trabalho', search: paraArea('trabalho') }} className={area === 'trabalho' ? 'ativo' : ''} aria-current={area === 'trabalho' ? 'page' : undefined}>{t('Mercado de trabalho', 'Labour market')}</Link>
           <Link to={{ pathname: '/datasus', search: paraArea('saude') }} className={area === 'saude' ? 'ativo' : ''} aria-current={area === 'saude' ? 'page' : undefined}>{t('Saúde', 'Health')}</Link>
+          <Link to={{ pathname: '/educacao', search: paraArea('educacao') }} className={area === 'educacao' ? 'ativo' : ''} aria-current={area === 'educacao' ? 'page' : undefined}>{t('Educação', 'Education')}</Link>
           <Link to={{ pathname: '/munic', search: paraArea('munic') }} className={area === 'munic' ? 'ativo' : ''} aria-current={area === 'munic' ? 'page' : undefined}>{t('Gestão pública', 'Public management')}</Link>
           <Link to={{ pathname: '/clima', search: paraArea('clima') }} className={area === 'clima' ? 'ativo' : ''} aria-current={area === 'clima' ? 'page' : undefined}>{t('Clima', 'Climate')}</Link>
           <Link to={{ pathname: '/assistencia', search: paraArea('assistencia') }} className={area === 'assistencia' ? 'ativo' : ''} aria-current={area === 'assistencia' ? 'page' : undefined}>{t('Assistência social', 'Social assistance')}</Link>
@@ -255,11 +265,11 @@ export function App() {
       </header>
       <div className={`casca${area === 'ia' ? ' casca-ia' : ''}`}>
         <nav className={`menu${area === 'ia' ? ' menu-ia' : ''}`} aria-label={t('Páginas', 'Pages')}>
-          {({ financas: menu, trabalho: menuTrabalho, saude: menuSaude, munic: menuMunic, clima: menuClima, assistencia: menuAssistencia, downloads: menuDownloads, ia: menuIa }[area])().map(([grupo, itens]) => (
+          {({ financas: menu, trabalho: menuTrabalho, saude: menuSaude, educacao: menuEducacao, munic: menuMunic, clima: menuClima, assistencia: menuAssistencia, downloads: menuDownloads, ia: menuIa }[area])().map(([grupo, itens]) => (
             <div key={grupo} style={{ display: 'contents' }}>
               <h4>{grupo}</h4>
               {itens.map(([para, rotulo]) => (
-                <NavLink key={para} to={{ pathname: para, search: area === 'downloads' ? '' : area === 'ia' ? buscaIa : area === 'munic' ? contextoMunic(search, DESTINO_MUNIC[para] ?? 'avancado', EDICOES_MUNIC) : area === 'clima' ? buscaClima(search) : area === 'assistencia' ? buscaEntreAreas(search, 'assistencia', 'assistencia') : buscaArea }} end className={({ isActive }) => (isActive ? 'ativo' : '')}>
+                <NavLink key={para} to={{ pathname: para, search: area === 'downloads' ? '' : area === 'ia' ? buscaIa : area === 'educacao' ? buscaEntreAreas(search, 'educacao', para.includes('/financiamento') || para.includes('/profissionais') ? 'financas' : 'educacao') : area === 'munic' ? contextoMunic(search, DESTINO_MUNIC[para] ?? 'avancado', EDICOES_MUNIC) : area === 'clima' ? buscaClima(search) : area === 'assistencia' ? buscaEntreAreas(search, 'assistencia', 'assistencia') : buscaArea }} end className={({ isActive }) => (isActive ? 'ativo' : '')}>
                   {rotulo}
                 </NavLink>
               ))}
@@ -286,7 +296,12 @@ export function App() {
               <Route path="/ia" element={<Ia />} />
               <Route path="/lrf" element={<LrfIndicadores />} />
               <Route path="/lrf/demonstrativos" element={<LrfDemonstrativos />} />
-              <Route path="/educacao" element={<Educacao />} />
+              <Route path="/educacao" element={<EducacaoPainel />} />
+              <Route path="/educacao/evolucao" element={<EducacaoEvolucao />} />
+              <Route path="/educacao/rankings" element={<EducacaoRankings />} />
+              <Route path="/educacao/tabela" element={<EducacaoTabela />} />
+              <Route path="/educacao/metodologia" element={<EducacaoMetodologia />} />
+              <Route path="/educacao/financiamento" element={<Educacao />} />
               <Route path="/educacao/profissionais" element={<RemuneracaoEducacao />} />
               <Route path="/saude" element={<Saude />} />
               <Route path="/trabalho" element={<TrabalhoPainel />} />

@@ -1,6 +1,6 @@
 import { COD_UF } from './munic_painel';
 
-export type Area = 'financas' | 'trabalho' | 'saude' | 'munic' | 'clima' | 'assistencia' | 'downloads' | 'ia';
+export type Area = 'financas' | 'trabalho' | 'saude' | 'educacao' | 'munic' | 'clima' | 'assistencia' | 'downloads' | 'ia';
 
 const ufPorCodigo = new Map(Object.entries(COD_UF).map(([uf, cod]) => [String(cod), uf]));
 const query = (p: URLSearchParams) => { const s = p.toString(); return s ? `?${s}` : ''; };
@@ -15,12 +15,12 @@ export function buscaEntreAreas(search: string, origem: Area, destino: Exclude<A
   const atual = new URLSearchParams(search);
   const saida = new URLSearchParams();
   if (origem === destino) {
-    const chaves = origem === 'munic' ? ['pesq', 'uf', 'cod', 'ano'] : origem === 'clima' ? ['uf', 'cod', 'ano', 'variavel'] : origem === 'assistencia' ? ['uf', 'cod', 'mes', 'ano'] : ['uf', 'ente', 'ano'];
+    const chaves = origem === 'munic' ? ['pesq', 'uf', 'cod', 'ano'] : origem === 'clima' ? ['uf', 'cod', 'ano', 'variavel'] : origem === 'educacao' ? ['uf', 'cod', 'ente', 'ano', 'ind'] : origem === 'assistencia' ? ['uf', 'cod', 'mes', 'ano'] : ['uf', 'ente', 'ano'];
     for (const k of chaves) if (atual.get(k)) saida.set(k, atual.get(k)!);
     return query(saida);
   }
-  const porCod = origem === 'clima' || origem === 'munic' || origem === 'assistencia';
-  const codigoPedido = atual.get(porCod ? 'cod' : 'ente')?.trim() ?? '';
+  const porCod = origem === 'clima' || origem === 'munic' || origem === 'assistencia' || origem === 'educacao';
+  const codigoPedido = (origem === 'educacao' ? atual.get('cod') ?? atual.get('ente') : atual.get(porCod ? 'cod' : 'ente'))?.trim() ?? '';
   const ufPedida = (atual.get('uf') ?? '').trim().toUpperCase();
   const codigo = codigoPedido || (origem === 'munic' && atual.get('pesq') === 'estadic' && ufPedida in COD_UF ? String(COD_UF[ufPedida]) : '');
   const ufCodigo = ufPorCodigo.get(codigo) ?? (/^\d{7}$/.test(codigo) ? ufPorCodigo.get(codigo.slice(0, 2)) : undefined);
@@ -36,7 +36,7 @@ export function buscaEntreAreas(search: string, origem: Area, destino: Exclude<A
       saida.set('pesq', 'estadic');
       saida.set('cod', codigo && !df ? codigo : '53');
     } else if (codigo) saida.set('cod', codigo);
-  } else if (destino === 'clima' || destino === 'assistencia') {
+  } else if (destino === 'clima' || destino === 'assistencia' || destino === 'educacao') {
     if (df) saida.set('cod', '5300108');
     else if (codigo && !governo) saida.set('cod', codigo);
   } else if (codigo) {

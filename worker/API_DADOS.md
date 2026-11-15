@@ -36,7 +36,7 @@ attr(dados, "finbra") # fonte, hash do Parquet, chaves, dicionário e filtros lo
 
 O cliente usa somente R base: baixa temporariamente e lê o RDS nativo, sem instalar pacotes. O endpoint `cliente.R` ajusta o endereço ao próprio servidor; `web/public/finbra.R` também pode ser salvo e carregado localmente, com `base_url` para um espelho. O código público é ASCII para funcionar também em sessões Windows com locale C, preservando mensagens Unicode por escapes. Os dados mantêm UTF-8.
 
-Os 196 RDS foram gerados no R 4.6.1 e comparados integralmente com os Parquet (82.333.378 células). A serialização é versão 2, gzip e `data.frame` base. Não há dependências de Arrow/haven para consumir. Lógicos mantêm TRUE/FALSE/NA; categorias textuais permanecem texto, com rótulos/unidades/fontes por coluna. O dicionário inclui a codificação usada no Stata. Inteiros de 64 bits só são convertidos em double após verificar representabilidade exata; valores acima de 2^53 são recusados na preparação.
+Os RDS são gerados no R e comparados integralmente com os Parquet; os relatórios de preparação registram os arquivos e as células conferidas. A serialização é versão 2, gzip e `data.frame` base. Não há dependências de Arrow/haven para consumir. Lógicos mantêm TRUE/FALSE/NA; categorias textuais permanecem texto, com rótulos/unidades/fontes por coluna. O dicionário inclui a codificação usada no Stata. Inteiros de 64 bits só são convertidos em double após verificar representabilidade exata; valores acima de 2^53 são recusados na preparação.
 
 ## Rotas
 
@@ -54,9 +54,11 @@ Os 196 RDS foram gerados no R 4.6.1 e comparados integralmente com os Parquet (8
 | `GET /amostra.json?uf=GO&tema=saude` | Até cinco linhas reais, **não a base completa** |
 | `GET /cliente.R` | Cliente R, apenas código; não carrega dados ao ser executado |
 
-`uf`: BR ou uma das 27 siglas. `tema`: todos, financas, saude, trabalho, gestao, clima, assistencia. O padrão é BR/todos. Não se troca um recorte ausente por Brasil silenciosamente. Parâmetros inválidos, repetidos ou não suportados são recusados com 400, não ignorados.
+`uf`: BR ou uma das 27 siglas. `tema`: todos, financas, saude, educacao, trabalho, gestao, clima, assistencia. O padrão é BR/todos. Não se troca um recorte ausente por Brasil silenciosamente. Parâmetros inválidos, repetidos ou não suportados são recusados com 400, não ignorados.
 
-UF e tema selecionam arquivos pré-calculados e reduzem a transferência. Ano, município e coluna são filtros **no programa cliente**, depois da leitura; não são consultas SQL executadas no Worker. MUNIC/DCA completas permanecem na central de downloads; a API de painel expõe a seleção integrada de 254 indicadores e seis identificadores.
+UF e tema selecionam arquivos pré-calculados e reduzem a transferência. Ano, município e coluna são filtros **no programa cliente**, depois da leitura; não são consultas SQL executadas no Worker. MUNIC/DCA completas permanecem na central de downloads; a API de painel expõe a seleção integrada de 297 indicadores e seis identificadores.
+
+Educação usa `tema="educacao"` no R e `/painel/GO/educacao.dta` no Stata. Seus 43 indicadores abrangem as referências publicadas desde 2013, preservando lacunas e o calendário bienal do Ideb. Percentuais usam escala 0–100 e Ideb, 0–10; cada variável indica a rede e o universo no dicionário. Preparação em `pipeline/EDUCACAO.md`.
 
 GET/HEAD/OPTIONS, CORS público, ETag e Range são suportados. URLs estáveis são revalidadas (`no-cache`), com cabeçalhos `X-Finbra-SHA256` e `X-Finbra-Edicao`. HEAD da API responde 200; `/dados/*` mantém seu HEAD 206 para compatibilidade com DuckDB. Erros retornam JSON/400, 404, 405 ou 503, sem detalhes internos. O catálogo informa as datas da fonte e dos arquivos separadamente.
 

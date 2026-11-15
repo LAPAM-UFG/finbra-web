@@ -139,7 +139,7 @@ button, input, select { font: inherit; color: inherit; }
 .menu a.ativo { color: var(--acao-texto); font-weight: 650; border-left-color: var(--acao-texto); background: var(--acao-suave); }
 main { padding: 24px 28px 48px; min-width: 0; }
 
-@media (max-width: 900px) {
+@media (max-width: 1500px) {
   /* áreas na 2ª linha do cabeçalho */
   .topo { flex-wrap: wrap; padding: 8px 12px; }
   .areas { order: 3; flex: 1 1 100%; }
