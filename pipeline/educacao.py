@@ -157,9 +157,26 @@ for k,(col,n,en) in INFRA_ADICIONAL.items():
 INDICADORES.append(indicador('esp_comum_pct','Educação especial em classes comuns','Special education in mainstream classes','inclusao','percentual',
     descricao='Matrículas da educação especial em classes comuns divididas pelas matrículas da educação especial em classes comuns e exclusivas, vezes 100. Todas as redes; não mede a parcela de alunos com deficiência na população. Sem matrículas de educação especial, o percentual fica indefinido.',
     descricao_en='Special education enrolments in mainstream classes divided by special education enrolments in mainstream and exclusive classes, times 100. All sectors; not a measure of disability prevalence. With no special education enrolments, the percentage is undefined.'))
+PERFIL_PERCENTUAIS = {k+'_pct':k for k in ['mat_feminino','mat_masculino','mat_raca_branca','mat_raca_preta','mat_raca_parda','mat_raca_amarela','mat_raca_indigena','mat_raca_nd']}
+for id,numerador in PERFIL_PERCENTUAIS.items():
+    origem=next(i for i in INDICADORES if i['id']==numerador)
+    INDICADORES.append(indicador(id,origem['nome']+' (%)',origem['nome_en']+' (%)','perfil','percentual',
+        descricao=origem['nome']+' como percentual de todas as matrículas da educação básica no mesmo ano e território. Cor/raça não declarada permanece no denominador. Brasil e UF usam razão das somas, não média de percentuais municipais. Numerador ou denominador ausente, ou denominador zero, deixa o percentual sem valor.',
+        descricao_en=origem['nome_en']+' as a percentage of all basic education enrolments in the same year and territory. Unreported race/colour remains in the denominator. Brazil and states use ratios of sums, not averages of municipal percentages. A missing numerator or denominator, or a zero denominator, leaves the percentage undefined.'))
 for i in INDICADORES:i['principal']=i['id'] in IDS_PRINCIPAIS
 IDS = [i['id'] for i in INDICADORES]
-assert len(IDS)==69 and len(set(IDS))==69 and len(IDS_PRINCIPAIS)==43
+assert len(IDS)==77 and len(set(IDS))==77 and len(IDS_PRINCIPAIS)==43
+
+
+def percentuais_perfil(rec):
+    denominator=rec.get('mat_total')
+    result={}
+    for id,numerator in PERFIL_PERCENTUAIS.items():
+        n=rec.get(numerator)
+        if n is None or denominator is None or denominator<=0:result[id]=None
+        elif not 0<=n<=denominator:raise ValueError('Contagem do perfil fora do total: '+numerator)
+        else:result[id]=100*n/denominator
+    return result
 
 
 def normal(text):
@@ -261,6 +278,7 @@ def agregar_escolas(frame):
         cov={}
         for k in flags:
             n,d=int(sums['_n_'+k]),int(sums['_d_'+k]);rec[k]=100*n/d if d else None;cov[k]=[n,d]
+        rec.update(percentuais_perfil(rec))
         result[group]=(rec,cov)
     for c,g in frame.groupby('CO_MUNICIPIO'):
         if len(g.NO_MUNICIPIO.unique())!=1 or len(g.SG_UF.unique())!=1:raise ValueError('Cadastro municipal ambíguo')
@@ -335,19 +353,54 @@ def tabela_legada(book,sheet,top,kind):
     return d,dict(planilha=sheet,formato='cabecalhos_legiveis',linha=header,colunas=rename)
 
 
-def gerar(brutos,saida,base=Path('E:/finbra/data')):
+def ler_publicado(root,brutos):
+    """Reutiliza um snapshot conferido; os percentuais são novas razões das contagens."""
+    path=root/'gold/educacao/manifesto.json';raw=path.read_bytes();m=json.loads(raw)
+    downloads=json.loads((root/'gold/downloads/manifesto.json').read_text(encoding='utf-8'))
+    digest=hashlib.sha256(raw).hexdigest()
+    if downloads['fontes_complementares']['educacao']['sha256']!=digest:raise ValueError('Snapshot publicado não corresponde ao catálogo de downloads')
+    if m['coleta_sha256']!=sha(brutos/'coleta.json'):raise ValueError('As fontes mudaram; reconstrua o Censo e os indicadores oficiais')
+    ids=[i['id'] for i in m['indicadores']]
+    if len(ids) not in [69,77] or ids!=IDS[:len(ids)]:raise ValueError('Indicadores do snapshot incompatíveis')
+    def objeto_lido(ref):
+        p=(root/ref['caminho']).resolve()
+        if not p.is_relative_to((root/'gold/educacao').resolve()):raise ValueError('Caminho publicado inválido')
+        data=p.read_bytes()
+        if len(data)!=ref['bytes'] or hashlib.sha256(data).hexdigest()!=ref['sha256']:raise ValueError('Objeto publicado alterado')
+        return data
+    territories={t['grupo']:t for t in m['territorios']}
+    for uf,ref in m['municipios'].items():
+        for t in json.loads(objeto_lido(ref)):
+            if t['grupo'] in territories or t['uf']!=uf or UFS.get(int(t['grupo'][:2]))!=uf:raise ValueError('Cadastro publicado inconsistente')
+            territories[t['grupo']]=t
+    payload=objeto_lido(m['arquivo']);values={};coverage={}
+    for g,t in territories.items():
+        start,size,h=t['trecho'];data=payload[start:start+size]
+        if hashlib.sha256(data).hexdigest()!=h:raise ValueError('Trecho publicado alterado')
+        record=json.loads(data)
+        if record['grupo']!=g:raise ValueError('Trecho de outro território')
+        for row in record['linhas']:
+            if len(row)!=len(ids)+1 or (g,row[0]) in values:raise ValueError('Linha publicada inconsistente')
+            rec=dict(zip(ids,row[1:]));rec.update(percentuais_perfil(rec))
+            values[(g,row[0])]=rec
+        for year,cov in record['cobertura'].items():coverage[(g,int(year))]=cov
+    return values,coverage,territories,dict(snapshot_sha256=digest,coleta_sha256=m['coleta_sha256'],regra='Snapshot íntegro; oito percentuais derivados das contagens de cada território')
+
+
+def gerar(brutos,saida,base=Path('E:/finbra/data'),publicado=None):
     brutos=brutos.resolve();saida=destino_isolado(saida,brutos)
     destino_isolado(saida,base.resolve())
+    if publicado is not None:destino_isolado(saida,publicado.resolve())
     if (saida/'gold/educacao/manifesto.json').exists():raise ValueError('A candidata já contém um manifesto de educação')
     (saida/'trabalho_educacao').mkdir(parents=True,exist_ok=True)
     work=saida/'trabalho_educacao';coleta=json.loads((brutos/'coleta.json').read_text(encoding='utf-8'))
     values={};coverage={};territories={}
-    for source in coleta['censo']:
+    for source in ([] if publicado is not None else coleta['censo']):
         year=source['ano'];folder=brutos/str(year)
         hashes=[(e['nome'],sha(folder/e['nome'])) for e in source['arquivos'] if Path(e['nome']).suffix.lower()=='.csv']
         for name,digest in hashes:assert digest==next(e['sha256'] for e in source['arquivos'] if e['nome']==name)
         fingerprint=hashlib.sha256(json.dumps(hashes,sort_keys=True).encode()).hexdigest()
-        cache=work/f'censo_{year}_v2.json'
+        cache=work/f'censo_{year}_v3.json'
         cached=json.loads(cache.read_text(encoding='utf-8')) if cache.exists() else None
         if cached and cached['origem']==fingerprint:
             result=cached['result'];labels=cached['labels'];schools=cached['escolas']
@@ -358,7 +411,9 @@ def gerar(brutos,saida,base=Path('E:/finbra/data')):
         for g,(rec,cov) in result.items():values[(g,year)]=rec;coverage[(g,year)]=cov
         print(f'Censo agregado: {year}, {schools} escolas, {len(labels)} municípios',flush=True)
     # Resultados de rendimento, distorção e Ideb entram pelos recortes oficiais.
-    auditoria=ler_indicadores_paralelo(coleta['indicadores'],values)
+    if publicado is not None:
+        values,coverage,territories,auditoria=ler_publicado(publicado.resolve(),brutos)
+    else:auditoria=ler_indicadores_paralelo(coleta['indicadores'],values)
     years=sorted({y for g,y in values})
     for uf,name in NOMES_UF.items():territories[uf]=dict(grupo=uf,nome=name,uf=uf,cod_ibge=None,nivel='UF')
     territories['BR']=dict(grupo='BR',nome='Brasil',uf=None,cod_ibge=None,nivel='BR')
@@ -375,6 +430,9 @@ def gerar(brutos,saida,base=Path('E:/finbra/data')):
         items=[{**t,'trecho':groups[g]} for g,t in territories.items() if t['nivel']=='M' and t['uf']==uf and g in groups]
         items.sort(key=lambda t:normal(t['nome']))
         path=work/f'municipios_{uf.lower()}.json';json_file(path,items);refs[uf]=objeto(saida,path,'municipios_'+uf.lower(),'json')
+    busca=sorted([[g,t['nome'],t['uf']] for g,t in territories.items() if t['nivel']=='M'],key=lambda r:(normal(r[1]),r[2],r[0]))
+    busca_path=work/'busca_municipios.json';json_file(busca_path,busca)
+    busca_ref=objeto(saida,busca_path,'busca_municipios','json')
     ranking={}
     for year in years:
         rows=[[int(g),territories[g]['nome'],territories[g]['uf'],*[v.get(k) for k in IDS]] for (g,y),v in values.items() if y==year and g.isdigit() and len(g)==7]
@@ -393,7 +451,7 @@ def gerar(brutos,saida,base=Path('E:/finbra/data')):
     pq.write_table(table,work/'municipios.parquet',compression='zstd')
     parquet=objeto(saida,work/'municipios.parquet','municipios','parquet')
     meta=dict(versao=1,gerado_em=datetime.now(timezone.utc).isoformat(),anos=years,indicadores=indicators,
-              arquivo=objeto(saida,nd,'series','ndjson'),municipios=refs,rankings=ranking,parquet=parquet,
+              arquivo=objeto(saida,nd,'series','ndjson'),municipios=refs,busca_municipios=busca_ref,rankings=ranking,parquet=parquet,
               territorios=[{**territories[g],'trecho':groups[g]} for g in ['BR',*sorted(NOMES_UF)] if g in groups],
               fontes={k:dict(nome={'censo':'Censo Escolar','rendimento':'Taxas de rendimento','distorcao':'Distorção idade-série','ideb':'Ideb'}[k],url=u) for k,u in PAGINAS.items()},
               coleta_sha256=sha(brutos/'coleta.json'))
@@ -546,4 +604,5 @@ def ler_indicadores_paralelo(sources,values):
 
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--brutos',type=Path,required=True);p.add_argument('--saida',type=Path,required=True)
-    a=p.parse_args();gerar(a.brutos,a.saida)
+    p.add_argument('--publicado',type=Path,help='Reutiliza snapshot íntegro da mesma coleta, para acrescentar indicadores derivados')
+    a=p.parse_args();gerar(a.brutos,a.saida,publicado=a.publicado)

@@ -8,7 +8,7 @@ Cobre os 7 anexos da DCA de 2013 em diante, mais PIB municipal (IBGE) e IPCA (Ba
 
 **[Baixar dados municipais](https://finbra-web.luanviniciusbernardelli.workers.dev/downloads):** base enxuta desde 2013, com 297 variáveis, Stata/R/CSV/Parquet, recortes por UF/tema e dicionário curto. MUNIC/DCA completas ficam em uma seção opcional, também desde 2013. Preparação em [pipeline/DOWNLOADS_ENXUTO.md](pipeline/DOWNLOADS_ENXUTO.md).
 
-**[Educação](https://finbra-web.luanviniciusbernardelli.workers.dev/educacao):** 69 indicadores prontos do Inep desde 2013: matrículas, sexo/cor/raça, inclusão, docentes por escola, turmas, infraestrutura, ensino integral, trajetória e Ideb. O arquivo temático completo está nos downloads e na [API pública para R e Stata](worker/API_DADOS.md); a seleção principal preserva seus 297 indicadores. Fontes, preparação e agregação em [pipeline/EDUCACAO.md](pipeline/EDUCACAO.md).
+**[Educação](https://finbra-web.luanviniciusbernardelli.workers.dev/educacao):** 77 indicadores desde 2013: matrículas e percentuais por sexo/cor/raça, inclusão, docentes por escola, turmas, infraestrutura, ensino integral, trajetória e Ideb. Busca municipal por nome ou código IBGE, com estado opcional. O arquivo temático completo está nos downloads e na [API pública para R e Stata](worker/API_DADOS.md); a seleção principal preserva seus 297 indicadores. Fontes, preparação e agregação em [pipeline/EDUCACAO.md](pipeline/EDUCACAO.md).
 
 ## Como funciona
 

@@ -5,10 +5,24 @@ import { BASE_DADOS } from './manifesto';
 export type ObjetoEducacao = { caminho: string; bytes: number; sha256: string };
 export type TrechoEducacao = [number, number, string];
 export type TerritorioEducacao = { grupo: string; nome: string; uf: string | null; cod_ibge: number | null; nivel: 'BR' | 'UF' | 'M'; trecho: TrechoEducacao };
+export type MunicipioBuscaEducacao = Pick<TerritorioEducacao,'grupo'|'nome'|'uf'>;
+const UFS_CODIGO: Record<string,string>={11:'RO',12:'AC',13:'AM',14:'RR',15:'PA',16:'AP',17:'TO',21:'MA',22:'PI',23:'CE',24:'RN',25:'PB',26:'PE',27:'AL',28:'SE',29:'BA',31:'MG',32:'ES',33:'RJ',35:'SP',41:'PR',42:'SC',43:'RS',50:'MS',51:'MT',52:'GO',53:'DF'};
+export const ufMunicipioEducacao=(codigo:string)=>/^\d{7}$/.test(codigo) ? UFS_CODIGO[codigo.slice(0,2)] : undefined;
+export const normalizarBuscaEducacao=(s:string)=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+export function filtrarMunicipiosEducacao(items:MunicipioBuscaEducacao[],busca:string):MunicipioBuscaEducacao[] {
+  const q=normalizarBuscaEducacao(busca),terms=q.split(/\s+/).filter(Boolean);
+  const score=(x:MunicipioBuscaEducacao)=>x.grupo===q || normalizarBuscaEducacao(x.nome)===q ? 0 : normalizarBuscaEducacao(x.nome).startsWith(q) ? 1 : 2;
+  return items.filter(x=>terms.every(t=>normalizarBuscaEducacao(`${x.nome} ${x.uf} ${x.grupo}`).includes(t))).sort((a,b)=>score(a)-score(b) || a.nome.localeCompare(b.nome,'pt-BR') || String(a.uf).localeCompare(String(b.uf)));
+}
+export function municipioExatoEducacao(items:MunicipioBuscaEducacao[],busca:string):MunicipioBuscaEducacao|undefined {
+  const q=normalizarBuscaEducacao(busca),matches=items.filter(x=>x.grupo===q || normalizarBuscaEducacao(x.nome)===q);
+  return matches.length===1 ? matches[0] : items.length===1 ? items[0] : undefined;
+}
 export type IndicadorEducacao = { id: string; variavel: string; nome: string; nome_en: string; descricao: string; descricao_en: string; tema: string; unidade: 'numero' | 'percentual' | 'indice'; fonte: string; anos: number[]; rede?: 'publica' | 'estadual' };
 export type MetaEducacao = {
   versao: 1; gerado_em: string; anos: number[]; indicadores: IndicadorEducacao[];
   territorios: TerritorioEducacao[]; municipios: Record<string, ObjetoEducacao>;
+  busca_municipios?: ObjetoEducacao;
   arquivo: ObjetoEducacao; rankings: Record<string, ObjetoEducacao>;
   fontes: Record<string, { nome: string; url: string }>;
 };
@@ -52,6 +66,19 @@ export function obterMunicipiosEducacao(uf: string): Promise<TerritorioEducacao[
     const items = await ler<TerritorioEducacao[]>(ref);
     if (!Array.isArray(items) || items.some(t => t.uf !== uf || !/^\d{7}$/.test(t.grupo) || t.nivel !== 'M')) throw new Error('Cadastro de municípios de outra UF.');
     return items;
+  });
+}
+export function obterBuscaMunicipiosEducacao():Promise<MunicipioBuscaEducacao[]> {
+  return memorizar('busca-municipios',async()=>{
+    const m=await obterMetaEducacao();
+    if(!m.busca_municipios)throw new Error('Catálogo nacional de municípios indisponível.');
+    const rows=await ler<unknown>(m.busca_municipios);
+    if(!Array.isArray(rows))throw new Error('Busca municipal inválida.');
+    const seen=new Set<string>();
+    return rows.map(r=>{
+      if(!Array.isArray(r) || r.length!==3 || typeof r[0]!=='string' || !ufMunicipioEducacao(r[0]) || typeof r[1]!=='string' || !r[1].trim() || r[2]!==ufMunicipioEducacao(r[0]) || seen.has(r[0]))throw new Error('Cadastro nacional inconsistente.');
+      seen.add(r[0]);return {grupo:r[0],nome:r[1],uf:r[2] as string};
+    });
   });
 }
 export function obterGrupoEducacao(t: TerritorioEducacao): Promise<GrupoEducacao> {

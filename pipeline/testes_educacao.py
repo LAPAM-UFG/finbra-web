@@ -1,5 +1,7 @@
 """Casos com risco de mudar o significado: agregação, nulos e denominadores."""
 import tempfile
+import json
+import hashlib
 import unittest
 from pathlib import Path
 
@@ -7,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 from assistencia_utils import destino_isolado
-from educacao import agregar_escolas, csv_escola, ler_indicadores, tabela_legada, CONTAGENS, INFRA, INDICADORES, NOMES_UF
+from educacao import agregar_escolas, csv_escola, ler_indicadores, tabela_legada, CONTAGENS, INFRA, INDICADORES, NOMES_UF, percentuais_perfil, ler_publicado
 from educacao_baixar import sha
 
 
@@ -102,9 +104,9 @@ class Educacao(unittest.TestCase):
             self.assertFalse(any(source.iterdir()))
 
     def test_contrato_das_variaveis(self):
-        self.assertEqual(len(INDICADORES),69)
+        self.assertEqual(len(INDICADORES),77)
         self.assertEqual(sum(i['principal'] for i in INDICADORES),43)
-        self.assertEqual(len({i['variavel'] for i in INDICADORES}),69)
+        self.assertEqual(len({i['variavel'] for i in INDICADORES}),77)
         self.assertTrue(all(len(i['variavel'])<=32 for i in INDICADORES))
 
     def test_cadastro_ausente_e_conciliado_por_codigo_sem_mudar_contagens(self):
@@ -126,6 +128,52 @@ class Educacao(unittest.TestCase):
         self.assertEqual(groups['GO'][0]['esp_comum_pct'],10)
         self.assertEqual(groups['GO'][0]['mat_esp_comum'],10)
         self.assertIsNone(groups['DF'][0]['esp_comum_pct'])
+
+    def test_perfil_percentual_e_razao_das_somas(self):
+        frame=escolas();frame['QT_MAT_BAS_FEM']=[20,100,45,30];frame['QT_MAT_BAS_MASC']=[80,100,5,60]
+        groups,_=agregar_escolas(frame)
+        self.assertAlmostEqual(groups['GO'][0]['mat_feminino_pct'],100*165/350)
+        self.assertAlmostEqual(groups['BR'][0]['mat_feminino_pct'],100*195/440)
+        self.assertNotEqual(groups['GO'][0]['mat_feminino_pct'],65)
+        self.assertAlmostEqual(groups['GO'][0]['mat_feminino_pct']+groups['GO'][0]['mat_masculino_pct'],100)
+
+    def test_perfil_preserva_zero_ausencia_e_cor_raca_nao_declarada(self):
+        rec=dict(mat_total=10,mat_feminino=0,mat_masculino=None,mat_raca_preta=3,mat_raca_nd=7)
+        pct=percentuais_perfil(rec)
+        self.assertEqual(pct['mat_feminino_pct'],0)
+        self.assertIsNone(pct['mat_masculino_pct'])
+        self.assertEqual(pct['mat_raca_preta_pct'],30)
+        self.assertEqual(pct['mat_raca_nd_pct'],70)
+        for denominator in [0,None]:self.assertTrue(all(v is None for v in percentuais_perfil({**rec,'mat_total':denominator}).values()))
+        with self.assertRaises(ValueError):percentuais_perfil(dict(mat_total=2,mat_feminino=3))
+
+    def test_snapshot_e_reutilizado_somente_com_hashes_e_coleta_corretos(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp)/'publicado';brutos=Path(tmp)/'brutos'
+            (root/'gold/educacao').mkdir(parents=True);(root/'gold/downloads').mkdir();brutos.mkdir()
+            (brutos/'coleta.json').write_text('{}',encoding='utf-8')
+            def write(name,value):
+                path=root/name;path.write_text(json.dumps(value,ensure_ascii=False),encoding='utf-8')
+                return dict(caminho=name,bytes=path.stat().st_size,sha256=sha(path))
+            ids=[i['id'] for i in INDICADORES[:69]];rec={k:None for k in ids};rec.update(mat_total=10,mat_feminino=4,mat_masculino=6,mat_raca_nd=10)
+            payload=b'';territories=[]
+            for g,n,uf,level in [('BR','Brasil',None,'BR'),('GO','Goiás','GO','UF'),('5208707','Goiânia','GO','M')]:
+                raw=(json.dumps(dict(grupo=g,linhas=[[2025,*[rec[k] for k in ids]]],cobertura={}))+'\n').encode()
+                territories.append(dict(grupo=g,nome=n,uf=uf,nivel=level,trecho=[len(payload),len(raw),hashlib.sha256(raw).hexdigest()]))
+                payload+=raw
+            file=root/'gold/educacao/series_teste.ndjson';file.write_bytes(payload)
+            ref=dict(caminho='gold/educacao/series_teste.ndjson',bytes=len(payload),sha256=sha(file))
+            cities=write('gold/educacao/municipios_go.json',territories[2:])
+            write('gold/educacao/manifesto.json',dict(indicadores=INDICADORES[:69],coleta_sha256=sha(brutos/'coleta.json'),arquivo=ref,municipios=dict(GO=cities),territorios=territories[:2]))
+            write('gold/downloads/manifesto.json',dict(fontes_complementares=dict(educacao=dict(sha256=sha(root/'gold/educacao/manifesto.json')))))
+            values,_,_,_=ler_publicado(root,brutos)
+            self.assertEqual(values[('5208707',2025)]['mat_feminino_pct'],40)
+            self.assertEqual(values[('BR',2025)]['mat_raca_nd_pct'],100)
+            self.assertEqual(file.read_bytes(),payload)
+            file.write_bytes(payload+b' ')
+            with self.assertRaises(ValueError):ler_publicado(root,brutos)
+            file.write_bytes(payload);(brutos/'coleta.json').write_text('{"alterada":true}',encoding='utf-8')
+            with self.assertRaises(ValueError):ler_publicado(root,brutos)
 
     def test_contagens_adicionais_recusam_total_parcial(self):
         frame=escolas();frame['QT_DOC_BAS']=[3,np.nan,5,0]

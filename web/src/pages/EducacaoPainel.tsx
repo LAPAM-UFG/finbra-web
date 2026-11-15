@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useId, useMemo, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import '../educacao.css';
 import { Grafico, barras, linhas } from '../components/Grafico';
@@ -8,16 +8,22 @@ import { idioma, local, t } from '../idioma';
 import { buscaEntreAreas } from '../navegacao';
 import {
   obterMetaEducacao, obterMunicipiosEducacao, obterGrupoEducacao, obterRankingEducacao, linhaEducacao, useEducacao,
+  obterBuscaMunicipiosEducacao, filtrarMunicipiosEducacao, municipioExatoEducacao, ufMunicipioEducacao,
   type MetaEducacao, type GrupoEducacao, type IndicadorEducacao, type TerritorioEducacao,
 } from '../educacao_dados';
 
 const nome = (i: IndicadorEducacao) => idioma() === 'en' ? i.nome_en : i.nome;
 const descricao = (i: IndicadorEducacao) => idioma() === 'en' ? i.descricao_en : i.descricao;
-const fmt = (i: IndicadorEducacao, v: number | null | undefined) => v == null ? t('sem dado', 'no data') : v.toLocaleString(local(), { maximumFractionDigits: i.unidade === 'numero' ? 0 : 1, minimumFractionDigits: i.unidade === 'indice' ? 1 : 0 }) + (i.unidade === 'percentual' ? '%' : '');
-const normal = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const fmt = (i: IndicadorEducacao, v: number | null | undefined) => {
+  if(v==null)return t('sem dado','no data');
+  const perfil=i.tema==='perfil' && i.unidade==='percentual';
+  if(perfil && v>0 && v<0.01)return '<'+(0.01).toLocaleString(local(),{minimumFractionDigits:2})+'%';
+  if(perfil && v<100 && v>99.99)return '>'+(99.99).toLocaleString(local(),{minimumFractionDigits:2})+'%';
+  return v.toLocaleString(local(),{maximumFractionDigits:i.unidade==='numero' ? 0 : perfil ? 2 : 1,minimumFractionDigits:perfil ? 2 : i.unidade==='indice' ? 1 : 0})+(i.unidade==='percentual' ? '%' : '');
+};
 const TEMAS: [string, string, string, string, string][] = [
   ['matriculas','Matrículas e etapas','Enrolments and stages','Escolas localizadas no território, em todas as redes. Educação profissional e especial podem se sobrepor às etapas.','Schools located in the territory, across all sectors. Vocational and special education can overlap other stages.'],
-  ['perfil','Perfil das matrículas','Enrolment profile','Sexo e cor/raça registrados no Censo, em todas as redes. Matrículas não são pessoas únicas. Cor/raça não declarada é uma categoria, não um valor ausente.','Sex and race/colour recorded in the Census, across all sectors. Enrolments are not unique people. Unreported race/colour is a category, not a missing value.'],
+  ['perfil','Perfil das matrículas','Enrolment profile','Sexo e cor/raça registrados no Censo, em todas as redes. Percentuais sobre todas as matrículas da educação básica do mesmo ano e território, incluindo cor/raça não declarada. Matrículas não são pessoas únicas.','Sex and race/colour recorded in the Census, across all sectors. Percentages use all basic education enrolments in the same year and territory, including unreported race/colour. Enrolments are not unique people.'],
   ['redes','Redes de ensino','School sectors','Matrículas nas redes municipal, estadual, federal e privada. Rede pública reúne as três primeiras.','Enrolments in municipal, state, federal and private schools. Public education combines the first three.'],
   ['integral','Tempo integral','Full-time education','Matrículas em jornada integral na educação infantil, no ensino fundamental e no médio.','Full-time enrolments in preschool, primary and secondary education.'],
   ['escolas','Rede de escolas','School network','Contagem de escolas em funcionamento e com matrículas na educação básica.','Operating schools with basic education enrolments.'],
@@ -32,8 +38,27 @@ type Ctx = { meta: MetaEducacao; grupo: GrupoEducacao; territorio: TerritorioEdu
 function Carregando({ erro, tentar }: { erro?: string; tentar: () => void }) {
   return <Estado erro={erro} carregando={!erro} mensagem={erro ? t('Não foi possível carregar os indicadores de educação.', 'Could not load education indicators.') : t('Carregando os indicadores de educação…', 'Loading education indicators…')} tentarNovamente={tentar} />;
 }
+function BuscaMunicipio({uf,cod,items,onEscolher}:{uf:string;cod:string;items?:TerritorioEducacao[];onEscolher:(codigo:string)=>void}) {
+  const id=useId(),[busca,setBusca]=useState(''),query=busca.trim(),ativa=query.length>=2;
+  const nacional=useEducacao(ativa ? 'busca-municipios' : null,obterBuscaMunicipiosEducacao);
+  const matches=useMemo(()=>filtrarMunicipiosEducacao(ativa ? nacional.dados ?? [] : query ? [] : items ?? [],query),[ativa,nacional.dados,items,query]);
+  const visiveis=ativa ? matches.slice(0,100) : matches;
+  const escolher=(code:string)=>{setBusca('');onEscolher(code);};
+  return <div className="ed-campo-municipio"><label htmlFor={id}>{t('Município','Municipality')}</label>
+    <input id={id} type="search" aria-label={t('Buscar município','Search municipality')} placeholder={t('Nome ou código IBGE, em qualquer estado…','Name or IBGE code, in any state…')} value={busca} onChange={e=>setBusca(e.target.value)} onKeyDown={e=>{
+      if(e.key==='Escape')setBusca('');
+      if(e.key==='Enter' && ativa){e.preventDefault();const match=municipioExatoEducacao(matches,query);if(match)escolher(match.grupo);}
+    }} />
+    <select aria-label={t('Município','Municipality')} value={query ? '' : cod} onChange={e=>escolher(e.target.value)}>
+      <option value="">{ativa ? t('Selecione um dos municípios encontrados','Select a matching municipality') : uf ? t('Todos os municípios do estado','All municipalities in the state') : t('Brasil · todos os municípios','Brazil · all municipalities')}</option>
+      {visiveis.map(x=><option key={x.grupo} value={x.grupo}>{x.nome} · {x.uf} · {x.grupo}{x.grupo==='2605459' ? t(' (distrito estadual)',' (state district)') : ''}</option>)}
+    </select>
+    <small className="ed-busca-ajuda" role="status">{ativa && !nacional.dados && !nacional.erro ? t('Carregando a busca nacional…','Loading national search…') : nacional.erro ? t('A busca não carregou. Tente novamente ou escolha um estado.','Search could not load. Retry or choose a state.') : ativa && !matches.length ? t('Nenhum município encontrado. Confira o nome ou código.','No matching municipality. Check the name or code.') : ativa ? t(`${matches.length} município(s) encontrado(s)${matches.length>100 ? '; mostrando os primeiros 100. Refine a busca.' : '. Escolha na lista ou pressione Enter para um resultado exato.'}`,`${matches.length} matching municipalities${matches.length>100 ? '; showing the first 100. Refine your search.' : '. Choose from the list or press Enter for an exact match.'}`) : t('Busque em todo o Brasil; o estado é opcional. Use ao menos dois caracteres.','Search across Brazil; the state is optional. Type at least two characters.')}</small>
+    {ativa && nacional.erro && <button type="button" onClick={nacional.recarregar}>{t('Repetir busca','Retry search')}</button>}
+  </div>;
+}
 function EducacaoBase({ pagina, historico = false, children }: { pagina: string; historico?: boolean; children: (c: Ctx) => ReactNode }) {
-  const [sp,setSp] = useSearchParams(); const [busca,setBusca] = useState('');
+  const [sp,setSp] = useSearchParams();
   const meta = useEducacao('meta', obterMetaEducacao);
   const ufRaw = (sp.get('uf') ?? '').trim().toUpperCase();
   const codeRaw = (sp.get('cod') ?? sp.get('ente') ?? '').trim();
@@ -59,14 +84,10 @@ function EducacaoBase({ pagina, historico = false, children }: { pagina: string;
     <h2>{pagina}</h2>
     <p className="ed-intro">{t('Matrículas, escolas, trajetória e aprendizagem. Os números já estão prontos: escolha o lugar e explore.', 'Enrolments, schools, student progression and learning. The figures are ready: choose a place and explore.')}</p>
     <div className="ed-filtros" aria-label={t('Filtros de educação','Education filters')}>
-      <label>{t('Estado','State')}<select aria-label={t('Estado','State')} value={uf in m.municipios ? uf : ''} onChange={e => {setBusca('');mudar({uf:e.target.value,cod:null});}}>
+      <label>{t('Estado (opcional)','State (optional)')}<select aria-label={t('Estado','State')} value={uf in m.municipios ? uf : ''} onChange={e => mudar({uf:e.target.value,cod:null})}>
         <option value="">{t('Brasil · todos os estados','Brazil · all states')}</option>{m.territorios.filter(x=>x.nivel==='UF').map(x=><option value={x.grupo} key={x.grupo}>{x.nome}</option>)}
       </select></label>
-      <label>{t('Município','Municipality')}{uf && <input type="search" aria-label={t('Buscar município','Search municipality')} placeholder={t('Buscar pelo nome…','Search by name…')} value={busca} onChange={e=>setBusca(e.target.value)} />}
-        <select aria-label={t('Município','Municipality')} value={territorio?.nivel==='M' ? territorio.grupo : ''} disabled={!uf || !municipios.dados} onChange={e=>mudar({cod:e.target.value})}>
-          <option value="">{uf ? t('Todos os municípios do estado','All municipalities in the state') : t('Escolha um estado para ver os municípios','Choose a state to see its municipalities')}</option>
-          {municipios.dados?.filter(x=>x.grupo===cod || normal(x.nome).includes(normal(busca))).map(x=><option key={x.grupo} value={x.grupo}>{x.nome}{x.grupo==='2605459' ? t(' (distrito estadual)',' (state district)') : ''}</option>)}
-        </select></label>
+      <BuscaMunicipio key={uf} uf={uf} cod={cod} items={municipios.dados} onEscolher={code=>mudar({cod:code || null,...(code ? {uf:ufMunicipioEducacao(code) ?? null} : {})})} />
       {!historico && <label>{t('Ano de referência','Reference year')}<select aria-label={t('Ano de referência','Reference year')} value={pedido ?? ''} onChange={e=>mudar({ano:e.target.value})}>
         <option value="">{t('Último ano de cada indicador','Latest year for each indicator')}</option>{foraDaBase && <option value={anoPedido!}>{anoPedido}</option>}{[...m.anos].reverse().map(y=><option value={y} key={y}>{y}</option>)}
       </select></label>}
@@ -112,12 +133,13 @@ function GraficosResumo({ c }: { c: Ctx }) {
 }
 
 export function EducacaoPainel() {
+  const [perfilPct,setPerfilPct]=useState(true);
   return <EducacaoBase pagina={t('Retrato da educação','Education at a glance')}>{c=><>
     <div className="ed-cards ed-resumo">{['mat_total','escolas','integral_pct','ideb_ai'].map(id=><Cartao c={c} i={c.meta.indicadores.find(i=>i.id===id)!} key={id} />)}</div>
     <p className="ed-nota">{t('Matrículas são registros de escolarização, não pessoas únicas. Os dados representam as escolas do território. As taxas de trajetória e o Ideb referem-se à rede pública; o ano aparece em cada cartão.','Enrolments are schooling records, not unique people. The data describe schools located in the territory. Student progression rates and Ideb refer to public schools; every card shows its reference year.')}</p>
     <nav className="ed-indice" aria-label={t('Índice de indicadores','Indicator index')}>{TEMAS.map(([id,pt,en])=><a href={'#'+id} key={id}>{t(pt,en)}</a>)}</nav>
     <GraficosResumo c={c} />
-    {TEMAS.map(([id,pt,en,nota,notaEn])=><section className="ed-secao" id={id} key={id}><h3>{t(pt,en)}</h3><p>{t(nota,notaEn)}</p><div className="ed-cards">{c.meta.indicadores.filter(i=>i.tema===id).map(i=><Cartao key={i.id} c={c} i={i} />)}</div></section>)}
+    {TEMAS.map(([id,pt,en,nota,notaEn])=><section className="ed-secao" id={id} key={id}><h3>{t(pt,en)}</h3><p>{t(nota,notaEn)}</p>{id==='perfil' && <div className="ed-acoes" role="group" aria-label={t('Medida do perfil','Profile measure')}><button type="button" aria-pressed={perfilPct} onClick={()=>setPerfilPct(true)}>{t('Percentuais','Percentages')}</button><button type="button" aria-pressed={!perfilPct} onClick={()=>setPerfilPct(false)}>{t('Matrículas','Enrolments')}</button></div>}<div className="ed-cards">{c.meta.indicadores.filter(i=>i.tema===id && (id!=='perfil' || (i.unidade==='percentual')===perfilPct)).map(i=><Cartao key={i.id} c={c} i={i} />)}</div></section>)}
     <p className="ed-nota">{t('Complete a análise com os gastos por aluno e o financiamento da educação.','Complete the analysis with expenditure per student and education funding.')} <Link to={c.link('/educacao/financiamento')}>{t('Ver financiamento · SIOPE','View funding · SIOPE')}</Link></p>
     <Link to="/downloads?area=educacao">{t('Baixar os dados de educação · Stata, R, CSV e Parquet','Download education data · Stata, R, CSV and Parquet')}</Link>
   </>}</EducacaoBase>;

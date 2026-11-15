@@ -4,6 +4,10 @@
 .ed-filtros { display: flex; flex-wrap: wrap; gap: 12px; padding: 14px; border: 1px solid var(--borda); border-radius: 10px; background: var(--superficie); margin-bottom: 14px; }
 .ed-filtros label { display: flex; flex-direction: column; gap: 5px; flex: 1 1 180px; font-size: 13px; min-width: 0; }
 .ed-filtros select,.ed-filtros input,.ed-escolha select { width: 100%; min-width: 0; min-height: 38px; }
+.ed-campo-municipio { display:flex; flex-direction:column; gap:5px; flex:1 1 280px; min-width:0; font-size:13px; }
+.ed-filtros .ed-campo-municipio > label { flex:0 0 auto; }
+.ed-busca-ajuda { color:var(--tinta-3); line-height:1.4; overflow-wrap:anywhere; }
+.ed-acoes button[aria-pressed="true"] { background:var(--acao); color:var(--acao-tinta); }
 .ed-nota { padding: 10px 13px; border-left: 3px solid var(--acao-texto); background: var(--superficie-2); color: var(--tinta-2); font-size: 13px; margin: 12px 0; overflow-wrap: anywhere; }
 .ed-indice { display: flex; flex-wrap: wrap; gap: 7px; padding: 12px 0; }
 .ed-indice a { padding: 5px 10px; background: var(--superficie); border: 1px solid var(--borda); border-radius: 999px; font-size: 13px; text-decoration: none; }

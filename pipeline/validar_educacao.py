@@ -8,7 +8,7 @@ from pathlib import Path
 
 import duckdb
 
-from educacao import IDS, NOMES_UF, UFS, planilhas, normal, CONTAGENS_ADICIONAIS, INFRA_ADICIONAL
+from educacao import IDS, NOMES_UF, UFS, planilhas, normal, CONTAGENS_ADICIONAIS, INFRA_ADICIONAL, PERFIL_PERCENTUAIS
 import pandas as pd
 from educacao_baixar import sha
 from painel_municipal import qs, qi
@@ -19,10 +19,10 @@ def ler(p):return json.loads(p.read_text(encoding='utf-8'))
 
 def validar(root,brutos):
     m=ler(root/'gold/educacao/manifesto.json');coleta=ler(brutos/'coleta.json')
-    assert len(m['indicadores'])==69 and sum(i['principal'] for i in m['indicadores'])==43 and m['anos']==list(range(2013,2026))
+    assert len(m['indicadores'])==77 and sum(i['principal'] for i in m['indicadores'])==43 and m['anos']==list(range(2013,2026))
     assert [i['id'] for i in m['indicadores']]==IDS
     assert m['coleta_sha256']==sha(brutos/'coleta.json')
-    refs=[m['arquivo'],m['parquet'],*m['municipios'].values(),*m['rankings'].values()]
+    refs=[m['arquivo'],m['parquet'],m['busca_municipios'],*m['municipios'].values(),*m['rankings'].values()]
     for ref in refs:
         p=(root/ref['caminho']).resolve();assert p.is_relative_to((root/'gold/educacao').resolve())
         assert p.stat().st_size==ref['bytes'] and sha(p)==ref['sha256']
@@ -33,6 +33,9 @@ def validar(root,brutos):
             assert t['uf']==uf and t['grupo'] not in territories
             assert UFS[int(t['grupo'][:2])]==uf and t['nome']
             territories[t['grupo']]=t
+    search=ler(root/m['busca_municipios']['caminho'])
+    assert search==sorted([[g,t['nome'],t['uf']] for g,t in territories.items() if t['nivel']=='M'],key=lambda r:(normal(r[1]),r[2],r[0]))
+    assert len(search)==5571 and len({r[0] for r in search})==len(search)
     values={};coverage={};offsets=[]
     with (root/m['arquivo']['caminho']).open('rb') as f:
         for g,t in territories.items():
@@ -64,6 +67,12 @@ def validar(root,brutos):
         cc,ce=rec['mat_esp_comum'],rec['mat_esp_exclusiva']
         expected=100*cc/(cc+ce) if cc is not None and ce is not None and cc+ce>0 else None
         assert expected==rec['esp_comum_pct']
+        for id,numerator in PERFIL_PERCENTUAIS.items():
+            n,d=rec[numerator],rec['mat_total']
+            expected=100*n/d if n is not None and d is not None and d>0 else None
+            assert expected==rec[id],(id,rec[id],expected)
+        for keys in [['mat_feminino_pct','mat_masculino_pct'],['mat_raca_'+s+'_pct' for s in ['branca','preta','parda','amarela','indigena','nd']]]:
+            if all(rec[k] is not None for k in keys):assert math.isclose(sum(rec[k] for k in keys),100,abs_tol=1e-10)
     # A publicação de taxas tem referências próprias; nunca se exige soma/média de Ideb.
     count_ids=['mat_total','mat_creche','mat_pre','mat_ai','mat_af','mat_medio','mat_eja','mat_prof','mat_especial','mat_publica','mat_municipal','mat_estadual','mat_privada','mat_federal','escolas','escolas_publicas','escolas_municipais']
     count_ids+=list(CONTAGENS_ADICIONAIS)
@@ -143,7 +152,7 @@ def validar(root,brutos):
                 assert values[(uf,2025)][field]==float(expected.iloc[0]),(uf,field)
                 ideb_checks.append(dict(uf=uf,ano=2025,indicador=field,valor=float(expected.iloc[0])))
     assert len(ideb_checks)==6
-    out=dict(ok=True,indicadores=69,territorios=len(territories),objetos=len(refs),somas_conferidas=compared,md5_inep_conferidos=md5_checked,duckdb=checks,ideb_estados=ideb_checks,perfis_conciliados=profile_checks,cotejos_adicionais=additional_checks)
+    out=dict(ok=True,indicadores=77,territorios=len(territories),objetos=len(refs),somas_conferidas=compared,md5_inep_conferidos=md5_checked,duckdb=checks,ideb_estados=ideb_checks,perfis_conciliados=profile_checks,cotejos_adicionais=additional_checks,percentuais_conferidos=len(values)*len(PERFIL_PERCENTUAIS),busca_nacional=len(search))
     (root/'trabalho_educacao/auditoria.json').write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf-8')
     print(json.dumps(out,ensure_ascii=False),flush=True)
 
