@@ -13,6 +13,7 @@ flat <- function(entries) {
   for (k in c("ano_de", "ano_ate")) out[[k]] <- vapply(entries, function(d) if (is.null(d[[k]])) NA_integer_ else as.integer(d[[k]]), integer(1))
   out$anos_observados <- I(lapply(entries, function(d) as.integer(unlist(d$anos_observados))))
   out$stata_rotulos <- I(lapply(entries, function(d) d$stata_rotulos))
+  out$arquivo_principal <- vapply(entries, function(d) !identical(d$arquivo_principal,FALSE), logical(1))
   out
 }
 dict_frame <- flat(dictionary)

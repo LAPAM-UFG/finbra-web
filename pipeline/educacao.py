@@ -101,8 +101,65 @@ for i in INDICADORES:
         i['descricao'] += ' Alunos com dois anos ou mais de atraso em relação à idade esperada para a série.'
         i['descricao_en'] += ' Students at least two years older than the expected age for their grade.'
 
+IDS_PRINCIPAIS = tuple(i['id'] for i in INDICADORES)
+CONTAGENS_ADICIONAIS = {
+    'mat_feminino':('QT_MAT_BAS_FEM','Matrículas: sexo feminino','Enrolments: female','perfil'),
+    'mat_masculino':('QT_MAT_BAS_MASC','Matrículas: sexo masculino','Enrolments: male','perfil'),
+    'mat_raca_branca':('QT_MAT_BAS_BRANCA','Matrículas: cor/raça branca','Enrolments: white','perfil'),
+    'mat_raca_preta':('QT_MAT_BAS_PRETA','Matrículas: cor/raça preta','Enrolments: black','perfil'),
+    'mat_raca_parda':('QT_MAT_BAS_PARDA','Matrículas: cor/raça parda','Enrolments: brown (parda)','perfil'),
+    'mat_raca_amarela':('QT_MAT_BAS_AMARELA','Matrículas: cor/raça amarela','Enrolments: Asian (amarela)','perfil'),
+    'mat_raca_indigena':('QT_MAT_BAS_INDIGENA','Matrículas: cor/raça indígena','Enrolments: Indigenous','perfil'),
+    'mat_raca_nd':('QT_MAT_BAS_ND','Matrículas: cor/raça não declarada','Enrolments: unreported race/colour','perfil'),
+    'mat_esp_comum':('QT_MAT_ESP_CC','Educação especial: classes comuns','Special education: mainstream classes','inclusao'),
+    'mat_esp_exclusiva':('QT_MAT_ESP_CE','Educação especial: classes exclusivas','Special education: exclusive classes','inclusao'),
+    'doc_bas':('QT_DOC_BAS','Docentes nas escolas: educação básica','School teaching positions: basic education','docentes'),
+    'doc_inf':('QT_DOC_INF','Docentes nas escolas: educação infantil','School teaching positions: early childhood','docentes'),
+    'doc_fund':('QT_DOC_FUND','Docentes nas escolas: ensino fundamental','School teaching positions: primary/lower secondary','docentes'),
+    'doc_med':('QT_DOC_MED','Docentes nas escolas: ensino médio regular','School teaching positions: regular upper secondary','docentes'),
+    'tur_bas':('QT_TUR_BAS','Turmas da educação básica','Basic education classes','docentes'),
+    'tur_inf':('QT_TUR_INF','Turmas da educação infantil','Early childhood classes','docentes'),
+    'tur_fund':('QT_TUR_FUND','Turmas do ensino fundamental','Primary/lower secondary classes','docentes'),
+    'tur_med':('QT_TUR_MED','Turmas do ensino médio regular','Regular upper secondary classes','docentes'),
+}
+INFRA_ADICIONAL = {
+    'agua_potavel_pct':('IN_AGUA_POTAVEL','Escolas públicas com água potável','Public schools providing drinking water'),
+    'esgoto_rede_pct':('IN_ESGOTO_REDE_PUBLICA','Escolas públicas ligadas à rede de esgoto','Public schools connected to a sewage network'),
+    'energia_rede_pct':('IN_ENERGIA_REDE_PUBLICA','Escolas públicas com energia da rede','Public schools with grid electricity'),
+    'lixo_coleta_pct':('IN_LIXO_SERVICO_COLETA','Escolas públicas com coleta de lixo','Public schools with waste collection'),
+    'alimentacao_pct':('IN_ALIMENTACAO','Escolas públicas com alimentação (PNAE)','Public schools providing meals (PNAE)'),
+    'internet_alunos_pct':('IN_INTERNET_ALUNOS','Escolas públicas com internet para alunos','Public schools with internet for students'),
+    'rampas_pct':('IN_ACESSIBILIDADE_RAMPAS','Escolas públicas com rampas acessíveis','Public schools with accessibility ramps'),
+}
+for k,(col,n,en,tema) in CONTAGENS_ADICIONAIS.items():
+    CONTAGENS[k]=(col,n,en)
+    if k.startswith('doc_'):
+        pt='Soma das contagens de docentes de cada escola. Um professor que atua em duas escolas conta duas vezes. As etapas podem se sobrepor; não somá-las. Não é uma contagem de professores únicos no território.'
+        eng='Sum of school-level teacher counts. A teacher working at two schools counts twice. Stages can overlap and must not be added. This is not a count of unique teachers in the territory.'
+    elif k.startswith('tur_'):
+        pt='Contagem de turmas nas escolas em funcionamento e com matrículas, em todas as redes. Ausência de divulgação é preservada.'
+        eng='Classes in operating schools with enrolments, across all sectors. Unpublished counts remain missing.'
+    else:
+        pt='Matrículas da educação básica nas escolas do território, em todas as redes. São registros de matrícula, não pessoas únicas. Cor/raça não declarada é uma categoria registrada, diferente de dado ausente.'
+        eng='Basic education enrolments in schools located in the territory, across all sectors. These are enrolment records, not unique people. Unreported race/colour is a recorded category, distinct from missing data.'
+    INDICADORES.append(indicador(k,n,en,tema,descricao=pt,descricao_en=eng))
+for k,(col,n,en) in INFRA_ADICIONAL.items():
+    INFRA[k]=(col,n,en)
+    pt='Percentual entre escolas públicas com matrículas e resposta válida ao item. Razão das somas de escolas, sem média dos percentuais municipais. Ausência de resposta permanece ausente.'
+    eng='Percentage of public schools with enrolments and a valid answer. Ratio of school counts, not an average of municipal percentages. Missing answers remain missing.'
+    if k=='alimentacao_pct':
+        pt+=' O campo oficial refere-se à alimentação escolar PNAE/FNDE.'
+        eng+=' The official field refers to PNAE/FNDE school meals.'
+    if k=='internet_alunos_pct':
+        pt+=' A declaração explícita de não ter internet implica não oferecê-la aos alunos.'
+        eng+=' An explicit no-internet answer implies no internet for students.'
+    INDICADORES.append(indicador(k,n,en,'infraestrutura','percentual',descricao=pt,descricao_en=eng))
+INDICADORES.append(indicador('esp_comum_pct','Educação especial em classes comuns','Special education in mainstream classes','inclusao','percentual',
+    descricao='Matrículas da educação especial em classes comuns divididas pelas matrículas da educação especial em classes comuns e exclusivas, vezes 100. Todas as redes; não mede a parcela de alunos com deficiência na população. Sem matrículas de educação especial, o percentual fica indefinido.',
+    descricao_en='Special education enrolments in mainstream classes divided by special education enrolments in mainstream and exclusive classes, times 100. All sectors; not a measure of disability prevalence. With no special education enrolments, the percentage is undefined.'))
+for i in INDICADORES:i['principal']=i['id'] in IDS_PRINCIPAIS
 IDS = [i['id'] for i in INDICADORES]
-assert len(IDS)==43 and len(set(IDS))==43
+assert len(IDS)==69 and len(set(IDS))==69 and len(IDS_PRINCIPAIS)==43
 
 
 def normal(text):
@@ -130,11 +187,14 @@ def csv_escola(folder, year):
         except UnicodeDecodeError:return pd.read_csv(file,sep=';',encoding='cp1252',usecols=usecols,low_memory=False)
     frame=read(path,[c for c in columns if c in wanted])
     if year>=2025:
-        mat=next(folder.glob('Tabela_Matricula_*.csv'))
-        with mat.open('rb') as f:cols=f.readline().decode('utf-8-sig').strip().split(';')
-        m=read(mat,[c for c in cols if c in wanted and (c.startswith('QT_MAT') or c=='CO_ENTIDADE')])
-        if frame.CO_ENTIDADE.duplicated().any() or m.CO_ENTIDADE.duplicated().any(): raise ValueError('Escolas duplicadas na junção')
-        frame=frame.merge(m,on='CO_ENTIDADE',how='left',validate='one_to_one')
+        for kind in ['Matricula','Docente','Turma']:
+            files=list(folder.glob('Tabela_'+kind+'_*.csv'))
+            if len(files)!=1:raise ValueError('Tabela agregada ausente ou ambígua: '+kind)
+            with files[0].open('rb') as f:cols=f.readline().decode('utf-8-sig').strip().split(';')
+            selected=['CO_ENTIDADE',*[c for c in cols if c in wanted and c not in frame]]
+            m=read(files[0],selected)
+            if frame.CO_ENTIDADE.duplicated().any() or m.CO_ENTIDADE.duplicated().any(): raise ValueError('Escolas duplicadas na junção: '+kind)
+            frame=frame.merge(m,on='CO_ENTIDADE',how='left',validate='one_to_one')
     if frame.CO_ENTIDADE.duplicated().any():raise ValueError('Escola duplicada')
     if set(frame.NU_ANO_CENSO.dropna().unique())!={year}:raise ValueError('Ano do Censo divergente')
     if frame.CO_MUNICIPIO.isna().any():raise ValueError('Código municipal ausente')
@@ -170,7 +230,7 @@ def agregar_escolas(frame):
             a=frame.get('IN_BIBLIOTECA',pd.Series(np.nan,index=frame.index));b=frame.get('IN_SALA_LEITURA',pd.Series(np.nan,index=frame.index))
             derived=(a.eq(1)|b.eq(1)).astype(float).where(a.eq(1)|b.eq(1)|(a.eq(0)&b.eq(0)))
             flag=flag.where(flag.notna(),derived)
-        if k=='banda_larga_pct': flag=flag.where(flag.notna(),0).where(flag.notna()|frame.IN_INTERNET.eq(0))
+        if k in ['banda_larga_pct','internet_alunos_pct']: flag=flag.where(flag.notna(),0).where(flag.notna()|frame.IN_INTERNET.eq(0))
         flags[k]=flag.where(flag.isin([0,1]))
     for k,flag in flags.items():
         vals['_n_'+k]=flag.eq(1).where(public,False).astype(int)
@@ -185,6 +245,8 @@ def agregar_escolas(frame):
     ])
     incomplete=vals[['mat_integral','_base_integral']].isna().any(axis=1)
     bad={'BR':incomplete.any(),**incomplete.groupby(frame.CO_MUNICIPIO.astype(int).astype(str)).any().to_dict(),**incomplete.groupby(frame.SG_UF).any().to_dict()}
+    missing=vals[list(CONTAGENS_ADICIONAIS)].isna()
+    missing_groups=pd.concat([pd.DataFrame([missing.any()],index=['BR']),missing.groupby(frame.CO_MUNICIPIO.astype(int).astype(str)).any(),missing.groupby(frame.SG_UF).any()])
     for group,sums in aggregated.iterrows():
         rec={k:valor(sums.get(k)) for k in IDS if k in vals}
         den=sums['_base_integral'];num=sums['mat_integral']
@@ -192,6 +254,10 @@ def agregar_escolas(frame):
         complete=not bad[group]
         if not complete:rec['mat_integral']=None
         rec['integral_pct']=valor(100*num/den) if complete and pd.notna(den) and den>0 else None
+        for k in CONTAGENS_ADICIONAIS:
+            if missing_groups.loc[group,k]:rec[k]=None
+        cc,ce=rec['mat_esp_comum'],rec['mat_esp_exclusiva']
+        rec['esp_comum_pct']=100*cc/(cc+ce) if cc is not None and ce is not None and cc+ce>0 else None
         cov={}
         for k in flags:
             n,d=int(sums['_n_'+k]),int(sums['_d_'+k]);rec[k]=100*n/d if d else None;cov[k]=[n,d]
@@ -281,7 +347,7 @@ def gerar(brutos,saida,base=Path('E:/finbra/data')):
         hashes=[(e['nome'],sha(folder/e['nome'])) for e in source['arquivos'] if Path(e['nome']).suffix.lower()=='.csv']
         for name,digest in hashes:assert digest==next(e['sha256'] for e in source['arquivos'] if e['nome']==name)
         fingerprint=hashlib.sha256(json.dumps(hashes,sort_keys=True).encode()).hexdigest()
-        cache=work/f'censo_{year}_v1.json'
+        cache=work/f'censo_{year}_v2.json'
         cached=json.loads(cache.read_text(encoding='utf-8')) if cache.exists() else None
         if cached and cached['origem']==fingerprint:
             result=cached['result'];labels=cached['labels'];schools=cached['escolas']

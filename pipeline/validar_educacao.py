@@ -8,10 +8,10 @@ from pathlib import Path
 
 import duckdb
 
-from educacao import IDS, NOMES_UF, UFS, planilhas, normal
+from educacao import IDS, NOMES_UF, UFS, planilhas, normal, CONTAGENS_ADICIONAIS, INFRA_ADICIONAL
 import pandas as pd
 from educacao_baixar import sha
-from painel_municipal import qs
+from painel_municipal import qs, qi
 
 
 def ler(p):return json.loads(p.read_text(encoding='utf-8'))
@@ -19,7 +19,7 @@ def ler(p):return json.loads(p.read_text(encoding='utf-8'))
 
 def validar(root,brutos):
     m=ler(root/'gold/educacao/manifesto.json');coleta=ler(brutos/'coleta.json')
-    assert len(m['indicadores'])==43 and m['anos']==list(range(2013,2026))
+    assert len(m['indicadores'])==69 and sum(i['principal'] for i in m['indicadores'])==43 and m['anos']==list(range(2013,2026))
     assert [i['id'] for i in m['indicadores']]==IDS
     assert m['coleta_sha256']==sha(brutos/'coleta.json')
     refs=[m['arquivo'],m['parquet'],*m['municipios'].values(),*m['rankings'].values()]
@@ -41,7 +41,7 @@ def validar(root,brutos):
             record=json.loads(raw);assert record['grupo']==g
             years=[int(r[0]) for r in record['linhas']];assert years==sorted(set(years))
             for row in record['linhas']:
-                assert len(row)==44 and 2013<=row[0]<=2025
+                assert len(row)==len(IDS)+1 and 2013<=row[0]<=2025
                 vals=dict(zip(IDS,row[1:]));values[(g,row[0])]=vals
                 coverage[(g,row[0])]=record['cobertura'].get(str(row[0]),{})
                 for i in m['indicadores']:
@@ -55,8 +55,18 @@ def validar(root,brutos):
     pos=0
     for start,size in sorted(offsets):assert start==pos;pos+=size
     assert pos==m['arquivo']['bytes']
+    profile_checks=0
+    for rec in values.values():
+        for keys,total in [(['mat_feminino','mat_masculino'],'mat_total'),(['mat_raca_branca','mat_raca_preta','mat_raca_parda','mat_raca_amarela','mat_raca_indigena','mat_raca_nd'],'mat_total'),(['mat_esp_comum','mat_esp_exclusiva'],'mat_especial')]:
+            if rec[total] is not None and all(rec[k] is not None for k in keys):
+                assert sum(rec[k] for k in keys)==rec[total],(keys,total,rec)
+                profile_checks+=1
+        cc,ce=rec['mat_esp_comum'],rec['mat_esp_exclusiva']
+        expected=100*cc/(cc+ce) if cc is not None and ce is not None and cc+ce>0 else None
+        assert expected==rec['esp_comum_pct']
     # A publicação de taxas tem referências próprias; nunca se exige soma/média de Ideb.
     count_ids=['mat_total','mat_creche','mat_pre','mat_ai','mat_af','mat_medio','mat_eja','mat_prof','mat_especial','mat_publica','mat_municipal','mat_estadual','mat_privada','mat_federal','escolas','escolas_publicas','escolas_municipais']
+    count_ids+=list(CONTAGENS_ADICIONAIS)
     compared=0
     for year in m['anos']:
         for group in ['BR',*NOMES_UF]:
@@ -85,18 +95,34 @@ def validar(root,brutos):
                 with path.open('rb') as f:assert hashlib.file_digest(f,'md5').hexdigest()==expected[path.name.lower()]
                 md5_checked+=1
     # Um segundo motor lê os CSV diretamente, sem usar a transformação pandas.
-    db=duckdb.connect();checks=[]
+    db=duckdb.connect();checks=[];additional_checks=0
     def csv(p):return 'read_csv('+qs(p.as_posix())+",delim=';',header=true,all_varchar=true,encoding='latin-1')"
     for year in [2013,2024,2025]:
         folder=brutos/str(year);school=next(p for p in folder.iterdir() if p.suffix.lower()=='.csv' and ('microdados_ed_basica' in p.name.lower() or 'tabela_escola_' in p.name.lower()))
         if year==2025:
             mat=next(folder.glob('Tabela_Matricula_*.csv'))
-            query='SELECT s.CO_MUNICIPIO,s.SG_UF,s.TP_DEPENDENCIA,s.TP_SITUACAO_FUNCIONAMENTO,m.QT_MAT_BAS FROM '+csv(school)+' s JOIN '+csv(mat)+' m USING(CO_ENTIDADE)'
-        else:query='SELECT CO_MUNICIPIO,SG_UF,TP_DEPENDENCIA,TP_SITUACAO_FUNCIONAMENTO,QT_MAT_BAS FROM '+csv(school)
+            doc=next(folder.glob('Tabela_Docente_*.csv'));tur=next(folder.glob('Tabela_Turma_*.csv'))
+            more=[('d.' if k.startswith('doc_') else 't.' if k.startswith('tur_') else 'm.')+col+' AS '+col for k,(col,*_) in CONTAGENS_ADICIONAIS.items()]
+            more+=['s.'+col+' AS '+col for col,*_ in INFRA_ADICIONAL.values()]
+            query='SELECT s.CO_MUNICIPIO,s.SG_UF,s.TP_DEPENDENCIA,s.TP_SITUACAO_FUNCIONAMENTO,s.IN_INTERNET,m.QT_MAT_BAS,'+','.join(more)+' FROM '+csv(school)+' s JOIN '+csv(mat)+' m USING(CO_ENTIDADE) JOIN '+csv(doc)+' d USING(CO_ENTIDADE) JOIN '+csv(tur)+' t USING(CO_ENTIDADE)'
+        else:
+            with school.open('rb') as f:available=f.readline().decode('utf-8-sig').strip().split(';')
+            wanted=['CO_MUNICIPIO','SG_UF','TP_DEPENDENCIA','TP_SITUACAO_FUNCIONAMENTO','QT_MAT_BAS','IN_INTERNET',*[v[0] for v in CONTAGENS_ADICIONAIS.values()],*[v[0] for v in INFRA_ADICIONAL.values()]]
+            query='SELECT '+','.join(qi(c) if c in available else 'NULL AS '+qi(c) for c in wanted)+' FROM '+csv(school)
         db.execute('CREATE OR REPLACE TABLE escolas AS '+query)
         for group,condition in [('BR','true'),('GO',"SG_UF='GO'"),('5208707',"CO_MUNICIPIO='5208707'"),('DF',"SG_UF='DF'")]:
             total,schools,public=db.execute('SELECT sum(cast(QT_MAT_BAS as BIGINT)),count(*),sum(CASE WHEN TP_DEPENDENCIA IN (\'1\',\'2\',\'3\') THEN cast(QT_MAT_BAS as BIGINT) ELSE 0 END) FROM escolas WHERE TP_SITUACAO_FUNCIONAMENTO=\'1\' AND cast(QT_MAT_BAS as BIGINT)>0 AND '+condition).fetchone()
             rec=values[(group,year)];assert (rec['mat_total'],rec['escolas'],rec['mat_publica'])==(total,schools,public),(group,year)
+            eligible="TP_SITUACAO_FUNCIONAMENTO='1' AND cast(QT_MAT_BAS as BIGINT)>0 AND "+condition
+            for k,(column,*_) in CONTAGENS_ADICIONAIS.items():
+                v=db.execute('SELECT CASE WHEN count('+qi(column)+')=count(*) THEN sum(cast('+qi(column)+' AS BIGINT)) END FROM escolas WHERE '+eligible).fetchone()[0]
+                assert rec[k]==v,(group,year,k,rec[k],v);additional_checks+=1
+            for k,(column,*_) in INFRA_ADICIONAL.items():
+                flag=qi(column)
+                if k=='internet_alunos_pct':flag="CASE WHEN "+flag+" IS NULL AND IN_INTERNET='0' THEN '0' ELSE "+flag+' END'
+                n,d=db.execute("SELECT count(*) FILTER(WHERE "+flag+"='1'),count(*) FILTER(WHERE "+flag+" IN ('0','1')) FROM escolas WHERE "+eligible+" AND TP_DEPENDENCIA IN ('1','2','3')").fetchone()
+                expected=100*n/d if d else None
+                assert rec[k]==expected,(group,year,k,rec[k],expected);additional_checks+=1
             checks.append(dict(grupo=group,ano=year,matriculas=total,escolas=schools))
     # Cotejo por nomes literais da tabela original: não reutiliza o mapa nome→UF
     # da transformação, para detectar troca entre São Paulo e Sergipe.
@@ -117,7 +143,7 @@ def validar(root,brutos):
                 assert values[(uf,2025)][field]==float(expected.iloc[0]),(uf,field)
                 ideb_checks.append(dict(uf=uf,ano=2025,indicador=field,valor=float(expected.iloc[0])))
     assert len(ideb_checks)==6
-    out=dict(ok=True,indicadores=43,territorios=len(territories),objetos=len(refs),somas_conferidas=compared,md5_inep_conferidos=md5_checked,duckdb=checks,ideb_estados=ideb_checks)
+    out=dict(ok=True,indicadores=69,territorios=len(territories),objetos=len(refs),somas_conferidas=compared,md5_inep_conferidos=md5_checked,duckdb=checks,ideb_estados=ideb_checks,perfis_conciliados=profile_checks,cotejos_adicionais=additional_checks)
     (root/'trabalho_educacao/auditoria.json').write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf-8')
     print(json.dumps(out,ensure_ascii=False),flush=True)
 

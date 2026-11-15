@@ -57,6 +57,16 @@ test('catálogo fornece hash e URL imutável do recorte exato',async()=>{
   assert.equal(b.api_versao,'v1');
 });
 
+test('dicionário inclui indicadores adicionais no tema, preservando a seleção principal',async()=>{
+ const f=fixture();
+ f.store.set(f.m.dicionario.caminho,Buffer.from(JSON.stringify([{variavel:'cod_ibge',area:'identificacao'},{variavel:'valor',area:'saude'},{variavel:'extra',area:'saude',arquivo_principal:false}])));
+ const main=await (await f.fetch(`${api}/dicionario.json`)).json();
+ const themed=await (await f.fetch(`${api}/dicionario.json?tema=saude`)).json();
+ assert.deepEqual(main.map(e=>e.variavel),['cod_ibge','valor']);
+ assert.deepEqual(themed.map(e=>e.variavel),['cod_ibge','valor','extra']);
+ assert.equal(themed[2].arquivo_principal,false);
+});
+
 test('HEAD padrão e Range não alteram a rota de dados anterior',async()=>{
   const f=fixture();const h=await f.fetch(`${api}/painel/GO/saude.dta`,{method:'HEAD'});
   assert.equal(h.status,200);assert.equal(await h.text(),'');assert(h.headers.get('Content-Length'));assert.equal(h.headers.get('Content-Range'),null);

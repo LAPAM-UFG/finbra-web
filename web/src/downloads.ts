@@ -154,6 +154,7 @@ export type EntradaDic = {
   ano_de: number | null; ano_ate: number | null; tabela: string; observacao: string;
   anos_observados?: number[];
   variavel_original?: string;
+  arquivo_principal?: boolean;
   stata_rotulos?: Record<string, string>;
 };
 export type IndiceDic = { entradas: EntradaDic[]; textos: string[]; variaveis: string[] };
@@ -170,6 +171,7 @@ export function validarDicionario(bruto: unknown): EntradaDic[] {
       variavel: e.variavel, nome: s(e.nome), descricao: s(e.descricao), area: s(e.area), fonte: s(e.fonte), unidade: s(e.unidade), tipo: s(e.tipo), regra_anual: s(e.regra_anual),
       ano_de: anoOuNulo(e.ano_de) ? e.ano_de : null, ano_ate: anoOuNulo(e.ano_ate) ? e.ano_ate : null, tabela: s(e.tabela), observacao: s(e.observacao),
       variavel_original: s(e.variavel_original) || undefined,
+      arquivo_principal: typeof e.arquivo_principal==='boolean' ? e.arquivo_principal : undefined,
       stata_rotulos: registro(e.stata_rotulos) ? Object.fromEntries(Object.entries(e.stata_rotulos).filter(([,v]) => typeof v === 'string')) as Record<string,string> : undefined,
       anos_observados: Array.isArray(e.anos_observados) ? e.anos_observados.filter((v): v is number => typeof v==='number'&&Number.isInteger(v)&&v>=1900&&v<=2200) : undefined,
     });
@@ -196,6 +198,7 @@ export function filtrarDicionario(idx: IndiceDic, busca: string, area: string): 
   const demais: EntradaDic[] = [];
   for (let i = 0; i < idx.entradas.length; i += 1) {
     const e = idx.entradas[i];
+    if (!area && !termos.length && e.arquivo_principal===false) continue;
     if (area && e.area !== area) continue;
     if (termos.some((t) => !idx.textos[i].includes(t))) continue;
     (termos.length && termos.every((t) => idx.variaveis[i].includes(t)) ? primeiros : demais).push(e);

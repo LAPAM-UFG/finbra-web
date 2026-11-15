@@ -31,6 +31,13 @@ test('dicionário pesquisa sem acentos e preserva nulos e referências',()=>{
  assert.equal(entries[0].ano_de,2000);assert.throws(()=>validarDicionario({}));
 });
 
+test('indicadores adicionais aparecem no tema e na busca; a seleção principal conserva seu tamanho',()=>{
+ const idx=indexarDicionario(validarDicionario([{variavel:'edu_mat_total',area:'educacao',nome:'Matrículas'}, {variavel:'edu_doc_bas',area:'educacao',nome:'Docentes por escola',arquivo_principal:false}]));
+ assert.deepEqual(filtrarDicionario(idx,'','').map(x=>x.variavel),['edu_mat_total']);
+ assert.equal(filtrarDicionario(idx,'','educacao').length,2);
+ assert.equal(filtrarDicionario(idx,'docentes','')[0].arquivo_principal,false);
+});
+
 test('Downloads não leva filtros para os painéis',()=>{
  assert.equal(buscaEntreAreas('?uf=GO&ano=2020&ente=5208707','downloads','saude'),'');
  assert.ok(buscaEntreAreas('?uf=GO&ente=5208707','saude','assistencia').includes('cod=5208707'));

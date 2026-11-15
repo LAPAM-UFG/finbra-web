@@ -112,7 +112,8 @@ def extrair_censo(job):
     record = folder / 'origem.json'
     if record.exists():
         old = json.loads(record.read_text(encoding='utf-8'))
-        if old['url'] == url and all((folder / f['nome']).is_file() and sha(folder/f['nome']) == f['sha256'] for f in old['arquivos']):
+        adicionais = year < 2025 or all(any(re.search('Tabela_'+tipo+'_',f['nome'],re.I) for f in old['arquivos']) for tipo in ['Docente','Turma'])
+        if old['url'] == url and adicionais and all((folder / f['nome']).is_file() and sha(folder/f['nome']) == f['sha256'] for f in old['arquivos']):
             print(f'Censo {year}: cache conferido', flush=True)
             return old
     remote = ZipRemoto(url)
@@ -120,7 +121,7 @@ def extrair_censo(job):
     with zipfile.ZipFile(remote) as z:
         for item in z.infolist():
             name = Path(item.filename).name
-            csv = name.lower().endswith('.csv') and ('microdados_ed_basica' in name.lower() or re.search('Tabela_(Escola|Matricula)_', name, re.I))
+            csv = name.lower().endswith('.csv') and ('microdados_ed_basica' in name.lower() or re.search('Tabela_(Escola|Matricula|Docente|Turma)_', name, re.I))
             dictionary = name.endswith('.xlsx') and 'Dicion' in item.filename
             check = name.startswith('md5_')
             if not (csv or dictionary or check):

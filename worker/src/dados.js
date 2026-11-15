@@ -138,7 +138,7 @@ export async function rotaDados(request,env,url,servirDados) {
         const tema=url.searchParams.get('tema') ?? '';
         if(tema && tema!=='todos' && !m.areas.some(a=>a.id===tema)) throw new Falha(400,'tema_invalido','Tema inválido.');
         const entries=await lerJson(env,m.dicionario);
-        return json(request,tema && tema!=='todos' ? entries.filter(e=>e.area===tema || e.area==='identificacao') : entries);
+        return json(request,tema && tema!=='todos' ? entries.filter(e=>e.area===tema || e.area==='identificacao') : entries.filter(e=>e.arquivo_principal!==false));
       }
       const a=m.arquivos.find(a=>a.tipo==='dicionario' && a.escopo!=='detalhado' && a.formato===dict[1]);
       if(!a) throw new Falha(404,'formato_indisponivel','Dicionário indisponível nesse formato.');

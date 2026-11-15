@@ -72,10 +72,13 @@ finbra <- function(uf = NULL, tema = NULL, municipio = NULL, anos = NULL, variav
 finbra_dicionario <- function(tema = NULL, base_url = .finbra_base, quiet = TRUE) {
   d <- .finbra_ler_rds(paste0(sub("/+$","",base_url),"/dicionario.rds"),quiet)
   if (!is.data.frame(d) || !"variavel" %in% names(d)) stop("Dicion\u00e1rio inv\u00e1lido.")
+  tema_normalizado <- "todos"
   if (!is.null(tema)) {
     finbra_url(tema=tema,base_url=base_url) # valida o nome sem fazer uma requisi\u00e7\u00e3o
     tema <- tolower(iconv(trimws(tema),to="ASCII//TRANSLIT"))
+    tema_normalizado <- tema
     if (tema!="todos") d <- d[d$area %in% c(tema,"identificacao"),,drop=FALSE]
   }
+  if (tema_normalizado=="todos" && "arquivo_principal" %in% names(d)) d <- d[is.na(d$arquivo_principal) | d$arquivo_principal,,drop=FALSE]
   d
 }

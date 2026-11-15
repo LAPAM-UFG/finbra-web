@@ -102,8 +102,9 @@ class Educacao(unittest.TestCase):
             self.assertFalse(any(source.iterdir()))
 
     def test_contrato_das_variaveis(self):
-        self.assertEqual(len(INDICADORES),43)
-        self.assertEqual(len({i['variavel'] for i in INDICADORES}),43)
+        self.assertEqual(len(INDICADORES),69)
+        self.assertEqual(sum(i['principal'] for i in INDICADORES),43)
+        self.assertEqual(len({i['variavel'] for i in INDICADORES}),69)
         self.assertTrue(all(len(i['variavel'])<=32 for i in INDICADORES))
 
     def test_cadastro_ausente_e_conciliado_por_codigo_sem_mudar_contagens(self):
@@ -118,6 +119,43 @@ class Educacao(unittest.TestCase):
             self.assertEqual(result.NO_MUNICIPIO.tolist(),['Sapiranga','Sapiranga'])
             frame.loc[0,'SG_UF']='SP';frame.to_csv(folder/'microdados_ed_basica_2013.csv',sep=';',index=False)
             with self.assertRaises(ValueError):csv_escola(folder,2013)
+
+    def test_inclusao_usa_somas_e_denominador_zero_fica_indefinido(self):
+        frame=escolas();frame['QT_MAT_ESP_CC']=[9,0,1,0];frame['QT_MAT_ESP_CE']=[1,0,89,0]
+        groups,_=agregar_escolas(frame)
+        self.assertEqual(groups['GO'][0]['esp_comum_pct'],10)
+        self.assertEqual(groups['GO'][0]['mat_esp_comum'],10)
+        self.assertIsNone(groups['DF'][0]['esp_comum_pct'])
+
+    def test_contagens_adicionais_recusam_total_parcial(self):
+        frame=escolas();frame['QT_DOC_BAS']=[3,np.nan,5,0]
+        frame['QT_MAT_BAS_ND']=[0,0,2,0]
+        groups,_=agregar_escolas(frame)
+        self.assertIsNone(groups['GO'][0]['doc_bas'])
+        self.assertIsNone(groups['5208707'][0]['doc_bas'])
+        self.assertEqual(groups['5200050'][0]['doc_bas'],5)
+        self.assertEqual(groups['GO'][0]['mat_raca_nd'],2)
+        self.assertEqual(groups['DF'][0]['mat_raca_nd'],0)
+
+    def test_internet_alunos_preserva_ausencia_e_zero_condicional(self):
+        frame=escolas();frame['IN_INTERNET_ALUNOS']=[np.nan,np.nan,1,1]
+        groups,_=agregar_escolas(frame)
+        self.assertEqual(groups['GO'][1]['internet_alunos_pct'],[1,2])
+        self.assertEqual(groups['GO'][0]['internet_alunos_pct'],50)
+
+    def test_tabelas_2025_juntam_por_escola_e_recusam_duplicatas(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder=Path(tmp)
+            pd.DataFrame([dict(NU_ANO_CENSO=2025,CO_ENTIDADE=1,CO_MUNICIPIO=5208707,NO_MUNICIPIO='Goiânia',SG_UF='GO',TP_SITUACAO_FUNCIONAMENTO=1)]).to_csv(folder/'Tabela_Escola_2025.csv',sep=';',index=False)
+            pd.DataFrame([dict(CO_ENTIDADE=1,QT_MAT_BAS=20)]).to_csv(folder/'Tabela_Matricula_2025.csv',sep=';',index=False)
+            pd.DataFrame([dict(CO_ENTIDADE=1,QT_DOC_BAS=3)]).to_csv(folder/'Tabela_Docente_2025.csv',sep=';',index=False)
+            pd.DataFrame([dict(CO_ENTIDADE=1,QT_TUR_BAS=2)]).to_csv(folder/'Tabela_Turma_2025.csv',sep=';',index=False)
+            frame=csv_escola(folder,2025)
+            self.assertEqual(frame.QT_MAT_BAS.tolist(),[20])
+            self.assertEqual(frame.QT_DOC_BAS.tolist(),[3])
+            self.assertEqual(frame.QT_TUR_BAS.tolist(),[2])
+            pd.DataFrame([dict(CO_ENTIDADE=1,QT_DOC_BAS=3)]*2).to_csv(folder/'Tabela_Docente_2025.csv',sep=';',index=False)
+            with self.assertRaises(ValueError):csv_escola(folder,2025)
 
     def test_ensino_medio_legado_nao_confunde_total_com_nao_seriado(self):
         with tempfile.TemporaryDirectory() as tmp:
