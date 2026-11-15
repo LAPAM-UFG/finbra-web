@@ -3,6 +3,7 @@
  * Sem React e sem rede: a página (pages/Downloads.tsx) busca os JSON e usa estas funções. Só o que passa pela validação vira link:
  * caminho sob gold/downloads/, sem "..", sem esquema, sem barra invertida e com sha256 válido.
  */
+import {redeEducacaoValida,type RedeEducacao} from './educacao_rede.ts';
 export const TIPOS = ['painel', 'area', 'detalhado', 'dicionario', 'pacote', 'metodologia'] as const;
 export const FORMATOS = ['dta', 'rds', 'csv.zip', 'parquet', 'xlsx', 'zip', 'json', 'txt', 'do'] as const;
 export type Tipo = (typeof TIPOS)[number];
@@ -17,6 +18,7 @@ export type ArquivoDl = {
   escopo?: 'principal' | 'detalhado';
   previa?: ReferenciaDl;
   conteudo?: FormatoBase;
+  rede?: RedeEducacao;
 };
 export type ManifestoDl = {
   versao: 1; gerado_em: string; base_gerado_em: string; base_sha256: string; base_ipca: number;
@@ -89,6 +91,7 @@ export function validarManifesto(bruto: unknown): { manifesto: ManifestoDl; desc
       && (f.escopo === undefined || f.escopo === 'principal' || f.escopo === 'detalhado')
       && (f.previa === undefined || referenciaValida(f.previa))
       && (f.conteudo === undefined || (FORMATOS_BASE as readonly unknown[]).includes(f.conteudo))
+      && (f.rede === undefined || (f.area==='educacao' && texto(f.rede) && redeEducacaoValida(f.rede)))
       && anoOuNulo(f.ano_de) && anoOuNulo(f.ano_ate) && (f.uf === null || (texto(f.uf) && /^[A-Z]{2}$/.test(f.uf)));
     const recorte = bruto.edicao !== 'enxuta_2013' || !registro(f) || !['painel', 'area', 'detalhado'].includes(String(f.tipo)) || (typeof f.ano_de === 'number' && f.ano_de >= 2013);
     if (bom && recorte) {
@@ -217,8 +220,8 @@ export const formatoDisponivel = (pedido: FormatoBase, arquivos: ArquivoDl[]): F
 };
 
 /** Nunca troca silenciosamente uma UF por Brasil, nem um tema pela base completa. */
-export const arquivoDoRecorte = (arquivos: ArquivoDl[], area: string, uf: string, formato: FormatoBase): ArquivoDl | undefined =>
- arquivos.find((a) => a.tipo === (area ? 'area' : 'painel') && a.area === (area || null) && a.uf === (uf || null) && a.formato === formato);
+export const arquivoDoRecorte = (arquivos: ArquivoDl[], area: string, uf: string, formato: FormatoBase,rede:RedeEducacao='todas'): ArquivoDl | undefined =>
+ arquivos.find((a) => a.tipo === (area ? 'area' : 'painel') && a.area === (area || null) && a.uf === (uf || null) && a.formato === formato && (a.rede??'todas')===(area==='educacao'?rede:'todas'));
 
 export function validarCatalogo(bruto: unknown, m: ManifestoDl, uf: string): ArquivoDl[] {
  if (!registro(bruto) || bruto.versao !== 1 || bruto.uf !== uf || !Array.isArray(bruto.arquivos)) throw new Error('Catálogo de UF inválido');
@@ -228,11 +231,12 @@ export function validarCatalogo(bruto: unknown, m: ManifestoDl, uf: string): Arq
 }
 
 export type ColunaPrevia = { variavel: string; nome: string; unidade: string; anos: number[]; preenchidas: number };
-export type PreviaDl = { versao: 1; id: string; area: string | null; uf: string | null; linhas_total: number; ano_de: number; ano_ate: number; colunas: ColunaPrevia[]; amostra: Record<string, string | number | boolean | null>[] };
+export type PreviaDl = { versao: 1; id: string; area: string | null; uf: string | null;rede?:RedeEducacao; linhas_total: number; ano_de: number; ano_ate: number; colunas: ColunaPrevia[]; amostra: Record<string, string | number | boolean | null>[] };
 export function validarPrevia(bruto: unknown, arquivo: ArquivoDl): PreviaDl {
  const fail = () => { throw new Error('Prévia inválida para o arquivo escolhido'); };
  if (!registro(bruto) || bruto.versao !== 1 || bruto.id !== arquivo.id.replace(/_(parquet|csv_zip|dta|rds)$/, '') || bruto.uf !== arquivo.uf || bruto.area !== arquivo.area || bruto.linhas_total !== arquivo.linhas || bruto.ano_de !== arquivo.ano_de || bruto.ano_ate !== arquivo.ano_ate || !Array.isArray(bruto.colunas) || !Array.isArray(bruto.amostra)) return fail();
  const cols = bruto.colunas; const rows = bruto.amostra;
+ if((bruto.rede??'todas')!==(arquivo.rede??'todas'))return fail();
  if (cols.length !== (arquivo.variaveis ?? 0) + 6 || rows.length < 1 || rows.length > 5) return fail();
  const names = new Set<string>();
  for (const c of cols) {

@@ -33,6 +33,8 @@ NOMES_UF = {
     'RN':'Rio Grande do Norte','RO':'Rondônia','RR':'Roraima','RS':'Rio Grande do Sul',
     'SC':'Santa Catarina','SE':'Sergipe','SP':'São Paulo','TO':'Tocantins',
 }
+REDES = {'todas':None, 'publica':[1,2,3], 'municipal':[3], 'estadual':[2], 'federal':[1], 'privada':[4]}
+NOMES_REDE = {'todas':'Todas as redes', 'publica':'Rede pública', 'municipal':'Rede municipal', 'estadual':'Rede estadual', 'federal':'Rede federal', 'privada':'Rede privada'}
 
 
 def indicador(id, nome, nome_en, tema, unidade='numero', fonte='censo', descricao='', descricao_en=''):
@@ -163,9 +165,27 @@ for id,numerador in PERFIL_PERCENTUAIS.items():
     INDICADORES.append(indicador(id,origem['nome']+' (%)',origem['nome_en']+' (%)','perfil','percentual',
         descricao=origem['nome']+' como percentual de todas as matrículas da educação básica no mesmo ano e território. Cor/raça não declarada permanece no denominador. Brasil e UF usam razão das somas, não média de percentuais municipais. Numerador ou denominador ausente, ou denominador zero, deixa o percentual sem valor.',
         descricao_en=origem['nome_en']+' as a percentage of all basic education enrolments in the same year and territory. Unreported race/colour remains in the denominator. Brazil and states use ratios of sums, not averages of municipal percentages. A missing numerator or denominator, or a zero denominator, leaves the percentage undefined.'))
-for i in INDICADORES:i['principal']=i['id'] in IDS_PRINCIPAIS
+for etapa,title,title_en in [('ai','5º ano do fundamental','grade 5'),('af','9º ano do fundamental','grade 9'),('medio','ensino médio','upper secondary')]:
+    for disciplina,coluna,pt,en in [('lp','PORTUGUES','Português','Portuguese'),('mat','MATEMATICA','Matemática','Mathematics')]:
+        INDICADORES.append(indicador(f'saeb_{disciplina}_{etapa}',f'{pt} no Saeb: {title}',f'Saeb {en}: {title_en}','aprendizagem','pontos','saeb',
+            descricao=f'Proficiência média em {pt.lower()} no Saeb, {title}, em pontos da escala oficial; não é nota de 0 a 10 nem percentual. No recorte padrão, rede pública. Valores divulgados para o próprio território e rede, sem média dos municípios. Sem divulgação permanece ausente.',
+            descricao_en=f'Mean Saeb {en} proficiency, {title_en}, in official scale points; neither a 0–10 grade nor a percentage. The default scope uses public schools. Official results for each territory and sector; never municipal averages. Unpublished values remain missing.'))
+for disciplina,pt,en in [('lp','Português','Portuguese'),('mat','Matemática','Mathematics')]:
+    src=next(i for i in INDICADORES if i['id']==f'saeb_{disciplina}_medio')
+    INDICADORES.append({**src,'id':f'saeb_{disciplina}_medio_estadual','variavel':f'edu_saeb_{disciplina}_medio_estadual','nome':f'{pt} no Saeb: médio, rede estadual','nome_en':f'Saeb {en}: upper secondary, state schools','rede':'estadual',
+        'descricao':src['descricao'].replace('No recorte padrão, rede pública.','Rede estadual.'),'descricao_en':src['descricao_en'].replace('The default scope uses public schools.','State schools.')})
+CONDICOES_SAEB={0:'Publicado sem marcador',1:'Média de avaliação estadual: extravio de provas do Saeb',2:'Participação inferior a 50%: extravio de provas',3:'Não divulgado por solicitação',4:'Participantes insuficientes',5:'Sem resultado divulgado',6:'Não divulgado: pelo menos 20% do material extraviado e participação insuficiente'}
+for src in list(INDICADORES):
+    if src['id'].startswith('saeb_'):
+        INDICADORES.append({**indicador(src['id']+'_nota','Condição: '+src['nome'],'Status: '+src['nome_en'],'qualidade','condicao','saeb',
+            descricao='Ressalva original do Inep associada à proficiência. 0: publicado sem marcador; 1 (*): média de avaliação estadual por extravio das provas Saeb; 2 (**): participação inferior a 50% por extravio; 3 (ND*): não divulgado por solicitação; 4 (ND): participantes insuficientes; 5: sem resultado divulgado; 6 (ND***): pelo menos 20% do material extraviado e participação insuficiente. Ano sem edição permanece vazio.',
+            descricao_en='Original Inep proficiency flag. 0: published without marker; 1 (*): state assessment substituted following lost Saeb tests; 2 (**): participation below 50% following lost tests; 3 (ND*): withheld on request; 4 (ND): insufficient participants; 5: no published result; 6 (ND***): at least 20% of test materials lost and insufficient participation. Years without an edition remain missing.'),'associado':src['id'],'rotulos':CONDICOES_SAEB})
+for i in INDICADORES:
+    i['principal']=i['id'] in IDS_PRINCIPAIS
+    id=i['id'].removesuffix('_nota').removesuffix('_estadual')
+    i['etapa']='ai' if id.endswith('_ai') else 'af' if id.endswith('_af') else 'medio' if id.endswith(('_medio','_med')) else 'infantil' if id.endswith(('_creche','_pre','_inf')) else 'fundamental' if id.endswith('_fund') else 'geral'
 IDS = [i['id'] for i in INDICADORES]
-assert len(IDS)==77 and len(set(IDS))==77 and len(IDS_PRINCIPAIS)==43
+assert len(IDS)==93 and len(set(IDS))==93 and len(IDS_PRINCIPAIS)==43
 
 
 def percentuais_perfil(rec):
@@ -361,7 +381,7 @@ def ler_publicado(root,brutos):
     if downloads['fontes_complementares']['educacao']['sha256']!=digest:raise ValueError('Snapshot publicado não corresponde ao catálogo de downloads')
     if m['coleta_sha256']!=sha(brutos/'coleta.json'):raise ValueError('As fontes mudaram; reconstrua o Censo e os indicadores oficiais')
     ids=[i['id'] for i in m['indicadores']]
-    if len(ids) not in [69,77] or ids!=IDS[:len(ids)]:raise ValueError('Indicadores do snapshot incompatíveis')
+    if len(ids) not in [69,77,85,93] or ids!=IDS[:len(ids)]:raise ValueError('Indicadores do snapshot incompatíveis')
     def objeto_lido(ref):
         p=(root/ref['caminho']).resolve()
         if not p.is_relative_to((root/'gold/educacao').resolve()):raise ValueError('Caminho publicado inválido')
@@ -387,7 +407,9 @@ def ler_publicado(root,brutos):
     return values,coverage,territories,dict(snapshot_sha256=digest,coleta_sha256=m['coleta_sha256'],regra='Snapshot íntegro; oito percentuais derivados das contagens de cada território')
 
 
-def gerar(brutos,saida,base=Path('E:/finbra/data'),publicado=None):
+def gerar(brutos,saida,base=Path('E:/finbra/data'),publicado=None,rede='todas'):
+    if rede not in REDES:raise ValueError('Rede de ensino inválida')
+    if rede!='todas' and publicado is not None:raise ValueError('Recortes de rede exigem reconstrução das fontes')
     brutos=brutos.resolve();saida=destino_isolado(saida,brutos)
     destino_isolado(saida,base.resolve())
     if publicado is not None:destino_isolado(saida,publicado.resolve())
@@ -400,20 +422,42 @@ def gerar(brutos,saida,base=Path('E:/finbra/data'),publicado=None):
         hashes=[(e['nome'],sha(folder/e['nome'])) for e in source['arquivos'] if Path(e['nome']).suffix.lower()=='.csv']
         for name,digest in hashes:assert digest==next(e['sha256'] for e in source['arquivos'] if e['nome']==name)
         fingerprint=hashlib.sha256(json.dumps(hashes,sort_keys=True).encode()).hexdigest()
-        cache=work/f'censo_{year}_v3.json'
+        cache=work/f'censo_{year}_{rede}_v4.json'
         cached=json.loads(cache.read_text(encoding='utf-8')) if cache.exists() else None
         if cached and cached['origem']==fingerprint:
             result=cached['result'];labels=cached['labels'];schools=cached['escolas']
         else:
-            frame=csv_escola(folder,year);result,labels=agregar_escolas(frame);schools=len(frame)
+            frame=csv_escola(folder,year);schools=len(frame)
+            if rede=='todas':result,labels=agregar_escolas(frame)
+            else:
+                labels={str(int(c)):dict(grupo=str(int(c)),nome=str(g.NO_MUNICIPIO.iloc[0]),uf=str(g.SG_UF.iloc[0]),cod_ibge=int(c),nivel='M') for c,g in frame.groupby('CO_MUNICIPIO')}
+                selected=frame.loc[frame.TP_DEPENDENCIA.isin(REDES[rede])]
+                result,_=agregar_escolas(selected) if len(selected) else ({},{})
+                # Zero de escolas só quando o Censo do território foi observado e não há a rede.
+                # Um campo não coletado naquele ano continua ausente, mesmo nessa situação.
+                empty={i['id']:(0 if i['unidade']=='numero' else None) for i in INDICADORES if i['fonte']=='censo'}
+                for k,(col,_,_) in CONTAGENS.items():
+                    if col not in frame or not frame[col].notna().any():empty[k]=None
+                cov={k:[0,0] for k in [*INFRA,'escolas_rurais_pct']}
+                for g in ['BR',*frame.SG_UF.unique(),*labels]:
+                    if g not in result:result[g]=(copy.deepcopy(empty),copy.deepcopy(cov))
             json_file(cache,dict(origem=fingerprint,result=result,labels=labels,escolas=schools))
         territories.update(labels)
-        for g,(rec,cov) in result.items():values[(g,year)]=rec;coverage[(g,year)]=cov
+        for g,(rec,cov) in result.items():
+            values[(g,year)]={k:v for k,v in rec.items() if k in {i['id'] for i in INDICADORES if i['fonte']=='censo'}}
+            coverage[(g,year)]=cov
         print(f'Censo agregado: {year}, {schools} escolas, {len(labels)} municípios',flush=True)
     # Resultados de rendimento, distorção e Ideb entram pelos recortes oficiais.
     if publicado is not None:
         values,coverage,territories,auditoria=ler_publicado(publicado.resolve(),brutos)
-    else:auditoria=ler_indicadores_paralelo(coleta['indicadores'],values)
+        novos={};saeb_audit=ler_indicadores_paralelo([s for s in coleta['indicadores'] if s['fonte']=='ideb'],novos,rede)
+        for key,record in novos.items():
+            target=values.setdefault(key,{})
+            for k,v in record.items():
+                if k in target and target[k]!=v:raise ValueError('Snapshot e fonte oficial divergem: '+str((key,k)))
+                target[k]=v
+        auditoria['saeb']=saeb_audit
+    else:auditoria=ler_indicadores_paralelo(coleta['indicadores'],values,rede)
     years=sorted({y for g,y in values})
     for uf,name in NOMES_UF.items():territories[uf]=dict(grupo=uf,nome=name,uf=uf,cod_ibge=None,nivel='UF')
     territories['BR']=dict(grupo='BR',nome='Brasil',uf=None,cod_ibge=None,nivel='BR')
@@ -441,6 +485,17 @@ def gerar(brutos,saida,base=Path('E:/finbra/data'),publicado=None):
     indicators=copy.deepcopy(INDICADORES)
     for i in indicators:
         i['anos']=sorted({y for (g,y),v in values.items() if v.get(i['id']) is not None})
+        if rede!='todas':
+            for field in ['descricao','descricao_en']:
+                text=i[field]
+                if field=='descricao':
+                    text=text.replace('todas as redes','a rede selecionada').replace('em todas as redes','na rede selecionada')
+                    if i.get('rede')!='estadual':text=text.replace('Rede pública','Recorte da rede selecionada').replace('rede pública','rede selecionada')
+                    text+=' Recorte: '+NOMES_REDE[rede]+'.'
+                else:
+                    text=text.replace('all sectors','the selected school sector')
+                    if i.get('rede')!='estadual':text=text.replace('Public schools','Selected school sector').replace('public schools','the selected school sector')
+                i[field]=text
     rows=[]
     for (g,year),v in sorted(values.items()):
         if g.isdigit() and len(g)==7:
@@ -450,10 +505,10 @@ def gerar(brutos,saida,base=Path('E:/finbra/data'),publicado=None):
     table=pa.Table.from_pandas(frame,preserve_index=False)
     pq.write_table(table,work/'municipios.parquet',compression='zstd')
     parquet=objeto(saida,work/'municipios.parquet','municipios','parquet')
-    meta=dict(versao=1,gerado_em=datetime.now(timezone.utc).isoformat(),anos=years,indicadores=indicators,
+    meta=dict(versao=1,gerado_em=datetime.now(timezone.utc).isoformat(),rede=rede,anos=years,indicadores=indicators,
               arquivo=objeto(saida,nd,'series','ndjson'),municipios=refs,busca_municipios=busca_ref,rankings=ranking,parquet=parquet,
               territorios=[{**territories[g],'trecho':groups[g]} for g in ['BR',*sorted(NOMES_UF)] if g in groups],
-              fontes={k:dict(nome={'censo':'Censo Escolar','rendimento':'Taxas de rendimento','distorcao':'Distorção idade-série','ideb':'Ideb'}[k],url=u) for k,u in PAGINAS.items()},
+               fontes={**{k:dict(nome={'censo':'Censo Escolar','rendimento':'Taxas de rendimento','distorcao':'Distorção idade-série','ideb':'Ideb'}[k],url=u) for k,u in PAGINAS.items()},'saeb':dict(nome='Saeb · proficiências nas planilhas do Ideb',url=PAGINAS['ideb'])},
               coleta_sha256=sha(brutos/'coleta.json'))
     json_file(saida/'gold/educacao/manifesto.json',meta)
     json_file(work/'auditoria_fontes.json',auditoria)
@@ -461,7 +516,7 @@ def gerar(brutos,saida,base=Path('E:/finbra/data'),publicado=None):
     return meta
 
 
-def ler_indicadores(sources,values):
+def ler_indicadores(sources,values,rede_escolhida='todas'):
     audit=[];seen={};uf_names={normal(n):u for u,n in NOMES_UF.items()}
     uf_names.update({normal('R. G. do Norte'):'RN',normal('R. G. do Sul'):'RS',normal('M. G. do Sul'):'MS'})
     def number(x):
@@ -482,8 +537,18 @@ def ler_indicadores(sources,values):
             if normal(v)=='brasil':return 'BR'
         return None
     def put(group,year,id,x,source):
+        if id.startswith('saeb_') and not id.endswith('_nota'):
+            raw='' if pd.isna(x) else str(x).strip()
+            if normal(raw)=='nd***':flag=6;x=None
+            elif normal(raw)=='nd*':flag=3;x=None
+            elif normal(raw) in ['nd','n/d']:flag=4;x=None
+            elif re.fullmatch(r'\d+(?:[.,]\d+)?\*{1,2}',raw):
+                flag=2 if raw.endswith('**') else 1;x=raw.rstrip('*')
+            elif normal(raw) in {'','-','--','---','*','**','***','...','..','s/d','na','nan'}:flag=5;x=None
+            else:flag=0
+            put(group,year,id+'_nota',flag,source)
         key=(group,year,id);v=number(x)
-        if v is not None and not 0<=v<=(10 if id.startswith('ideb') else 100):raise ValueError('Indicador fora da unidade: '+str(key))
+        if v is not None and (v<0 or (not id.startswith('saeb') and v>(10 if id.startswith('ideb') else 100))):raise ValueError('Indicador fora da unidade: '+str(key))
         if key in seen and seen[key]!=v:raise ValueError('Resultados oficiais conflitantes: '+str(key))
         seen[key]=v
         groups_seen.add(group)
@@ -532,8 +597,9 @@ def ler_indicadores(sources,values):
                 dep='NO_DEPENDENCIA' if 'NO_DEPENDENCIA' in d else 'REDE'
                 if 'NO_CATEGORIA' in d:d=d.loc[d.NO_CATEGORIA.map(normal)=='total']
                 rede=d[dep].map(lambda s:re.sub(r'\s*\(\d+\)','',normal(s)).strip())
-                estadual=d.loc[rede=='estadual'] if source['fonte']=='ideb' else None
-                d=d.loc[rede.isin(['publica','publico'])]
+                estadual=d.loc[rede=='estadual'] if source['fonte']=='ideb' and rede_escolhida in ['todas','publica','estadual'] else d.iloc[:0]
+                alvo='publica' if rede_escolhida=='todas' else rede_escolhida
+                d=d.loc[rede.isin(['publica','publico'] if alvo=='publica' else [alvo])]
                 if source['fonte']=='ideb':
                     title=normal(filename+' '+sheet)
                     stage='ai' if 'iniciais' in title or '(ai)' in title else 'af' if 'finais' in title or '(af)' in title else 'medio' if 'medio' in title or '(em)' in title else None
@@ -550,15 +616,22 @@ def ler_indicadores(sources,values):
                             if 2013<=year<=source['ano'] and year not in cols and column.startswith('UNNAMED:'):
                                 cols[year]=column;aliases.append(dict(planilha=sheet,ano=year,cabecalho=str(cell),coluna=column))
                     if not cols:raise ValueError('Colunas do Ideb não encontradas: '+filename)
+                    saeb_cols=[]
+                    for discipline,technical in [('lp','PORTUGUES'),('mat','MATEMATICA')]:
+                        for col in d.columns:
+                            match=re.fullmatch('VL_NOTA_'+technical+'_(20[0-9]{2})',col)
+                            if match and 2013<=int(match[1])<=source['ano']:saeb_cols.append((discipline,int(match[1]),col))
                     for _,row in d.iterrows():
                         g=geographic(row)
                         if not g:continue
                         for year,col in cols.items():put(g,year,'ideb_'+stage,row[col],source);added+=1
+                        for discipline,year,col in saeb_cols:put(g,year,f'saeb_{discipline}_{stage}',row[col],source);added+=1
                     if stage=='medio':
                         for _,row in estadual.iterrows():
                             g=geographic(row)
                             if not g:continue
                             for year,col in cols.items():put(g,year,'ideb_medio_estadual',row[col],source);added+=1
+                            for discipline,year,col in saeb_cols:put(g,year,f'saeb_{discipline}_medio_estadual',row[col],source);added+=1
                 else:
                     fields={}
                     for stage,suffix in [('ai','FUN_AI'),('af','FUN_AF'),('medio','MED')]:
@@ -573,11 +646,11 @@ def ler_indicadores(sources,values):
                         year=int(row.NU_ANO_CENSO)
                         if year!=source['ano']:raise ValueError('Ano divergente nas taxas')
                         for id,col in fields.items():put(g,year,id,row[col],source);added+=1
-        if not added:raise ValueError('Nenhum resultado público importado: '+str(path))
-        if source['fonte']!='ideb' and 'munic' not in source['url'].lower():
+        if not added and rede_escolhida=='todas':raise ValueError('Nenhum resultado público importado: '+str(path))
+        if rede_escolhida=='todas' and source['fonte']!='ideb' and 'munic' not in source['url'].lower():
             missing={'BR',*NOMES_UF}-groups_seen
             if missing:raise ValueError('Recortes oficiais não reconhecidos: '+path.name+' '+str(missing))
-        if source['fonte']=='ideb' and 'ufs' in source.get('url','').lower():
+        if rede_escolhida=='todas' and source['fonte']=='ideb' and 'ufs' in source.get('url','').lower():
             missing=set(NOMES_UF)-groups_seen
             if missing:raise ValueError('UFs do Ideb não reconhecidas: '+str(missing))
         audit.append(dict(arquivo=path.name,fonte=source['fonte'],sha256=source['sha256'],celulas=added,recortes=sorted(groups_seen),cabecalhos_legiveis=aliases))
@@ -585,10 +658,10 @@ def ler_indicadores(sources,values):
     return dict(arquivos=audit,celulas=len(seen),regra='Rede pública; Ideb estadual em medida separada; localização total; Brasil e UF oficiais, sem média municipal')
 
 
-def ler_indicadores_paralelo(sources,values):
+def ler_indicadores_paralelo(sources,values,rede='todas'):
     """Leituras independentes; a junção sequencial recusa resultados conflitantes."""
     def parse(source):
-        partial={};audit=ler_indicadores([source],partial)
+        partial={};audit=ler_indicadores([source],partial,rede)
         return partial,audit
     files=[];keys=set()
     with ThreadPoolExecutor(max_workers=3) as pool:
@@ -605,4 +678,5 @@ def ler_indicadores_paralelo(sources,values):
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--brutos',type=Path,required=True);p.add_argument('--saida',type=Path,required=True)
     p.add_argument('--publicado',type=Path,help='Reutiliza snapshot íntegro da mesma coleta, para acrescentar indicadores derivados')
-    a=p.parse_args();gerar(a.brutos,a.saida,publicado=a.publicado)
+    p.add_argument('--rede',choices=REDES,default='todas')
+    a=p.parse_args();gerar(a.brutos,a.saida,publicado=a.publicado,rede=a.rede)

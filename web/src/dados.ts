@@ -1,3 +1,4 @@
+import {obterMetaEducacao} from './educacao_dados';
 /**
  * Camada de dados do site: roda DuckDB no navegador (WebAssembly) e consulta os Parquet
  * publicados em /dados/ (R2 em produção, a pasta data/ no desenvolvimento). Só os trechos
@@ -604,6 +605,18 @@ export function tabelaDespesaFuncao() {
   return despesaFuncao;
 }
 
+/** A tabela Inep só é aberta quando uma consulta da IA a cita. */
+let educacaoInep:Promise<void>|null=null;
+export function tabelaEducacaoInep() {
+  educacaoInep??=(async()=>{
+    const meta=await obterMetaEducacao(),ref=meta.consulta;
+    if(!ref || !/^gold\/educacao\/consulta_[a-f0-9]+\.parquet$/.test(ref.caminho))throw new Error('Tabela Inep indisponível.');
+    const {con}=await iniciar();
+    await con.query(`CREATE OR REPLACE VIEW educacao_inep AS SELECT * FROM read_parquet(${arq(ref.caminho)})`);
+  })();
+  educacaoInep.catch(()=>{educacaoInep=null;});return educacaoInep;
+}
+
 // ---------------- educação (SIOPE) e saúde (SIOPS) ----------------
 
 /** Tabelas da IA sobre as declarações de educação e saúde: fonte no manifesto e arquivo do gold. */
@@ -656,7 +669,8 @@ function recorteLrf(q: Params, p: Record<string, Valor>, a = 'l') {
   p.esfera = esferaLrf;
   const uf = UFS.has(String(q.uf)) && esferaLrf === 'M' ? String(q.uf) : null;
   if (uf) p.uf = uf;
-  return `${a}.esfera = $esfera${uf ? ` AND ${a}.uf = $uf` : ''}`;
+  const nivel=esferaLrf==='E'&&(q.inclui_df===1||q.inclui_df==='1')?`(${a}.esfera = $esfera OR ${a}.esfera = 'D')`:`${a}.esfera = $esfera`;
+  return `${nivel}${uf ? ` AND ${a}.uf = $uf` : ''}`;
 }
 
 const rotasLrf: Record<string, (q: Params) => Promise<unknown>> = {
@@ -773,6 +787,11 @@ function recorteRemuneracao(q: Params, p: Record<string, Valor>) {
 const ponderada = (c: string) => `sum(${c} * profissionais) FILTER (${c} IS NOT NULL) / sum(profissionais) FILTER (${c} IS NOT NULL)`;
 
 const rotasSaudeEducacao: Record<string, (q: Params) => Promise<unknown>> = {
+  async educacao_fin_cobertura(q) {
+    await iniciar();const p:Record<string,Valor>={};const onde=recorteRemuneracao(q,p);
+    const esperado=q.ente?'1':`(SELECT count(*) FROM entes r WHERE ${recorteLrf(q,p,'r')})`;
+    return consultar(`SELECT ano,count(DISTINCT cod_ibge)::INTEGER com_declaracao,${esperado}::INTEGER esperados FROM read_parquet(${arq('gold/siope/remuneracao.parquet')}) r WHERE ${onde} AND mes=12 GROUP BY ano ORDER BY ano`,p);
+  },
   /** Série de um ente, com os mínimos legais. */
   async se_ente(q) {
     await tabelaSaudeEducacao();
@@ -843,7 +862,7 @@ const rotasSaudeEducacao: Record<string, (q: Params) => Promise<unknown>> = {
       `SELECT ano, tipo_categoria, situacao, sum(profissionais)::INTEGER AS profissionais, sum(vinculos)::INTEGER AS vinculos,
               sum(profissionais) FILTER (salario_medio IS NOT NULL)::INTEGER AS com_estatistica,
               ${ponderada('salario_medio')} AS salario_medio, ${ponderada('carga_horaria_media')} AS carga_horaria_media
-       FROM read_parquet(${arq('gold/siope/remuneracao.parquet')}) r WHERE ${onde} GROUP BY ALL ORDER BY ano, tipo_categoria, profissionais DESC`,
+       FROM read_parquet(${arq('gold/siope/remuneracao.parquet')}) r WHERE ${onde} AND r.mes=12 GROUP BY ALL ORDER BY ano, tipo_categoria, profissionais DESC`,
       p,
     );
   },
@@ -860,7 +879,7 @@ const rotasSaudeEducacao: Record<string, (q: Params) => Promise<unknown>> = {
          ${ponderada('carga_horaria_media')} AS carga_horaria_media, ${ponderada('salario_medio')} AS salario_medio`;
     return consultar(
       `SELECT tipo_categoria, categoria, situacao, ${colunas}
-       FROM read_parquet(${arq('gold/siope/remuneracao.parquet')}) r WHERE ${onde} AND r.ano = $ano::INTEGER
+       FROM read_parquet(${arq('gold/siope/remuneracao.parquet')}) r WHERE ${onde} AND r.mes=12 AND r.ano = $ano::INTEGER
        ${q.ente ? '' : 'GROUP BY ALL'} ORDER BY tipo_categoria DESC, profissionais DESC`,
       p,
     );

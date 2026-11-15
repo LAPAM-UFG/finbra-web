@@ -12,7 +12,7 @@
  * confere os códigos de território (conferirCodigos); lugares citados pelo nome passam pela ferramenta
  * "localizar", que usa o cadastro de entes.
  */
-import { abandonarConsultaIa, consultaLivre, prepararResultadosIa, contextoTrabalhoIa, manifestoDados, tabelaDespesaFuncao, tabelaLrf, tabelasEducacaoSaude, tabelasFns, tabelasIaClima, tabelasIaAssistencia, tabelasVacinacao, tabelasIaMunic, tabelasIaTrabalho, tabelasSaude } from './dados';
+import { abandonarConsultaIa, consultaLivre, prepararResultadosIa, contextoTrabalhoIa, manifestoDados, tabelaDespesaFuncao, tabelaLrf, tabelasEducacaoSaude, tabelaEducacaoInep, tabelasFns, tabelasIaClima, tabelasIaAssistencia, tabelasVacinacao, tabelasIaMunic, tabelasIaTrabalho, tabelasSaude } from './dados';
 import { guardaFns } from './ia_fns';
 import { t } from './idioma';
 import {
@@ -123,8 +123,8 @@ export async function estadoIa(): Promise<EstadoIa | null> {
 }
 
 /** Painéis que a IA pode consultar (aba "Pergunte aos dados"); cada um tem tabelas e instruções próprias. */
-export type Painel = 'financas' | 'trabalho' | 'saude' | 'munic' | 'clima' | 'assistencia';
-export const PAINEIS: Painel[] = ['financas', 'trabalho', 'saude', 'munic', 'clima', 'assistencia'];
+export type Painel = 'financas' | 'trabalho' | 'saude' | 'munic' | 'clima' | 'assistencia' | 'educacao';
+export const PAINEIS: Painel[] = ['financas', 'trabalho', 'saude', 'munic', 'clima', 'assistencia', 'educacao'];
 
 export async function chamarIa(mensagens: Mensagem[], idioma: string, paineis: Painel[] = PAINEIS, sinal?: AbortSignal, modelo: EscolhaModelo = MODELO_PADRAO): Promise<RespostaIa> {
   const contexto = paineis.includes('trabalho') ? await contextoTrabalhoIa() : undefined;
@@ -201,6 +201,8 @@ export function disponibilidadeNoAno(ano: number, paineis: Painel[], c: Cobertur
   const tem: string[] = [];
   const nao: string[] = [];
   const marcar = (nome: string, ok: boolean, detalhe = '') => (ok ? tem : nao).push(`${nome}${detalhe}`);
+  if(paineis.includes('educacao')&&c.educacao?.length)marcar('Censo Escolar',c.educacao.includes(ano));
+  if(paineis.includes('educacao')&&c.saeb?.length)marcar('Ideb/Saeb',c.saeb.includes(ano),' (edições oficiais; publicação varia por rede/etapa)');
   if (paineis.includes('assistencia')) for (const [nome, meses] of Object.entries(c.assistencia ?? {})) {
     marcar(nome, meses.some(m => Math.floor(m / 100) === ano), ' (cobertura varia por indicador)');
   }
@@ -285,6 +287,7 @@ export function contextoParaModelo(c: ContextoIa, cobertura?: Cobertura | null):
  * "Dados disponíveis" e para marcar nas tabelas o período pedido que a fonte não tem.
  */
 export type Cobertura = {
+  educacao?:number[];saeb?:number[];
   assistencia?: Record<string, number[]>;
   rais: number[]; caged: { de: number; ate: number } | null; microdados: boolean; dca: number[];
   pib?: { de: number; ate: number; setorial_ate?: number } | null; siope?: number[]; siopeRemuneracao?: number[]; siops?: number[];
@@ -349,6 +352,10 @@ export function sugestoes(paineis: Painel[], tr: Territorio, c: Cobertura, ano: 
     cruzamento: t('Entre bases', 'Across datasets'),
   };
   const grupos: Sugestao[][] = [];
+  if(paineis.includes('educacao')&&c.educacao?.length)grupos.push([
+    {titulo:t('Português e Matemática no Saeb','Portuguese and Mathematics in Saeb'),tema:t('Educação','Education'),paineis:['educacao'],texto:t(`Compare Português e Matemática do Saeb ${f.em}, no 5º e no 9º ano, em ${ult(c.saeb?.length?c.saeb:c.educacao)}. Mostre pontos, rede pública e condição de divulgação. Use resultados oficiais para UF e Brasil.`,`Compare Saeb Portuguese and Mathematics ${f.em}, grades 5 and 9, in ${ult(c.saeb?.length?c.saeb:c.educacao)}. Show points, public schools and publication status. Use official state and Brazil results.`)},
+    {titulo:t('Matrículas e inclusão','Enrolments and inclusion'),tema:t('Educação','Education'),paineis:['educacao'],texto:t(`Mostre matrículas por etapa e a participação da educação especial em classes comuns ${f.em}, em ${ult(c.educacao)}. Informe rede, denominadores e cobertura.`,`Show enrolments by stage and the mainstream-class share of special education ${f.em}, in ${ult(c.educacao)}. Report school sector, denominators and coverage.`)}
+  ]);
   if (paineis.includes('assistencia') && c.assistencia) grupos.push([
     { titulo: t('Famílias e pessoas no CadÚnico', 'Families and people in Cadastro Único'), tema: t('Assistência social', 'Social assistance'),
       texto: t(`Quantas famílias e pessoas estão no Cadastro Único ${f.em}, na última referência disponível? Mostre a data e os perfis de renda, sexo e raça/cor.`, `How many families and people are registered in Cadastro Único ${f.em}, at the latest available reference? Show the date and income, sex and race/colour profiles.`), paineis: ['assistencia'] },
@@ -672,6 +679,7 @@ export function descreverCobertura(paineis: Painel[], c: Cobertura): string[] {
     linhas.push(t(`Clima ${faixa(c.clima.de, Math.floor(c.clima.ate / 100))}: chuva (CHIRPS, desde 1981), temperatura, ponto de orvalho, umidade do solo, evaporação e radiação solar (ERA5-Land) por município e mês, com a normal de 1991 a 2020 (estimativas de satélite e reanálise, não de estações)`,
       `Climate ${faixa(c.clima.de, Math.floor(c.clima.ate / 100))}: rainfall (CHIRPS, since 1981), temperature, dew point, soil moisture, evaporation and solar radiation (ERA5-Land) by municipality and month, with the 1991–2020 normal (satellite and reanalysis estimates, not station data)`));
   }
+  if(paineis.includes('educacao')&&c.educacao?.length)linhas.push(t('Educação Inep: Censo Escolar, taxas, Ideb e Português/Matemática do Saeb; redes separadas, pontos e condições oficiais de divulgação.','Inep education: School Census, rates, Ideb and Saeb Portuguese/Mathematics; separate school sectors, points and official publication conditions.'));
   if (paineis.includes('assistencia')) for (const [nome, meses] of Object.entries(c.assistencia ?? {})) {
     if (meses.length) linhas.push(t(`${nome}: ${rotuloCompetencia(meses[0])}–${rotuloCompetencia(meses.at(-1)!)}; referências e lacunas variam por indicador; cadastro, folha e pagamento têm definições distintas.`,
       `${nome}: ${rotuloCompetencia(meses[0])}–${rotuloCompetencia(meses.at(-1)!)}; dates and gaps vary by indicator; registration, payroll and payment have different definitions.`));
@@ -903,6 +911,7 @@ const lidaComoTabela = (nome: string) => {
   return (s: string) => lida.test(s) && !cte.test(s);
 };
 const FONTES_TABELAS: [RegExp | ((sql: string) => boolean), () => string][] = [
+  [/\beducacao_inep\b/,()=>t('Inep: Censo Escolar, taxas educacionais, Ideb e Saeb','Inep: School Census, education rates, Ideb and Saeb')],
   [/\brais_vinculos\b/, () => t('RAIS (MTE): microdados por vínculo', 'RAIS (MTE): job-level microdata')],
   [/\brais_(uf|mun|esc_porte)\b/, () => t('RAIS (MTE): tabelas somadas dos microdados', 'RAIS (MTE): tables summed from the microdata')],
   [/\btrab_(municipios|setores|setores_uf|grandes_setores)\b/, () => t('RAIS (MTE): séries do painel', 'RAIS (MTE): dashboard series')],
@@ -1981,7 +1990,7 @@ async function consultaSemLimite(entrada: unknown, paineis: Painel[], sinal: Abo
     if (paineis.includes('trabalho') && /\b(trab_\w+|rais_\w+)/i.test(todas)) await tabelasIaTrabalho(/\brais_vinculos\b/i.test(todas));
     // a tabela da LRF só é baixada quando alguma consulta a usa; as do SIOPE e do SIOPS, idem
     if (paineis.includes('financas') && /\blrf\b/i.test(todas)) await tabelaLrf();
-    if (paineis.includes('financas') && /\bsiop[es]_/i.test(todas)) await tabelasEducacaoSaude();
+    if ((paineis.includes('financas') || paineis.includes('educacao')) && /\bsiop[es]_/i.test(todas)) await tabelasEducacaoSaude();
     if (paineis.includes('financas') && /\bdespesa_funcao\b/i.test(todas)) await tabelaDespesaFuncao();
     if (paineis.includes('saude') && /\bsaude_municipios\b/i.test(todas)) await tabelasSaude();
     if (paineis.includes('saude') && /\bsaude_vacinacao\w*/i.test(todas)) await tabelasVacinacao();
@@ -1989,6 +1998,7 @@ async function consultaSemLimite(entrada: unknown, paineis: Painel[], sinal: Abo
     if (paineis.includes('munic') && /\bmunic_\w+/i.test(todas)) await tabelasIaMunic();
     if (paineis.includes('clima') && /\bclima_\w+/i.test(todas)) await tabelasIaClima();
     if (paineis.includes('assistencia') && /\bsocial_\w+/i.test(todas)) await tabelasIaAssistencia();
+    if (paineis.includes('educacao') && /\beducacao_inep\b/i.test(todas)) await tabelaEducacaoInep();
     // resultados já apurados na conversa, lidos como tabelas (res_C1…): só os completos, da mesma versão dos dados e desta conversa
     const citadas = citadasNoSql(todas);
     if (citadas.length) {

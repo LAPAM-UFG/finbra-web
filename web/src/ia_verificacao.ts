@@ -151,6 +151,7 @@ const FONTES_DE_FATO: [RegExp, string][] = [
   [/^(indicadores|despesa_funcao)$/, 'DCA'],
   [/^lrf$/, 'RREO/RGF'],
   [/^siope_\w+$/, 'SIOPE'],
+  [/^educacao_inep$/, 'Inep'],
   [/^siops_\w+$/, 'SIOPS'],
   [/^trab_caged\w*$/, 'Novo CAGED'],
   [/^(trab_(municipios|setores|setores_uf|grandes_setores)|rais_\w+)$/, 'RAIS'],

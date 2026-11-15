@@ -1,3 +1,4 @@
+import { REDES_EDUCACAO,redeEducacaoValida,type RedeEducacao } from '../educacao_rede';
 import { useCallback, useDeferredValue, useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 import '../downloads.css';
 import {
@@ -186,13 +187,15 @@ function Variavel({ e, nomeArea, onEscolher }: { e: EntradaDic; nomeArea: (id: s
   );
 }
 
-function ApiDados({ uf, area }: { uf: string; area: string }) {
+function ApiDados({ uf, area,rede='todas' }: { uf: string; area: string;rede?:RedeEducacao }) {
   const [mensagem, setMensagem] = useState('');
   const base = `${location.origin}/api/dados/v1`;
   const localEscolhido = uf || 'BR';
   const tema = area || 'todos';
-  const stata = `use "${base}/painel/${localEscolhido}/${tema}.dta", clear`;
-  const r = `source("${base}/cliente.R")\ndados <- finbra(uf = "${localEscolhido}", tema = "${tema}")`;
+  const redeQuery=area==='educacao'&&rede!=='todas'?'?rede='+rede:'';
+  const redeR=redeQuery?`, rede = "${rede}"`:'';
+  const stata = `use "${base}/painel/${localEscolhido}/${tema}.dta${redeQuery}", clear`;
+  const r = `source("${base}/cliente.R")\ndados <- finbra(uf = "${localEscolhido}", tema = "${tema}"${redeR})`;
   const copiar = async (codigo: string) => {
     try { await navigator.clipboard.writeText(codigo); setMensagem(t('Código copiado.', 'Code copied.')); }
     catch { setMensagem(t('Selecione e copie o código abaixo.', 'Select and copy the code below.')); }
@@ -208,7 +211,7 @@ function ApiDados({ uf, area }: { uf: string; area: string }) {
       </div>
     </div>
     <p className="dl-ajuda">{t('UF e tema reduzem o arquivo transferido. Filtros de ano, município e variável são aplicados no seu programa. As URLs entregam a edição atual; o catálogo registra também o endereço imutável e SHA-256 para reprodução.', 'State and topic reduce the transferred file. Year, municipality and variable filters run in your program. URLs serve the current edition; the catalog also records the immutable address and SHA-256 for reproducibility.')}</p>
-    <p className="dl-acoes"><a href={`${base}/catalogo.json?uf=${localEscolhido}&tema=${tema}`} target="_blank" rel="noreferrer">{t('Catálogo da API (JSON)', 'API catalog (JSON)')}</a><a href={`${base}/dicionario.json${area ? '?tema='+area : ''}`} target="_blank" rel="noreferrer">{t('Dicionário pela API', 'Dictionary via API')}</a></p>
+    <p className="dl-acoes"><a href={`${base}/catalogo.json?uf=${localEscolhido}&tema=${tema}${redeQuery?'&rede='+rede:''}`} target="_blank" rel="noreferrer">{t('Catálogo da API (JSON)', 'API catalog (JSON)')}</a><a href={`${base}/dicionario.json${area ? '?tema='+area : ''}`} target="_blank" rel="noreferrer">{t('Dicionário pela API', 'Dictionary via API')}</a></p>
     <p role="status" aria-live="polite">{mensagem}</p>
   </Secao>;
 }
@@ -281,7 +284,8 @@ const rolar = (id: string) => document.getElementById(id)?.scrollIntoView({ beha
 
 function Conteudo({ m, descartados }: { m: ManifestoDl; descartados: number }) {
   const en=idioma()==='en';
-  const [area,setArea]=useState(() => { const a=new URLSearchParams(location.search).get('area'); return m.areas.some(x=>x.id===a) ? a! : ''; }); const [uf,setUf]=useState('');
+  const [area,setArea]=useState(() => { const a=new URLSearchParams(location.search).get('area'); return m.areas.some(x=>x.id===a) ? a! : ''; }); const [uf,setUf]=useState(()=>{const u=(new URLSearchParams(location.search).get('uf')??'').toUpperCase();return m.recortes_uf?.[u]?u:'';});
+  const [rede,setRede]=useState<RedeEducacao>(()=>{const r=new URLSearchParams(location.search).get('rede')??'todas';return redeEducacaoValida(r)?r:'todas';});
   const [formato,setFormato]=useState<FormatoBase>('dta');
   const [busca,setBusca]=useState(''); const q=useDeferredValue(busca);
   const [dicAberto,setDicAberto]=useState(false); const [dicArea,setDicArea]=useState('');
@@ -295,13 +299,13 @@ function Conteudo({ m, descartados }: { m: ManifestoDl; descartados: number }) {
   const lerCatalogo=useCallback((b: unknown) => validarCatalogo(b,m,uf),[m,uf]);
   const catalogo=useJson<ArquivoDl[]>(catalogUrl,!!catalogUrl,lerCatalogo);
   const arquivos=[...m.arquivos,...(uf ? catalogo.dados ?? [] : [])];
-  const escolhido=arquivoDoRecorte(arquivos,area,uf,fmt);
+  const escolhido=arquivoDoRecorte(arquivos,area,uf,fmt,rede);
   const ufs=[...new Set(painel.map((a) => a.uf).filter((u): u is string => !!u))].sort();
   const lerDic=useCallback((b: unknown) => indexarDicionario(validarDicionario(b)),[]);
   const dic=useJson<IndiceDic>(urlArquivo(m.dicionario.caminho,BASE_DADOS) ?? '',dicAberto || !!q.trim(),lerDic);
   const matches=useMemo(() => dic.dados && q.trim() ? filtrarDicionario(dic.dados,q,'') : [],[dic.dados,q]);
   const areasBusca=new Set(matches.map((e) => e.area));
-  const temas=arquivos.filter((a) => a.tipo==='area' && a.uf===(uf || null) && a.formato===fmt);
+  const temas=arquivos.filter((a) => a.tipo==='area' && a.uf===(uf || null) && a.formato===fmt && (a.rede??'todas')===(a.area==='educacao'&&area==='educacao'?rede:'todas'));
   const temasF=q.trim() ? temas.filter((a) => areasBusca.has(a.area ?? '') || filtrarArquivos([a],{texto:q,area:'',uf:''},en).length) : temas;
   const detalhes=ordenarDetalhados(filtrarArquivos(m.arquivos.filter((a) => a.tipo==='detalhado'),{texto:q,area:'',uf:''},en));
   const dicionarios=m.arquivos.filter((a) => a.tipo==='dicionario' && a.escopo!=='detalhado').sort((a,b) => ['xlsx','rds','csv.zip','json'].indexOf(a.formato)-['xlsx','rds','csv.zip','json'].indexOf(b.formato));
@@ -311,7 +315,7 @@ function Conteudo({ m, descartados }: { m: ManifestoDl; descartados: number }) {
   const completos=pacotes.filter((a) => !a.conteudo);
   const metodologia=m.arquivos.filter((a) => a.tipo==='metodologia');
   const mostrarDic=(tema: string) => {setDicArea(tema);setDicAberto(true);setBusca('');requestAnimationFrame(() => rolar('dl-dicionario'));};
-  const escolherArea=(tema: string, abrirPrevia=false) => {const nova=m.areas.some((a) => a.id===tema) ? tema : '';setArea(nova);if(abrirPrevia)setPedidoPrevia((p) => ({area:nova,uf,sequencia:p.sequencia+1}));rolar('dl-base');};
+  const escolherArea=(tema: string, abrirPrevia=false) => {const nova=m.areas.some((a) => a.id===tema) ? tema : '';setArea(nova);if(nova!=='educacao')setRede('todas');if(abrirPrevia)setPedidoPrevia((p) => ({area:nova,uf,sequencia:p.sequencia+1}));rolar('dl-base');};
   const quando=new Date(m.gerado_em).toLocaleDateString(local(),{day:'numeric',month:'long',year:'numeric'});
   useEffect(() => {if (/munic|anexo|dca/i.test(q)) setDetalhesAbertos(true);},[q]);
   const grupos=m.areas.map((a) => ({area:a,itens:detalhes.filter((d) => d.area===a.id)})).filter((g) => g.itens.length);
@@ -319,8 +323,9 @@ function Conteudo({ m, descartados }: { m: ManifestoDl; descartados: number }) {
     {descartados>0 && <p className="dl-aviso" role="status">{t(`${descartados} arquivo(s) inválido(s) não foram exibidos.`,`${descartados} invalid file(s) were not displayed.`)}</p>}
     <Secao id="dl-base" titulo={t('Escolha e baixe','Choose and download')}>
       <div className="dl-escolhas">
-        <div className="dl-campo"><label htmlFor={id+'-area'}>{t('Conteúdo','Content')}</label><select id={id+'-area'} value={area} onChange={(e) => setArea(e.target.value)}><option value="">{t('Todos os temas · seleção principal','All topics · core selection')}</option>{m.areas.map((a) => <option value={a.id} key={a.id}>{pick(a.nome,a.nome_en)}</option>)}</select></div>
+        <div className="dl-campo"><label htmlFor={id+'-area'}>{t('Conteúdo','Content')}</label><select id={id+'-area'} value={area} onChange={(e) => {setArea(e.target.value);if(e.target.value!=='educacao')setRede('todas');}}><option value="">{t('Todos os temas · seleção principal','All topics · core selection')}</option>{m.areas.map((a) => <option value={a.id} key={a.id}>{pick(a.nome,a.nome_en)}</option>)}</select></div>
         <div className="dl-campo"><label htmlFor={id+'-uf'}>{t('Localização','Location')}</label><select id={id+'-uf'} value={uf} onChange={(e) => setUf(e.target.value)}><option value="">{t('Brasil · todos os municípios','Brazil · all municipalities')}</option>{ufs.map((u) => <option key={u} value={u}>{rotuloUf(u)}</option>)}</select></div>
+        {area==='educacao' && <div className="dl-campo"><label htmlFor={id+'-rede'}>{t('Rede de ensino','School sector')}</label><select id={id+'-rede'} value={rede} onChange={e=>setRede(e.target.value as RedeEducacao)}>{REDES_EDUCACAO.filter(r=>arquivos.some(a=>a.area==='educacao'&&(a.rede??'todas')===r)).map(r=><option key={r} value={r}>{r==='todas'?t('Todas as redes · recorte padrão','All sectors · default scope'):t('Rede '+(r==='publica'?'pública':r),({publica:'Public',municipal:'Municipal',estadual:'State',federal:'Federal',privada:'Private'} as Record<string,string>)[r]+' schools')}</option>)}</select></div>}
         <div className="dl-campo"><label htmlFor={id+'-fmt'}>{t('Formato','Format')}</label><select id={id+'-fmt'} value={fmt} onChange={(e) => setFormato(e.target.value as FormatoBase)}>{formatos.map((f) => <option key={f} value={f}>{f==='csv.zip' ? t('Excel: CSV (.zip)','Excel: CSV (.zip)') : f==='parquet' ? 'R / Python: Parquet' : f==='rds' ? 'R (.rds)' : 'Stata (.dta)'}</option>)}</select></div>
       </div>
       {escolhido ? <>
@@ -349,7 +354,7 @@ function Conteudo({ m, descartados }: { m: ManifestoDl; descartados: number }) {
       {completos.length>0 && <details className="dl-dic-downloads"><summary>{t('Pacote conjunto: Stata, CSV e Parquet','Combined package: Stata, CSV and Parquet')}</summary><Lista arquivos={completos} base={BASE_DADOS} /></details>}
     </Secao>
     <details id="dl-detalhes" className="dl-avancado" open={detalhesAbertos} onToggle={(e) => setDetalhesAbertos(e.currentTarget.open)}><summary>{t('Dados detalhados nacionais (opcional)','Detailed national data (optional)')}</summary><p className="dl-intro">{t('MUNIC completa e contas DCA, desde 2013, em CSV e Parquet. Estes arquivos são do Brasil inteiro, independentemente da UF escolhida acima. Edições mais recentes aparecem primeiro.','Full MUNIC and DCA accounts from 2013 onwards, in CSV and Parquet. These cover all of Brazil, regardless of the state selected above. Latest editions appear first.')}</p>{!grupos.length && <p className="dl-vazio">{t('Nenhum arquivo detalhado com essa busca.','No detailed files match this search.')}</p>}{grupos.map((g) => <div className="dl-grupo" key={g.area.id}><h4 className="dl-sub">{pick(g.area.nome,g.area.nome_en)}</h4><Lista arquivos={g.itens} base={BASE_DADOS} limite={q ? 50 : 6} /></div>)}<h4 className="dl-sub">{t('Dicionário dos complementos','Supplement dictionary')}</h4><Lista arquivos={m.arquivos.filter((a) => a.tipo==='dicionario' && a.escopo==='detalhado')} base={BASE_DADOS} /></details>
-    <ApiDados uf={uf} area={area} />
+    <ApiDados uf={uf} area={area} rede={rede} />
     <Secao id="dl-guia" titulo={t('Como usar os arquivos','How to use the files')}><Guia m={m} metodologia={metodologia} base={m.base_ipca} /></Secao>
     <p className="dl-rodape">{t(`Arquivos gerados em ${quando}. Todos são pré-calculados; escolher e baixar não executa consultas.`,`Files generated on ${quando}. All files are pre-computed; choosing and downloading runs no queries.`)}</p>
     <Integridade m={{...m,arquivos}} />

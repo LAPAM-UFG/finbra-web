@@ -25,8 +25,9 @@ export function ProvedorDados({ children, sobDemanda = false, silencioso = false
   const precisa = sobDemanda || !(educacaoPronta || caminho === '/clima' || caminho.startsWith('/clima/') || caminho === '/assistencia' || caminho.startsWith('/assistencia/') || caminho === '/downloads' || caminho.startsWith('/downloads/'));
   // /datasus: contexto completo pelo pacote de abertura da saúde (saude_meta e saude_entes devolvem o mesmo que meta e entes; sem pacote, o motor responde)
   const saude = !sobDemanda && (caminho === '/datasus' || caminho.startsWith('/datasus/'));
-  const meta = useApi<Meta>(precisa ? (saude ? 'saude_meta' : 'meta') : null);
-  const entes = useApi<Ente[]>(precisa ? (saude ? 'saude_entes' : 'entes') : null);
+  const financeiroEducacao=['/educacao/financiamento','/educacao/profissionais'].includes(caminho.replace(/\/+$/,''));
+  const meta = useApi<Meta>(precisa ? (financeiroEducacao?'educacao_fin_meta':saude ? 'saude_meta' : 'meta') : null);
+  const entes = useApi<Ente[]>(precisa ? (financeiroEducacao?'educacao_fin_entes':saude ? 'saude_entes' : 'entes') : null);
   const valor = useMemo(
     () =>
       meta.dados && entes.dados
@@ -168,7 +169,7 @@ export function BarraFiltros(opcoes: Opcoes = {}) {
   const f = useFiltros();
   // as sinalizações são das declarações do SICONFI: não valem para as áreas de mercado de trabalho e de saúde
   const caminho = useLocation().pathname;
-  const financas = !caminho.startsWith('/trabalho') && !caminho.startsWith('/datasus');
+  const financas = !caminho.startsWith('/trabalho') && !caminho.startsWith('/datasus') && !caminho.startsWith('/educacao');
   const alertas = useApi<Alerta[]>(f.alvo && financas ? 'alertas' : null, { ente: f.alvo?.cod_ibge });
   const doAno = (alertas.dados ?? []).filter((a) => a.exercicio === f.ano);
   return (

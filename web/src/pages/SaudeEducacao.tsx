@@ -196,10 +196,16 @@ export function Educacao() {
   );
 }
 
+function AvisoRecorteSiope({anos,ano,carregando,remuneracao=false}:{anos:number[];ano:number;carregando:boolean;remuneracao?:boolean}) {
+  const f=useFiltros();if(carregando||anos.includes(ano))return null;
+  const ultimo=anos.length?Math.max(...anos):null;
+  return <p className="aviso" role="status">{remuneracao?t(`Não há remuneração declarada para este recorte em ${ano}.`,`No pay return for this scope in ${ano}.`):t(`Não há indicadores de financiamento declarados para este recorte em ${ano}.`,`No funding indicators reported for this scope in ${ano}.`)} {ultimo!==null && <>{t(`Último ano disponível: ${ultimo}. `,`Latest available year: ${ultimo}. `)}<button onClick={()=>f.definir({ano:ultimo})}>{t(`Mostrar ${ultimo}`,`Show ${ultimo}`)}</button></>}</p>;
+}
+
 function EducacaoEnte({ cod }: { cod: number }) {
   const { meta } = useDados();
   const f = useFiltros();
-  const serie = useApi<Linha[]>('se_ente', { ente: cod });
+  const serie = useApi<Linha[]>('educacao_fin_serie', { ente: cod });
   const s = (serie.dados ?? []).filter((r) => r.mde_pct !== null || r.aluno_basica !== null);
   const anos = s.map((r) => r.ano as number);
   const a = s.find((r) => r.ano === f.ano);
@@ -227,6 +233,7 @@ function EducacaoEnte({ cod }: { cod: number }) {
     <>
       <Estado carregando={serie.carregando} erro={serie.erro} tentarNovamente={serie.recarregar}
         vazio={!serie.carregando && !s.length && t('Este ente não tem declarações no SIOPE.', 'This government has no SIOPE returns.')} />
+      <AvisoRecorteSiope anos={anos} ano={f.ano} carregando={serie.carregando} />
       {a && (
         <>
           <h3 className="secao">{t(`Ano de referência: ${f.ano}`, `Reference year: ${f.ano}`)}</h3>
@@ -268,7 +275,7 @@ function EducacaoEnte({ cod }: { cod: number }) {
                 { titulo: t('Educação básica', 'Basic education'), valores: s.map((r) => num(r.aluno_basica)), formato: reais },
                 { titulo: t('Educação infantil', 'Early childhood'), valores: s.map((r) => num(r.aluno_infantil)), formato: reais },
                 { titulo: t('Ensino fundamental', 'Primary/lower secondary'), valores: s.map((r) => num(r.aluno_fundamental)), formato: reais },
-                { titulo: t('Professores por aluno', 'Teachers per pupil'), valores: s.map((r) => num(r.professores_aluno)), formato: reais },
+                { titulo: t('Despesa com professores por aluno', 'Teacher spending per pupil'), valores: s.map((r) => num(r.professores_aluno)), formato: reais },
                 { titulo: t('Educação por habitante', 'Education per inhabitant'), valores: s.map((r) => porHab(r.educacao_liquidada, r.populacao_siope)), formato: reais },
               ]} metadados={metadados} />}>
               <Grafico opcao={opcaoAluno} nome="educacao_por_aluno" />
@@ -292,8 +299,8 @@ function EducacaoEnte({ cod }: { cod: number }) {
 function EducacaoGrupo({ esfera, uf }: { esfera: 'M' | 'E'; uf?: string }) {
   const { meta } = useDados();
   const f = useFiltros();
-  const grupo = useApi<Linha[]>('se_grupo', { esfera, uf });
-  const entes = useApi<Linha[]>('se_entes', { esfera, uf, ano: f.ano });
+  const grupo = useApi<Linha[]>('educacao_fin_grupo', { esfera, uf });
+  const entes = useApi<Linha[]>('educacao_fin_tabela', { esfera, uf, ano: f.ano });
   const s = (grupo.dados ?? []).filter((r) => num(r.n_mde));
   const anos = s.map((r) => r.ano as number);
   const a = s.find((r) => r.ano === f.ano);
@@ -313,6 +320,7 @@ function EducacaoGrupo({ esfera, uf }: { esfera: 'M' | 'E'; uf?: string }) {
   return (
     <>
       <Estado carregando={grupo.carregando} erro={grupo.erro} tentarNovamente={grupo.recarregar} />
+      <AvisoRecorteSiope anos={anos} ano={f.ano} carregando={grupo.carregando} />
       {a && (
         <>
           <h3 className="secao">{t(`Ano de referência: ${f.ano}`, `Reference year: ${f.ano}`)}</h3>
@@ -352,7 +360,7 @@ function EducacaoGrupo({ esfera, uf }: { esfera: 'M' | 'E'; uf?: string }) {
             acoes={<Dica rotulo={t('Fórmula', 'Formula')}>{formulas.aluno()} {formulas.educacaoHab()}</Dica>}
             tabela={<TabelaSerie nome="educacao_grupo_reais" anos={anos} colunas={[
               { titulo: t('Por aluno, educação básica (mediana)', 'Per pupil, basic education (median)'), valores: s.map((r) => num(r.aluno_basica_mediana)), formato: reais },
-              { titulo: t('Professores por aluno (mediana)', 'Teachers per pupil (median)'), valores: s.map((r) => num(r.professores_aluno_mediana)), formato: reais },
+              { titulo: t('Despesa com professores por aluno (mediana)', 'Teacher spending per pupil (median)'), valores: s.map((r) => num(r.professores_aluno_mediana)), formato: reais },
               { titulo: t('Educação por habitante (agregado)', 'Education per inhabitant (aggregate)'), valores: s.map((r) => num(r.educacao_hab)), formato: reais },
             ]} metadados={[[t('Recorte', 'Scope'), escopo], [t('Fonte', 'Source'), fonteSiope()], [t('Valores', 'Values'), reaisBase]]} />}>
             <Grafico opcao={opcaoReais} nome="educacao_grupo_reais" />
@@ -366,7 +374,7 @@ function EducacaoGrupo({ esfera, uf }: { esfera: 'M' | 'E'; uf?: string }) {
           { campo: 'fundeb', titulo: 'FUNDEB', exportar: t('FUNDEB na remuneração (%)', 'FUNDEB on pay (%)'), formato: (v) => pct(fr(v)), valor: (r) => num(r.fundeb_remuneracao_pct) },
           { campo: 'peso', titulo: t('Na despesa total', 'Of total spending'), exportar: t('Educação na despesa total (%)', 'Education in total spending (%)'), formato: (v) => pct(fr(v)), valor: (r) => num(r.educacao_despesa_pct) },
           { campo: 'aluno', titulo: t('Por aluno', 'Per pupil'), exportar: t('Investimento por aluno, educação básica', 'Spending per pupil, basic education'), formato: reais, valor: (r) => num(r.aluno_basica) },
-          { campo: 'professores', titulo: t('Professores por aluno', 'Teachers per pupil'), formato: reais, valor: (r) => num(r.professores_aluno) },
+          { campo: 'professores', titulo: t('Despesa com professores por aluno', 'Teacher spending per pupil'), formato: reais, valor: (r) => num(r.professores_aluno) },
           { campo: 'hab', titulo: t('Por habitante', 'Per inhabitant'), exportar: t('Despesa com educação por habitante', 'Education spending per inhabitant'), formato: reais, valor: (r) => num(r.educacao_hab) },
         ]} />
     </>
@@ -567,12 +575,15 @@ export function RemuneracaoEducacao() {
   const [esfera, setEsfera] = useState<'M' | 'E'>('M');
   const meses = ((meta.fontes.siope as { remuneracao?: number[] } | undefined)?.remuneracao ?? []);
   const anos = [...new Set(meses.map((m) => Math.floor(m / 100)))];
-  const ano = anos.includes(f.ano) ? f.ano : anos.at(-1);
+  const ano = f.ano;
   const esferaGrupo = f.uf ? 'M' : esfera;
   const escopo = f.alvo ? { ente: f.alvo.cod_ibge } : { esfera: esferaGrupo, uf: f.uf ?? undefined };
-  const resumo = useApi<Linha[]>(anos.length ? 'rem_resumo' : null, escopo);
-  const categorias = useApi<Linha[]>(ano ? 'rem_categorias' : null, { ...escopo, ano });
+  const resumo = useApi<Linha[]>(anos.length ? 'educacao_fin_rem_resumo' : null, escopo);
+  const categorias = useApi<Linha[]>(ano ? 'educacao_fin_rem_categorias' : null, { ...escopo, ano });
   const r = resumo.dados ?? [];
+  const cobertura=useApi<Linha[]>(anos.length?'educacao_fin_cobertura':null,escopo);
+  const cov=cobertura.dados?.find(x=>x.ano===ano);
+  const esperados=num(cov?.esperados)??num(cobertura.dados?.at(-1)?.esperados)??(f.alvo?1:null);
   const rotuloEscopo = f.alvo ? f.rotulo : escopoDe(esferaGrupo, f.uf ?? undefined);
 
   // por ano e tipo de categoria (magistério ou outros)
@@ -628,13 +639,17 @@ export function RemuneracaoEducacao() {
       {anos.length > 0 && ano !== f.ano && (
         <p className="aviso" role="status">{t(`A remuneração vai de ${anos[0]} a ${anos.at(-1)}; mostrando ${ano}.`, `Pay data cover ${anos[0]} to ${anos.at(-1)}; showing ${ano}.`)}</p>
       )}
+      <AvisoAno ano={ano} anos={anos} fonte={t('SIOPE de remuneração','SIOPE pay data')} />
+      <AvisoRecorteSiope anos={porAno.map(x=>x.ano)} ano={ano} carregando={resumo.carregando} remuneracao />
+      {anos.includes(ano) && esperados!==null && <p className="cobertura">{t(`${numero(num(cov?.com_declaracao)??0)} de ${numero(esperados)} governos com registros de remuneração em dezembro de ${ano}. Ausência de declaração não equivale a zero profissionais.`,`${numero(num(cov?.com_declaracao)??0)} of ${numero(esperados)} governments with December ${ano} pay records. A missing return is not zero staff.`)}</p>}
+      <p className="aviso">{t('As contagens são registros de pessoas por governo, categoria e situação. Uma pessoa pode aparecer em mais de um grupo; o total não representa pessoas únicas.','Counts are person records by government, category and status. One person may appear in several groups; totals are not unique people.')}</p>
       <Estado carregando={resumo.carregando} erro={resumo.erro} tentarNovamente={resumo.recarregar}
         vazio={!resumo.carregando && anos.length > 0 && !r.length && t('Sem remuneração declarada para este recorte.', 'No pay reported for this scope.')} />
       {a && (
         <>
           <h3 className="secao">{t(`Dezembro de ${ano}`, `December ${ano}`)}</h3>
           <div className="kpis">
-            <Kpi rotulo={t('Profissionais', 'Staff')} valor={numero(a.total)} nota={t('pessoas na folha da educação', 'people on the education payroll')} />
+            <Kpi rotulo={t('Registros de profissionais', 'Staff records')} valor={numero(a.total)} nota={t('registros agregados por categoria e situação', 'records aggregated by category and status')} />
             <Kpi rotulo={t('Magistério', 'Teaching staff')} valor={numero(a.magisterio)}
               nota={`${t('temporários', 'temporary')}: ${pct(a.magisterio ? a.temporarios / a.magisterio : null)}`} />
             <Kpi rotulo={t('Outros profissionais', 'Other staff')} valor={numero(a.outros)} />
@@ -646,7 +661,7 @@ export function RemuneracaoEducacao() {
       )}
       {porAno.length > 0 && (
         <div className="grade-2">
-          <CartaoGrafico titulo={t('Profissionais na folha', 'Staff on the payroll')} desc={t('Pessoas em dezembro', 'People in December')}
+          <CartaoGrafico titulo={t('Registros de profissionais', 'Staff records')} desc={t('Registros em dezembro; não pessoas únicas', 'December records; not unique people')}
             tabela={<TabelaSerie nome="educacao_profissionais" anos={eixo} colunas={[
               { titulo: t('Total', 'Total'), valores: porAno.map((x) => x.total), formato: numero },
               { titulo: t('Magistério', 'Teaching staff'), valores: porAno.map((x) => x.magisterio), formato: numero },
@@ -666,7 +681,7 @@ export function RemuneracaoEducacao() {
           </CartaoGrafico>
         </div>
       )}
-      {ano && (
+      {(categorias.carregando || cats.length>0) && (
         <section className="cartao">
           <div className="cabeca-cartao">
             <div>

@@ -19,7 +19,7 @@ def ler(p):return json.loads(p.read_text(encoding='utf-8'))
 
 def validar(root,brutos):
     m=ler(root/'gold/educacao/manifesto.json');coleta=ler(brutos/'coleta.json')
-    assert len(m['indicadores'])==77 and sum(i['principal'] for i in m['indicadores'])==43 and m['anos']==list(range(2013,2026))
+    assert len(m['indicadores'])==93 and sum(i['principal'] for i in m['indicadores'])==43 and m['anos']==list(range(2013,2026))
     assert [i['id'] for i in m['indicadores']]==IDS
     assert m['coleta_sha256']==sha(brutos/'coleta.json')
     refs=[m['arquivo'],m['parquet'],m['busca_municipios'],*m['municipios'].values(),*m['rankings'].values()]
@@ -53,7 +53,8 @@ def validar(root,brutos):
                     assert math.isfinite(v) and v>=0
                     if i['unidade']=='percentual':assert v<=100
                     elif i['unidade']=='indice':assert v<=10
-                    else:assert int(v)==v
+                    elif i['unidade']!='pontos':assert int(v)==v
+                    if i['unidade']=='condicao':assert v in range(7)
             offsets.append((offset,size))
     pos=0
     for start,size in sorted(offsets):assert start==pos;pos+=size
@@ -152,7 +153,7 @@ def validar(root,brutos):
                 assert values[(uf,2025)][field]==float(expected.iloc[0]),(uf,field)
                 ideb_checks.append(dict(uf=uf,ano=2025,indicador=field,valor=float(expected.iloc[0])))
     assert len(ideb_checks)==6
-    out=dict(ok=True,indicadores=77,territorios=len(territories),objetos=len(refs),somas_conferidas=compared,md5_inep_conferidos=md5_checked,duckdb=checks,ideb_estados=ideb_checks,perfis_conciliados=profile_checks,cotejos_adicionais=additional_checks,percentuais_conferidos=len(values)*len(PERFIL_PERCENTUAIS),busca_nacional=len(search))
+    out=dict(ok=True,indicadores=85,condicoes=8,territorios=len(territories),objetos=len(refs),somas_conferidas=compared,md5_inep_conferidos=md5_checked,duckdb=checks,ideb_estados=ideb_checks,perfis_conciliados=profile_checks,cotejos_adicionais=additional_checks,percentuais_conferidos=len(values)*len(PERFIL_PERCENTUAIS),busca_nacional=len(search))
     (root/'trabalho_educacao/auditoria.json').write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf-8')
     print(json.dumps(out,ensure_ascii=False),flush=True)
 

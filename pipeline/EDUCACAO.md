@@ -1,6 +1,6 @@
 # Educação — Inep
 
-Painel `/educacao`, desde 2013, com 77 indicadores pré-calculados. O SIOPE permanece em `/educacao/financiamento` e `/educacao/profissionais`.
+Painel `/educacao`, desde 2013, com 85 indicadores pré-calculados e oito condições de publicação do Saeb. O SIOPE permanece em `/educacao/financiamento` e `/educacao/profissionais`.
 
 ## Fontes e significado
 
@@ -24,8 +24,8 @@ Painel `/educacao`, desde 2013, com 77 indicadores pré-calculados. O SIOPE perm
 
 ```powershell
 python pipeline/educacao_baixar.py --saida E:/finbra/educacao_brutos
-python pipeline/educacao.py --brutos E:/finbra/educacao_brutos --saida E:/finbra/candidato_educacao_percentuais_20261115
-python pipeline/educacao_downloads.py --base E:/finbra/data --educacao E:/finbra/candidato_educacao_percentuais_20261115 --saida E:/finbra/candidato_downloads_educacao_percentuais_20261115 --stata "C:/Program Files/Stata18/StataBE-64.exe" --rscript "C:/Program Files/R/R-4.6.1/bin/Rscript.exe"
+python pipeline/educacao_redes.py --brutos E:/finbra/educacao_brutos --base E:/finbra/data --saida E:/finbra/candidato_educacao_saeb_20261115 --trabalho E:/finbra/trabalho_educacao_saeb_redes_20261115
+python pipeline/educacao_downloads.py --base E:/finbra/data --educacao E:/finbra/candidato_educacao_saeb_20261115 --saida E:/finbra/candidato_downloads_educacao_saeb_20261115 --stata "C:/Program Files/Stata18/StataBE-64.exe" --rscript "C:/Program Files/R/R-4.6.1/bin/Rscript.exe"
 ```
 
 A coleta usa Range para extrair apenas as tabelas agregadas e o dicionário dos ZIP públicos. Valida CRC e registra URL, membro, tamanho e SHA-256. A origem de download do Inep também oferece HTTP, usado quando seu endpoint HTTPS não aceita a conexão do ambiente. Não há informação privada nem credenciais na coleta.
@@ -34,11 +34,11 @@ A candidata não pode sobrepor as pastas de origem. Gold publicado e manifesto g
 
 Para acrescentar somente indicadores derivados, pode-se usar `--publicado E:/finbra/data` em `educacao.py`. A opção exige que o manifesto de Educação corresponda ao SHA registrado nos downloads e que a coleta seja idêntica. Confere os hashes do arquivo de séries, trechos e cadastros e reutiliza as contagens, acrescentando as razões. A auditoria independente dos CSVs continua obrigatória. Se as fontes mudaram, reconstruir sem essa opção.
 
-O catálogo de abertura contém os 77 metadados, os trechos de Brasil/UF e referências aos cadastros municipais por UF. A abertura baixa só o catálogo e o trecho do território; municípios e rankings são carregados sob demanda, sem DuckDB/WASM. A busca nacional tem índice próprio compacto `[código,nome,UF]`, carregado somente ao digitar pelo menos dois caracteres. Nome sem acento, código IBGE e termos com UF são aceitos; nomes repetidos aparecem com UF/código e exigem escolha explícita. Selecionar um município infere sua UF. O estado é opcional e sua lista continua disponível.
+O catálogo de abertura contém os 93 metadados, os trechos de Brasil/UF e referências aos cadastros municipais por UF. A abertura baixa só o catálogo e o trecho do território; municípios e rankings são carregados sob demanda, sem DuckDB/WASM. A busca nacional tem índice próprio compacto `[código,nome,UF]`, carregado somente ao digitar pelo menos dois caracteres. Nome sem acento, código IBGE e termos com UF são aceitos; nomes repetidos aparecem com UF/código e exigem escolha explícita. Selecionar um município infere sua UF. O estado é opcional e sua lista continua disponível.
 
-Downloads: a seleção principal e seus pacotes mantêm exatamente os mesmos arquivos imutáveis, com 297 indicadores + seis identificadores. O arquivo de Educação nacional/por UF tem 77 indicadores + seis identificadores, incluindo os 43 da seleção principal. Os indicadores já publicados do arquivo de Educação também são comparados integralmente antes da ampliação. Os demais temas são reutilizados. RDS é produzido e relido no R; Stata verifica chaves e declara `xtset cod_ibge ano`. Educação não recebe valores em 2026, sem fonte final disponível.
+Downloads: a seleção principal e seus pacotes mantêm exatamente os mesmos arquivos imutáveis, com 297 indicadores + seis identificadores. O arquivo de Educação nacional/por UF tem 85 indicadores + oito condições do Saeb + seis identificadores, incluindo os 43 da seleção principal. Os indicadores já publicados do arquivo de Educação também são comparados integralmente antes da ampliação. Os demais temas são reutilizados. RDS é produzido e relido no R; Stata verifica chaves e declara `xtset cod_ibge ano`. Educação não recebe valores em 2026, sem fonte final disponível.
 
-O dicionário geral contém 337 entradas; `arquivo_principal=true` identifica as 303 colunas da seleção principal e `false` os 34 indicadores adicionais do arquivo de Educação. A busca encontra os adicionais e indica o arquivo. A listagem principal e os dicionários JSON/R sem tema mantêm 303 entradas; com `tema=educacao`, retornam 83 entradas. Os formatos brutos de dicionário (Excel, RDS, CSV) contêm todas as entradas e sua disponibilidade. Os dicionários já incluídos nos pacotes principais continuam descrevendo aqueles arquivos, que não mudaram.
+O dicionário geral contém 353 entradas; `arquivo_principal=true` identifica as 303 colunas da seleção principal e `false` os 50 variáveis adicionais do arquivo de Educação. A busca encontra os adicionais e indica o arquivo. A listagem principal e os dicionários JSON/R sem tema mantêm 303 entradas; com `tema=educacao`, retornam 99 entradas. Os formatos brutos de dicionário (Excel, RDS, CSV) contêm todas as entradas e sua disponibilidade. Os dicionários já incluídos nos pacotes principais continuam descrevendo aqueles arquivos, que não mudaram.
 
 ## API
 
@@ -56,4 +56,14 @@ dicionario <- finbra_dicionario(tema = "educacao")
 
 `python pipeline/testes_educacao.py`; `npm run test:educacao`, `npm run test:downloads`, `npm test` e `npm run build` em web; testes da API/Worker e dry-run do deploy. Conferir somas territoriais e os resultados oficiais; comparar arquivos nativos; navegar em 1280/390 px, incluindo referência explícita sem Ideb, UF/município/DF, exportações, inglês/tema escuro e navegação para SIOPE/Saúde.
 
-Publicar objetos imutáveis primeiro, sem limpar o R2; guardar cópia dos manifestos anteriores. Disponibilizar o manifesto novo de educação antes do código que o utiliza. Fazer deploy compatível e trocar o manifesto próprio de downloads por último. Conferir hashes, API, Stata/R e navegação em produção. O manifesto global e outros objetos permanecem iguais. Uma atualização de fonte exige repetir esta preparação e publicação; os pacotes são instantâneos identificados por SHA-256.
+Publicar objetos imutáveis primeiro, sem limpar o R2; guardar cópia dos manifestos anteriores. Publicar primeiro o código compatível com o catálogo anterior, aguardar o deploy e então trocar os manifestos próprios de Educação e downloads. Isso evita que clientes antigos interpretem os códigos de condição como indicadores. Conferir hashes, API, Stata/R e navegação em produção. O manifesto global e outros objetos permanecem iguais. Uma atualização de fonte exige repetir esta preparação e publicação; os pacotes são instantâneos identificados por SHA-256.
+
+## Saeb, redes e abertura do SIOPE
+
+O recorte `todas` preserva integralmente os 77 indicadores anteriores: Censo em todas as redes, taxas/Ideb/Saeb públicos, além das medidas explicitamente estaduais. As opções `publica`, `municipal`, `estadual`, `federal` e `privada` são pacotes separados, filtrados na fonte. Escola sem rede selecionada tem contagem zero somente quando o Censo do território foi observado; campo não coletado permanece ausente. Infraestrutura continua sendo de escolas públicas (na rede privada não se inventa resultado).
+
+Português e Matemática: 5º ano, 9º ano e ensino médio, além da medida estadual do médio. Pontos da escala oficial, não percentuais nem Ideb. Cada variável tem uma `_nota` de 0 a 6, com rótulos no Stata/dicionário. As marcas oficiais numéricas `*` (avaliação estadual por extravio) e `**` (participação abaixo de 50% por extravio), ND*, ND e ND*** são preservadas. Nota marcada aparece com explicação e fica separada das séries/comparações regulares. Ano sem edição é explicado, mantendo lacunas reais de divulgação. A edição de 2021 exige atenção ao contexto pandêmico/participação. Fonte: planilhas oficiais do Ideb e notas nelas publicadas; agregados UF/BR são os oficiais.
+
+Cada arquivo conserva a chave município × ano; rede seleciona outro arquivo, sem criar linhas duplicadas. API: `painel/GO/educacao.dta?rede=municipal`. R: `finbra(uf="GO",tema="educacao",rede="municipal")`. Sem `rede`, o contrato anterior é mantido. São 99 colunas no arquivo temático, e a seleção principal mantém 303.
+
+`educacao_financeiro.py --base E:/finbra/data --saida <candidata_financeira>` prepara séries, tabelas e remuneração de dezembro. `educacao_redes.py --financeiro <candidata_financeira>` incorpora o pacote ao manifesto próprio. O cliente compara SIOPE/IPCA/ano-base com o manifesto global; fonte alterada, falta ou corrupção faz voltar às consultas originais, sem mostrar dados antigos silenciosamente. Estados incluem DF neste painel. Soma de profissionais é explicitamente contagem de registros por governo/categoria/situação, sem deduplicação global de pessoas. A IA abre `educacao_inep` só quando consultada; a página normal não inicia WASM.

@@ -20,6 +20,19 @@ from assistencia_utils import destino_isolado
 from downloads_enxuto import Enxuto, ler
 from downloads_navegacao import objetos, previa, referencia, registrar
 from painel_municipal import Painel, KEYS, qi, qs, sha
+from educacao import REDES, NOMES_REDE
+
+
+class EnxutoEducacao(Enxuto):
+    def registrar(self,path,id,tipo,fmt,nome,**kw):
+        rede=kw.pop("rede",getattr(self,"rede","todas"))
+        result=super().registrar(path,id,tipo,fmt,nome,**kw)
+        if tipo=="area" and kw.get("area")=="educacao":result["rede"]=rede
+        return result
+
+    def exportar(self,*args,**kw):
+        before=len(self.pending);super().exportar(*args,**kw)
+        for item in self.pending[before:]:item["meta"]["rede"]=self.rede
 
 
 def gerar(base,educacao,saida,stata,rscript):
@@ -28,7 +41,7 @@ def gerar(base,educacao,saida,stata,rscript):
     work.mkdir(parents=True,exist_ok=True);dest.mkdir(parents=True,exist_ok=True)
     old=ler(base/'gold/downloads/manifesto.json');m=copy.deepcopy(old);edu=ler(educacao/'gold/educacao/manifesto.json')
     assert old['base_sha256']==sha(base/'gold/manifesto.json')
-    assert old['resumo']['variaveis']==297 and len(edu['indicadores'])==77
+    assert old['resumo']['variaveis']==297 and len(edu['indicadores'])==93
     old_refs,old_files=objetos(base,old)
     dictionary=[copy.deepcopy(d) for d in ler(base/old['dicionario']['caminho']) if d['area']!='educacao']
     for d in dictionary:d['arquivo_principal']=True
@@ -36,17 +49,17 @@ def gerar(base,educacao,saida,stata,rscript):
     for i in edu['indicadores']:
         years=sorted(int(y) for y in municipal.loc[municipal[i['variavel']].notna(),'ano'].unique())
         dictionary.append(dict(variavel=i['variavel'],nome=i['nome'],descricao=i['descricao'],area='educacao',tabela='painel',
-            unidade={'numero':'número','percentual':'% (0 a 100)','indice':'índice (0 a 10)'}[i['unidade']],
-            fonte='Inep · '+edu['fontes'][i['fonte']]['nome'],tipo='inteiro' if i['unidade']=='numero' else 'numero',
-            regra_anual='Valor do ano do Censo ou da divulgação oficial. Ideb somente nos anos observados, sem interpolação.',
+            unidade={'numero':'número','percentual':'% (0 a 100)','indice':'índice (0 a 10)','pontos':'pontos da escala Saeb','condicao':'código de condição (0 a 6)'}[i['unidade']],
+            fonte='Inep · '+edu['fontes'][i['fonte']]['nome'],tipo='inteiro' if i['unidade']=='numero' else 'inteiro' if i['unidade']=='condicao' else 'numero',
+            regra_anual='Valor do ano do Censo ou da divulgação oficial. Ideb e Saeb somente nas edições oficiais, sem interpolação. Saeb em pontos: consultar a variável pareada _nota.',
             observacao=('Disponível na base principal e no arquivo de Educação. ' if i['principal'] else 'Disponível no arquivo temático de Educação. ')+i['descricao'],anos_observados=years,
             arquivo_principal=i['principal'],
-            ano_de=min(years) if years else None,ano_ate=max(years) if years else None,variavel_original=i['variavel']))
-    assert len(dictionary)==337 and len({x['variavel'] for x in dictionary})==337
+            ano_de=min(years) if years else None,ano_ate=max(years) if years else None,variavel_original=i['variavel'],**({'stata_rotulos':i['rotulos']} if i.get('rotulos') else {})))
+    assert len(dictionary)==353 and len({x['variavel'] for x in dictionary})==353
     assert sum(d['arquivo_principal'] for d in dictionary)==303
     stamp=datetime.now(timezone.utc).isoformat();m['gerado_em']=stamp
     # Métodos conhecidos do exportador; toda a escrita aponta para a candidata.
-    e=Enxuto.__new__(Enxuto);e.root=saida;e.origem=base;e.base=base;e.work=work;e.dest=dest;e.dictionary=dictionary;e.pending=[]
+    e=EnxutoEducacao.__new__(EnxutoEducacao);e.rede="todas";e.root=saida;e.origem=base;e.base=base;e.work=work;e.dest=dest;e.dictionary=dictionary;e.pending=[]
     e.db=duckdb.connect();e.db.execute("SET threads=2; SET memory_limit='3GB'")
     e.p=Painel.__new__(Painel);e.p.db=e.db;e.p.root=saida;e.p.work=work;e.p.dest=dest;e.p.files=[]
     original=next(a for a in old['arquivos'] if a['id']=='painel_brasil_parquet')
@@ -57,7 +70,7 @@ def gerar(base,educacao,saida,stata,rscript):
     cols=[i['variavel'] for i in edu['indicadores']]
     # A planilha bienal pode trazer colunas históricas vazias para um município
     # recém-criado. Só uma chave com observação real exige entrada no cadastro.
-    available=' OR '.join('e.'+qi(k)+' IS NOT NULL' for k in cols)
+    available=' OR '.join('e.'+qi(k)+' IS NOT NULL' for k in cols if not k.endswith('_nota'))
     extras=e.db.execute('SELECT count(*) FROM educacao e ANTI JOIN anterior a USING(cod_ibge,ano) WHERE ('+available+')').fetchone()[0]
     if extras:raise ValueError(f'Existem {extras} chaves de educação fora da base municipal; confira o cadastro antes de integrar')
     core=[i['variavel'] for i in edu['indicadores'] if i['principal']]
@@ -70,14 +83,21 @@ def gerar(base,educacao,saida,stata,rscript):
     e.db.execute('CREATE VIEW educacao_anterior AS SELECT * FROM read_parquet('+qs(previous_path.as_posix())+')')
     old_changed=e.db.execute('SELECT count(*) FROM educacao_anterior p FULL JOIN educacao e USING(cod_ibge,ano) WHERE '+ ' OR '.join('p.'+qi(k)+' IS DISTINCT FROM e.'+qi(k) for k in previous_names)).fetchone()[0]
     if old_changed:raise ValueError('Os indicadores de Educação já publicados mudaram')
-    e.db.execute('CREATE TABLE ampliado AS SELECT '+','.join('a.'+qi(k) for k in KEYS)+','+','.join('e.'+qi(k) for k in cols)+' FROM anterior a LEFT JOIN educacao e USING(cod_ibge,ano)')
-    assert e.db.execute('SELECT count(*) FROM ampliado').fetchone()[0]==original['linhas']
-    assert not e.db.execute('SELECT count(*) FROM (SELECT cod_ibge,ano,count(*) n FROM ampliado GROUP BY 1,2 HAVING n>1)').fetchone()[0]
-    selected=','.join(qi(k) for k in [*KEYS,*cols]);valid=' OR '.join(qi(k)+' IS NOT NULL' for k in cols)
-    query='SELECT '+selected+' FROM ampliado WHERE ('+valid+')'
-    e.exportar('painel_educacao',query+' ORDER BY cod_ibge,ano','Educação — Brasil',area='educacao')
-    for uf, in e.db.execute('SELECT DISTINCT uf FROM ('+query+') ORDER BY 1').fetchall():
-        e.exportar('painel_educacao_'+uf.lower(),query+' AND uf='+qs(uf)+' ORDER BY cod_ibge,ano','Educação — '+uf,area='educacao',uf=uf)
+    for rede in REDES:
+        meta=edu if rede=='todas' else ler(educacao/edu['redes'][rede]['caminho'])
+        source=educacao/meta['parquet']['caminho'];assert sha(source)==meta['parquet']['sha256']
+        e.rede=rede
+        e.db.execute('CREATE OR REPLACE VIEW rede_atual AS SELECT * FROM read_parquet('+qs(source.as_posix())+')')
+        e.db.execute('CREATE OR REPLACE TABLE ampliado AS SELECT '+','.join('a.'+qi(k) for k in KEYS)+','+','.join('e.'+qi(k) for k in cols)+' FROM anterior a LEFT JOIN rede_atual e USING(cod_ibge,ano)')
+        assert e.db.execute('SELECT count(*) FROM ampliado').fetchone()[0]==original['linhas']
+        assert not e.db.execute('SELECT count(*) FROM (SELECT cod_ibge,ano,count(*) n FROM ampliado GROUP BY 1,2 HAVING n>1)').fetchone()[0]
+        selected=','.join(qi(k) for k in [*KEYS,*cols]);valid=' OR '.join(qi(k)+' IS NOT NULL' for k in cols if not k.endswith('_nota'))
+        query='SELECT '+selected+' FROM ampliado WHERE ('+valid+')'
+        prefix='painel_educacao'+('' if rede=='todas' else '_rede_'+rede)
+        label='Educação — '+NOMES_REDE[rede]
+        e.exportar(prefix,query+' ORDER BY cod_ibge,ano',label+' — Brasil',area='educacao')
+        for uf, in e.db.execute('SELECT DISTINCT uf FROM ('+query+') ORDER BY 1').fetchall():
+            e.exportar(prefix+'_'+uf.lower(),query+' AND uf='+qs(uf)+' ORDER BY cod_ibge,ano',label+' — '+uf,area='educacao',uf=uf)
     e.processar_stata(stata)
     for f in e.pending:e.registrar(Path(f['path']),f['id'],f['tipo'],'dta',f['nome'],**f['meta'])
     new=e.p.files
@@ -97,7 +117,7 @@ def gerar(base,educacao,saida,stata,rscript):
         if a['formato']!='parquet':continue
         id=a['id'].removesuffix('_parquet')
         plan.append(dict(id=id+'_rds',parquet=str(saida/a['caminho']),rds=str(work/(id+'.rds')),retorno=str(work/(id+'_retorno.parquet')),
-                         origem=a['caminho'],sha256=a['sha256'],uf=a['uf'],tema=a['area']))
+                         origem=a['caminho'],sha256=a['sha256'],uf=a['uf'],tema=a['area'],rede=a.get('rede','todas')))
     dict_rds=work/'dicionario.rds';plan_file=work/'plano_r.json';report=work/'r_nativo.json'
     plan_file.write_text(json.dumps(dict(dicionario=str(saida/dictionary_ref['caminho']),saida_dicionario=str(dict_rds),arquivos=plan,
         base_sha256=m['base_sha256'],gerado_em=stamp),ensure_ascii=False),encoding='utf-8')
@@ -115,12 +135,12 @@ def gerar(base,educacao,saida,stata,rscript):
     for a in new:
         if a['formato']!='parquet':continue
         frame=pq.read_table(saida/a['caminho']).to_pandas()
-        preview_refs[(a['tipo'],a['area'],a['uf'])]=referencia(saida,work,'previa_'+a['id'].removesuffix('_parquet'),previa(frame,dictionary,a))
-    for a in new:a['previa']=preview_refs[(a['tipo'],a['area'],a['uf'])]
+        preview_refs[(a['tipo'],a['area'],a['uf'],a.get('rede','todas'))]=referencia(saida,work,'previa_'+a['id'].removesuffix('_parquet'),{**previa(frame,dictionary,a),'rede':a.get('rede','todas')})
+    for a in new:a['previa']=preview_refs[(a['tipo'],a['area'],a['uf'],a.get('rede','todas'))]
     m['arquivos']=[a for a in m['arquivos'] if a['area']!='educacao' and not (a['tipo']=='dicionario' and a.get('escopo')=='principal')]
     m['arquivos'].extend(a for a in new if not (a['tipo']=='area' and a['uf']))
     m['areas']=[a for a in m['areas'] if a['id']!='educacao']
-    m['areas'].append(dict(id='educacao',nome='Educação',nome_en='Education',descricao='77 indicadores: matrículas, percentuais por sexo/cor/raça, inclusão, docentes, turmas, infraestrutura, trajetória e Ideb.',descricao_en='77 indicators: enrolments, sex/race/colour percentages, inclusion, teaching positions, classes, infrastructure, progression and Ideb.'))
+    m['areas'].append(dict(id='educacao',nome='Educação',nome_en='Education',descricao='85 indicadores e 8 condições do Saeb: matrículas, percentuais por sexo/cor/raça, inclusão, docentes, turmas, infraestrutura, trajetória, Ideb e Português/Matemática do Saeb; seis redes de ensino.',descricao_en='85 indicators and 8 Saeb conditions: enrolments, sex/race/colour percentages, inclusion, teaching positions, classes, infrastructure, progression, Ideb and Saeb Portuguese/Mathematics; six school sectors.'))
     for uf,ref in old['recortes_uf'].items():
         cat=ler(base/ref['caminho']);cat['arquivos']=[a for a in cat['arquivos'] if a['area']!='educacao'];cat['arquivos'].extend(a for a in new if a['tipo']=='area' and a['uf']==uf)
         m['recortes_uf'][uf]=referencia(saida,work,'catalogo_'+uf.lower(),cat)
@@ -145,13 +165,13 @@ def gerar(base,educacao,saida,stata,rscript):
         for row in ws.iter_rows(min_row=2):
             ws.row_dimensions[row[0].row].height=60
             for cell in row:cell.alignment=Alignment(vertical='top',wrap_text=True)
-    assert len(pd.read_excel(excel,engine='calamine'))==337
+    assert len(pd.read_excel(excel,engine='calamine'))==353
     dict_item('dicionario_excel','xlsx',excel,'Dicionário dos downloads — Excel')
     dict_item('dicionario_rds','rds',dict_rds,'Dicionário dos downloads — R')
     m['resumo']['variaveis']=297
     m['notas'][0]='Base enxuta: 297 variáveis principais, além dos seis identificadores, somente desde 2013.'
     m['notas']=[n for n in m['notas'] if not n.startswith('Educação:')]
-    m['notas'].append('Educação: o arquivo do tema contém 77 indicadores; 43 também integram a seleção principal, que mantém 297 indicadores. arquivo_principal no dicionário identifica essa disponibilidade. Sexo/cor/raça: percentuais sobre todas as matrículas da educação básica do mesmo ano/território, incluindo cor/raça não declarada; agregados são razões das somas. São escolas no território; matrículas não são pessoas únicas e docentes são somados por escola. Percentuais são 0–100, Ideb é 0–10. Ausências e anos bienais são preservados.')
+    m['notas'].append('Educação: o arquivo do tema contém 85 indicadores e 8 condições de divulgação do Saeb; 43 também integram a seleção principal, que mantém 297 indicadores. arquivo_principal no dicionário identifica essa disponibilidade. Sexo/cor/raça: percentuais sobre todas as matrículas da educação básica do mesmo ano/território, incluindo cor/raça não declarada; agregados são razões das somas. São escolas no território; matrículas não são pessoas únicas e docentes são somados por escola. Percentuais são 0–100, Ideb é 0–10 e Saeb está em pontos da escala. As variáveis _nota preservam as ressalvas oficiais, inclusive avaliação estadual substituta. Rede todas: Censo em todas as redes, taxas/Ideb/Saeb da rede pública; outros arquivos filtram explicitamente a rede. Agregados UF/Brasil de avaliação são os resultados oficiais, nunca médias municipais. Ausências e anos bienais são preservados.')
     m.setdefault('fontes_complementares',{})['educacao']=dict(caminho='gold/educacao/manifesto.json',sha256=sha(educacao/'gold/educacao/manifesto.json'),gerado_em=edu['gerado_em'])
     # Substitui o texto metodológico que descrevia a dimensão antiga da base.
     for index,a in enumerate(m['arquivos']):
@@ -171,7 +191,7 @@ def gerar(base,educacao,saida,stata,rscript):
     for ref in refs:assert sha(saida/ref['caminho'])==ref['sha256']
     assert old['base_sha256']==sha(base/'gold/manifesto.json')
     (dest/'manifesto.json').write_text(json.dumps(m,ensure_ascii=False,allow_nan=False,separators=(',',':')),encoding='utf-8')
-    audit=dict(ok=True,variaveis=297,colunas=303,indicadores_educacao=77,dicionario=337,principal_identica=True,educacao_anterior_identica=True,linhas=original['linhas'],novos_conjuntos=len(plan),celulas_r_conferidas=cells,
+    audit=dict(ok=True,variaveis=297,colunas=303,indicadores_educacao=85,condicoes_saeb=8,redes=6,dicionario=353,principal_identica=True,educacao_anterior_identica=True,linhas=original['linhas'],novos_conjuntos=len(plan),celulas_r_conferidas=cells,
         anteriores_preservadas=before.size,celulas_stata_conferidas=stata_cells,objetos=len(refs),arquivos=len(files),origem_manifesto_sha256=sha(base/'gold/downloads/manifesto.json'),manifesto_sha256=sha(dest/'manifesto.json'))
     (work/'auditoria.json').write_text(json.dumps(audit,indent=2),encoding='utf-8');print(json.dumps(audit),flush=True)
 

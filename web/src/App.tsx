@@ -225,7 +225,7 @@ export function App() {
   // a aba da IA abre com o tema da área de onde se veio (só ordena os exemplos): território e ano dos filtros do painel não
   // vão junto, porque a pergunta diz o recorte e a IA escolhe as fontes
   const filtrosIa = new URLSearchParams(area === 'ia' ? atuais : undefined);
-  if (area !== 'ia' && area !== 'munic' && area !== 'clima' && area !== 'downloads' && area !== 'educacao') filtrosIa.set('paineis', area);
+  if (area !== 'ia' && area !== 'munic' && area !== 'clima' && area !== 'downloads') filtrosIa.set('paineis', area);
   const buscaIa = `?${filtrosIa}`;
 
   return (

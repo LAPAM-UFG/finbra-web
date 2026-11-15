@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { USAR_MOTOR } from './clima_abertura';
 import { executar, executarInicialClima, executarInicialSaude } from './dados';
+import { executarInicialEducacaoFinanceira, fallbackEducacaoFinanceira } from './educacao_financeira';
 
 export type Meta = {
   anos: number[]; anexos: Record<string, string[]>; baseIpca: number; geradoEm: string;
@@ -37,9 +38,10 @@ export function buscar<T>(caminho: string, params: Params = {}): Promise<T> {
   if (!cache.has(u)) {
     // clima_meta, clima_territorios e clima_painel (Clima) e saude_meta, saude_entes, saude_colunas, saude_serie e saude_siops (Saúde) abrem sem o
     // motor (pacotes de abertura); se não houver pacote ou falhar, o motor responde
-    const p = executarInicialClima(caminho, params)
+    const p = executarInicialEducacaoFinanceira(caminho,params)
+      .then(r=>r===USAR_MOTOR?executarInicialClima(caminho,params):r)
       .then((r) => (r === USAR_MOTOR ? executarInicialSaude(caminho, params) : r))
-      .then((r) => (r === USAR_MOTOR ? executar(caminho, params) : r));
+      .then((r) => (r === USAR_MOTOR ? executar(fallbackEducacaoFinanceira(caminho),caminho.startsWith('educacao_fin_')?{...params,inclui_df:1}:params) : r));
     p.catch(() => cache.delete(u));
     cache.set(u, p);
   }

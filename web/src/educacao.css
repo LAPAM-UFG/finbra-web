@@ -39,3 +39,36 @@
 .ed-tabela code { overflow-wrap: anywhere; }
 @media(max-width:600px) { .ed-cards { grid-template-columns: 1fr; } .ed-filtros { padding: 10px; gap: 10px; } .ed-filtros label { flex-basis: 100%; } .ed-valor { font-size: 26px; } .ed-links a { padding: 4px 0; } }
 @media(max-width:1000px) { .ed-graficos { grid-template-columns: 1fr; } }
+.ed-escopo { color:var(--tinta-2); font-size:13px; margin:8px 0; }
+.ed-escolha input { min-height:38px; width:100%; min-width:0; }
+.ed-titulo-secao { display:flex; align-items:center; gap:8px; width:100%; padding:13px 15px; text-align:left; font:inherit; color:var(--tinta); background:var(--superficie); border:1px solid var(--borda); border-radius:8px; cursor:pointer; }
+.ed-titulo-secao span { margin-left:auto; color:var(--tinta-3); font-size:12px; }
+.ed-secao > div > p { font-size:13px; line-height:1.5; color:var(--tinta-2); }
+.ed-selecionado { border:2px solid var(--acao-texto); box-shadow:0 0 0 2px var(--superficie-2); }
+.ed-card { scroll-margin-top:calc(var(--altura-topo,60px) + 16px); }
+.ed-ausencia,.ed-variacao { font-size:12px; color:var(--tinta-2); line-height:1.45; margin:6px 0; }
+.ed-comparacoes { display:flex; flex-wrap:wrap; gap:5px 12px; font-size:12px; padding:8px 0; color:var(--tinta-2); }
+.ed-comparacoes small { width:100%; color:var(--tinta-3); }
+.ed-posicao { display:flex; flex-direction:column; gap:8px; padding:16px; border:2px solid var(--acao-texto); background:var(--superficie); border-radius:9px; }
+.ed-linha-selecionada { background:var(--superficie-2); font-weight:600; }
+.ed-condicao { white-space:normal; max-width:50ch; min-width:130px; }
+.ed-destaque-indicador { max-width:480px; margin:12px 0; }
+.ed-dicionario { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr)); gap:10px; margin:12px 0 20px; }
+.ed-dic-item { min-width:0; padding:14px; border:1px solid var(--borda); border-radius:8px; background:var(--superficie); overflow-wrap:anywhere; }
+.ed-dic-item summary { cursor:pointer; line-height:1.5; }
+.ed-dic-item summary strong { font-size:14px; }
+.ed-dic-item summary code,.ed-dic-item summary span { display:block; font-size:12px; color:var(--tinta-2); margin-top:4px; white-space:normal; }
+.ed-dic-item p { font-size:13px; line-height:1.6; }
+@media(max-width:600px) {
+ .ed-resumo { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+ .ed-resumo .ed-card { padding:10px; }
+ .ed-resumo .ed-valor { font-size:clamp(20px,5.8vw,26px); }
+ .ed-resumo .ed-card h4 { font-size:12px; }
+ .ed-resumo .ed-ref { font-size:11px; }
+ .ed-resumo .ed-comparacoes { display:none; }
+ .ed-resumo .ed-links { gap:9px; }
+ .ed-resumo .ed-links a { font-size:11px; }
+ .ed-indice { gap:6px; }
+ .ed-indice a { font-size:12px; padding:6px 9px; }
+ .ed-titulo-secao { font-size:15px; }
+}

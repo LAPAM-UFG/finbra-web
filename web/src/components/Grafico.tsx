@@ -4,7 +4,7 @@ import { BarChart, HeatmapChart, LineChart } from 'echarts/charts';
 import { GridComponent, LegendComponent, MarkLineComponent, TooltipComponent, VisualMapComponent } from 'echarts/components';
 import { CanvasRenderer, SVGRenderer } from 'echarts/renderers';
 import type { EChartsCoreOption } from 'echarts/core';
-import { nomeArquivo } from '../exportar';
+import { baixarArquivo, nomeArquivo } from '../exportar';
 import { t } from '../idioma';
 
 // SVG: gráficos do relatório em PDF da IA, desenhados sem tela (graficoSvg)
@@ -43,15 +43,36 @@ function useVersaoTema() {
   return versao;
 }
 
-export function Grafico({ opcao, altura = 300, nome, descricao }: {
+export function Grafico({ opcao, altura = 300, nome, descricao, metadadosImagem, animacao }: {
   opcao: (t: Tokens) => EChartsCoreOption; altura?: number; nome?: string; descricao?: string;
+  metadadosImagem?: {titulo:string;contexto:string;fonte:string};
+  animacao?:boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const grafico = useRef<echarts.ECharts | null>(null);
   const versao = useVersaoTema();
-  const baixarPng = () => {
+  const [pngOcupado,setPngOcupado]=useState(false),[pngErro,setPngErro]=useState(false);
+  const baixarPng = async () => {
     const g = grafico.current;
     if (!g) return;
+    if(metadadosImagem) {
+      setPngOcupado(true);setPngErro(false);
+      try {
+        const cores=tokens(),img=new Image();img.src=g.getDataURL({type:'png',pixelRatio:2,backgroundColor:cores.superficie});await img.decode();
+        const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');if(!ctx)throw new Error('canvas');
+        const width=img.naturalWidth,padding=24;
+        const quebrar=(texto:string,font:string)=>{ctx.font=font;const lines:string[]=[];let atual='';for(const word of texto.split(/\s+/)){const next=atual?atual+' '+word:word;if(atual&&ctx.measureText(next).width>width-2*padding){lines.push(atual);atual=word;}else atual=next;}if(atual)lines.push(atual);return lines;};
+        const title=quebrar(metadadosImagem.titulo,'bold 28px sans-serif'),scope=quebrar(metadadosImagem.contexto,'22px sans-serif'),source=quebrar(metadadosImagem.fonte,'20px sans-serif');
+        const header=padding+title.length*36+scope.length*30+padding,footer=source.length*28+padding*2;
+        canvas.width=width;canvas.height=header+img.naturalHeight+footer;ctx.fillStyle=cores.superficie;ctx.fillRect(0,0,width,canvas.height);
+        let y=padding+28;ctx.fillStyle=cores.tinta;ctx.font='bold 28px sans-serif';for(const line of title){ctx.fillText(line,padding,y);y+=36;}
+        ctx.fillStyle=cores.tinta2;ctx.font='22px sans-serif';for(const line of scope){ctx.fillText(line,padding,y);y+=30;}
+        ctx.drawImage(img,0,header);ctx.font='20px sans-serif';y=header+img.naturalHeight+padding+20;for(const line of source){ctx.fillText(line,padding,y);y+=28;}
+        const blob=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(v=>v?resolve(v):reject(new Error('PNG')),'image/png'));
+        baixarArquivo(`${nomeArquivo(nome??'grafico')}.png`,blob,'image/png');
+      } catch {setPngErro(true);} finally {setPngOcupado(false);}
+      return;
+    }
     const a = document.createElement('a');
     a.href = g.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: tokens().superficie });
     a.download = `${nomeArquivo(nome ?? 'grafico')}.png`;
@@ -69,14 +90,15 @@ export function Grafico({ opcao, altura = 300, nome, descricao }: {
   }, []);
 
   useEffect(() => {
-    grafico.current?.setOption(opcao(tokens()), { notMerge: true });
-  }, [opcao, versao]);
+    grafico.current?.setOption({...opcao(tokens()),...(animacao===undefined?{}:{animation:animacao})}, { notMerge: true });
+  }, [opcao, versao, animacao]);
 
   return (
     <figure className="grafico">
       <div ref={ref} style={{ height: altura, width: '100%' }} role="img"
         aria-label={descricao ?? t('Gráfico; os valores estão na opção Tabela', 'Chart; values are available in the Table option')} />
-      <button className="botao-leve png" onClick={baixarPng}>{t('Imagem (PNG)', 'Image (PNG)')}</button>
+      <button className="botao-leve png" disabled={pngOcupado} onClick={baixarPng}>{pngOcupado?t('Preparando imagem…','Preparing image…'):t('Imagem (PNG)', 'Image (PNG)')}</button>
+      {pngErro && <p role="alert">{t('Não foi possível preparar a imagem. Tente novamente.','Could not prepare the image. Try again.')}</p>}
     </figure>
   );
 }

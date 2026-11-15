@@ -373,6 +373,15 @@ async function lerManifesto(env) {
   return manifesto.valor;
 }
 
+const educacaoCache={valor:null,ate:0};
+async function lerEducacao(env) {
+  if(Date.now()>educacaoCache.ate){
+    const obj=await env.DADOS.get('gold/educacao/manifesto.json');
+    educacaoCache.valor=obj?await obj.json():null;educacaoCache.ate=Date.now()+60000;
+  }
+  return educacaoCache.valor;
+}
+
 // ---------------- validação do histórico ----------------
 
 /** Textos de uma mensagem do usuário: a pergunta é o último; antes dele pode vir o contexto da página. */
@@ -461,6 +470,7 @@ export async function rotaIa(request, env, url) {
     cache_control: { type: 'ephemeral' },
     system: [
       ...instrucoes(paineis, {
+        educacao:paineis.includes('educacao')?await lerEducacao(env):null,
         // no desenvolvimento local (wrangler dev) o R2 simulado não tem o manifesto: vale o do navegador
         manifesto: (await lerManifesto(env)) ?? (local && corpo.manifesto && typeof corpo.manifesto === 'object' ? corpo.manifesto : null),
         // anos e microdados do mercado de trabalho vêm do navegador: podem existir só no computador local

@@ -174,8 +174,8 @@ describe('instruções', () => {
 
   test('painéis desconhecidos são ignorados; nenhum válido = todos', () => {
     assert.deepEqual(paineisDoPedido(['trabalho', 'x']), ['trabalho']);
-    assert.deepEqual(paineisDoPedido([]), ['financas', 'trabalho', 'saude', 'munic', 'clima', 'assistencia']);
-    assert.deepEqual(paineisDoPedido('trabalho'), ['financas', 'trabalho', 'saude', 'munic', 'clima', 'assistencia']);
+    assert.deepEqual(paineisDoPedido([]), ['educacao', 'financas', 'trabalho', 'saude', 'munic', 'clima', 'assistencia']);
+    assert.deepEqual(paineisDoPedido('trabalho'), ['educacao', 'financas', 'trabalho', 'saude', 'munic', 'clima', 'assistencia']);
     assert.deepEqual(paineisDoPedido(['saude', 'financas']), ['financas', 'saude']);
   });
 

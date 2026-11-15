@@ -1,3 +1,5 @@
+import {criarLeitorFinanceiro,fallbackEducacaoFinanceira} from '../src/educacao_financeira';
+import {type MetaEducacao,type ObjetoEducacao} from '../src/educacao_dados';
 /**
  * Testes das regras do painel: as mesmas rotas e o mesmo SQL do site (src/dados.ts), executados
  * sobre os arquivos da pasta data/ local com o DuckDB-WASM para Node.
@@ -109,7 +111,9 @@ const CLIMA_CANDIDATO = process.env.CLIMA_CANDIDATO?.replaceAll('\\', '/');
 const doClima = (c: string): string | null => (CLIMA_CANDIDATO && c === 'gold/clima/painel.parquet' && existsSync(`${CLIMA_CANDIDATO}/${c}`) ? `${CLIMA_CANDIDATO}/${c}` : null);
 let MANIFESTO_TESTE: { fontes: Record<string, unknown> } | null = null; // o manifesto que a rota enxerga (os testes de perfis o ajustam e restauram)
 const doFnsCandidato = (c: string) => !!FNS_CANDIDATO && /^gold\/(saude\/fns_[^/]+\.parquet$|manifesto\.json$)/.test(c);
-const onde = (c: string) => (doPerfis(c) ?? doMunic(c) ?? doClima(c) ?? (doFnsCandidato(c) ? `${FNS_CANDIDATO}/${c}` : c.startsWith('silver/trabalho/micro/') ? `${MICRO}/${c}` : VACINACAO_CANDIDATO && c.startsWith('gold/saude/vacinacao') ? `${VACINACAO_CANDIDATO}/${c}` : doGoldPublicado(c) ? `${GOLD_PUBLICADO}/${c}` : `${DATA}/${c}`));
+const EDUCACAO_CANDIDATO=process.env.EDUCACAO_CANDIDATO?.replaceAll('\\','/');
+const doEducacao=(c:string)=>EDUCACAO_CANDIDATO&&c.startsWith('gold/educacao/')?`${EDUCACAO_CANDIDATO}/${c}`:null;
+const onde = (c: string) => (doEducacao(c) ?? doPerfis(c) ?? doMunic(c) ?? doClima(c) ?? (doFnsCandidato(c) ? `${FNS_CANDIDATO}/${c}` : c.startsWith('silver/trabalho/micro/') ? `${MICRO}/${c}` : VACINACAO_CANDIDATO && c.startsWith('gold/saude/vacinacao') ? `${VACINACAO_CANDIDATO}/${c}` : doGoldPublicado(c) ? `${GOLD_PUBLICADO}/${c}` : `${DATA}/${c}`));
 const rota = <T>(caminho: string, params: Record<string, string | number | undefined> = {}) => executar(caminho, params) as Promise<T>;
 type L = Record<string, number | string | null | boolean>;
 
@@ -6404,4 +6408,44 @@ describe('abertura rápida da saúde', () => {
     assert.deepEqual(Object.keys(meta), Object.keys(motorMeta));
     assert.equal(avisos.length, 0, avisos.join('; '));
   });
+});
+
+describe('Educação SIOPE pré-calculada', {skip:!EDUCACAO_CANDIDATO},()=>{
+ test('IA consulta Português/Matemática oficiais de UF na rede escolhida',async()=>{
+  const original=globalThis.fetch;
+  globalThis.fetch=async(input,init)=>String(input).endsWith('gold/educacao/manifesto.json')?new Response(await readFile(onde('gold/educacao/manifesto.json'))):original(input,init);
+  try{
+   const result=await executarConsulta({sql:"SELECT grupo,ano,rede,edu_saeb_lp_ai,edu_saeb_mat_ai,edu_saeb_lp_ai_nota FROM educacao_inep WHERE grupo='GO' AND nivel='UF' AND rede='publica' AND ano=2025",objetivo:'Resultado oficial de Goiás'},['educacao']);
+   assert(!('erro' in result),JSON.stringify(result));assert.equal(result.total,1);
+   assert.deepEqual(result.linhas[0].slice(0,3),['GO',2025,'publica']);assert.equal(result.linhas[0][5],0);
+   assert(Number(result.linhas[0][3])>100&&Number(result.linhas[0][4])>100);
+   assert(fontesConsultadas(["SELECT * FROM educacao_inep"]).some(s=>s.includes('Inep')));
+   assert(juntaFontes('SELECT * FROM educacao_inep e JOIN indicadores i ON e.cod_ibge=i.cod_ibge'));
+  }finally{globalThis.fetch=original;}
+ });
+ test('pacotes coincidem com as rotas SQL para município, UF, Brasil e estados/DF',async()=>{
+  const meta=JSON.parse(await readFile(onde('gold/educacao/manifesto.json'),'utf8')) as MetaEducacao;
+  const reader=criarLeitorFinanceiro({educacao:async()=>meta,manifesto:async()=>MANIFESTO_TESTE as any,
+   ler:async<T>(ref:ObjetoEducacao)=>JSON.parse(await readFile(onde(ref.caminho),'utf8')) as T,
+   buscar:async(input,init)=>{
+    const caminho=String(input).split('gold/educacao/')[1];assert(caminho&&!caminho.includes('..'));
+    const r=new Headers(init?.headers).get('Range')?.match(/^bytes=(\d+)-(\d+)$/);assert(r);
+    const file=await readFile(onde('gold/educacao/'+caminho));return new Response(file.subarray(+r[1],+r[2]+1),{status:206,headers:{'Content-Range':`bytes ${r[1]}-${r[2]}/${file.length}`}});
+   }});
+  const ordenar=(rows:L[])=>[...rows].sort((a,b)=>JSON.stringify([a.ano,a.cod_ibge,a.tipo_categoria,a.categoria,a.situacao]).localeCompare(JSON.stringify([b.ano,b.cod_ibge,b.tipo_categoria,b.categoria,b.situacao])));
+  let cells=0;
+  for(const q of [{ente:5208707},{ente:5200506},{ente:53},{uf:'GO',esfera:'M'},{esfera:'M'},{esfera:'E'}]){
+   const routes=q.ente?['serie','rem_resumo','rem_categorias','cobertura']:['grupo','rem_resumo','rem_categorias','cobertura','tabela'];
+   for(const tail of routes){
+    const params={...q,ano:2025,inclui_df:1};const route='educacao_fin_'+tail;
+    const fast=await reader.executar(route,params);assert.notEqual(fast,USAR_MOTOR_SAUDE,route);
+    const actual=ordenar(fast as L[]);const native=ordenar(await rota<L[]>(fallbackEducacaoFinanceira(route),params));
+    assert.equal(actual.length,native.length,route+JSON.stringify(q));
+    for(let n=0;n<actual.length;n++)for(const [k,v] of Object.entries(actual[n])){
+     const other=native[n][k];if(typeof v==='number'&&typeof other==='number')quase(v,other,1e-12);else assert.deepEqual(v,other,route+'/'+n+'/'+k);cells++;
+    }
+   }
+  }
+  assert(cells>10000);
+ });
 });

@@ -104,9 +104,9 @@ class Educacao(unittest.TestCase):
             self.assertFalse(any(source.iterdir()))
 
     def test_contrato_das_variaveis(self):
-        self.assertEqual(len(INDICADORES),77)
+        self.assertEqual(len(INDICADORES),93)
         self.assertEqual(sum(i['principal'] for i in INDICADORES),43)
-        self.assertEqual(len({i['variavel'] for i in INDICADORES}),77)
+        self.assertEqual(len({i['variavel'] for i in INDICADORES}),93)
         self.assertTrue(all(len(i['variavel'])<=32 for i in INDICADORES))
 
     def test_cadastro_ausente_e_conciliado_por_codigo_sem_mudar_contagens(self):
@@ -229,6 +229,31 @@ class Educacao(unittest.TestCase):
             self.assertEqual(values[('BR',2023)]['ideb_af'],4.7)
             self.assertEqual(values[('BR',2013)]['ideb_af'],4)
             self.assertEqual(len(report['arquivos'][0]['cabecalhos_legiveis']),1)
+
+    def test_saeb_preserva_notas_e_ressalvas_por_rede(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'saeb.xlsx';rows=[[None]*6 for _ in range(14)]
+            rows[6]=['Brasil','Rede','Ideb',None,None,None]
+            rows[9]=['BRASIL','REDE','VL_OBSERVADO_2025','VL_NOTA_PORTUGUES_2025','VL_NOTA_MATEMATICA_2025','VL_NOTA_PORTUGUES_2023']
+            rows[10]=['Brasil','Pública',6, '205.58*','244,28**','ND***']
+            rows[11]=['Brasil','Municipal',5.5, 201.77,'ND*','ND']
+            rows[12]=['Brasil','Privada',7, 251.22,260.33,'-']
+            rows[13]=['Brasil','Estadual',6,240,250,230]
+            pd.DataFrame(rows).to_excel(path,index=False,header=False,sheet_name='Anos Iniciais')
+            source=[dict(caminho=str(path),sha256=sha(path),fonte='ideb',ano=2025)]
+            values={};ler_indicadores(source,values)
+            r=values[('BR',2025)];self.assertEqual(r['saeb_lp_ai'],205.58);self.assertEqual(r['saeb_lp_ai_nota'],1)
+            self.assertEqual(r['saeb_mat_ai'],244.28);self.assertEqual(r['saeb_mat_ai_nota'],2)
+            self.assertIsNone(values[('BR',2023)]['saeb_lp_ai']);self.assertEqual(values[('BR',2023)]['saeb_lp_ai_nota'],6)
+            values={};ler_indicadores(source,values,'municipal')
+            self.assertEqual(values[('BR',2025)]['saeb_lp_ai'],201.77);self.assertEqual(values[('BR',2025)]['saeb_lp_ai_nota'],0)
+            self.assertIsNone(values[('BR',2025)]['saeb_mat_ai']);self.assertEqual(values[('BR',2025)]['saeb_mat_ai_nota'],3)
+            self.assertEqual(values[('BR',2023)]['saeb_lp_ai_nota'],4)
+            values={};ler_indicadores(source,values,'privada');self.assertEqual(values[('BR',2025)]['saeb_lp_ai'],251.22)
+            self.assertEqual(values[('BR',2023)]['saeb_lp_ai_nota'],5)
+            rows[10][3]='205.58***';pd.DataFrame(rows).to_excel(path,index=False,header=False,sheet_name='Anos Iniciais')
+            source[0]['sha256']=sha(path)
+            with self.assertRaises(ValueError):ler_indicadores(source,{})
 
 
 if __name__=='__main__':unittest.main()

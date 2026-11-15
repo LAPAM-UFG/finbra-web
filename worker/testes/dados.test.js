@@ -109,3 +109,20 @@ test('arquivo, catálogo ou leitura corrompidos falham sem expor detalhes intern
   const g=fixture();g.store.delete(g.regional[0].caminho);assert.equal((await g.fetch(`${api}/painel/GO/saude.dta`)).status,503);
   const z=fixture();z.env.DADOS.get=async()=>{throw Error('SEGREDO_INTERNO');};const r=await z.fetch(`${api}/painel.dta`);assert.equal(r.status,503);assert(!JSON.stringify(await r.json()).includes('SEGREDO'));
 });
+
+test('rede de ensino seleciona arquivos prontos distintos e preserva a API anterior',async()=>{
+ const f=fixture();f.m.areas.push({id:'educacao',nome:'Educação',nome_en:'Education',descricao:'',descricao_en:''});
+ for(const rede of ['todas','municipal'])for(const fmt of ['dta','rds','parquet','csv.zip']){
+  const a={...f.m.arquivos.find(a=>a.formato===fmt),tipo:'area',area:'educacao',rede,id:'educacao_'+rede+'_'+fmt.replace('.','_'),caminho:'gold/downloads/educacao_'+rede+'.'+fmt};
+  const raw=Buffer.from(rede+':'+fmt);a.bytes=raw.length;f.store.set(a.caminho,raw);f.m.arquivos.push(a);
+ }
+ f.store.set('gold/downloads/manifesto.json',Buffer.from(JSON.stringify(f.m)));
+ for(const fmt of ['dta','rds','parquet','csv.zip']){
+  const r=await f.fetch(`${api}/painel/BR/educacao.${fmt}?rede=municipal`);assert.equal(r.status,200);assert.equal(await r.text(),'municipal:'+fmt);
+  assert(r.headers.get('Content-Disposition').includes('_municipal.'));
+ }
+ assert.equal(await (await f.fetch(`${api}/painel.dta?tema=educacao`)).text(),'todas:dta');
+ const c=await (await f.fetch(`${api}/catalogo.json?tema=educacao&rede=municipal`)).json();
+ assert.equal(c.arquivos.length,4);assert(c.arquivos.every(a=>a.rede==='municipal'&&a.url.endsWith('?rede=municipal')));
+ for(const q of ['tema=saude&rede=municipal','tema=educacao&rede=errada','tema=educacao&rede=municipal&rede=estadual'])assert.equal((await f.fetch(`${api}/painel.dta?${q}`)).status,400);
+});

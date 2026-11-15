@@ -83,6 +83,10 @@ def preparar_stata(frame, dictionary):
  """Nulos numéricos viram missing; categorias recebem códigos e rótulos estáveis."""
  df=frame.copy();rotulos={};by={d['variavel']:d for d in dictionary}
  for name in df:
+  # All-null numeric columns can arrive as object (e.g. a school sector without
+  # state Ideb). Keep them numeric; do not invent boolean/category labels.
+  if name not in KEYS and by[name]['tipo'] in ['numero','inteiro'] and (pd.api.types.is_object_dtype(df[name].dtype) or pd.api.types.is_string_dtype(df[name].dtype)):
+   df[name]=pd.to_numeric(df[name],errors='raise').astype('float64')
   if pd.api.types.is_bool_dtype(df[name].dtype) or (name not in KEYS and by[name]['tipo']=='logico'):
    df[name]=df[name].astype('float64');rotulos[name]={0:'Não',1:'Sim'};by[name]['stata_rotulos']=rotulos[name]
   elif name not in KEYS and (pd.api.types.is_object_dtype(df[name].dtype) or pd.api.types.is_string_dtype(df[name].dtype)):
@@ -99,6 +103,9 @@ def preparar_stata(frame, dictionary):
    df[name]=df[name].fillna('').astype(object)
   elif pd.api.types.is_numeric_dtype(df[name].dtype):
    if np.isinf(df[name].to_numpy(dtype='float64',na_value=np.nan)).any():raise ValueError('Valor infinito: '+name)
+   if name not in KEYS and by[name].get('stata_rotulos'):
+    rotulos[name]={int(k):v for k,v in by[name]['stata_rotulos'].items()}
+    if set(df[name].dropna().unique())-set(rotulos[name]):raise ValueError('Código de condição desconhecido: '+name)
   if name not in KEYS and by[name].get('variavel_original',name).endswith('_mes'):rotulos[name]=MESES;by[name]['stata_rotulos']=MESES
  return df,rotulos
 

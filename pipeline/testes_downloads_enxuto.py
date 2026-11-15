@@ -57,5 +57,13 @@ class DownloadsEnxuto(unittest.TestCase):
     with self.assertRaises(ValueError):Enxuto(source,dest,source)
    self.assertEqual([p.name for p in source.iterdir()],['dado'])
 
+ def test_coluna_numerica_vazia_nao_recebe_rotulo_booleano_entre_redes(self):
+  dictionary=[dict(variavel='ideb',tipo='numero'),dict(variavel='nota',tipo='inteiro',stata_rotulos={0:'Regular',1:'Ressalva'})]
+  empty,labels=preparar_stata(pd.DataFrame({'ideb':[None,None],'nota':[None,None]}),dictionary)
+  self.assertTrue(empty.ideb.isna().all());self.assertNotIn('ideb',labels);self.assertNotIn('stata_rotulos',dictionary[0])
+  actual,labels=preparar_stata(pd.DataFrame({'ideb':[4.7,0.],'nota':[0,1]}),dictionary)
+  self.assertEqual(actual.ideb.tolist(),[4.7,0.]);self.assertEqual(labels['nota'],{0:'Regular',1:'Ressalva'})
+  with self.assertRaises(ValueError):preparar_stata(pd.DataFrame({'ideb':[4.7],'nota':[7]}),dictionary)
+
 
 if __name__=='__main__':unittest.main()

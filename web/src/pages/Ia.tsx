@@ -1,3 +1,4 @@
+import {obterMetaEducacao,useEducacao} from '../educacao_dados';
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { Meta } from '../api';
@@ -35,6 +36,7 @@ import { cadastro as carregarCadastro, type Cadastro } from '../ia_territorio';
 const LINHAS_INICIAIS = 25;
 
 const NOMES_PAINEIS = (): Record<Painel, string> => ({
+  educacao:t('Educação','Education'),
   financas: t('Finanças públicas', 'Public finances'),
   trabalho: t('Mercado de trabalho', 'Labour market'),
   saude: t('Saúde', 'Health'),
@@ -134,6 +136,7 @@ function coberturaDe(meta: Meta, microdados: boolean): Cobertura {
   return {
     rais: anos(f.rais?.anos), caged: caged?.de && caged?.ate ? { de: caged.de, ate: caged.ate } : null, microdados, dca: meta.anos,
     pib: pib && { ...pib, setorial_ate: Number(f.ibge_pib?.setorial_ate) || undefined },
+    educacao:anos(f.educacao_inep?.anos),saeb:anos(f.educacao_inep?.edicoes),
     siope: anos(f.siope?.anos), siopeRemuneracao: anos(f.siope?.remuneracao), siops: anos(f.siops?.anos),
     lrf: par(f.siconfi_lrf?.anos) && { ...par(f.siconfi_lrf?.anos)!, parciais: anos(f.siconfi_lrf?.parciais) }, bolsa: bolsa && { ...bolsa, mes: Number(f.bolsa_familia?.ultimo_mes) || bolsa.ate * 100 + 12 },
     inss: anos(f.inss?.exercicios),
@@ -159,6 +162,7 @@ const recorteEfetivo = (p?: RespostaPronta | null) => (p
 
 /** Temas dos painéis marcados, no subtítulo ("finanças, emprego e saúde"). */
 const TEMAS = (): Record<Painel, string> => ({
+  educacao:t('educação','education'),
   financas: t('finanças', 'public finances'), trabalho: t('emprego', 'employment'), saude: t('saúde', 'health'), munic: t('gestão pública', 'public management'), clima: t('clima', 'climate'), assistencia: t('assistência social', 'social assistance'),
 });
 const subtitulo = (p: Painel[]) => {
@@ -188,6 +192,7 @@ const descricao = (p: Painel[]) => (p.length > 1
         'Ask in plain language about revenue, expenditure, transfers and fiscal indicators of municipalities, states and DF. The AI queries the SICONFI filings here in your browser, does the calculations in SQL and explains the result, with the queries in view for checking.'));
 
 const FONTES = (): Record<Painel, string> => ({
+  educacao:t('Educação (Inep: Censo Escolar, Ideb e Saeb)','Education (Inep: School Census, Ideb and Saeb)'),
   financas: t('finanças públicas (SICONFI/Tesouro Nacional, IBGE, Banco Central, Portal da Transparência, Previdência)', 'public finances (SICONFI/National Treasury, IBGE, Central Bank, Transparency Portal, Social Security)'),
   trabalho: t('mercado de trabalho (RAIS e Novo CAGED, Ministério do Trabalho e Emprego)', 'labour market (RAIS and New CAGED, Ministry of Labour and Employment)'),
   saude: t('saúde (SIM, SINASC, SIH, CNES, SINAN, SISCAN, Painel de Oncologia e RESP, Ministério da Saúde/DATASUS; população da SVS/MS)', 'health (SIM, SINASC, SIH, CNES, SINAN, SISCAN, Oncology Panel and RESP, Ministry of Health/DATASUS; SVS/MS population)'),
@@ -1771,7 +1776,11 @@ function Turno({ i, turno, pronta, meta, resultados, ativo, progresso, ultimo, p
  * visível, com uma ação para escrevê-los no campo.
  */
 export function Ia() {
-  const { meta, entes } = useDados();
+  const { meta:metaBase, entes } = useDados();
+  const catalogoEducacao=useEducacao('ia-educacao',()=>obterMetaEducacao());
+  const edu=catalogoEducacao.dados;
+  const meta=useMemo(()=>edu?{...metaBase,geradoEm:Date.parse(edu.gerado_em)>Date.parse(metaBase.geradoEm)?edu.gerado_em:metaBase.geradoEm,
+    fontes:{...metaBase.fontes,educacao_inep:{anos:edu.anos,edicoes:edu.edicoes_avaliacao??[],processado_em:edu.gerado_em,consulta_sha256:edu.consulta?.sha256}}}:metaBase,[metaBase,edu]);
   const [busca, setBusca] = useSearchParams();
   const pedidos = (busca.get('paineis') ?? '').split(',');
   const marcados = PAINEIS.filter((p) => pedidos.includes(p));

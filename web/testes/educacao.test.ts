@@ -1,6 +1,9 @@
+import {criarLeitorFinanceiro} from '../src/educacao_financeira';
+import {USAR_MOTOR} from '../src/clima_abertura';
+import {createHash} from 'node:crypto';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { linhaEducacao,filtrarMunicipiosEducacao,municipioExatoEducacao,ufMunicipioEducacao, type GrupoEducacao } from '../src/educacao_dados';
+import { anoSemEdicaoEducacao,posicoesEducacao,type MetaEducacao,type IndicadorEducacao,linhaEducacao,filtrarMunicipiosEducacao,municipioExatoEducacao,ufMunicipioEducacao, type GrupoEducacao } from '../src/educacao_dados';
 import { buscaEntreAreas } from '../src/navegacao';
 
 const g: GrupoEducacao = {grupo:'BR',linhas:[[2023,6.1,100],[2024,null,0],[2025,null,null]],cobertura:{}};
@@ -34,4 +37,37 @@ test('território acompanha a navegação entre Saúde e Educação',()=>{
 test('SIOPE mantém os códigos do contexto financeiro e o DF',()=>{
   assert.equal(new URLSearchParams(buscaEntreAreas('?uf=DF&cod=5300108','educacao','financas')).get('ente'),'53');
   assert.equal(new URLSearchParams(buscaEntreAreas('?ente=5208707','educacao','educacao')).get('ente'),'5208707');
+});
+
+test('calendário distingue ano sem edição de resultado municipal não publicado',()=>{
+ const i={fonte:'saeb',anos:[2023]} as IndicadorEducacao;
+ const m={indicadores:[i],edicoes_avaliacao:[2013,2015,2017,2019,2021,2023,2025]} as MetaEducacao;
+ assert.equal(anoSemEdicaoEducacao(m,i,2024),true);
+ assert.equal(anoSemEdicaoEducacao(m,i,2025),false);
+ assert.equal(anoSemEdicaoEducacao(m,{...i,fonte:'censo'},2024),false);
+});
+test('ranking conserva posição em empate sem pular o primeiro após cada grupo',()=>{
+ assert.deepEqual(posicoesEducacao([[1,'A','GO',100],[2,'B','GO',100],[3,'C','GO',99],[4,'D','GO',99],[5,'E','GO',90]],0),[1,1,3,3,5]);
+});
+
+function financeiroFixture(change=false,corrupt=false){
+ const raw=Buffer.from(JSON.stringify({g:'M:GO',se:[[2025,241]],rem:[],cats:[],cobertura:[[2025,241,246]]})+'\n');
+ const arquivo={caminho:'gold/educacao/siope_teste.ndjson',bytes:raw.length,sha256:'a'.repeat(64)};
+ const ref={caminho:'gold/educacao/financeiro_teste.json',bytes:2,sha256:'b'.repeat(64)};
+ const compatibilidade={siope:{anos:[2024,2025]},ipca:{ano_base:2025},base_ipca:2025};
+ const ind={versao:1,meta:{geradoEm:'anterior'},compatibilidade,arquivo,entes:ref,grupos:{'M:GO':[0,raw.length,createHash('sha256').update(raw).digest('hex')]},municipios:{},colunas:{grupo:['ano','entes'],cobertura:['ano','com_declaracao','esperados']}};
+ let requests=0;
+ const reader=criarLeitorFinanceiro({educacao:async()=>({financeiro:ref} as unknown as MetaEducacao),manifesto:async()=>({gerado_em:'atual',base_ipca:2025,fontes:{siope:{anos:change?[2024,2025,2026]:[2024,2025]},ipca:{ano_base:2025},outra:{versao:'nova'}}} as any),ler:async<T>()=>ind as T,buscar:async()=>{requests++;return new Response(corrupt?Buffer.alloc(raw.length):raw,{status:206,headers:{'Content-Range':`bytes 0-${raw.length-1}/${raw.length}`}});}});
+ return {reader,requests:()=>requests};
+}
+test('SIOPE pronto conserva cobertura e ignora atualização de outra fonte',async()=>{
+ const f=financeiroFixture();
+ assert.deepEqual(await f.reader.executar('educacao_fin_grupo',{uf:'GO'}),[{ano:2025,entes:241}]);
+ assert.deepEqual(await f.reader.executar('educacao_fin_cobertura',{uf:'GO'}),[{ano:2025,com_declaracao:241,esperados:246}]);
+ assert.equal(f.requests(),1);
+ assert.equal(await f.reader.executar('se_grupo',{uf:'GO'}),USAR_MOTOR);
+});
+test('SIOPE atualizado ou trecho corrompido volta ao motor, sem mostrar pacote antigo',async()=>{
+ assert.equal(await financeiroFixture(true).reader.executar('educacao_fin_grupo',{uf:'GO'}),USAR_MOTOR);
+ assert.equal(await financeiroFixture(false,true).reader.executar('educacao_fin_grupo',{uf:'GO'}),USAR_MOTOR);
 });

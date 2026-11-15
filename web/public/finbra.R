@@ -5,7 +5,7 @@
 .finbra_base <- "https://finbra-web.luanviniciusbernardelli.workers.dev/api/dados/v1"
 .finbra_ufs <- c("11"="RO","12"="AC","13"="AM","14"="RR","15"="PA","16"="AP","17"="TO","21"="MA","22"="PI","23"="CE","24"="RN","25"="PB","26"="PE","27"="AL","28"="SE","29"="BA","31"="MG","32"="ES","33"="RJ","35"="SP","41"="PR","42"="SC","43"="RS","50"="MS","51"="MT","52"="GO","53"="DF")
 
-finbra_url <- function(uf = NULL, tema = NULL, formato = "rds", base_url = .finbra_base) {
+finbra_url <- function(uf = NULL, tema = NULL, formato = "rds", base_url = .finbra_base, rede = "todas") {
   if (is.null(uf)) uf <- "BR"
   if (is.null(tema)) tema <- "todos"
   if (!is.character(uf) || length(uf) != 1L || is.na(uf)) stop("uf deve ser uma sigla ou BR.")
@@ -16,7 +16,8 @@ finbra_url <- function(uf = NULL, tema = NULL, formato = "rds", base_url = .finb
   if (is.na(tema) || !tema %in% c("todos","financas","saude","educacao","trabalho","gestao","clima","assistencia")) stop("Tema inv\u00e1lido.")
   if (!is.character(formato) || length(formato) != 1L || !formato %in% c("rds","dta","parquet","csv.zip")) stop("Formato inv\u00e1lido.")
   if (!is.character(base_url) || length(base_url) != 1L || is.na(base_url) || !grepl("^https?://",base_url)) stop("base_url deve ser um endere\u00e7o HTTP(S).")
-  paste0(sub("/+$","",base_url),"/painel.",formato,"?uf=",uf,"&tema=",tema)
+  if (!is.character(rede) || length(rede)!=1L || is.na(rede) || !rede %in% c("todas","publica","municipal","estadual","federal","privada") || (rede!="todas" && tema!="educacao")) stop("Rede de ensino invalida para este tema.")
+  paste0(sub("/+$","",base_url),"/painel.",formato,"?uf=",uf,"&tema=",tema,if(rede!="todas") paste0("&rede=",rede) else "")
 }
 
 .finbra_ler_rds <- function(endereco, quiet = TRUE) {
@@ -30,7 +31,7 @@ finbra_url <- function(uf = NULL, tema = NULL, formato = "rds", base_url = .finb
   readRDS(file)
 }
 
-finbra <- function(uf = NULL, tema = NULL, municipio = NULL, anos = NULL, variaveis = NULL, quiet = TRUE, base_url = .finbra_base) {
+finbra <- function(uf = NULL, tema = NULL, municipio = NULL, anos = NULL, variaveis = NULL, quiet = TRUE, base_url = .finbra_base, rede = "todas") {
   if (!is.null(municipio)) {
     if (!is.numeric(municipio) && !is.character(municipio)) stop("municipio deve conter c\u00f3digos IBGE de sete d\u00edgitos.")
     codes <- as.character(municipio)
@@ -42,7 +43,7 @@ finbra <- function(uf = NULL, tema = NULL, municipio = NULL, anos = NULL, variav
   }
   if (!is.null(anos) && (!is.numeric(anos) || !length(anos) || anyNA(anos) || any(!is.finite(anos) | anos<2013 | anos!=floor(anos)))) stop("anos deve conter anos inteiros desde 2013.")
   if (!is.null(variaveis) && (!is.character(variaveis) || !length(variaveis) || anyNA(variaveis))) stop("variaveis deve conter os nomes das colunas.")
-  dados <- .finbra_ler_rds(finbra_url(uf,tema,"rds",base_url),quiet)
+  dados <- .finbra_ler_rds(finbra_url(uf,tema,"rds",base_url,rede),quiet)
   if (!is.data.frame(dados) || !all(c("cod_ibge","ano") %in% names(dados))) stop("Resposta da API n\u00e3o \u00e9 um painel municipal.")
   info <- attr(dados,"finbra")
   if (!is.null(municipio)) dados <- dados[dados$cod_ibge %in% as.numeric(codes),,drop=FALSE]
@@ -61,6 +62,7 @@ finbra <- function(uf = NULL, tema = NULL, municipio = NULL, anos = NULL, variav
       attr(dados[[k]],"label") <- d$nome[[1]]
       attr(dados[[k]],"unidade") <- d$unidade[[1]]
       attr(dados[[k]],"fonte") <- d$fonte[[1]]
+      if("stata_rotulos" %in% names(d)) attr(dados[[k]],"rotulos") <- d$stata_rotulos[[1]]
     }
     attr(dados,"finbra") <- info
   }

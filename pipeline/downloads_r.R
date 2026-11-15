@@ -35,9 +35,10 @@ for (i in seq_along(plan$arquivos)) {
     attr(data[[k]], "label") <- enc2utf8(d$nome)
     attr(data[[k]], "unidade") <- enc2utf8(d$unidade)
     attr(data[[k]], "fonte") <- enc2utf8(d$fonte)
+    if(!is.null(d$stata_rotulos)) attr(data[[k]], "rotulos") <- d$stata_rotulos
   }
   stopifnot(!anyDuplicated(data[c("cod_ibge", "ano")]), all(data$ano >= 2013))
-  attr(data, "finbra") <- list(api_versao = "v1", origem_parquet = item$origem, sha256_parquet = item$sha256, base_sha256 = plan$base_sha256, dados_gerados_em = plan$gerado_em, uf = item$uf, tema = item$tema, chave = c("cod_ibge", "ano"), dicionario = dict_frame[match(names(data), dict_frame$variavel), , drop = FALSE])
+  attr(data, "finbra") <- list(api_versao = "v1", origem_parquet = item$origem, sha256_parquet = item$sha256, base_sha256 = plan$base_sha256, dados_gerados_em = plan$gerado_em, uf = item$uf, tema = item$tema, rede = item$rede, chave = c("cod_ibge", "ano"), dicionario = dict_frame[match(names(data), dict_frame$variavel), , drop = FALSE])
   saveRDS(data, item$rds, version = 2, compress = "gzip")
   restored <- readRDS(item$rds)
   stopifnot(identical(data, restored))
