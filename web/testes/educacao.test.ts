@@ -81,3 +81,11 @@ test('trocar de rede ajusta a medida estadual explícita, preservando as outras 
  assert.equal(ajustarIndicadorRede('saeb_lp_ai','privada'),'saeb_lp_ai');
  assert.equal(ajustarIndicadorRede(null,'publica'),null);
 });
+
+test('navegar dentro da Educação conserva rede e indicador; trocar de área leva só o contexto comum',()=>{
+ const primeiro=buscaEntreAreas('?uf=GO&cod=5208707&ano=2025&ind=saeb_lp_ai&rede=municipal','educacao','educacao');
+ const segundo=new URLSearchParams(buscaEntreAreas(primeiro,'educacao','educacao'));
+ assert.equal(segundo.get('rede'),'municipal');assert.equal(segundo.get('ind'),'saeb_lp_ai');
+ const saude=new URLSearchParams(buscaEntreAreas(primeiro,'educacao','saude'));
+ assert.equal(saude.get('rede'),null);assert.equal(saude.get('ind'),null);assert.equal(saude.get('ente'),'5208707');
+});
