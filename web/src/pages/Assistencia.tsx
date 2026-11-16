@@ -10,6 +10,9 @@ import { Estado } from '../components/Kpi';
 import { exportar, type Celula, type Tabela } from '../exportar';
 import { numero, reais, reaisCurto, reaisExato } from '../format';
 import { idioma, local, t } from '../idioma';
+import { conceitoSocial } from '../assistencia_ajuda';
+import { AjudaAssistencia } from '../components/AjudaAssistencia';
+import { EconomiaAssistencia } from '../components/EconomiaAssistencia';
 
 /* ============================== básicos ============================== */
 
@@ -28,6 +31,9 @@ const descFonte = (f: FonteSocial) => f === 'cadunico'
 const nomeInd = (i: IndicadorSocial) => (en() ? i.nome_en || i.nome : i.nome);
 const temaInd = (i: IndicadorSocial) => (en() ? i.tema_en || i.tema : i.tema);
 const descInd = (i: IndicadorSocial) => (en() ? i.descricao_en || i.descricao : i.descricao);
+function AjudaIndicador({ i }: { i: IndicadorSocial }) {
+  return <AjudaAssistencia rotulo={t(`Explicação: ${nomeInd(i)}`, `Explanation: ${nomeInd(i)}`)}><p>{conceitoSocial(i, en())}</p><p>{descInd(i)}</p></AjudaAssistencia>;
+}
 const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 const mesValido = (n: number) => Number.isInteger(n) && n >= 200001 && n <= 210012 && n % 100 >= 1 && n % 100 <= 12;
 const proxMes = (n: number) => (n % 100 === 12 ? (Math.floor(n / 100) + 1) * 100 + 1 : n + 1);
@@ -505,7 +511,7 @@ function TemaCorpo({ itens, gT, gU, gB, sel, onSel, c }: {
               return (
                 <tr key={i.id} className={sel === i.id ? 'as-destaque' : undefined}>
                   <td>
-                    <button className="as-ind" aria-pressed={sel === i.id} onClick={() => onSel(i.id)}>{nomeInd(i)}</button>
+                    <button className="as-ind" aria-pressed={sel === i.id} onClick={() => onSel(i.id)}>{nomeInd(i)}</button> <AjudaIndicador i={i} />
                     <span className="as-tag">{unidadeTxt(i, c.meta)}</span>
                     <span className="as-descr">{descInd(i)}</span>
                   </td>
@@ -538,8 +544,8 @@ function PerfilCad({ g, c, tema, titulo, desc }: { g: GrupoSocial; c: Ctx; tema:
   const tabela = (
     <table className="as-tabela">
       <caption className="sr-only">{titulo}</caption>
-      <thead><tr><th>{t('Categoria', 'Category')}</th><th className="as-num">{t('Famílias', 'Families')}</th></tr></thead>
-      <tbody>{linhasP.map(x => <tr key={x.i.id}><td>{x.rot}</td><td className="as-num">{x.l ? <Val i={x.i} v={x.v} cond={x.cond} longo /> : <span className="as-nulo">{f.mes ? t(`sem dado em ${mesSocial(f.mes)}`, `no data for ${mesSocial(f.mes)}`) : SEM_DADO()}</span>}</td></tr>)}</tbody>
+      <thead><tr><th>{t('Categoria', 'Category')}</th><th className="as-num">{t('Famílias', 'Families')} {linhasP[0] && <AjudaIndicador i={linhasP[0].i} />}</th></tr></thead>
+      <tbody>{linhasP.map(x => <tr key={x.i.id}><td>{x.rot} <AjudaIndicador i={x.i} /></td><td className="as-num">{x.l ? <Val i={x.i} v={x.v} cond={x.cond} longo /> : <span className="as-nulo">{f.mes ? t(`sem dado em ${mesSocial(f.mes)}`, `no data for ${mesSocial(f.mes)}`) : SEM_DADO()}</span>}</td></tr>)}</tbody>
     </table>
   );
   return (
@@ -633,12 +639,12 @@ function PainelCorpo({ c }: { c: Ctx }) {
                   };
                   const cmp = [comp(gu.dados, f.terr.uf ?? ''), comp(gb.dados, t('Brasil', 'Brazil'))].filter(Boolean);
                   return (
-                    <button key={i.id} className="as-kpi" aria-pressed={sel?.id === i.id} onClick={() => selecionar(i.id)}>
+                    <div key={i.id} className="as-kpi-envoltura"><button className="as-kpi" aria-pressed={sel?.id === i.id} onClick={() => selecionar(i.id)}>
                       <span className="as-kpi-rot">{nomeInd(i)}</span>
                       <span className="as-kpi-val">{l ? <Val i={i} v={v} cond={condDe(l, i.id)} /> : <span className="as-nulo">{f.mes ? t('sem dado no mês', 'no data for the month') : SEM_DADO()}</span>}</span>
                       {l && <span className="as-kpi-cmp">{t('Referência', 'Reference')} {refTxt(l)}</span>}
                       {cmp.length > 0 && <span className="as-kpi-cmp">{cmp.join(' · ')}</span>}
-                    </button>
+                    </button><span className="as-kpi-ajuda"><AjudaIndicador i={i} /></span></div>
                   );
                 })}
               </div>
@@ -655,7 +661,7 @@ function PainelCorpo({ c }: { c: Ctx }) {
         return (
           <section className="as-sel" aria-label={t('Indicador selecionado', 'Selected indicator')}>
             <div>
-              <h3>{nomeInd(sel)} <span className="as-tag">{nomeFonte(sel.fonte)}</span></h3>
+              <h3>{nomeInd(sel)} <AjudaIndicador i={sel} /> <span className="as-tag">{nomeFonte(sel.fonte)}</span></h3>
               <p className="as-grande">{ls ? <Val i={sel} v={valDe(ls, sel.id)} cond={condDe(ls, sel.id)} longo /> : <span className="as-nulo">{f.mes ? t(`sem dado em ${mesSocial(f.mes)}`, `no data for ${mesSocial(f.mes)}`) : SEM_DADO()}</span>}</p>
               <p>{unidadeTxt(sel, meta)} · {t('Referência', 'Reference')} {refTxt(ls)}</p>
               <p>{descInd(sel)}</p>
@@ -668,6 +674,8 @@ function PainelCorpo({ c }: { c: Ctx }) {
           </section>
         );
       })()}
+
+      <EconomiaAssistencia grupo={f.terr.grupo} uf={f.terr.uf} nomeTerritorio={rotuloTerr(f.terr)} anoPedido={c.sp.get('ano_pib')} alterar={c.alterar} />
 
       <div className="as-perfis">
         <PerfilCad g={g.dados} c={c} tema="Renda por pessoa" titulo={t('Renda das famílias cadastradas', 'Income of registered families')}
@@ -727,7 +735,7 @@ function PainelCorpo({ c }: { c: Ctx }) {
         <h3>{t('Antes de comparar os números', 'Before comparing the numbers')}</h3>
         <ul className="as-notas">
           <li>{t('Cadastro, folha e pagamento são coisas diferentes: o CadÚnico registra famílias e pessoas (estar no cadastro não significa ser elegível nem receber); a folha do Bolsa Família (MDS) conta famílias previstas para o mês; os pagamentos da CGU e o BPC contam o que foi efetivamente pago.', 'Registry, payroll and payment are different things: CadÚnico registers families and people (being registered does not mean being eligible or receiving); the Bolsa Família payroll (MDS) counts families scheduled for the month; the CGU payments and BPC count what was actually paid.')}</li>
-          <li>{t('Uma pessoa ou família pode estar nos três programas ao mesmo tempo: por isso o painel não soma CadÚnico, Bolsa Família e BPC em um total único.', 'A person or family can be in all three programmes at once, which is why the panel does not add them into a single total.')}</li>
+          <li>{t('Uma pessoa ou família pode estar nos três programas ao mesmo tempo: por isso suas contagens não são somadas como público único. O bloco de comparação com o PIB soma somente valores em dinheiro, sem somar beneficiários.', 'A person or family can be in all three programmes at once: their counts are therefore not added as unique recipients. The GDP comparison adds only money amounts, without adding beneficiary counts.')}</li>
           <li>{t('Cada indicador tem sua data de referência; indicadores do mesmo bloco podem ser de meses diferentes. Comparações com estado e Brasil só aparecem na mesma data do indicador.', 'Each indicator has its own reference date; indicators in the same block may be from different months. State and Brazil comparisons only appear for the same date as the indicator.')}</li>
           <li>{t('Valores em branco indicam dado ausente ou protegido pela fonte; nunca significam zero. Um indicador que a fonte não publicou naquele mês aparece sem dado, não como zero.', 'Blank values mean missing or source-protected data; they never mean zero. An indicator the source did not publish that month appears without data, not as zero.')}</li>
           <li>{t('Estado e Brasil dependem da fonte: o CadÚnico usa totais próprios do MDS (com a proteção de valores pequenos preservada); o BPC agrega direto os pagamentos; a folha do Bolsa Família soma municípios só quando a cobertura do mês é completa (sem média); nos pagamentos da CGU, valores em dinheiro são somáveis, mas responsáveis municipais não viram pessoas únicas de estado ou Brasil. Sem cobertura, fica sem dado. Detalhes na Metodologia.', 'State and Brazil depend on the source: CadÚnico uses MDS own totals (with small-value protection preserved); BPC aggregates payments directly; the Bolsa Família payroll adds municipalities only when the month has complete coverage (never averages); in CGU payments, money amounts can be added, but municipal guardians do not become unique people for a state or Brazil. Without coverage, it is left blank. Details in Methodology.')}</li>
@@ -884,7 +892,7 @@ function EvolucaoCorpo({ c }: { c: Ctx }) {
       </div>
 
       <section className="cartao">
-        <h3>{nomeInd(ind)} <span className="as-tag">{nomeFonte(fonte)}</span><span className="as-tag">{unidadeTxt(ind, meta)}</span></h3>
+        <h3>{nomeInd(ind)} <AjudaIndicador i={ind} /> <span className="as-tag">{nomeFonte(fonte)}</span><span className="as-tag">{unidadeTxt(ind, meta)}</span></h3>
         <p className="desc">{descInd(ind)}</p>
         {ind.precos === 'reais' && <p className="as-resumo">{t(`Valor já corrigido pelo IPCA para reais de ${baseTxt(meta)}; é um indicador próprio, calculado na origem. Meses sem índice ficam em branco.`, `Amount already adjusted by IPCA to ${baseTxt(meta)} reais; it is its own indicator, computed at source. Months without an index are left blank.`)}</p>}
         {ind.unidade === 'moeda' && ind.precos !== 'reais' && <p className="as-resumo">{t('Valores nominais: não corrigidos pela inflação. Compare meses distantes com cuidado.', 'Nominal values: not adjusted for inflation. Compare distant months with care.')}</p>}
@@ -1059,7 +1067,7 @@ function RankingsCorpo({ c }: { c: Ctx }) {
       </div>
 
       <section className="cartao">
-        <h3>{nomeInd(ind)} <span className="as-tag">{nomeFonte(fonte)}</span><span className="as-tag">{unidadeTxt(ind, meta)}</span></h3>
+        <h3>{nomeInd(ind)} <AjudaIndicador i={ind} /> <span className="as-tag">{nomeFonte(fonte)}</span><span className="as-tag">{unidadeTxt(ind, meta)}</span></h3>
         <p className="desc">{descInd(ind)}</p>
         <p className="as-resumo">{t('A posição só ordena os valores; não diz se um lugar está melhor ou pior. Indicadores em número absoluto crescem com o tamanho da população: prefira proporções para comparar lugares.',
           'Rank only orders values; it does not say whether a place is better or worse. Absolute counts grow with population size: prefer ratios to compare places.')}</p>
@@ -1197,7 +1205,7 @@ function TabelaCorpo({ c }: { c: Ctx }) {
         {g.dados && (
           <>
             <p className="as-resumo">{t(`${numero(rows.length)} linhas.`, `${numero(rows.length)} rows.`)} {t('Um registro por mês, programa e indicador. Em branco = sem valor (veja a condição).', 'One record per month, programme and indicator. Blank = no value (see the condition).')}</p>
-            {indSel && <p className="as-resumo"><strong>{t('Como é calculado:', 'How it is computed:')}</strong> {descInd(indSel)}</p>}
+            {indSel && <p className="as-resumo"><strong>{t('Como é calculado:', 'How it is computed:')}</strong> <AjudaIndicador i={indSel} /> {descInd(indSel)}</p>}
             <div className="as-acoes"><Baixar nome={`assistencia_tabela_${f.terr.grupo}`} obter={exportarTudo} rotulo={t('Baixar todas as linhas deste recorte:', 'Download all rows of this selection:')} /></div>
             <div className="as-tabela-rolagem">
               <table className="as-tabela">
@@ -1209,7 +1217,7 @@ function TabelaCorpo({ c }: { c: Ctx }) {
                 <tbody>
                   {rows.slice(pagina * tam, (pagina + 1) * tam).map(x => (
                     <tr key={`${x.m}${x.i.id}`}>
-                      <td>{mesSocial(x.m)}</td><td className="as-txt">{nomeFonte(x.fo)}</td><td className="as-txt">{nomeInd(x.i)}</td>
+                      <td>{mesSocial(x.m)}</td><td className="as-txt">{nomeFonte(x.fo)}</td><td className="as-txt">{nomeInd(x.i)} <AjudaIndicador i={x.i} /></td>
                       <td className="as-num">{x.v === null ? <span className="as-nulo">–</span> : fmt(x.i, x.v, true)}</td>
                       <td className="as-txt">{unidadeTxt(x.i, meta)}</td>
                       <td className="as-txt">{x.cond ? condTxt(x.cond) : x.v === null ? t('sem valor', 'no value') : ''}</td>
@@ -1247,6 +1255,8 @@ function MetodologiaCorpo({ c }: { c: Ctx }) {
   const data = (iso: string) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString(local()); };
   return (
     <>
+      <section className="cartao"><h3>{t('O que significa família?', 'What does family mean?')}</h3><p>{t('No CadÚnico, uma família pode ter uma pessoa só ou várias pessoas que moram no mesmo domicílio e compartilham renda ou despesas. Não precisa ser um casal com filhos. Famílias conviventes com orçamento separado podem ter cadastros diferentes no mesmo endereço. Cadastro não garante recebimento de benefício.', 'In CadÚnico, a family can be one person or several people living in the same home and sharing income or expenses. It need not be a couple with children. Families living at the same address with separate budgets may have separate records. Registration does not guarantee receipt of a benefit.')}</p><a href="https://www.gov.br/mds/pt-br/acesso-a-informacao/perguntas_frequentes/faq-2013-gst-novas-orientacoes-sobre-documentacao-e-novos-procedimentos-para-cadastramento-de-familias-unipessoais/13-o-que-e-uma" target="_blank" rel="noreferrer">{t('Definição do MDS', 'MDS definition')}</a></section>
+      <section className="cartao"><h3>{t('Pagamentos em relação ao PIB', 'Payments compared with GDP')}</h3><p>{t('Soma dos pagamentos nominais dos 12 meses, dividida pelo PIB nominal do mesmo ano e território, multiplicada por 100. Não se multiplica o último pagamento mensal por 12 nem se usa PIB de outro ano. UF e Brasil usam soma do PIB municipal e os pagamentos próprios daquele nível; não se faz média simples dos percentuais municipais. Ano incompleto, PIB ausente ou igual a zero ficam sinalizados. Valores pagos por programas diferentes podem ser somados; famílias, pessoas e benefícios distintos não são somados como público único. O percentual compara grandezas, sem medir contribuição contábil ao PIB ou impacto causal.', 'Sum of nominal payments in all 12 months divided by nominal GDP for the same year and territory, multiplied by 100. The last monthly payment is not multiplied by 12 and GDP from another year is not used. States and Brazil use summed municipal GDP and payments for their own level, never simple averages of municipal percentages. Incomplete years, missing GDP or zero GDP are flagged. Cash paid by different programmes can be added; families, people and benefit numbers cannot be added as unique recipients. The percentage compares magnitudes without measuring a contribution to GDP or a causal impact.')}</p><p>{t('A série CGU de Bolsa Família/Auxílio Brasil não inclui o Benefício Extraordinário do Auxílio Brasil: interpretar 2021–2023 com essa limitação. O CadÚnico é cadastro e não possui pagamentos próprios.', 'The CGU Bolsa Família/Auxílio Brasil series excludes the extraordinary Auxílio Brasil benefit: interpret 2021–2023 with this limitation. CadÚnico is a registry with no payments of its own.')}</p><a href="https://sidra.ibge.gov.br/tabela/5938" target="_blank" rel="noreferrer">{t('PIB municipal — IBGE/SIDRA 5938', 'Municipal GDP — IBGE/SIDRA 5938')}</a></section>
       <section className="as-metodos" aria-label={t('Fontes', 'Sources')}>
         {FONTES.map(fo => {
           const x = meta.fontes[fo]; const comps = x?.competencias ?? [];
@@ -1310,7 +1320,7 @@ function MetodologiaCorpo({ c }: { c: Ctx }) {
           <li>{t(`Indicadores em R$ nominais mostram o valor da época. Indicadores marcados como reais usam o IPCA mensal do IBGE com base ${baseTxt(meta)}, só onde há índice; o último mês não é projetado.`, `Nominal R$ indicators show the amount of the time. Indicators marked as real use the IBGE monthly IPCA with base ${baseTxt(meta)}, only where an index exists; the last month is not projected.`)}</li>
           <li>{t('Razões aparecem em porcentagem (fração × 100); nos arquivos baixados saem como fração, com a unidade escrita.', 'Ratios appear as percentages (fraction × 100); in downloaded files they are raw fractions, with the unit written out.')}</li>
           <li>{t('Somas anuais só existem para indicadores de fluxo (por exemplo, valores pagos). Famílias, pessoas e benefícios não se somam entre meses.', 'Yearly totals only exist for flow indicators (for example, amounts paid). Families, people and benefits are not added across months.')}</li>
-          <li>{t('Os três programas não são somados: a mesma pessoa ou família pode estar em mais de um.', 'The three programmes are not added: the same person or family may be in more than one.')}</li>
+          <li>{t('As contagens de pessoas, famílias e benefícios dos três programas não são somadas: a mesma pessoa ou família pode estar em mais de um. A comparação com o PIB soma apenas valores monetários de Bolsa Família/Auxílio Brasil e BPC.', 'Counts of people, families and benefits from the three programmes are not added: the same person or family may be in more than one. The GDP comparison adds only monetary amounts for Bolsa Família/Auxílio Brasil and BPC.')}</li>
           <li>{t('Brasília e o Distrito Federal são o mesmo território (ente único). Fernando de Noronha aparece como distrito estadual de Pernambuco.', 'Brasília and the Federal District are the same territory (single entity). Fernando de Noronha appears as a state district of Pernambuco.')}</li>
           <li>{t(`Catálogo gerado em ${data(meta.gerado_em)} com ${numero(meta.indicadores.length)} indicadores e ${numero(meta.territorios.length)} territórios.`, `Catalogue generated on ${data(meta.gerado_em)} with ${numero(meta.indicadores.length)} indicators and ${numero(meta.territorios.length)} territories.`)}</li>
         </ul>

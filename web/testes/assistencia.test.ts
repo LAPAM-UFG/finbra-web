@@ -5,6 +5,8 @@ import { injetarManifesto, type ManifestoBruto } from '../src/manifesto';
 import { linhaSocial, linhaIndicadorSocial, obterGrupoSocial, obterMetaSocial, obterRankingSocial, type GrupoSocial, type IndicadorSocial, type MetaSocial } from '../src/assistencia_dados';
 import { buscaEntreAreas } from '../src/navegacao';
 import { contextoAssistencia, ASSISTENCIA } from '../../worker/src/sistema_assistencia.js';
+import { compararPib, obterEconomia, type AnoEconomia, type MetaEconomia } from '../src/assistencia_economia';
+import { conceitoSocial } from '../src/assistencia_ajuda';
 
 const money = { id: 'pbf_cgu_valor', fonte: 'pbf' } as IndicadorSocial;
 const family = { id: 'pbf_familias_atendidas', fonte: 'pbf' } as IndicadorSocial;
@@ -86,4 +88,57 @@ test('Contexto da IA explicita sobreposição, datas e ausência de modalidades 
   assert.match(ASSISTENCIA,/não pessoas únicas/);
   assert.match(ASSISTENCIA,/não infira/);
   assert.match(ASSISTENCIA,/Datas são POR INDICADOR E TERRITÓRIO/);
+});
+
+test('PIB: pagamentos anuais completos, zero real e ausência não se confundem', () => {
+  const l: AnoEconomia = [2023, 1000, 100, 200, 12, 12];
+  assert.equal(compararPib(l, 'pbf').valor, 10);
+  assert.equal(compararPib(l, 'bpc').valor, 20);
+  assert.equal(compararPib(l, 'total').valor, 30);
+  assert.equal(compararPib([2023, 1000, 0, 0, 12, 12], 'total').valor, 0);
+  assert.equal(compararPib([2023, 1000, null, 200, 11, 12], 'total').condicao, 2);
+  assert.equal(compararPib([2023, 1000, null, 200, 0, 12], 'pbf').condicao, 1);
+  assert.equal(compararPib([2023, null, 100, 200, 12, 12], 'pbf').condicao, 3);
+  assert.equal(compararPib([2023, 0, 100, 200, 12, 12], 'pbf').condicao, 4);
+  assert.equal(compararPib([2023, -1, 100, 200, 12, 12], 'pbf').condicao, 5);
+});
+
+test('Ajuda distingue famílias, pessoas, benefícios individuais e valores pagos', () => {
+  const ind = (id: string, nome: string, unidade = 'numero') => ({ id, nome, unidade }) as IndicadorSocial;
+  assert.match(conceitoSocial(ind('cad_qtd_familias', 'Famílias no CadÚnico')), /Quem mora sozinho/);
+  assert.match(conceitoSocial(ind('cad_qtd_pessoas', 'Pessoas no CadÚnico')), /crianças e adultos/);
+  assert.match(conceitoSocial(ind('bpc_beneficios', 'Benefícios do BPC')), /individual/);
+  assert.match(conceitoSocial(ind('pbf_cgu_valor', 'Valor pago: Bolsa Família/Auxílio Brasil', 'moeda')), /efetivamente pago/);
+  assert.match(conceitoSocial(ind('pbf_cgu_responsaveis', 'Responsáveis com pagamento')), /pessoas únicas/);
+});
+
+test('Comparação anual carrega só o trecho e o índice da UF, valida integridade e permite repetir após falha', async () => {
+  const original = globalThis.fetch; let ruim = true;
+  const linhas: AnoEconomia[] = [[2023, 1000, 100, 200, 12, 12]];
+  const br = bytes({ grupo: 'BR', linhas }), muni = bytes({ grupo: '5208707', linhas });
+  const index = bytes({ grupos: { '5208707': [br.length, muni.length, hash(muni)] } });
+  const indexRef = { caminho: 'gold/assistencia/economia_indice_go_abcdef.json', bytes: index.length, sha256: hash(index) };
+  const meta: MetaEconomia = { versao: 1, gerado_em: '2026-11-16', anos: [2023], pib_ate: 2023,
+    arquivo: { caminho: 'gold/assistencia/economia_series_abcdef.ndjson', bytes: br.length + muni.length, sha256: 'a'.repeat(64) },
+    grupos: { BR: [0, br.length, hash(br)] }, indices_uf: { GO: indexRef } };
+  const requests: string[] = [];
+  globalThis.fetch = (async (url, init) => {
+    const u = String(url); requests.push(u);
+    if (u.endsWith('economia_manifesto.json')) return new Response(JSON.stringify(meta));
+    if (u === indexRef.caminho) return new Response(index);
+    const range = new Headers(init?.headers).get('Range');
+    const municipal = range === `bytes=${br.length}-${br.length + muni.length - 1}`;
+    assert.ok(municipal || range === `bytes=0-${br.length - 1}`, 'Só o intervalo exato pode ser pedido');
+    const data = municipal ? muni : br;
+    return new Response(ruim ? new Uint8Array(data.length) : data, { status: 206, headers: { 'Content-Range': `bytes ${municipal ? br.length : 0}-${municipal ? br.length + muni.length - 1 : br.length - 1}/${br.length + muni.length}` } });
+  }) as typeof fetch;
+  try {
+    await assert.rejects(obterEconomia('BR', null), /incompletos/);
+    ruim = false;
+    assert.equal((await obterEconomia('BR', null)).linhas[0][1], 1000);
+    assert.equal((await obterEconomia('5208707', 'GO')).grupo, '5208707');
+    assert.equal(requests.filter(u => u.endsWith('economia_manifesto.json')).length, 1);
+    assert.equal(requests.filter(u => u === indexRef.caminho).length, 1);
+    await assert.rejects(obterEconomia('0000000', null), /ausente/);
+  } finally { globalThis.fetch = original; }
 });
