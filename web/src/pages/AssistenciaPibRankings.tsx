@@ -1,4 +1,4 @@
-import { useId, useMemo } from 'react';
+import { lazy, Suspense, useId, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import '../assistencia.css';
 import { filtrarRankingPib, obterMetaEconomia, obterRankingPib, type LinhaRankingPib, type MedidaRankingPib } from '../assistencia_economia';
@@ -9,6 +9,8 @@ import { exportar, type Tabela } from '../exportar';
 import { numero, reais, reaisExato } from '../format';
 import { idioma, local, t } from '../idioma';
 import { UF_NOMES } from '../ufs';
+
+const MapaAssistenciaPib = lazy(() => import('../components/MapaAssistenciaPib'));
 
 const MEDIDAS: MedidaRankingPib[] = ['pbf', 'bpc', 'total'];
 const nome = (m: MedidaRankingPib) => m === 'pbf' ? 'Bolsa Família / Auxílio Brasil' : m === 'bpc' ? 'BPC' : t('Os dois programas', 'Both programmes');
@@ -29,6 +31,7 @@ export function AssistenciaPibRankings() {
   const chave = ano ? `ranking-pib:${medida}:${ano}:${uf}` : null;
   const consulta = useSocial(chave, () => obterRankingPib(medida, ano!, uf)); const r = consulta.dados;
   const busca = sp.get('busca') ?? '';
+  const mapa = sp.get('vista') === 'mapa';
   const filtradas = useMemo(() => filtrarRankingPib(r?.linhas ?? [], busca), [r, busca]);
   const tamanho = 25; const paginaPedida = Number(sp.get('pagina') ?? 1);
   const pagina = Math.min(Number.isSafeInteger(paginaPedida) && paginaPedida > 0 ? paginaPedida - 1 : 0, Math.max(0, Math.ceil(filtradas.length / tamanho) - 1));
@@ -59,7 +62,7 @@ export function AssistenciaPibRankings() {
   </nav>;
   return <div className="assistencia-painel">
     <h2 className="titulo-pagina">{t('Onde os benefícios têm maior peso em relação ao PIB?', 'Where are benefit payments largest compared with GDP?')}</h2>
-    <p className="as-sub">{t('Ranking municipal com números prontos. Escolha o programa, o ano e o estado; a lista muda automaticamente.', 'Municipal ranking with ready-made figures. Choose the programme, year and state; the list updates automatically.')}</p>
+    <p className="as-sub">{t('Ranking e mapa municipal com números prontos. Escolha o programa, o ano e o estado; as duas visualizações usam os mesmos filtros.', 'Municipal ranking and map with ready-made figures. Choose the programme, year and state; both views use the same filters.')}</p>
     <nav className="as-nav" aria-label={t('Seções de assistência social', 'Social assistance sections')}><Link to={retorno}>{t('Painel', 'Overview')}</Link><Link to={`/assistencia/rankings${uf !== 'BR' ? `?uf=${uf}` : ''}`}>{t('Rankings mensais', 'Monthly rankings')}</Link><Link to={`/assistencia/rankings-pib?${sp}`} aria-current="page">{t('Pagamentos / PIB', 'Payments / GDP')}</Link></nav>
     {meta.carregando && <Estado carregando />}
     {meta.erro && <Estado erro={meta.erro} tentarNovamente={meta.recarregar} />}
@@ -73,6 +76,10 @@ export function AssistenciaPibRankings() {
       <p className="as-recorte">{nome(medida)} · {ano} · {recorte}</p>
       <p className="as-resumo">{t('Maior percentual primeiro. Só entram pagamentos de 12 meses válidos e PIB positivo do mesmo ano.', 'Highest percentage first. Requires 12 valid payment months and positive GDP for the same year.')} <AjudaAssistencia rotulo={t('Como o ranking é calculado', 'How the ranking is calculated')}><p>{descricao()}</p><p>{t('Empates usam posições 1, 2, 2, 4. Valores exibidos são arredondados, mas as posições usam as razões monetárias exatas. Um percentual maior não é uma nota de qualidade nem uma medida de impacto causal.', 'Ties use ranks 1, 2, 2, 4. Displayed values are rounded, but positions use exact monetary ratios. A higher percentage is not a quality score or a causal impact measure.')}</p></AjudaAssistencia></p>
       <p className="as-resumo">{t(`PIB disponível até ${m.pib_ate}. A série Bolsa Família/Auxílio Brasil não inclui o Benefício Extraordinário do Auxílio Brasil: atenção a 2021–2023.`, `GDP available through ${m.pib_ate}. The Bolsa Família/Auxílio Brasil series excludes the extraordinary Auxílio Brasil benefit: interpret 2021–2023 with caution.`)}</p>
+      <div className="as-mapa-pib-vistas" role="group" aria-label={t('Visualização dos percentuais', 'Percentage view')}>
+        <button className="botao-leve" aria-pressed={!mapa} onClick={() => mudar({ vista: 'ranking' })}>{t('Ranking', 'Ranking')}</button>
+        <button className="botao-leve" aria-pressed={mapa} onClick={() => mudar({ vista: 'mapa' })}>{t('Mapa', 'Map')}</button>
+      </div>
       {consulta.carregando && <Estado carregando />}
       {consulta.erro && <Estado erro={consulta.erro} tentarNovamente={consulta.recarregar} />}
       {r && <section className="cartao as-ranking-pib-resultados" aria-label={t('Ranking municipal por pagamentos / PIB', 'Municipal payments / GDP ranking')}>
@@ -80,10 +87,11 @@ export function AssistenciaPibRankings() {
         <details className="as-ranking-pib-cobertura"><summary>{t('Ver cobertura e motivos das exclusões', 'See coverage and reasons for exclusions')}</summary><p>{t('O cadastro territorial é o atual: inclui Brasília/DF uma vez e Fernando de Noronha como distrito estadual. Municípios ainda não existentes no ano podem não ter dados. Ausência de pagamento informado não é pagamento zero.', 'The territorial registry is current: it includes Brasília/DF once and Fernando de Noronha as a state district. Municipalities not yet created in the selected year may have no data. Missing reported payments do not mean zero payments.')}</p><ul>{r.cobertura.condicoes.map((n, i) => <li key={i}>{motivo(i)}: {numero(n)}</li>)}</ul></details>
         {origem && <p className="as-ranking-pib-local">{rotuloMunicipio(origem)} ({origem[2]}): {t(`posição ${numero(origem[3])} no recorte`, `rank ${numero(origem[3])} within the scope`)} · {pct(origem[4])}. <button className="botao-leve" onClick={() => setBusca(String(origem[0]))}>{t('Localizar na lista', 'Find in the list')}</button></p>}
         <div className="as-ranking-pib-busca"><label htmlFor={`${id}-busca`}>{t('Encontrar município ou código IBGE', 'Find a municipality or IBGE code')}</label><input id={`${id}-busca`} type="search" value={busca} onChange={e => setBusca(e.target.value)} placeholder={t('Ex.: Goiânia ou 5208707', 'E.g. Goiânia or 5208707')} />{busca && <button className="botao-leve" onClick={() => setBusca('')}>{t('Limpar busca', 'Clear search')}</button>}</div>
-        <p className="as-resumo" role="status">{t(`${numero(filtradas.length)} de ${numero(r.linhas.length)} registros encontrados. A busca preserva as posições do recorte completo.`, `${numero(filtradas.length)} of ${numero(r.linhas.length)} records found. Search preserves ranks from the full scope.`)}</p>
+        {!mapa && <p className="as-resumo" role="status">{t(`${numero(filtradas.length)} de ${numero(r.linhas.length)} registros encontrados. A busca preserva as posições do recorte completo.`, `${numero(filtradas.length)} of ${numero(r.linhas.length)} records found. Search preserves ranks from the full scope.`)}</p>}
         {r.linhas.length === 0 && <p className="as-resumo">{t('Sem percentuais válidos neste ano e recorte. Anos com classificação neste programa:', 'No valid percentages for this year and scope. Years with ranked data for this programme:')} {r.anos_com_valor.join(', ')}.</p>}
         <div className="as-acoes"><span>{t('Baixar ranking filtrado completo:', 'Download the complete filtered ranking:')}</span>{(['csv', 'xlsx'] as const).map(f => <button key={f} className="botao-leve" disabled={!filtradas.length} onClick={() => exportar(`ranking_assistencia_pib_${medida}_${ano}_${uf}`, f, tabela(), idioma() === 'en' ? '.' : ',')}>{f === 'csv' ? 'CSV' : 'Excel'}</button>)}</div>
-        {filtradas.length > 0 && <>
+        {mapa && <Suspense fallback={<Estado carregando />}><MapaAssistenciaPib ranking={r} busca={busca} selecionado={sp.get('cod')} selecionar={cod => mudar({ cod })} titulo={nome(medida)} /></Suspense>}
+        {!mapa && filtradas.length > 0 && <>
           {paginas('superior')}
           <div className="as-ranking-pib-desktop"><table className="as-tabela as-ranking-pib-tabela"><caption>{nome(medida)} / {t('PIB', 'GDP')} · {ano} · {recorte}</caption><thead><tr><th>{t('Posição', 'Rank')}</th><th>{t('Município', 'Municipality')}</th><th>UF</th><th className="as-num">% {t('do PIB', 'of GDP')}</th><th className="as-num">{t('Pagamentos no ano', 'Yearly payments')}</th><th className="as-num">{t('PIB do mesmo ano', 'GDP for the same year')}</th></tr></thead><tbody>{visiveis.map(l => <tr key={l[0]}><td>{numero(l[3])}</td><td><Link to={painel(l, ano!)}>{rotuloMunicipio(l)}</Link><small className="as-ranking-pib-codigo">{l[0]}</small></td><td>{l[2]}</td><td className="as-num"><strong>{pct(l[4])}</strong></td><td className="as-num">{reaisExato(l[5])}</td><td className="as-num">{reaisExato(l[6])}</td></tr>)}</tbody></table></div>
           <ol className="as-ranking-pib-cards" aria-label={t('Ranking municipal', 'Municipal ranking')}>{visiveis.map(l => <li key={l[0]}><span className="as-ranking-pib-pos" aria-label={t(`Posição ${l[3]}`, `Rank ${l[3]}`)}>{numero(l[3])}</span><div><Link to={painel(l, ano!)}>{rotuloMunicipio(l)}</Link><small className="as-ranking-pib-codigo">{l[2]} · {l[0]}</small></div><strong className="as-ranking-pib-percentual">{pct(l[4])}</strong><dl><div><dt>{t('Pagamentos no ano', 'Yearly payments')}</dt><dd>{reais(l[5])}</dd></div><div><dt>{t('PIB do mesmo ano', 'GDP for the same year')}</dt><dd>{reais(l[6])}</dd></div></dl></li>)}</ol>

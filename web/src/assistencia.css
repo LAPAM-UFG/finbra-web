@@ -136,6 +136,25 @@
 .as-ranking-pib-cobertura ul { padding-left: 20px; }
 .as-ranking-pib-local { padding: 10px; background: var(--acao-suave); border-radius: 8px; font-size: 14px; }
 .as-ranking-pib-link { display: inline-block; margin-top: 10px; font-size: 13px; }
+.as-mapa-pib-vistas { display: flex; gap: 8px; margin: 16px 0; }
+.as-mapa-pib-vistas button[aria-pressed="true"] { background: var(--acao); color: var(--acao-tinta, #fff); border-color: var(--acao); }
+.as-mapa-pib { min-width: 0; margin-top: 20px; }
+.as-mapa-pib h3 { font-size: 17px; margin: 12px 0; }
+.as-mapa-pib-canvas { width: 100%; height: clamp(350px, 58vw, 590px); background: var(--superficie); border: 1px solid var(--borda); border-radius: 8px; overflow: hidden; }
+.as-mapa-pib-controles { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+.as-mapa-pib-controles button { min-width: 44px; min-height: 44px; }
+.as-mapa-pib-legenda { list-style: none; display: flex; flex-wrap: wrap; gap: 10px 18px; padding: 0; margin: 16px 0; font-size: 12px; }
+.as-mapa-pib-legenda li { display: flex; gap: 6px; align-items: center; }
+.as-mapa-pib-legenda span { width: 17px; height: 17px; border: 1px solid #64748b; flex: 0 0 17px; }
+.as-mapa-pib-detalhe { margin: 16px 0; padding: 16px; background: var(--acao-suave); border: 1px solid var(--borda); border-radius: 8px; font-size: 14px; }
+.as-mapa-pib-detalhe h4 { font-size: 16px; margin: 0 0 4px; }
+.as-mapa-pib-detalhe dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
+.as-mapa-pib-detalhe dt { color: var(--tinta-2); font-size: 12px; }
+.as-mapa-pib-detalhe dd { margin: 5px 0 0; }
+.as-mapa-pib-detalhe a { display: inline-block; padding: 8px 0; }
+.as-mapa-pib-encontrados { display: flex; flex-wrap: wrap; gap: 8px; }
+.as-mapa-pib-encontrados p { flex-basis: 100%; margin-bottom: 0; font-size: 13px; }
+.as-mapa-pib-encontrados button { min-height: 44px; white-space: normal; text-align: left; }
 @media (max-width: 760px) {
   .as-ranking-pib-filtros { grid-template-columns: minmax(0, 1fr); }
   .as-ranking-pib-desktop { display: none; }

@@ -13,18 +13,21 @@
     "test:educacao": "vite build --ssr testes/educacao.test.ts --outDir testes/.saida/educacao --emptyOutDir --logLevel warn && node --test testes/.saida/educacao/educacao.test.js",
     "catalogo:downloads": "vite build --ssr scripts/catalogos_downloads.ts --outDir testes/.saida/catalogos_downloads --emptyOutDir --logLevel warn",
     "test:saneamento": "vite build --ssr testes/saneamento.test.ts --outDir testes/.saida/saneamento --emptyOutDir --logLevel warn && node --test testes/.saida/saneamento/saneamento.test.js",
-    "test": "vite build --ssr testes/consultas.test.ts --outDir testes/.saida --emptyOutDir --logLevel warn && node --test testes/.saida/consultas.test.js && npm run test:saneamento && npm run test:assistencia-rankings"
+    "test": "vite build --ssr testes/consultas.test.ts --outDir testes/.saida --emptyOutDir --logLevel warn && node --test testes/.saida/consultas.test.js && npm run test:saneamento && npm run test:assistencia-rankings && npm run test:assistencia-mapa",
+    "test:assistencia-mapa": "vite build --ssr testes/assistencia_mapa.test.ts --outDir testes/.saida/assistencia_mapa --emptyOutDir --logLevel warn && node --test testes/.saida/assistencia_mapa/assistencia_mapa.test.js"
   },
   "dependencies": {
     "@duckdb/duckdb-wasm": "1.32.0",
     "echarts": "6.1.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
-    "react-router-dom": "7.18.4"
+    "react-router-dom": "7.18.4",
+    "topojson-client": "3.1.0"
   },
   "devDependencies": {
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
+    "@types/topojson-client": "3.1.5",
     "@vitejs/plugin-react": "6.1.2",
     "typescript": "5.9.3",
     "vite": "8.3.4"
