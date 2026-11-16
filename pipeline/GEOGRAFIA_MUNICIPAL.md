@@ -5,7 +5,8 @@ PIB, percentuais e posições já publicados pelo ranking anual. Não faz consul
 de microdados nem inicia DuckDB/WebAssembly. Programa, ano, estado e busca
 continuam no endereço; a escolha do município também, pelo código IBGE.
 
-A visualização e a malha só são carregadas ao escolher **Mapa**. Brasil e as
+A visualização e a malha só são carregadas ao escolher **Mapa**, em paralelo
+ao carregamento dos percentuais, sem esperar que o ranking termine. Brasil e as
 27 UFs têm arquivos separados. O cliente valida tamanho, SHA-256, quantidade,
 códigos únicos e UF, mantém uma cópia por sessão e permite repetir falhas de rede.
 A busca inclui municípios sem percentual; a lista do ranking mantém sua regra

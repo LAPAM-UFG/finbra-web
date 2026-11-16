@@ -1,4 +1,4 @@
-import { lazy, Suspense, useId, useMemo } from 'react';
+import { lazy, Suspense, useEffect, useId, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import '../assistencia.css';
 import { filtrarRankingPib, obterMetaEconomia, obterRankingPib, type LinhaRankingPib, type MedidaRankingPib } from '../assistencia_economia';
@@ -10,7 +10,8 @@ import { numero, reais, reaisExato } from '../format';
 import { idioma, local, t } from '../idioma';
 import { UF_NOMES } from '../ufs';
 
-const MapaAssistenciaPib = lazy(() => import('../components/MapaAssistenciaPib'));
+const carregarMapa = () => import('../components/MapaAssistenciaPib');
+const MapaAssistenciaPib = lazy(carregarMapa);
 
 const MEDIDAS: MedidaRankingPib[] = ['pbf', 'bpc', 'total'];
 const nome = (m: MedidaRankingPib) => m === 'pbf' ? 'Bolsa Família / Auxílio Brasil' : m === 'bpc' ? 'BPC' : t('Os dois programas', 'Both programmes');
@@ -32,6 +33,10 @@ export function AssistenciaPibRankings() {
   const consulta = useSocial(chave, () => obterRankingPib(medida, ano!, uf)); const r = consulta.dados;
   const busca = sp.get('busca') ?? '';
   const mapa = sp.get('vista') === 'mapa';
+  useEffect(() => {
+    // Começa junto com o ranking; somente quem escolhe Mapa baixa código e malha.
+    if (mapa) void carregarMapa().then(m => m.prepararMapa(uf)).catch(() => { /* O mapa exibe o erro e a opção de repetir ao montar. */ });
+  }, [mapa, uf]);
   const filtradas = useMemo(() => filtrarRankingPib(r?.linhas ?? [], busca), [r, busca]);
   const tamanho = 25; const paginaPedida = Number(sp.get('pagina') ?? 1);
   const pagina = Math.min(Number.isSafeInteger(paginaPedida) && paginaPedida > 0 ? paginaPedida - 1 : 0, Math.max(0, Math.ceil(filtradas.length / tamanho) - 1));

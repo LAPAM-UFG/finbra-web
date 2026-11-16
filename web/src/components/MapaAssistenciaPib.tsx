@@ -14,6 +14,7 @@ import { numero, reaisExato } from '../format';
 echarts.use([MapChart, TooltipComponent, CanvasRenderer]);
 const percentual = (v: number) => v > 0 && v < .001 ? t('<0,001%', '<0.001%') : `${v.toLocaleString(local(), { minimumFractionDigits: 3, maximumFractionDigits: 3 })}%`;
 const html = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+export const prepararMapa = obterMalhaMunicipal;
 
 type Props = { ranking: RankingPib; busca: string; selecionado: string | null; selecionar: (cod: string) => void; titulo: string };
 export default function MapaAssistenciaPib(props: Props) {
