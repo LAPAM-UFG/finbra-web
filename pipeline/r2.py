@@ -77,7 +77,10 @@ def remotos(s3, bucket, prefixo):
 
 
 def enviar(s3, bucket, camadas, limpar=False, ignorar=(), raiz=DATA):
-    locais = [p for c in camadas for p in sorted((raiz / c).rglob("*")) if p.is_file() and p.suffix in (".parquet", ".csv", ".json")]
+    locais = [p for c in camadas for p in sorted((raiz / c).rglob("*")) if p.is_file() and (
+        p.suffix in (".parquet", ".csv", ".json") or
+        (p.is_relative_to(raiz / "gold/abertura") and p.suffix in (".bin", ".gz"))
+    )]
     # caminhos que não sobem (ex.: dados ainda incompletos): padrões como silver/lrf/* ou gold/lrf.parquet
     locais = [p for p in locais if not any(fnmatch(p.relative_to(raiz).as_posix(), g) for g in ignorar)]
     existentes = {k: v for c in camadas for k, v in remotos(s3, bucket, f"{c}/").items()}

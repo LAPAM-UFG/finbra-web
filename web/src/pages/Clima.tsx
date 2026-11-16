@@ -1,3 +1,4 @@
+import { normalizarBusca } from '../explorar_painel';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useApi, type Linha } from '../api';
@@ -465,6 +466,7 @@ type Ordem = 'maior' | 'menor' | 'acima' | 'abaixo';
 
 export function ClimaRankings() {
   const { sp, definir } = useEscolhaUrl();
+  const [buscaRanking,setBuscaRanking]=useState(''),[pagina,setPagina]=useState(1);
   const { anos: anosMeta, normal: periodo, geradoEm, carregando: carregandoMeta, erro: erroMeta, recarregar: recarregarMeta } = useMetaClima();
   const publicado = anosMeta.length > 0;
   const terr = useTerritorios(publicado);
@@ -484,7 +486,11 @@ export function ClimaRankings() {
     const pos = posicoesCompetitivas(ordenada.map((r) => chave(r)!));
     return ordenada.map((r, i) => ({ r, pos: pos[i] }));
   }, [dados.dados, ordem, m.relativa]);
-  const topo = lista.slice(0, 50);
+  const filtrada=lista.filter(({r})=>normalizarBusca(`${r.nome} ${r.uf} ${r.cod}`).includes(normalizarBusca(buscaRanking)));
+  const paginas=Math.max(1,Math.ceil(filtrada.length/50)),atual=Math.min(pagina,paginas);
+  const topo=filtrada.slice((atual-1)*50,atual*50);
+  const selecionado=lista.find(({r})=>Number(r.cod)===escolha.cod);
+  useEffect(()=>setPagina(1),[buscaRanking,escolha.uf,sel.ano,ordem,m.codigo]);
   const rotuloOrdem: Record<Ordem, string> = {
     maior: t('Maior valor no ano', 'Highest value in the year'), menor: t('Menor valor no ano', 'Lowest value in the year'),
     acima: t('Mais acima do habitual', 'Furthest above usual'), abaixo: t('Mais abaixo do habitual', 'Furthest below usual'),
@@ -536,13 +542,13 @@ export function ClimaRankings() {
         <Estado carregando={cob.carregando || dados.carregando} erro={cob.erro ?? dados.erro} tentarNovamente={dados.recarregar}
           vazio={!sel.ausente && !!dados.dados && !dados.carregando && !lista.length && t('Sem dados para este ano e recorte.', 'No data for this year and scope.')} />
       </section>
-      {topo.length > 0 && (
+      {lista.length > 0 && (
         <section className="cartao">
           <div className="cabeca-cartao">
             <div>
               <h3>{m.nome()} · {rotuloOrdem[ordem]} · {sel.ano}{escolha.uf ? ` · ${escolha.uf}` : ''}</h3>
-              <p className="desc">{t(`Os 50 primeiros de ${numero(lista.length)} municípios; valores iguais dividem a posição (1, 2, 2, 4). O habitual é a média ${periodo[0]}–${periodo[1]}. Município pequeno cobre poucas células da grade: leia com cautela.`,
-                `Top 50 of ${numero(lista.length)} municipalities; equal values share a rank (1, 2, 2, 4). The usual is the ${periodo[0]}–${periodo[1]} average. A small municipality covers few grid cells: read with caution.`)}</p>
+              <p className="desc">{t(`${numero(lista.length)} municípios no ranking completo; valores iguais dividem a posição (1, 2, 2, 4). O habitual é a média ${periodo[0]}–${periodo[1]}. Município pequeno cobre poucas células da grade: leia com cautela.`,
+                `${numero(lista.length)} municipalities in the complete ranking; equal values share a rank (1, 2, 2, 4). The usual is the ${periodo[0]}–${periodo[1]} average. A small municipality covers few grid cells: read with caution.`)}</p>
             </div>
             <ProvedorDados sobDemanda silencioso><BotoesExportar nome={`clima_${m.codigo}_ranking_${sel.ano}_${escolha.uf || 'BR'}`} obter={() => ({
               colunas: [t('Posição', 'Rank'), t('Município', 'Municipality'), 'UF', `${m.nome()} (${m.unidade})`, `${t('Normal', 'Normal')} (${m.unidade})`,
@@ -552,11 +558,16 @@ export function ClimaRankings() {
                 [t('Posições', 'Ranks'), t('empates competitivos (1, 2, 2, 4)', 'competitive ties (1, 2, 2, 4)')], [t('Normal', 'Normal'), `${periodo[0]}–${periodo[1]}`], [t('Fonte', 'Source'), fonte], [t('Versão da base', 'Data version'), geradoEm], [t('Endereço', 'Address'), location.href]],
             })} /></ProvedorDados>
           </div>
+          <div className="filtros"><div className="campo" style={{flex:1}}><label htmlFor="cl-r-busca">{t('Encontrar município no ranking','Find a municipality in the ranking')}</label><input id="cl-r-busca" type="search" value={buscaRanking} onChange={e=>setBuscaRanking(e.target.value)} placeholder={t('Nome ou código IBGE','Name or IBGE code')}/></div>{buscaRanking&&<button className="botao-leve" onClick={()=>setBuscaRanking('')}>{t('Limpar busca','Clear search')}</button>}</div>
+          {selecionado&&<p className="ranking-selecionado"><strong>{texto(selecionado.r.nome)}</strong> · {numero(selecionado.pos)}º {t('de','of')} {numero(lista.length)} · {semUnidade(num(selecionado.r.valor),m.unidade)} {m.unidade} <button className="botao-leve" onClick={()=>setBuscaRanking(texto(selecionado.r.cod))}>{t('Localizar na tabela','Find in table')}</button></p>}
+          <p role="status">{t(`${numero(filtrada.length)} encontrados de ${numero(lista.length)}; posições preservadas no ranking completo.`,`${numero(filtrada.length)} found out of ${numero(lista.length)}; positions remain those of the full ranking.`)}</p>
+          <div className="paginacao-ranking"><button className="botao-leve" disabled={atual===1} onClick={()=>setPagina(atual-1)}>{t('Anterior','Previous')}</button><span>{t(`Página ${atual} de ${paginas}`,`Page ${atual} of ${paginas}`)}</span><button className="botao-leve" disabled={atual===paginas} onClick={()=>setPagina(atual+1)}>{t('Próxima','Next')}</button></div>
+          {!topo.length&&<p className="vazio">{t('Nenhum município encontrado. Tente parte do nome ou limpe a busca.','No municipality found. Try part of the name or clear the search.')}</p>}
           <div className="rolagem">
             <table className="tabela-fixa">
               <thead><tr><th>#</th><th style={{ textAlign: 'left' }}>{t('Município', 'Municipality')}</th><th>UF</th><th>{m.unidade}</th><th>{t('Normal', 'Normal')}</th><th>{colunaAnomalia}</th></tr></thead>
               <tbody>{topo.map(({ r, pos }) => (
-                <tr key={texto(r.cod)}><td>{pos}</td>
+                <tr key={texto(r.cod)} className={Number(r.cod)===escolha.cod?'ranking-selecionado':undefined}><td>{pos}</td>
                   <td style={{ textAlign: 'left' }}><Link to={linkMun(r)}>{texto(r.nome)}</Link></td><td>{texto(r.uf)}</td>
                   <td>{semUnidade(num(r.valor), m.unidade)}</td><td>{semUnidade(num(r.normal), m.unidade)}</td><td>{comparacaoTxt(r.valor, r.normal, m.relativa, m.unidade)}</td></tr>
               ))}</tbody>

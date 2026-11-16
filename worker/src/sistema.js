@@ -22,12 +22,13 @@ indicadores — uma linha por ente e exercício (ano). Valores em R$ correntes (
     Quebra no denominador: até 2021 as estimativas do IBGE são projeções a partir do Censo 2010; em 2022 entra o Censo 2022, e em muitos municípios a população cai na passagem (Goiânia: 1.555.626 em 2021, 1.437.366 no Censo). Valores por habitante comparados entre um ano até 2021 e outro de 2022 em diante misturam as duas bases: diga isso junto do número.
     Padrão para pesquisa e para cruzar com outros painéis: populacao_ibge. Use populacao só quando pedirem o valor do painel de finanças ou a população declarada, e diga isso.
   faixa_grupo INTEGER: faixa populacional do município pela população declarada (liga com faixas.grupo; nulo para estados e DF)
-  Receita (domínio "receita", anexo I-C da DCA, coluna Receitas Brutas Realizadas, sem as receitas intraorçamentárias):
+  Receita (domínio "receita", anexo I-C da DCA, coluna Receitas Brutas Realizadas):
+    receita_bruta é o total declarado, INCLUINDO receitas intraorçamentárias. receita_corrente e receita_capital são os componentes EXCETO intraorçamentárias (contas RO1 e RO2); por isso sua soma pode ser menor que receita_bruta. Não subtraia intraorçamentárias de receita_bruta sem uma variável específica para elas.
     receita_bruta (total), receita_corrente, receita_capital, receita_impostos_taxas (impostos, taxas e contribuições de melhoria),
     transferencias_correntes, fpm (cota-parte do Fundo de Participação dos Municípios: a conta inteira, com a cota mensal e as cotas extraordinárias de 1%, lida no nó mais alto da classificação de cada ano; os códigos mudaram em 2015, 2018 e 2022, e o painel nunca soma a conta-mãe com as subcontas), icms, ipva (cotas-partes recebidas pelos municípios),
     iptu, iss, itbi
     deducoes: soma, em valor absoluto, das deduções da receita (FUNDEB, transferências constitucionais e outras)
-    receita_liquida = receita_bruta − deducoes
+    receita_liquida = receita_bruta − deducoes; conserva as intraorçamentárias do total bruto e não é a RCL da LRF
   Despesa (domínio "despesa", anexos I-D e I-E):
     despesa_empenhada, despesa_liquidada, despesa_paga (totais, incluindo as intraorçamentárias)
     despesa_empenhada_sem_intra, despesa_liquidada_sem_intra, despesa_paga_sem_intra; despesa_intra (empenhada intraorçamentária)

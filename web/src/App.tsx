@@ -1,41 +1,71 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigationType } from 'react-router-dom';
-import { HistoricoIa } from './components/HistoricoIa';
+import { Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { pagina } from './carregar_pagina';
+import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useNavigationType } from 'react-router-dom';
+const HistoricoIa = pagina(() => import('./components/HistoricoIa').then(m => ({default:m.HistoricoIa})));
 import { ProvedorDados } from './contexto';
 import { definirIdioma, t, useIdioma } from './idioma';
-import { Demonstrativos } from './pages/Demonstrativos';
-import { Downloads } from './pages/Downloads';
-import { EducacaoPainel, EducacaoEvolucao, EducacaoRankings, EducacaoTabela, EducacaoMetodologia } from './pages/EducacaoPainel';
-import { DespesasEvolucao, DespesasNaturezaEvolucao, DespesasNaturezaVisaoGeral, DespesasVisaoGeral } from './pages/Despesas';
-import { Fpm, FpmFaixas } from './pages/Fpm';
-import { Ia } from './pages/Ia';
-import { MunicEvolucao, MunicMetodologia, MunicTerritorio, MunicVisaoGeral } from './pages/Munic';
-import { ClimaMetodologia, ClimaRankings, ClimaVisaoGeral } from './pages/Clima';
-import { AssistenciaPainel, AssistenciaEvolucao, AssistenciaRankings, AssistenciaTabela, AssistenciaMetodologia } from './pages/Assistencia';
 import { buscaClima } from './clima_comum';
-import { LrfDemonstrativos, LrfIndicadores } from './pages/Lrf';
-import { Deflatores, Qualidade } from './pages/Metodologia';
-import { Rankings } from './pages/Rankings';
-import { SaudeEvolucao, SaudeMetodologia, SaudeRankings, SaudeTabela, SaudeVisaoGeral } from './pages/SaudeDatasus';
-import { SaudeAmbulatorial } from './pages/SaudeAmbulatorial';
-import { SaudeVacinacao } from './pages/SaudeVacinacao';
-import { SaudeRede } from './pages/SaudeRede';
-import { SaudeFinanciamento } from './pages/SaudeFinanciamento';
-import { ReceitasEvolucao, ReceitasVisaoGeral } from './pages/Receitas';
-import { Educacao, RemuneracaoEducacao, Saude } from './pages/SaudeEducacao';
-import { Socioeconomico } from './pages/Socioeconomico';
-import { TrabalhoCaged, TrabalhoEvolucao, TrabalhoRankings } from './pages/Trabalho';
-import { TrabalhoPainel } from './pages/TrabalhoPainel';
-import { MunicEntrada } from './pages/MunicPainel';
 import { contextoMunic, edicoesCuradas, type Destino } from './munic_painel';
 import { CURADORIA } from './munic_curadoria';
-import { TrabalhoConsulta } from './pages/TrabalhoConsulta';
-import { TrabalhoEstabelecimentos } from './pages/TrabalhoEstabelecimentos';
-import { TrabalhoRemuneracao } from './pages/TrabalhoRemuneracao';
-import { TrabalhoMetodologia } from './pages/TrabalhoMetodologia';
-import { TrabalhoPerfil } from './pages/TrabalhoPerfil';
 import { PARAMS_TRABALHO } from './trabalho_comum';
-import { buscaEntreAreas, buscaIaLegada, type Area } from './navegacao';
+import { buscaEntreAreas, buscaIaLegada, buscaParaDownloads, type Area } from './navegacao';
+
+const Demonstrativos = pagina(() => import('./pages/Demonstrativos').then(m => ({default:m.Demonstrativos})));
+const Downloads = pagina(() => import('./pages/Downloads').then(m => ({default:m.Downloads})));
+const EducacaoPainel = pagina(() => import('./pages/EducacaoPainel').then(m => ({default:m.EducacaoPainel})));
+const EducacaoEvolucao = pagina(() => import('./pages/EducacaoPainel').then(m => ({default:m.EducacaoEvolucao})));
+const EducacaoRankings = pagina(() => import('./pages/EducacaoPainel').then(m => ({default:m.EducacaoRankings})));
+const EducacaoTabela = pagina(() => import('./pages/EducacaoPainel').then(m => ({default:m.EducacaoTabela})));
+const EducacaoMetodologia = pagina(() => import('./pages/EducacaoPainel').then(m => ({default:m.EducacaoMetodologia})));
+const DespesasEvolucao = pagina(() => import('./pages/Despesas').then(m => ({default:m.DespesasEvolucao})));
+const DespesasNaturezaEvolucao = pagina(() => import('./pages/Despesas').then(m => ({default:m.DespesasNaturezaEvolucao})));
+const DespesasNaturezaVisaoGeral = pagina(() => import('./pages/Despesas').then(m => ({default:m.DespesasNaturezaVisaoGeral})));
+const DespesasVisaoGeral = pagina(() => import('./pages/Despesas').then(m => ({default:m.DespesasVisaoGeral})));
+const Fpm = pagina(() => import('./pages/Fpm').then(m => ({default:m.Fpm})));
+const FpmFaixas = pagina(() => import('./pages/Fpm').then(m => ({default:m.FpmFaixas})));
+const Ia = pagina(() => import('./pages/Ia').then(m => ({default:m.Ia})));
+const MunicEvolucao = pagina(() => import('./pages/Munic').then(m => ({default:m.MunicEvolucao})));
+const MunicMetodologia = pagina(() => import('./pages/Munic').then(m => ({default:m.MunicMetodologia})));
+const MunicTerritorio = pagina(() => import('./pages/Munic').then(m => ({default:m.MunicTerritorio})));
+const MunicVisaoGeral = pagina(() => import('./pages/Munic').then(m => ({default:m.MunicVisaoGeral})));
+const ClimaMetodologia = pagina(() => import('./pages/Clima').then(m => ({default:m.ClimaMetodologia})));
+const ClimaRankings = pagina(() => import('./pages/Clima').then(m => ({default:m.ClimaRankings})));
+const ClimaVisaoGeral = pagina(() => import('./pages/Clima').then(m => ({default:m.ClimaVisaoGeral})));
+const AssistenciaPainel = pagina(() => import('./pages/Assistencia').then(m => ({default:m.AssistenciaPainel})));
+const AssistenciaEvolucao = pagina(() => import('./pages/Assistencia').then(m => ({default:m.AssistenciaEvolucao})));
+const AssistenciaRankings = pagina(() => import('./pages/Assistencia').then(m => ({default:m.AssistenciaRankings})));
+const AssistenciaTabela = pagina(() => import('./pages/Assistencia').then(m => ({default:m.AssistenciaTabela})));
+const AssistenciaMetodologia = pagina(() => import('./pages/Assistencia').then(m => ({default:m.AssistenciaMetodologia})));
+const LrfDemonstrativos = pagina(() => import('./pages/Lrf').then(m => ({default:m.LrfDemonstrativos})));
+const LrfIndicadores = pagina(() => import('./pages/Lrf').then(m => ({default:m.LrfIndicadores})));
+const Deflatores = pagina(() => import('./pages/Metodologia').then(m => ({default:m.Deflatores})));
+const Qualidade = pagina(() => import('./pages/Metodologia').then(m => ({default:m.Qualidade})));
+const Rankings = pagina(() => import('./pages/Rankings').then(m => ({default:m.Rankings})));
+const SaudeEvolucao = pagina(() => import('./pages/SaudeDatasus').then(m => ({default:m.SaudeEvolucao})));
+const SaudeMetodologia = pagina(() => import('./pages/SaudeDatasus').then(m => ({default:m.SaudeMetodologia})));
+const SaudeRankings = pagina(() => import('./pages/SaudeDatasus').then(m => ({default:m.SaudeRankings})));
+const SaudeTabela = pagina(() => import('./pages/SaudeDatasus').then(m => ({default:m.SaudeTabela})));
+const SaudeVisaoGeral = pagina(() => import('./pages/SaudeDatasus').then(m => ({default:m.SaudeVisaoGeral})));
+const SaudeAmbulatorial = pagina(() => import('./pages/SaudeAmbulatorial').then(m => ({default:m.SaudeAmbulatorial})));
+const SaudeVacinacao = pagina(() => import('./pages/SaudeVacinacao').then(m => ({default:m.SaudeVacinacao})));
+const SaudeRede = pagina(() => import('./pages/SaudeRede').then(m => ({default:m.SaudeRede})));
+const SaudeFinanciamento = pagina(() => import('./pages/SaudeFinanciamento').then(m => ({default:m.SaudeFinanciamento})));
+const ReceitasEvolucao = pagina(() => import('./pages/Receitas').then(m => ({default:m.ReceitasEvolucao})));
+const ReceitasVisaoGeral = pagina(() => import('./pages/Receitas').then(m => ({default:m.ReceitasVisaoGeral})));
+const Educacao = pagina(() => import('./pages/SaudeEducacao').then(m => ({default:m.Educacao})));
+const RemuneracaoEducacao = pagina(() => import('./pages/SaudeEducacao').then(m => ({default:m.RemuneracaoEducacao})));
+const Saude = pagina(() => import('./pages/SaudeEducacao').then(m => ({default:m.Saude})));
+const Socioeconomico = pagina(() => import('./pages/Socioeconomico').then(m => ({default:m.Socioeconomico})));
+const TrabalhoCaged = pagina(() => import('./pages/Trabalho').then(m => ({default:m.TrabalhoCaged})));
+const TrabalhoEvolucao = pagina(() => import('./pages/Trabalho').then(m => ({default:m.TrabalhoEvolucao})));
+const TrabalhoRankings = pagina(() => import('./pages/Trabalho').then(m => ({default:m.TrabalhoRankings})));
+const TrabalhoPainel = pagina(() => import('./pages/TrabalhoPainel').then(m => ({default:m.TrabalhoPainel})));
+const MunicEntrada = pagina(() => import('./pages/MunicPainel').then(m => ({default:m.MunicEntrada})));
+const TrabalhoConsulta = pagina(() => import('./pages/TrabalhoConsulta').then(m => ({default:m.TrabalhoConsulta})));
+const TrabalhoEstabelecimentos = pagina(() => import('./pages/TrabalhoEstabelecimentos').then(m => ({default:m.TrabalhoEstabelecimentos})));
+const TrabalhoRemuneracao = pagina(() => import('./pages/TrabalhoRemuneracao').then(m => ({default:m.TrabalhoRemuneracao})));
+const TrabalhoMetodologia = pagina(() => import('./pages/TrabalhoMetodologia').then(m => ({default:m.TrabalhoMetodologia})));
+const TrabalhoPerfil = pagina(() => import('./pages/TrabalhoPerfil').then(m => ({default:m.TrabalhoPerfil})));
 
 const menu = (): [string, [string, string][]][] => [
   [t('Receitas', 'Revenue'), [['/receitas', t('Visão geral', 'Overview')], ['/receitas/evolucao', t('Evolução', 'Trends')]]],
@@ -68,7 +98,7 @@ const menuTrabalho = (): [string, [string, string][]][] => [
 
 /** Área de saúde (SIM, SINASC e população da SVS/MS), em /datasus; o /saude das finanças é o SIOPS. */
 const menuSaude = (): [string, [string, string][]][] => [
-  [t('Indicadores de saúde', 'Health indicators'), [['/datasus', t('Visão geral', 'Overview')], ['/datasus/evolucao', t('Evolução', 'Trends')],
+  [t('Indicadores de saúde', 'Health indicators'), [['/datasus', t('Visão geral', 'Overview')], ['/datasus/evolucao', t('Evolução', 'Trends')], ['/datasus/tabela', t('Tabela e exportações', 'Table and downloads')],
     ['/datasus/rankings', 'Rankings'], ['/datasus/rede', t('Rede e acesso', 'Network and access')],
     ['/datasus/ambulatorial', t('Produção ambulatorial', 'Outpatient output')],
     ['/datasus/vacinacao', t('Vacinação', 'Vaccination')],
@@ -174,6 +204,7 @@ function AlternarIdioma() {
 }
 
 export function App() {
+  const navegar = useNavigate();
   const idioma = useIdioma();
   const { search, pathname, hash } = useLocation();
   const navegacao = useNavigationType();
@@ -228,6 +259,27 @@ export function App() {
   if (area !== 'ia' && area !== 'munic' && area !== 'clima' && area !== 'downloads') filtrosIa.set('paineis', area);
   const buscaIa = `?${filtrosIa}`;
 
+  const gruposMenu = ({ financas: menu, trabalho: menuTrabalho, saude: menuSaude, educacao: menuEducacao, munic: menuMunic, clima: menuClima, assistencia: menuAssistencia, downloads: menuDownloads, ia: menuIa }[area])();
+  const linkPagina = (para: string) => ({ pathname: para, search: area === 'downloads' ? search : area === 'ia' ? buscaIa : area === 'educacao' ? buscaEntreAreas(search, 'educacao', para.includes('/financiamento') || para.includes('/profissionais') ? 'financas' : 'educacao') : area === 'munic' ? contextoMunic(search, DESTINO_MUNIC[para] ?? 'avancado', EDICOES_MUNIC) : area === 'clima' ? buscaClima(search) : area === 'assistencia' ? buscaEntreAreas(search, 'assistencia', 'assistencia') : buscaArea });
+  const areas: {id: Area; nome: string; caminho: string; busca: string}[] = [
+    {id:'ia',nome:t('Pergunte aos dados (IA)','Ask the data (AI)'),caminho:'/ia',busca:buscaIa},
+    {id:'financas',nome:t('Finanças públicas','Public finances'),caminho:'/receitas',busca:paraArea('financas')},
+    {id:'trabalho',nome:t('Mercado de trabalho','Labour market'),caminho:'/trabalho',busca:paraArea('trabalho')},
+    {id:'saude',nome:t('Saúde','Health'),caminho:'/datasus',busca:paraArea('saude')},
+    {id:'educacao',nome:t('Educação','Education'),caminho:'/educacao',busca:paraArea('educacao')},
+    {id:'munic',nome:t('Gestão pública','Public management'),caminho:'/munic',busca:paraArea('munic')},
+    {id:'clima',nome:t('Clima','Climate'),caminho:'/clima',busca:paraArea('clima')},
+    {id:'assistencia',nome:t('Assistência social','Social assistance'),caminho:'/assistencia',busca:paraArea('assistencia')},
+    {id:'downloads',nome:t('Baixar dados','Download data'),caminho:'/downloads',busca:buscaParaDownloads(search,area)},
+  ];
+  useEffect(()=>{
+    const nome=areas.find(a=>a.id===area)?.nome??'LAPAM';
+    const pagina=gruposMenu.flatMap(([,itens])=>itens).find(([p])=>p===pathname)?.[1];
+    document.title=`LAPAM · ${nome}${pagina?' · '+pagina:''}`;
+  },[pathname,idioma,area]);
+
+
+
   return (
     <>
       <a className="pular" href="#conteudo">{t('Pular para o conteúdo', 'Skip to content')}</a>
@@ -245,17 +297,16 @@ export function App() {
           ia: t('Pergunte aos dados · LAPAM/UFG', 'Ask the data · LAPAM/UFG'),
         }[area]}</h1>
         <nav className="areas" aria-label={t('Áreas', 'Areas')}>
-          <Link to={{ pathname: '/ia', search: buscaIa }} className={area === 'ia' ? 'ativo' : ''} aria-current={area === 'ia' ? 'page' : undefined}>{t('Pergunte aos dados (IA)', 'Ask the data (AI)')}</Link>
-          <Link to={{ pathname: '/receitas', search: paraArea('financas') }} className={area === 'financas' ? 'ativo' : ''} aria-current={area === 'financas' ? 'page' : undefined}>{t('Finanças públicas', 'Public finances')}</Link>
-          <Link to={{ pathname: '/trabalho', search: paraArea('trabalho') }} className={area === 'trabalho' ? 'ativo' : ''} aria-current={area === 'trabalho' ? 'page' : undefined}>{t('Mercado de trabalho', 'Labour market')}</Link>
-          <Link to={{ pathname: '/datasus', search: paraArea('saude') }} className={area === 'saude' ? 'ativo' : ''} aria-current={area === 'saude' ? 'page' : undefined}>{t('Saúde', 'Health')}</Link>
-          <Link to={{ pathname: '/educacao', search: paraArea('educacao') }} className={area === 'educacao' ? 'ativo' : ''} aria-current={area === 'educacao' ? 'page' : undefined}>{t('Educação', 'Education')}</Link>
-          <Link to={{ pathname: '/munic', search: paraArea('munic') }} className={area === 'munic' ? 'ativo' : ''} aria-current={area === 'munic' ? 'page' : undefined}>{t('Gestão pública', 'Public management')}</Link>
-          <Link to={{ pathname: '/clima', search: paraArea('clima') }} className={area === 'clima' ? 'ativo' : ''} aria-current={area === 'clima' ? 'page' : undefined}>{t('Clima', 'Climate')}</Link>
-          <Link to={{ pathname: '/assistencia', search: paraArea('assistencia') }} className={area === 'assistencia' ? 'ativo' : ''} aria-current={area === 'assistencia' ? 'page' : undefined}>{t('Assistência social', 'Social assistance')}</Link>
+          {areas.filter(a=>a.id!=='downloads').map(a=><Link key={a.id} to={{pathname:a.caminho,search:a.busca}} className={area===a.id?'ativo':''} aria-current={area===a.id?'page':undefined}>{a.nome}</Link>)}
         </nav>
+        <div className="areas-mobile">
+          <label className="sr-only" htmlFor="area-painel">{t('Área do painel','Dashboard area')}</label>
+          <select id="area-painel" value={area} onChange={e=>{const a=areas.find(a=>a.id===e.target.value)!;navegar({pathname:a.caminho,search:a.busca});}}>
+            {areas.map(a=><option key={a.id} value={a.id}>{a.nome}</option>)}
+          </select>
+        </div>
         <div className="topo-controles">
-          <Link to="/downloads" className="topo-baixar" aria-current={area === 'downloads' ? 'page' : undefined} aria-label={t('Baixar dados municipais', 'Download municipal data')}>
+          <Link to={{pathname:"/downloads",search:buscaParaDownloads(search,area)}} className="topo-baixar" aria-current={area === 'downloads' ? 'page' : undefined} aria-label={t('Baixar dados municipais', 'Download municipal data')}>
             <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M10 3v9m0 0-3.5-3.5M10 12l3.5-3.5M4 16h12" /></svg>
             <span>{t('Baixar dados', 'Download data')}</span>
           </Link>
@@ -265,21 +316,29 @@ export function App() {
       </header>
       <div className={`casca${area === 'ia' ? ' casca-ia' : ''}`}>
         <nav className={`menu${area === 'ia' ? ' menu-ia' : ''}`} aria-label={t('Páginas', 'Pages')}>
-          {({ financas: menu, trabalho: menuTrabalho, saude: menuSaude, educacao: menuEducacao, munic: menuMunic, clima: menuClima, assistencia: menuAssistencia, downloads: menuDownloads, ia: menuIa }[area])().map(([grupo, itens]) => (
+          {area !== 'ia' && <div className="menu-mobile">
+            <label className="sr-only" htmlFor="pagina-painel">{t('Página do painel','Dashboard page')}</label>
+            <select id="pagina-painel" value={gruposMenu.some(([,xs])=>xs.some(([p])=>p===pathname))?pathname:''} onChange={e=>navegar(linkPagina(e.target.value))}>
+              {!gruposMenu.some(([,xs])=>xs.some(([p])=>p===pathname)) && <option value="" disabled>{t('Escolha uma página','Choose a page')}</option>}
+              {gruposMenu.map(([grupo,xs])=><optgroup key={grupo} label={grupo}>{xs.map(([para,rotulo])=><option key={para} value={para}>{area==='financas'?`${grupo} · ${rotulo}`:rotulo}</option>)}</optgroup>)}
+            </select>
+          </div>}
+          <div className="menu-grupos">{gruposMenu.map(([grupo, itens]) => (
             <div key={grupo} style={{ display: 'contents' }}>
               <h4>{grupo}</h4>
               {itens.map(([para, rotulo]) => (
-                <NavLink key={para} to={{ pathname: para, search: area === 'downloads' ? '' : area === 'ia' ? buscaIa : area === 'educacao' ? buscaEntreAreas(search, 'educacao', para.includes('/financiamento') || para.includes('/profissionais') ? 'financas' : 'educacao') : area === 'munic' ? contextoMunic(search, DESTINO_MUNIC[para] ?? 'avancado', EDICOES_MUNIC) : area === 'clima' ? buscaClima(search) : area === 'assistencia' ? buscaEntreAreas(search, 'assistencia', 'assistencia') : buscaArea }} end className={({ isActive }) => (isActive ? 'ativo' : '')}>
+                <NavLink key={para} to={linkPagina(para)} end className={({ isActive }) => (isActive ? 'ativo' : '')}>
                   {rotulo}
                 </NavLink>
               ))}
             </div>
           ))}
-          {area === 'ia' && <HistoricoIa />}
+          </div>
+          {area === 'ia' && <Suspense fallback={null}><HistoricoIa /></Suspense>}
         </nav>
         {/* a chave refaz as páginas ao trocar o idioma: gráficos e textos memorizados são recalculados */}
         <main key={idioma} id="conteudo" tabIndex={-1}>
-          <ProvedorDados>
+          <Suspense fallback={<p className="carregando" role="status">{t('Abrindo o painel…', 'Opening the dashboard…')}</p>}><ProvedorDados>
             <Routes>
               <Route path="/" element={<Navigate to={{ pathname: '/ia', search: buscaIaLegada(search), hash }} replace />} />
               <Route path="/receitas" element={<ReceitasVisaoGeral />} />
@@ -341,7 +400,7 @@ export function App() {
               <Route path="/qualidade" element={<Qualidade />} />
               <Route path="*" element={<p className="vazio">{t('Página não encontrada.', 'Page not found.')}</p>} />
             </Routes>
-          </ProvedorDados>
+          </ProvedorDados></Suspense>
         </main>
       </div>
     </>

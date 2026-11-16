@@ -1,3 +1,5 @@
+import { useSearchParams } from 'react-router-dom';
+import { COD_UF } from '../munic_painel';
 import { REDES_EDUCACAO,redeEducacaoValida,type RedeEducacao } from '../educacao_rede';
 import { useCallback, useDeferredValue, useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 import '../downloads.css';
@@ -8,7 +10,7 @@ import {
 import { Estado } from '../components/Kpi';
 import { numero } from '../format';
 import { idioma, local, t, useIdioma } from '../idioma';
-import { nomeDaUf } from '../ia_territorio';
+import { nomeDaUf } from '../ufs';
 import { BASE_DADOS } from '../manifesto';
 
 const URL_MANIFESTO = `${BASE_DADOS}gold/downloads/manifesto.json`;
@@ -187,15 +189,15 @@ function Variavel({ e, nomeArea, onEscolher }: { e: EntradaDic; nomeArea: (id: s
   );
 }
 
-function ApiDados({ uf, area,rede='todas' }: { uf: string; area: string;rede?:RedeEducacao }) {
+function ApiDados({ uf, area,rede='todas',municipio }: { uf: string; area: string;rede?:RedeEducacao;municipio?:string }) {
   const [mensagem, setMensagem] = useState('');
   const base = `${location.origin}/api/dados/v1`;
   const localEscolhido = uf || 'BR';
   const tema = area || 'todos';
   const redeQuery=area==='educacao'&&rede!=='todas'?'?rede='+rede:'';
   const redeR=redeQuery?`, rede = "${rede}"`:'';
-  const stata = `use "${base}/painel/${localEscolhido}/${tema}.dta${redeQuery}", clear`;
-  const r = `source("${base}/cliente.R")\ndados <- finbra(uf = "${localEscolhido}", tema = "${tema}"${redeR})`;
+  const stata = `use "${base}/painel/${localEscolhido}/${tema}.dta${redeQuery}", clear${municipio?`\nkeep if cod_ibge == ${municipio}`:''}`;
+  const r = `source("${base}/cliente.R")\ndados <- finbra(uf = "${localEscolhido}", tema = "${tema}"${redeR}${municipio?`, municipio = ${municipio}`:''})`;
   const copiar = async (codigo: string) => {
     try { await navigator.clipboard.writeText(codigo); setMensagem(t('Código copiado.', 'Code copied.')); }
     catch { setMensagem(t('Selecione e copie o código abaixo.', 'Select and copy the code below.')); }
@@ -284,8 +286,16 @@ const rolar = (id: string) => document.getElementById(id)?.scrollIntoView({ beha
 
 function Conteudo({ m, descartados }: { m: ManifestoDl; descartados: number }) {
   const en=idioma()==='en';
+  const [parametros,setParametros]=useSearchParams();
   const [area,setArea]=useState(() => { const a=new URLSearchParams(location.search).get('area'); return m.areas.some(x=>x.id===a) ? a! : ''; }); const [uf,setUf]=useState(()=>{const u=(new URLSearchParams(location.search).get('uf')??'').toUpperCase();return m.recortes_uf?.[u]?u:'';});
   const [rede,setRede]=useState<RedeEducacao>(()=>{const r=new URLSearchParams(location.search).get('rede')??'todas';return redeEducacaoValida(r)?r:'todas';});
+  useEffect(()=>{
+    const proxima=new URLSearchParams(parametros);
+    for(const [k,v] of [['area',area],['uf',uf],['rede',area==='educacao'?rede:'']]) {if(v)proxima.set(k,v);else proxima.delete(k);}
+    const cod=proxima.get('cod');if(cod&&uf&&cod.slice(0,2)!==String(COD_UF[uf]))proxima.delete('cod');
+    if(proxima.toString()!==parametros.toString())setParametros(proxima,{replace:true,preventScrollReset:true});
+  },[area,uf,rede,parametros,setParametros]);
+
   const [formato,setFormato]=useState<FormatoBase>('dta');
   const [busca,setBusca]=useState(''); const q=useDeferredValue(busca);
   const [dicAberto,setDicAberto]=useState(false); const [dicArea,setDicArea]=useState('');
@@ -300,6 +310,9 @@ function Conteudo({ m, descartados }: { m: ManifestoDl; descartados: number }) {
   const catalogo=useJson<ArquivoDl[]>(catalogUrl,!!catalogUrl,lerCatalogo);
   const arquivos=[...m.arquivos,...(uf ? catalogo.dados ?? [] : [])];
   const escolhido=arquivoDoRecorte(arquivos,area,uf,fmt,rede);
+  const municipioPedido=new URLSearchParams(location.search).get('cod')??'';
+  const municipio=/^\d{7}$/.test(municipioPedido)&&(!uf||municipioPedido.slice(0,2)===String(COD_UF[uf]))?municipioPedido:undefined;
+  const governo=new URLSearchParams(location.search).get('governo')==='1';
   const ufs=[...new Set(painel.map((a) => a.uf).filter((u): u is string => !!u))].sort();
   const lerDic=useCallback((b: unknown) => indexarDicionario(validarDicionario(b)),[]);
   const dic=useJson<IndiceDic>(urlArquivo(m.dicionario.caminho,BASE_DADOS) ?? '',dicAberto || !!q.trim(),lerDic);
@@ -321,6 +334,8 @@ function Conteudo({ m, descartados }: { m: ManifestoDl; descartados: number }) {
   const grupos=m.areas.map((a) => ({area:a,itens:detalhes.filter((d) => d.area===a.id)})).filter((g) => g.itens.length);
   return <>
     {descartados>0 && <p className="dl-aviso" role="status">{t(`${descartados} arquivo(s) inválido(s) não foram exibidos.`,`${descartados} invalid file(s) were not displayed.`)}</p>}
+    {governo&&<p className="dl-aviso" role="note">{t('Esta seção contém bases municipais. A UF seleciona seus municípios; não representa as contas ou respostas do governo estadual. ESTADIC e contas estaduais estão nos painéis e nos dados detalhados.','This section contains municipal datasets. A state selects its municipalities, not the state government’s accounts or answers. ESTADIC and state accounts are available in their dashboards and detailed data.')}</p>}
+    {municipio&&<p className="dl-ajuda" role="note">{t(`Município solicitado: ${municipio}. O arquivo contém ${uf?`os municípios de ${uf}`:'todos os municípios'}; os exemplos de R e Stata abaixo já filtram esse código.`,`Requested municipality: ${municipio}. The file contains ${uf?`municipalities in ${uf}`:'all municipalities'}; the R and Stata examples below already filter this code.`)}</p>}
     <Secao id="dl-base" titulo={t('Escolha e baixe','Choose and download')}>
       <div className="dl-escolhas">
         <div className="dl-campo"><label htmlFor={id+'-area'}>{t('Conteúdo','Content')}</label><select id={id+'-area'} value={area} onChange={(e) => {setArea(e.target.value);if(e.target.value!=='educacao')setRede('todas');}}><option value="">{t('Todos os temas · seleção principal','All topics · core selection')}</option>{m.areas.map((a) => <option value={a.id} key={a.id}>{pick(a.nome,a.nome_en)}</option>)}</select></div>
@@ -354,7 +369,7 @@ function Conteudo({ m, descartados }: { m: ManifestoDl; descartados: number }) {
       {completos.length>0 && <details className="dl-dic-downloads"><summary>{t('Pacote conjunto: Stata, CSV e Parquet','Combined package: Stata, CSV and Parquet')}</summary><Lista arquivos={completos} base={BASE_DADOS} /></details>}
     </Secao>
     <details id="dl-detalhes" className="dl-avancado" open={detalhesAbertos} onToggle={(e) => setDetalhesAbertos(e.currentTarget.open)}><summary>{t('Dados detalhados nacionais (opcional)','Detailed national data (optional)')}</summary><p className="dl-intro">{t('MUNIC completa e contas DCA, desde 2013, em CSV e Parquet. Estes arquivos são do Brasil inteiro, independentemente da UF escolhida acima. Edições mais recentes aparecem primeiro.','Full MUNIC and DCA accounts from 2013 onwards, in CSV and Parquet. These cover all of Brazil, regardless of the state selected above. Latest editions appear first.')}</p>{!grupos.length && <p className="dl-vazio">{t('Nenhum arquivo detalhado com essa busca.','No detailed files match this search.')}</p>}{grupos.map((g) => <div className="dl-grupo" key={g.area.id}><h4 className="dl-sub">{pick(g.area.nome,g.area.nome_en)}</h4><Lista arquivos={g.itens} base={BASE_DADOS} limite={q ? 50 : 6} /></div>)}<h4 className="dl-sub">{t('Dicionário dos complementos','Supplement dictionary')}</h4><Lista arquivos={m.arquivos.filter((a) => a.tipo==='dicionario' && a.escopo==='detalhado')} base={BASE_DADOS} /></details>
-    <ApiDados uf={uf} area={area} rede={rede} />
+    <ApiDados uf={uf} area={area} rede={rede} municipio={municipio} />
     <Secao id="dl-guia" titulo={t('Como usar os arquivos','How to use the files')}><Guia m={m} metodologia={metodologia} base={m.base_ipca} /></Secao>
     <p className="dl-rodape">{t(`Arquivos gerados em ${quando}. Todos são pré-calculados; escolher e baixar não executa consultas.`,`Files generated on ${quando}. All files are pre-computed; choosing and downloading runs no queries.`)}</p>
     <Integridade m={{...m,arquivos}} />

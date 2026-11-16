@@ -1,3 +1,5 @@
+import { useMicroNoPainel } from '../trabalho_disponibilidade';
+import { BuscaPainel, corresponde, TemaPainel, useExplorarPainel } from '../explorar_painel';
 import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { useApi, type Linha } from '../api';
 import { Dica } from '../components/Dica';
@@ -8,7 +10,7 @@ import { AjudaTrabalho } from '../components/AjudaTrabalho';
 import { TodasAnalises } from '../components/PerguntasTrabalho';
 import { TabelaSerie } from '../components/TabelaSerie';
 import { BarraFiltros } from '../contexto';
-import { fonteConsulta } from '../dados';
+
 import { div, numero, numero1, pct, reais, reaisCurto, reaisExato } from '../format';
 import { num } from '../hooks';
 import { t } from '../idioma';
@@ -16,11 +18,11 @@ import { concentracao, marcasQuebra, notaComparabilidade, quebrasEntre, useRecor
 import {
   calcularRais, faixaMeses, GRANDES_SETORES, somarCagedAno, valorExportado, type CagedAno, type Condicao, type PainelRais,
 } from '../trabalho_painel';
-import { IndiceSaude } from './SaudeDatasus';
-import { PerfisRais } from './TrabalhoPerfisRais';
+import { IndiceSaude } from '../components/IndicePainel';
+import { PerfisRais, TEXTOS_PERFIS } from './TrabalhoPerfisRais';
 import {
   AvisoAno, AvisoRecorte, fonteCaged, fonteRais, MESES, NotaQuebra, notaPorMil, notaRemuneracao, notaSetores, SemDados, SETORES, useTrabalho,
-} from './Trabalho';
+} from './trabalho_compartilhado';
 
 type Bloco = 'empregos' | 'remuneracao' | 'perfil' | 'atividades' | 'caged';
 type Un = 'vinculos' | 'estabelecimentos' | 'pct' | 'por_mil' | 'razao' | 'reais' | 'reais_massa' | 'media';
@@ -134,6 +136,7 @@ export function TrabalhoPainel() {
   const { anoRais, escopo, rotulo, temDados, meta, caged } = useTrabalho();
   const { busca } = useRecorte();
   const raiz = useRef<HTMLDivElement>(null);
+  const explorar=useExplorarPainel(['empregos','remuneracao','perfil','raca','escolaridade','vinculos','atividades','caged','historicos'].map(b=>'trabalho-'+b));
   const serie = useApi<Linha[]>(temDados ? 'trab_serie' : null, escopo);
   const setores = useApi<Linha[]>(temDados && anoRais ? 'trab_setores' : null, { ...escopo, ano: anoRais });
   const cagedApi = useApi<Linha[]>(caged ? 'trab_caged' : null, escopo);
@@ -150,7 +153,7 @@ export function TrabalhoPainel() {
   const lista = setores.dados ?? [];
   const totalSet = lista.reduce((x, r) => x + (num(r.empregos) ?? 0), 0);
   const conc = useMemo(() => (setores.dados ? concentracao(setores.dados.map((r) => ({ nome: `${r.divisao} · ${String(r.divisao_nome ?? r.divisao)}`, valor: num(r.empregos) }))) : null), [setores.dados]);
-  const micro = fonteConsulta(escopo) === 'micro';
+  const micro = useMicroNoPainel(escopo);
   const marcas = marcasQuebra(anos);
   const base = String(meta.baseIpca);
   const nomeSetor = (k: string) => SETORES().find(([c]) => c === k)?.[1] ?? k;
@@ -178,11 +181,13 @@ export function TrabalhoPainel() {
     <Kpi key={i.id} rotulo={i.rotulo} valor={formatar(i)} nota={i.nota} dica={i.dica} />
   ));
   const cobCaged = caged ? `${caged.de ? `${String(caged.de % 100).padStart(2, '0')}/${Math.floor(caged.de / 100)}` : '–'}–${caged.ate ? `${String(caged.ate % 100).padStart(2, '0')}/${Math.floor(caged.ate / 100)}` : '–'}` : '';
+  const textosTemas:Record<string,string>={empregos:'emprego empregos estabelecimento estabelecimento vínculos jobs establishments',remuneracao:'salário salario remuneração mulheres homens massa pay payroll income',perfil:'sexo mulheres homens idade jovem escolaridade superior profile age education',atividades:'CNAE atividade setor concentração HHI agropecuária indústria comércio serviços agricultura industry trade services '+lista.map(x=>x.divisao_nome).join(' '),caged:'CAGED admissão contratação desligamento saldo admissões demissões movimento hiring separation',historicos:'séries históricas evolução empregos remuneração perfil setores sexo mulheres homens trends time series history'};
+  const visivel=(b:string)=>corresponde(explorar.busca,[textosTemas[b]??'',...indicadores.filter(i=>i.bloco===b||b==='historicos').flatMap(i=>[i.rotulo,i.nota])]);
   const titulo = (b: Bloco) => {
     const x = BLOCOS().find((y) => y.id === b)!;
     return (
       <>
-        <h3 className="secao bloco-saude" id={`trabalho-${b}`} data-indice={x.titulo} tabIndex={-1}>{x.titulo}</h3>
+
         <p className="nota-base">{x.desc}</p>
       </>
     );
@@ -192,35 +197,39 @@ export function TrabalhoPainel() {
     <>
       <h2 className="titulo-pagina">{t('Mercado de trabalho: painel de indicadores', 'Labour market: indicator dashboard')}</h2>
       <p className="subtitulo">{rotulo} · RAIS {anoRais} <Dica rotulo={t('Fonte', 'Source')}>{fonteRais()}</Dica></p>
-      <BarraFiltros />
+      <div className="trabalho-painel-filtros"><BarraFiltros /></div>
       <AvisoAno anoRais={anoRais} />
       <AvisoRecorte pagina={t('o painel de indicadores', 'the indicator dashboard')} />
       <div ref={raiz}>
+        <BuscaPainel exemplos={t('Ex.: salário, raça/cor, escolaridade…','E.g. pay, race/colour, education…')} explorar={explorar} total={9} encontrados={['empregos','remuneracao','perfil','atividades','caged','historicos'].filter(visivel).length+['raca','escolaridade','vinculos'].filter(id=>corresponde(explorar.busca,[TEXTOS_PERFIS[id]])).length} temas />
         <IndiceSaude raiz={raiz} />
         <Estado carregando={serie.carregando} erro={serie.erro} tentarNovamente={serie.recarregar}
           vazio={!serie.carregando && !serie.erro && !rais && t('Sem vínculos na RAIS para este recorte e ano.', 'No RAIS jobs for this scope and year.')} />
         {rais && (
           <>
-            {titulo('empregos')}
+            {visivel('empregos') && <TemaPainel id="trabalho-empregos" titulo={BLOCOS().find(x=>x.id==='empregos')!.titulo} explorar={explorar}>{titulo('empregos')}
             <div className="kpis kpis-4">{cartoes('empregos')}</div>
             {quebra && <NotaQuebra anos={[anoRais! - 1, anoRais!]} />}
 
-            {titulo('remuneracao')}
+            </TemaPainel>}
+{visivel('remuneracao') && <TemaPainel id="trabalho-remuneracao" titulo={BLOCOS().find(x=>x.id==='remuneracao')!.titulo} explorar={explorar}>{titulo('remuneracao')}
             <div className="kpis kpis-4">{cartoes('remuneracao')}</div>
 
-            {titulo('perfil')}
+            </TemaPainel>}
+{visivel('perfil') && <TemaPainel id="trabalho-perfil" titulo={BLOCOS().find(x=>x.id==='perfil')!.titulo} explorar={explorar}>{titulo('perfil')}
             <div className="kpis kpis-4">{cartoes('perfil')}</div>
             <p className="nota-base">{t('Percentuais sobre todos os vínculos ativos. Sexo, idade e escolaridade são os declarados na RAIS; vínculos com informação ausente continuam no denominador.',
               'Percentages over all active jobs. Sex, age and education are as declared in RAIS; jobs with missing information stay in the denominator.')}</p>
-          </>
+          </TemaPainel>}
+</>
         )}
 
         {/* raça/cor, escolaridade e tipos de vínculo: carregam à parte (um Parquet pequeno do ano), sem esperar nem travar os indicadores */}
-        <PerfisRais anoRais={anoRais} escopo={escopo} rotulo={rotulo} meta={meta} />
+        <PerfisRais anoRais={anoRais} escopo={escopo} rotulo={rotulo} meta={meta} explorar={explorar} />
 
         {rais && (
           <>
-            {titulo('atividades')}
+            {visivel('atividades') && <TemaPainel id="trabalho-atividades" titulo={BLOCOS().find(x=>x.id==='atividades')!.titulo} explorar={explorar}>{titulo('atividades')}
             <div className="kpis kpis-4">{cartoes('atividades')}</div>
             <div className="grade-2">
               <CartaoGrafico titulo={t('Vínculos por grande setor (atividade do estabelecimento)', 'Jobs by broad sector (establishment activity)')} desc={`RAIS ${anoRais}`}
@@ -278,7 +287,8 @@ export function TrabalhoPainel() {
               </>
             )}
 
-            {titulo('caged')}
+            </TemaPainel>}
+{visivel('caged') && <TemaPainel id="trabalho-caged" titulo={BLOCOS().find(x=>x.id==='caged')!.titulo} explorar={explorar}>{titulo('caged')}
             {!caged && <p className="vazio">{t('Os dados do CAGED ainda não foram publicados.', 'CAGED data have not been published yet.')}</p>}
             {caged && (
               <>
@@ -292,7 +302,8 @@ export function TrabalhoPainel() {
               </>
             )}
 
-            <h3 className="secao">{t('Séries históricas', 'Historical series')}</h3>
+            </TemaPainel>}
+{visivel('historicos') && <TemaPainel id="trabalho-historicos" titulo={t('Séries históricas','Historical series')} explorar={explorar}>
             <div className="grade-2">
               <CartaoGrafico titulo={t('Vínculos formais ativos em 31/12', 'Formal jobs active on Dec 31')}
                 tabela={<TabelaSerie nome="trabalho_painel_empregos" anos={anosTabela} colunas={[
@@ -331,7 +342,8 @@ export function TrabalhoPainel() {
             </div>
             <p className="legenda-tabela">† {t('ano com quebra de série apontada pelo MTE (nas tabelas e exportações).', 'year with a series break reported by the Ministry (in tables and exports).')}</p>
 
-            <section className="cartao" aria-labelledby="trabalho-resumo-t">
+            </TemaPainel>}
+<section className="cartao" aria-labelledby="trabalho-resumo-t">
               <h3 id="trabalho-resumo-t">{t('Exportar resumo dos indicadores', 'Export indicator summary')}</h3>
               <p className="nota-base">{t('Um arquivo com os 30 indicadores principais (valor, unidade, ano, fonte e condição do dado). Percentuais saem em pontos percentuais, como na tela. As distribuições de raça/cor, escolaridade e tipo de vínculo têm exportação própria em cada seção. Os botões dos gráficos e da tabela de divisões exportam outros arquivos.',
                 'One file with the 30 main indicators (value, unit, year, source and data condition). Percentages come out in percentage points, as on screen. The race/colour, education and job-type distributions have their own export in each section. The chart and division-table buttons export other files.')}</p>
@@ -354,7 +366,8 @@ export function TrabalhoPainel() {
                   : t('O resumo fica disponível quando as divisões da CNAE e o CAGED terminarem de carregar.', 'The summary becomes available when the CNAE divisions and CAGED finish loading.')}</p>
               )}
             </section>
-          </>
+
+</>
         )}
       </div>
       <AjudaTrabalho />

@@ -3,14 +3,7 @@
 .downloads-painel > h2 { margin: 0 0 6px; }
 .dl-sub-titulo { margin: 0 0 16px; color: var(--tinta-2); max-width: 70ch; font-size: 15px; }
 
-/* atalho no cabeçalho */
-.topo-baixar {
-  display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border-radius: 8px; white-space: nowrap;
-  background: var(--acao); color: var(--acao-tinta); font-size: 13px; font-weight: 600; text-decoration: none; border: 1px solid transparent;
-}
-.topo-baixar:hover { background: var(--acao-2); }
-.topo-baixar[aria-current='page'] { box-shadow: 0 0 0 2px var(--superficie), 0 0 0 4px var(--acao); }
-.topo-baixar svg { flex: none; }
+
 
 .dl-ico { flex: none; }
 .dl-resumo { list-style: none; margin: 0 0 14px; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
@@ -107,7 +100,7 @@
 .dl-integridade li { display: flex; flex-direction: column; gap: 1px; }
 .dl-integridade code { font-size: 11px; overflow-wrap: anywhere; color: var(--tinta-2); }
 
-.dl-ancoras button:focus-visible, .dl-var summary:focus-visible, .dl-baixar:focus-visible, .topo-baixar:focus-visible { outline: 2px solid var(--acao-texto); outline-offset: 2px; }
+.dl-ancoras button:focus-visible, .dl-var summary:focus-visible, .dl-baixar:focus-visible { outline: 2px solid var(--acao-texto); outline-offset: 2px; }
 
 @media (max-width: 600px) {
   .dl-arq { flex-direction: column; align-items: stretch; gap: 10px; }
@@ -115,10 +108,8 @@
   .dl-var dl div { grid-template-columns: 1fr; gap: 0; }
   .dl-campo select { min-width: 0; width: 100%; }
   .dl-filtros .dl-campo:not(.dl-campo-larga) { flex: 1 1 100%; }
-  .topo-baixar span { display: none; }
-  .topo-baixar { padding: 0 10px; }
 }
-@media print { .topo-baixar, .dl-ancoras, .dl-filtros { display: none !important; } }
+@media print { .dl-ancoras, .dl-filtros { display: none !important; } }
 
 /* Escolha imediata; catálogos, dicionário e prévias continuam sob demanda. */
 #dl-base.dl-secao { margin-top: 8px; }

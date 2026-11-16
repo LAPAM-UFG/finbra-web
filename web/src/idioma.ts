@@ -90,7 +90,7 @@ export async function definirIdioma(novo: Idioma) {
   if (novo === 'en' && !Object.keys(contas).length) contas = (await import('./traducoes/contas.en.json')).default;
   atual = novo;
   document.documentElement.lang = novo === 'en' ? 'en' : 'pt-BR';
-  document.title = t('LAPAM · Finanças Municipais', 'LAPAM · Municipal Finances');
+  document.title = t('LAPAM · Dados públicos', 'LAPAM · Public data');
   try {
     localStorage.setItem('idioma', novo);
   } catch {

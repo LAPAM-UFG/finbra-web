@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { aoMudarEtapa, etapaAtual } from '../dados';
+import { aoMudarEtapa, etapaAtual } from '../consulta_estado';
 import { t } from '../idioma';
 
 export function Kpi({ rotulo, valor, nota, dica }: { rotulo: ReactNode; valor: string; nota?: ReactNode; dica?: ReactNode }) {

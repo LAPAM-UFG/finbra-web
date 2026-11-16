@@ -35,6 +35,7 @@ def main():
     rodar("gold.py")
     rodar("validate.py")
     rodar("testes.py")
+    rodar("abertura_paineis.py", "--instalar-local")  # publica o índice local só depois dos Parquet validados
 
 
 if __name__ == "__main__":

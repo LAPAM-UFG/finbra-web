@@ -208,7 +208,7 @@ export function EvolucaoPosicao(p: Props) {
   const eixoX = (tk: Tokens) => ({ type: 'category', data: anos.map(String), axisLabel: { color: tk.tinta3 }, axisLine: { lineStyle: { color: tk.eixo } }, axisTick: { show: false } });
   const legenda = (tk: Tokens) => ({ type: 'scroll', top: 0, textStyle: { color: tk.tinta2 }, itemWidth: 14, itemHeight: 8, pageTextStyle: { color: tk.tinta3 } });
   const serieDe = (tk: Tokens, cod: number, i: number, valor: (x: PontoPosicao) => number | null) => ({
-    name: nomeDe(cod), type: 'line', connectNulls: false, symbol: 'circle', symbolSize: 8, lineStyle: { width: 2 },
+    name: nomeDe(cod), type: 'line', connectNulls: false, symbol: ['circle','rect','triangle','diamond','roundRect'][i % 5], symbolSize: 8, lineStyle: { width: 2, type: (['solid','dashed','dotted','solid','dashed'] as const)[i % 5] },
     itemStyle: { color: tk.comparacao[i], borderColor: tk.superficie, borderWidth: 2 },
     data: anos.map((a) => {
       const x = pontos.find((y) => y.cod === cod && y.ano === a)?.p;

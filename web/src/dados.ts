@@ -13,6 +13,8 @@ import {obterMetaEducacao} from './educacao_dados';
  * Em ambos, numerador e população usam o mesmo conjunto de entes (os que têm o dado).
  */
 import * as duckdb from '@duckdb/duckdb-wasm';
+import { avisarEtapa } from './consulta_estado';
+export { aoMudarEtapa, etapaAtual } from './consulta_estado';
 import { t } from './idioma';
 import { SQL_IPCA_BASE } from './ia_moeda';
 import { indicador as indicadorSaude, type Indicador } from './saude_comum';
@@ -993,7 +995,7 @@ const rotasTrabalho: Record<string, (q: Params) => Promise<unknown>> = {
       `SELECT s.divisao, c.divisao_nome, c.secao, c.secao_nome, s.empregos, s.remuneracao_media_dez AS remuneracao_media
        FROM ${origem} s LEFT JOIN trab_cnae c USING (divisao)
        WHERE ${filtro} AND s.ano = $ano::INTEGER
-       ORDER BY s.empregos DESC`,
+       ORDER BY s.empregos DESC, s.divisao`,
       p,
     );
   },
@@ -2325,21 +2327,7 @@ export function prefixosSemSobreposicao(lista: string[]): string[] {
 // ---------- etapas e cancelamento das consultas de microdados ----------
 
 /** Etapa em andamento de cada consulta de microdados (para a página mostrar o que está acontecendo). */
-const etapas = new Map<number, string>();
-const ouvintesEtapa = new Set<() => void>();
 let proximaEtapa = 0;
-let ultimaEtapa: string | null = null;
-function avisarEtapa(id: number, texto: string | null) {
-  if (texto === null) etapas.delete(id);
-  else etapas.set(id, texto);
-  ultimaEtapa = [...etapas.values()].at(-1) ?? null;
-  for (const f of ouvintesEtapa) f();
-}
-export const etapaAtual = () => ultimaEtapa;
-export function aoMudarEtapa(f: () => void) {
-  ouvintesEtapa.add(f);
-  return () => void ouvintesEtapa.delete(f);
-}
 
 /**
  * Conexão só das consultas de microdados do mercado de trabalho: cancelar uma (botão Cancelar) pede ao

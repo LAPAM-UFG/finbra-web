@@ -1,3 +1,4 @@
+import { BuscaPainel, corresponde, TemaPainel, useExplorarPainel } from '../explorar_painel';
 import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useApi, type Linha } from '../api';
@@ -13,7 +14,7 @@ import {
   BLOCOS_MUNIC, cobertura, COLUNAS_EXPORTACAO, condicaoDoCartao, contextoDoIndicador, contextoMunic, edicoesCuradas, ehLinkDoExplorador, lerEscolhas, linhasExportacao, montarCartoes, selecionar, UFS_MUNIC,
   type BlocoMunic, type CartaoMunic, type DadosPainel, type Escolhas, type Escopo, type ResumoBinario, type ResumoNumerico,
 } from '../munic_painel';
-import { IndiceSaude } from './SaudeDatasus';
+import { IndiceSaude } from '../components/IndicePainel';
 
 type Rota = DadosPainel & { territorio: Linha | null };
 const texto = (v: unknown) => (v === null || v === undefined ? '' : String(v));
@@ -83,6 +84,7 @@ export function MunicPainel() {
   const esc = lerEscolhas(sp, edicoes);
   const raiz = useRef<HTMLDivElement>(null);
   const [busca, setBusca] = useState('');
+  const explorar = useExplorarPainel(BLOCOS_MUNIC.map(b=>'munic-'+b));
   const definir = (mudancas: Record<string, string | null>) => {
     const novo = new URLSearchParams(sp);
     for (const [k, v] of Object.entries(mudancas)) {
@@ -129,10 +131,13 @@ export function MunicPainel() {
       : ehMunic ? (territorio ? `${texto(territorio.nome)} (${texto(territorio.uf)})` : t('Município', 'Municipality')) : t(`Governo do estado de ${texto(escopo.uf)}`, `Government of the state of ${texto(escopo.uf)}`);
   const nomeModo = esc.modo.tipo === 'ultima' ? t('Última informação de cada tema', 'Latest information for each topic') : t(`Edição ${esc.modo.ano}`, `${esc.modo.ano} edition`);
 
+  const blocos = BLOCOS();
+  const passa = (c:CartaoMunic) => corresponde(explorar.busca,[blocos[c.ind.bloco].titulo,blocos[c.ind.bloco].desc,c.ind.titulo.pt,c.ind.titulo.en,c.fonte?.rotulo,c.fonte?.tema,c.fonte?.var,contextoDoIndicador(c.ind,lang)]);
+  const encontrados=cartoes.filter(passa).length;
   const disponiveis = cartoes.filter((c) => c.fonte);
   const naoDisponiveis = cartoes.filter((c) => !c.fonte);
   const porEdicao = [...new Set(disponiveis.map((c) => c.fonte!.ano))].sort((a, b) => b - a).map((a) => [a, disponiveis.filter((c) => c.fonte!.ano === a).length] as const);
-  const blocos = BLOCOS();
+
   const pronto = !!dados && !dadosApi.carregando && !dadosApi.erro && !naoAchou && cartoes.length > 0;
 
   const exportar = () => ({
@@ -206,6 +211,7 @@ export function MunicPainel() {
       </div>
 
       <div ref={raiz}>
+        {pronto && <BuscaPainel exemplos={t('Ex.: servidores, creche, transparência…','E.g. staff, nursery, transparency…')} explorar={explorar} total={cartoes.length} encontrados={encontrados} />}
         <IndiceSaude raiz={raiz} />
         <Estado carregando={dadosApi.carregando} erro={dadosApi.erro} tentarNovamente={dadosApi.recarregar} mensagem={t('Não foi possível carregar o painel.', 'The dashboard could not be loaded.')} />
         {naoAchou && <div className="vazio erro" role="alert"><p>{t('Esse município não foi encontrado na pesquisa. Escolha outro ou veja a UF inteira.', 'That municipality was not found in the survey. Choose another or see the whole state.')}</p></div>}
@@ -216,18 +222,18 @@ export function MunicPainel() {
                 {t('Cada cartão mostra a resposta do território (Sim, Não ou sem resposta) e, abaixo, a participação de “Sim” no Brasil', 'Each card shows the territory’s answer (Yes, No or no answer) and, below, the share of “Yes” in Brazil')}{ehMunic ? t(' e na UF.', ' and in the state.') : '.'}</p>
             )}
             {BLOCOS_MUNIC.map((b) => {
-              const lista = disponiveis.filter((c) => c.ind.bloco === b);
-              const fora = naoDisponiveis.filter((c) => c.ind.bloco === b);
+              const lista = disponiveis.filter((c) => c.ind.bloco === b && passa(c));
+              const fora = naoDisponiveis.filter((c) => c.ind.bloco === b && passa(c));
               if (!lista.length && !fora.length) return null;
               return (
-                <section key={b} aria-labelledby={`munic-${b}`}>
-                  <h3 className="secao bloco-saude" id={`munic-${b}`} data-indice={blocos[b].titulo} tabIndex={-1}>{blocos[b].titulo}</h3>
+                <TemaPainel key={b} id={`munic-${b}`} titulo={blocos[b].titulo} explorar={explorar}>
+
                   <p className="nota-base">{blocos[b].desc}</p>
                   <div className="mp-grade">{lista.map((c) => <CartaoIndicador key={c.ind.id} c={c} pesquisa={pesquisa} escopo={escopo} lang={lang} />)}</div>
                   {fora.length > 0 && (
                     <p className="nota-base mp-fora"><strong>{t('Não disponível nesta edição', 'Not available in this edition')}:</strong> {fora.map((c) => (lang === 'en' ? c.ind.titulo.en : c.ind.titulo.pt)).join('; ')}.</p>
                   )}
-                </section>
+                </TemaPainel>
               );
             })}
             <section className="cartao" aria-labelledby="munic-exportar">

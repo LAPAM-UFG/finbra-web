@@ -11,7 +11,7 @@ const query = (p: URLSearchParams) => { const s = p.toString(); return s ? `?${s
  * Escolhas próprias (indicador, ocupação, pergunta, variável climática) não cruzam áreas.
  */
 export function buscaEntreAreas(search: string, origem: Area, destino: Exclude<Area, 'ia' | 'downloads'>): string {
-  if (origem === 'downloads') return '';
+  if (origem === 'downloads') return buscaEntreAreas(search, 'educacao', destino);
   const atual = new URLSearchParams(search);
   const saida = new URLSearchParams();
   if (origem === destino) {
@@ -54,4 +54,23 @@ export function buscaIaLegada(search: string, tema?: string): string {
   const p = new URLSearchParams(search);
   if (tema) p.set('paineis', tema);
   return query(p);
+}
+
+/** Downloads municipais: mantém tema/UF, explicando à parte os governos estaduais. */
+export function buscaParaDownloads(search: string, origem: Area): string {
+  if (origem === 'downloads') return search;
+  if (origem === 'ia') return '';
+  const atual = new URLSearchParams(search);
+  const geo = new URLSearchParams(buscaEntreAreas(search, origem, 'educacao'));
+  const saida = new URLSearchParams({area: origem === 'munic' ? 'gestao' : origem});
+  const codigo = geo.get('cod') ?? atual.get('cod') ?? atual.get('ente') ?? '';
+  const ufCodigo = ufPorCodigo.get(codigo) ?? (/^\d{7}$/.test(codigo) ? ufPorCodigo.get(codigo.slice(0,2)) : undefined);
+  const uf = ufCodigo ?? (geo.get('uf') ?? '').trim().toUpperCase();
+  if (uf in COD_UF) saida.set('uf', uf);
+  const cod = codigo === '53' ? '5300108' : codigo;
+  if (cod && /^\d{7}$/.test(cod)) saida.set('cod', cod);
+  const ente = atual.get('ente') ?? atual.get('cod') ?? '';
+  if ((/^\d{2}$/.test(ente) && ente !== '53') || (origem === 'munic' && atual.get('pesq') === 'estadic' && uf !== 'DF')) saida.set('governo','1');
+  if (origem === 'educacao' && ['todas','publica','municipal','estadual','federal','privada'].includes(atual.get('rede') ?? '')) saida.set('rede', atual.get('rede')!);
+  return query(saida);
 }

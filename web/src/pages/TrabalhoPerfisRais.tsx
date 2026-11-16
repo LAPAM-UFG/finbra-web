@@ -1,3 +1,4 @@
+import { corresponde, TemaPainel, type Exploracao } from '../explorar_painel';
 import { useMemo, type ReactNode } from 'react';
 import { useApi, type Meta, type Params } from '../api';
 import { DistribuicaoBarras, TabelaDistribuicao } from '../components/DistribuicaoPerfil';
@@ -10,8 +11,9 @@ import {
   colunasExportacao, disponibilidadePerfis, distribuicao, escopoDoPerfil, grupoMte, lerPerfil, linhasExportacao, PAGINAS_NOTA_MTE,
   superiorSomado, URL_NOTA_MTE, VARIAVEIS_PERFIL, type Linha, type PerfilLido, type VariavelPerfil,
 } from '../trabalho_perfis';
-import { fonteRais } from './Trabalho';
+import { fonteRais } from './trabalho_compartilhado';
 
+export const TEXTOS_PERFIS:Record<string,string>={raca:'raça cor race colour branca preta parda amarela indígena não identificada remuneração salário rendimento pay',escolaridade:'escolaridade educação instrução ensino analfabeto fundamental médio superior mestrado doutorado education schooling school pay remuneração salário',vinculos:'tipo vínculo contrato CLT celetistas estatutários temporários aprendiz servidores lei estadual municipal remuneração salário job type contract pay'};
 type Ok = Extract<PerfilLido, { estado: 'ok' }>;
 
 const faixaAnos = (anos: number[]) => {
@@ -34,7 +36,7 @@ function NotaRemuneracaoPerfil({ perfil }: { perfil: Ok }) {
  * calculadas, lidas de UM Parquet pequeno (o do ano exibido) para o recorte atual. Carregam à parte dos indicadores:
  * a fonte é opcional (manifesto: fontes.rais_perfis), e sem ela, sem o ano ou com erro a seção diz isso, sem zeros e sem ano substituto.
  */
-export function PerfisRais({ anoRais, escopo, rotulo, meta }: { anoRais: number | undefined; escopo: Params; rotulo: string; meta: Meta }) {
+export function PerfisRais({ anoRais, escopo, rotulo, meta, explorar }: { anoRais: number | undefined; escopo: Params; rotulo: string; meta: Meta; explorar: Exploracao }) {
   const lang = idioma();
   const fonte = meta.fontes.rais_perfis;
   const disp = disponibilidadePerfis(fonte, anoRais);
@@ -114,14 +116,14 @@ export function PerfisRais({ anoRais, escopo, rotulo, meta }: { anoRais: number 
 
   const secao = (id: string, indice: string, desc: string) => (
     <>
-      <h3 className="secao bloco-saude" id={id} data-indice={indice} tabIndex={-1}>{indice}</h3>
+
       <p className="nota-base">{desc}</p>
     </>
   );
 
   return (
     <>
-      {secao('trabalho-raca', t('Raça/cor', 'Race/colour'),
+      {corresponde(explorar.busca,[TEXTOS_PERFIS['raca']]) && <TemaPainel id="trabalho-raca" titulo={t('Raça/cor','Race/colour')} explorar={explorar}>{secao('trabalho-raca', t('Raça/cor', 'Race/colour'),
         t('Vínculos ativos em 31/12 pela raça/cor declarada na RAIS: contratos, não pessoas; participação sobre todos os vínculos ativos do recorte.',
           'Jobs active on Dec 31 by the race/colour declared in RAIS: contracts, not people; share of all active jobs in the scope.'))}
       <section className="cartao" aria-label={t('Raça/cor', 'Race/colour')}>
@@ -137,7 +139,8 @@ export function PerfisRais({ anoRais, escopo, rotulo, meta }: { anoRais: number 
         ))}
       </section>
 
-      {secao('trabalho-escolaridade', t('Escolaridade', 'Education'),
+      </TemaPainel>}
+{corresponde(explorar.busca,[TEXTOS_PERFIS['escolaridade']]) && <TemaPainel id="trabalho-escolaridade" titulo={t('Escolaridade','Education')} explorar={explorar}>{secao('trabalho-escolaridade', t('Escolaridade', 'Education'),
         t('Vínculos ativos em 31/12 pelo grau de instrução declarado na RAIS, nos 11 níveis do arquivo.', 'Jobs active on Dec 31 by the education level declared in RAIS, in the file’s 11 levels.'))}
       <section className="cartao" aria-label={t('Escolaridade', 'Education')}>
         {corpo((p) => {
@@ -157,7 +160,8 @@ export function PerfisRais({ anoRais, escopo, rotulo, meta }: { anoRais: number 
         })}
       </section>
 
-      {secao('trabalho-vinculos', t('Tipos de vínculo', 'Job types'),
+      </TemaPainel>}
+{corresponde(explorar.busca,[TEXTOS_PERFIS['vinculos']]) && <TemaPainel id="trabalho-vinculos" titulo={t('Tipos de vínculo','Job types')} explorar={explorar}>{secao('trabalho-vinculos', t('Tipos de vínculo', 'Job types'),
         t('Vínculos ativos em 31/12 por tipo de vínculo: resumo em celetistas, estatutários e outros, com os tipos detalhados logo abaixo.',
           'Jobs active on Dec 31 by job type: a summary into CLT, statutory and other jobs, with the detailed types just below.'))}
       <section className="cartao" aria-label={t('Tipos de vínculo', 'Job types')}>
@@ -191,6 +195,7 @@ export function PerfisRais({ anoRais, escopo, rotulo, meta }: { anoRais: number 
           {exportar('trabalho_perfis', VARIAVEIS_PERFIL)}
         </div>
       )}
+</TemaPainel>}
     </>
   );
 }
