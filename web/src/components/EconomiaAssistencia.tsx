@@ -1,4 +1,4 @@
-import { useId } from 'react';
+import { useEffect, useId } from 'react';
 import { Link } from 'react-router-dom';
 import { compararPib, obterEconomia, obterMetaEconomia, type AnoEconomia } from '../assistencia_economia';
 import { useSocial } from '../assistencia_dados';
@@ -18,6 +18,11 @@ export function EconomiaAssistencia({ grupo, uf, nomeTerritorio, anoPedido, alte
   const id = useId();
   const meta = useSocial('economia-meta', obterMetaEconomia);
   const dados = useSocial(`economia:${grupo}:${uf}`, () => obterEconomia(grupo, uf));
+  useEffect(() => {
+    if (!dados.dados || window.location.hash !== '#pagamentos-pib') return;
+    const frame = requestAnimationFrame(() => document.getElementById('pagamentos-pib')?.scrollIntoView({ block: 'start' }));
+    return () => cancelAnimationFrame(frame);
+  }, [dados.dados]);
   const estado = useSocial(uf && grupo !== uf ? `economia:${uf}` : null, () => obterEconomia(uf!, uf));
   const brasil = useSocial(grupo !== 'BR' ? 'economia:BR' : null, () => obterEconomia('BR', null));
   const m = meta.dados;
@@ -30,7 +35,7 @@ export function EconomiaAssistencia({ grupo, uf, nomeTerritorio, anoPedido, alte
     metadados: [[t('Cálculo', 'Calculation'), nota()], [t('Fontes', 'Sources'), 'Portal da Transparência/CGU; IBGE/SIDRA 5938; LAPAM/UFG'], [t('Cobertura', 'Coverage'), t('A série Bolsa Família/Auxílio Brasil não inclui o Benefício Extraordinário do Auxílio Brasil (2021–2023). Retroativos do BPC já entram no total. CadÚnico é cadastro e não tem pagamento próprio.', 'The Bolsa Família/Auxílio Brasil series excludes the extraordinary Auxílio Brasil benefit (2021–2023). Retroactive BPC payments are already in the total. CadÚnico is a registry with no payments of its own.')]],
   });
   const comp = (row: AnoEconomia | undefined, tipo: typeof TIPOS[number], rotulo: string) => { const c = compararPib(row, tipo); return `${rotulo}: ${c.valor === null ? condicaoEconomia(c.condicao) : percentual(c.valor)}`; };
-  return <section className="cartao as-economia" aria-labelledby={`${id}-titulo`}>
+  return <section id="pagamentos-pib" className="cartao as-economia" aria-labelledby={`${id}-titulo`}>
     <h3 id={`${id}-titulo`}>{t('Quanto os pagamentos representam em relação ao PIB?', 'How large are the payments compared with GDP?')}</h3>
     <p className="as-resumo">{t('Comparação anual independente do filtro mensal acima. O PIB mede o valor dos bens e serviços finais produzidos no território durante o ano.', 'This yearly comparison is independent of the monthly filter above. GDP measures the value of final goods and services produced in the territory over a year.')}</p>
     {(meta.carregando || dados.carregando) && <Estado carregando />}
@@ -46,6 +51,7 @@ export function EconomiaAssistencia({ grupo, uf, nomeTerritorio, anoPedido, alte
         {x.valor !== null && <span className="as-kpi-cmp">{t(`A cada R$ 100 de PIB, R$ ${(x.valor).toLocaleString(local(), { minimumFractionDigits: 2, maximumFractionDigits: 2 })} em pagamentos.`, `For every R$100 of GDP, R$${(x.valor).toLocaleString(local(), { minimumFractionDigits: 2, maximumFractionDigits: 2 })} in payments.`)}</span>}
         {estado.dados && <span className="as-kpi-cmp">{comp(estado.dados.linhas.find(r => r[0] === ano), tipo, uf!)}</span>}
         {brasil.dados && <span className="as-kpi-cmp">{comp(brasil.dados.linhas.find(r => r[0] === ano), tipo, t('Brasil', 'Brazil'))}</span>}
+        {m.rankings?.[tipo] && <Link className="as-ranking-pib-link" aria-label={t(`Ranking municipal: ${nome(tipo)} / PIB`, `Municipal ranking: ${nome(tipo)} / GDP`)} to={`/assistencia/rankings-pib?${new URLSearchParams({ medida: tipo, ano_pib: String(ano), ...(uf ? { uf } : {}), ...(/^\d{7}$/.test(grupo) ? { cod: grupo } : {}) })}`}>{uf ? t(`Ranking em ${uf}`, `Ranking in ${uf}`) : t('Ranking dos municípios', 'Municipal ranking')}</Link>}
       </div>; })}</div>
       <p className="as-resumo">{nota()}</p>
       <p className="as-resumo">{t(`PIB disponível neste painel até ${m.pib_ate}. CadÚnico é um cadastro, não um benefício pago, e não entra na soma. A série Bolsa Família/Auxílio Brasil não inclui o Benefício Extraordinário do Auxílio Brasil: atenção a 2021–2023.`, `GDP available in this panel through ${m.pib_ate}. CadÚnico is a registry, not a cash benefit, and is excluded from the sum. The Bolsa Família/Auxílio Brasil series excludes the extraordinary Auxílio Brasil benefit: interpret 2021–2023 with caution.`)}</p>

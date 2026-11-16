@@ -151,6 +151,9 @@ def gerar(base, manifesto, saida):
                 pib_url='https://sidra.ibge.gov.br/tabela/5938', arquivo=bundle, grupos=indices, indices_uf=cats,
                 parquet=objeto(target, saida), condicoes=CONDICOES, indicadores=[dict(variavel=k, nome=v[0], unidade=v[1], descricao=v[2]) for k, v in VARIAVEIS.items()])
     (saida / 'gold/assistencia/economia_manifesto.json').write_bytes(compacto(meta))
+    # Toda nova edição anual também prepara as posições, sem consultas no navegador.
+    from assistencia_economia_rankings import construir
+    meta = construir(meta, {int(t['cod_ibge']): t for t in terras if t['nivel'] == 'M'}, pd.DataFrame(wide), saida)
     db.close(); print(json.dumps(dict(ok=True, territorios=len(terras), linhas=len(wide), anos=anos, pib_ate=meta['pib_ate'], bytes=len(bruto))), flush=True)
     return meta
 

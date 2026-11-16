@@ -15,7 +15,7 @@ export function buscaEntreAreas(search: string, origem: Area, destino: Exclude<A
   const atual = new URLSearchParams(search);
   const saida = new URLSearchParams();
   if (origem === destino) {
-    const chaves = origem === 'munic' ? ['pesq', 'uf', 'cod', 'ano'] : origem === 'clima' ? ['uf', 'cod', 'ano', 'variavel'] : origem === 'educacao' ? ['uf', 'cod', 'ente', 'ano', 'ind', 'rede'] : origem === 'saneamento' ? ['uf','cod','ente','ano','ind','ordem'] : origem === 'assistencia' ? ['uf', 'cod', 'mes', 'ano'] : ['uf', 'ente', 'ano'];
+    const chaves = origem === 'munic' ? ['pesq', 'uf', 'cod', 'ano'] : origem === 'clima' ? ['uf', 'cod', 'ano', 'variavel'] : origem === 'educacao' ? ['uf', 'cod', 'ente', 'ano', 'ind', 'rede'] : origem === 'saneamento' ? ['uf','cod','ente','ano','ind','ordem'] : origem === 'assistencia' ? ['uf', 'cod', 'mes', 'ano', 'ano_pib', 'medida'] : ['uf', 'ente', 'ano'];
     for (const k of chaves) if (atual.get(k)) saida.set(k, atual.get(k)!);
     return query(saida);
   }

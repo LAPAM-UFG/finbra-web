@@ -122,3 +122,29 @@
 .as-perfil .cartao { margin-bottom: 6px; }
 @media (max-width: 800px) { .as-perfis { grid-template-columns: minmax(0, 1fr); } }
 .as-recorte { margin: 10px 0 14px; color: var(--tinta-2); font-weight: 600; overflow-wrap: anywhere; }
+.as-ranking-pib-filtros { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, .9fr) minmax(0, 1.2fr); gap: 14px; }
+.as-ranking-pib-filtros .as-campo select { min-width: 0; width: 100%; }
+.as-ranking-pib-busca { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 16px; }
+.as-ranking-pib-busca label { flex-basis: 100%; font-size: 14px; }
+.as-ranking-pib-busca input { min-width: 0; flex: 1 1 200px; padding: 9px 12px; border: 1px solid var(--borda); border-radius: 6px; background: var(--superficie); color: var(--tinta); font: inherit; }
+.as-ranking-pib-paginacao { display: flex; gap: 12px; flex-wrap: wrap; justify-content: space-between; align-items: center; margin: 12px 0; font-size: 13px; }
+.as-ranking-pib-tabela { min-width: 0; }
+.as-ranking-pib-tabela .as-num { white-space: normal; }
+.as-ranking-pib-codigo { display: block; color: var(--tinta-3); font-size: 11px; font-weight: 400; }
+.as-ranking-pib-cards { display: none; }
+.as-ranking-pib-cobertura { font-size: 13px; }
+.as-ranking-pib-cobertura ul { padding-left: 20px; }
+.as-ranking-pib-local { padding: 10px; background: var(--acao-suave); border-radius: 8px; font-size: 14px; }
+.as-ranking-pib-link { display: inline-block; margin-top: 10px; font-size: 13px; }
+@media (max-width: 760px) {
+  .as-ranking-pib-filtros { grid-template-columns: minmax(0, 1fr); }
+  .as-ranking-pib-desktop { display: none; }
+  .as-ranking-pib-cards { display: grid; gap: 10px; list-style: none; padding: 0; margin: 14px 0; }
+  .as-ranking-pib-cards li { min-width: 0; display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 8px; padding: 12px; border: 1px solid var(--borda); border-radius: 8px; }
+  .as-ranking-pib-cards a { overflow-wrap: anywhere; }
+  .as-ranking-pib-pos { color: var(--tinta-3); font-variant-numeric: tabular-nums; }
+  .as-ranking-pib-percentual { color: var(--acao-texto); font-variant-numeric: tabular-nums; }
+  .as-ranking-pib-cards dl { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin: 4px 0 0; }
+  .as-ranking-pib-cards dt { font-size: 11px; color: var(--tinta-2); }
+  .as-ranking-pib-cards dd { margin: 3px 0 0; font-size: 14px; overflow-wrap: anywhere; }
+}

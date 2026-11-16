@@ -53,3 +53,41 @@ toque ou teclado e fecha com Escape ou ao clicar fora; não usa `title`.
 Fontes: [definição de família (MDS)](https://www.gov.br/mds/pt-br/acesso-a-informacao/perguntas_frequentes/faq-2013-gst-novas-orientacoes-sobre-documentacao-e-novos-procedimentos-para-cadastramento-de-familias-unipessoais/13-o-que-e-uma),
 [pagamentos CGU](https://portaldatransparencia.gov.br/download-de-dados/),
 [PIB municipal, SIDRA 5938](https://sidra.ibge.gov.br/tabela/5938).
+
+## Rankings municipais prontos
+
+A carga anual também gera os rankings de PBF/Auxílio Brasil, BPC e soma monetária
+dos dois. Para acrescentá-los a uma edição anual já publicada, sem reconstruir
+pagamentos ou arquivos de download:
+
+```powershell
+python pipeline/assistencia_economia_rankings.py --base E:/finbra/data --manifesto MANIFESTO_PUBLICADO.json --origem CANDIDATO_ANUAL_PUBLICADO --saida CANDIDATO_RANKINGS
+python pipeline/testes_assistencia_rankings.py
+cd web
+npm run test:assistencia-rankings
+```
+
+O comando confere hashes e edição das fontes, escreve somente no novo candidato
+e mantém as referências anuais anteriores. Os classificados têm condição 0,
+12 meses válidos e PIB positivo. A comparação usa razões exatas de centavos e
+PIB; empates seguem 1, 2, 2, 4, com código IBGE como ordenação estável entre
+empatados. Percentuais exibidos podem coincidir por arredondamento sem empate.
+Zero registrado é elegível; ausências nunca são classificadas como zero.
+
+Cada programa tem um índice próprio e o bundle contém trechos separados por
+ano e Brasil/UF. O leitor carrega somente o índice do programa e o trecho do
+recorte escolhido, validando hash, Range, cobertura e identidade. A abertura
+do painel anual não carrega esses índices ou rankings. Buscar um município
+filtra a lista pronta sem recalcular posições; mudar UF usa posições daquela UF.
+O cadastro é o atual, incluindo Brasília/DF uma vez e Fernando de Noronha como
+distrito estadual; exclusões por falta de pagamento, ano parcial ou PIB ausente
+acompanham cada recorte. A interface e as exportações informam essas regras.
+A busca e a página ficam na URL para preservar a seleção ao abrir um município
+e retornar pelo navegador, e para compartilhar o ranking filtrado.
+
+Na publicação de apenas rankings, atualizar a referência SHA-256 do complemento
+`assistencia_economia` no catálogo de downloads para o novo manifesto econômico.
+Preservar todos os objetos de dados, dicionários e catálogos de recortes dos
+downloads: as variáveis e seus valores não mudaram. Enviar os novos objetos antes
+dos dois ponteiros, guardar seus estados anteriores e manter o manifesto global
+e os demais objetos publicados intactos.

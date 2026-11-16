@@ -37,6 +37,7 @@ const ClimaVisaoGeral = pagina(() => import('./pages/Clima').then(m => ({default
 const AssistenciaPainel = pagina(() => import('./pages/Assistencia').then(m => ({default:m.AssistenciaPainel})));
 const AssistenciaEvolucao = pagina(() => import('./pages/Assistencia').then(m => ({default:m.AssistenciaEvolucao})));
 const AssistenciaRankings = pagina(() => import('./pages/Assistencia').then(m => ({default:m.AssistenciaRankings})));
+const AssistenciaPibRankings = pagina(() => import('./pages/AssistenciaPibRankings').then(m => ({default:m.AssistenciaPibRankings})));
 const AssistenciaTabela = pagina(() => import('./pages/Assistencia').then(m => ({default:m.AssistenciaTabela})));
 const AssistenciaMetodologia = pagina(() => import('./pages/Assistencia').then(m => ({default:m.AssistenciaMetodologia})));
 const LrfDemonstrativos = pagina(() => import('./pages/Lrf').then(m => ({default:m.LrfDemonstrativos})));
@@ -133,7 +134,7 @@ const menuIa = (): [string, [string, string][]][] => [];
 
 const menuAssistencia = (): [string, [string, string][]][] => [
   [t('Assistência social', 'Social assistance'), [['/assistencia', t('Painel de indicadores', 'Indicator dashboard')]]],
-  [t('Explorar os dados', 'Explore the data'), [['/assistencia/evolucao', t('Evolução', 'Trends')], ['/assistencia/rankings', 'Rankings'], ['/assistencia/tabela', t('Tabela e exportações', 'Table and downloads')]]],
+  [t('Explorar os dados', 'Explore the data'), [['/assistencia/evolucao', t('Evolução', 'Trends')], ['/assistencia/rankings', t('Rankings mensais', 'Monthly rankings')], ['/assistencia/rankings-pib', t('Pagamentos / PIB', 'Payments / GDP')], ['/assistencia/tabela', t('Tabela e exportações', 'Table and downloads')]]],
   [t('Metodologia', 'Methodology'), [['/assistencia/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
 ];
 
@@ -401,6 +402,7 @@ export function App() {
               <Route path="/assistencia" element={<AssistenciaPainel />} />
               <Route path="/assistencia/evolucao" element={<AssistenciaEvolucao />} />
               <Route path="/assistencia/rankings" element={<AssistenciaRankings />} />
+              <Route path="/assistencia/rankings-pib" element={<AssistenciaPibRankings />} />
               <Route path="/assistencia/tabela" element={<AssistenciaTabela />} />
               <Route path="/assistencia/metodologia" element={<AssistenciaMetodologia />} />
               <Route path="/downloads" element={<Downloads />} />

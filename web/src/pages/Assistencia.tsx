@@ -19,6 +19,7 @@ import { EconomiaAssistencia } from '../components/EconomiaAssistencia';
 const PATH = {
   painel: '/assistencia', evolucao: '/assistencia/evolucao', rankings: '/assistencia/rankings',
   tabela: '/assistencia/tabela', metodologia: '/assistencia/metodologia',
+  pib: '/assistencia/rankings-pib',
 };
 const FONTES: FonteSocial[] = ['cadunico', 'pbf', 'bpc'];
 const en = () => idioma() === 'en';
@@ -277,7 +278,7 @@ function BarraFiltros({ ctx, mes }: { ctx: Ctx; mes: boolean }) {
 }
 
 const ABAS: [keyof typeof PATH, string, string][] = [
-  ['painel', 'Painel', 'Overview'], ['evolucao', 'Evolução', 'Trends'], ['rankings', 'Rankings', 'Rankings'],
+  ['painel', 'Painel', 'Overview'], ['evolucao', 'Evolução', 'Trends'], ['rankings', 'Rankings mensais', 'Monthly rankings'], ['pib', 'Pagamentos / PIB', 'Payments / GDP'],
   ['tabela', 'Tabela', 'Table'], ['metodologia', 'Metodologia', 'Methodology'],
 ];
 
@@ -311,6 +312,8 @@ function Corpo({ meta, mes, atual, children }: { meta: MetaSocial; mes: boolean;
     if (f.ufSel) p.set('uf', f.ufSel);
     if (f.terr.nivel === 'M' && f.terr.cod) p.set('cod', String(f.terr.cod));
     if (f.mes) p.set('mes', String(f.mes));
+    if (sp.get('ano_pib')) p.set('ano_pib', sp.get('ano_pib')!);
+    if (sp.get('medida')) p.set('medida', sp.get('medida')!);
     for (const [k, v] of Object.entries(extra)) if (v) p.set(k, v);
     const s = p.toString();
     return { pathname: caminho, search: s ? `?${s}` : '' };
@@ -320,7 +323,7 @@ function Corpo({ meta, mes, atual, children }: { meta: MetaSocial; mes: boolean;
     <>
       <nav className="as-nav" aria-label={t('Seções de assistência social', 'Social assistance sections')}>
         {ABAS.map(([k, pt, e]) => (
-          <Link key={k} to={link(PATH[k], { indicador: k === 'painel' || k === 'metodologia' ? null : sp.get('indicador') })} aria-current={k === atual ? 'page' : undefined}>{t(pt, e)}</Link>
+          <Link key={k} to={link(PATH[k], { indicador: k === 'painel' || k === 'metodologia' || k === 'pib' ? null : sp.get('indicador') })} aria-current={k === atual ? 'page' : undefined}>{t(pt, e)}</Link>
         ))}
       </nav>
       {f.avisos.map((a, k) => (
