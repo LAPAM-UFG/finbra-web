@@ -1,0 +1,47 @@
+.mp-pagina { max-width: 1480px; margin: 0 auto; }
+.mp-pagina h2 { font-size: 24px; margin: 0 0 12px; }
+.mp-pagina h3 { margin: 0 0 8px; font-size: 19px; }
+.mp-pagina h4 { margin: 0 0 8px; font-size: 18px; }
+.mp-pagina p, .mp-pagina a { overflow-wrap: anywhere; }
+.mp-nav, .mp-vistas, .mp-controles, .mp-exportar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 16px 0; }
+.mp-nav a { display: inline-block; padding: 8px 12px; border: 1px solid var(--borda); border-radius: 8px; }
+.mp-nav a[aria-current="page"] { background: var(--acao-suave); color: var(--acao-texto); }
+.mp-filtros { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin: 16px 0; }
+.mp-filtros-saude { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); }
+.mp-filtros label, .mp-busca label { display: block; font-size: 13px; margin: 0 0 7px; }
+.mp-filtros input, .mp-filtros select, .mp-busca input { min-width: 0; width: 100%; font: inherit; font-size: 14px; color: var(--tinta); background: var(--superficie); padding: 10px; border: 1px solid var(--borda); border-radius: 6px; }
+.mp-filtros input, .mp-filtros select { margin-bottom: 14px; }
+.mp-filtros input:last-child, .mp-filtros select:last-child { margin-bottom: 0; }
+.mp-contexto { color: var(--tinta-2); font-size: 14px; font-weight: 600; }
+.mp-nota, .mp-definicao { font-size: 13px; color: var(--tinta-2); line-height: 1.6; }
+.mp-definicao summary { cursor: pointer; padding: 8px 0; }
+.mp-aviso { padding: 12px; margin: 12px 0; background: var(--acao-suave); border: 1px solid var(--borda); border-radius: 8px; font-size: 13px; }
+.mp-aviso p { margin-bottom: 0; }
+.mp-checkbox { display: flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer; }
+.mp-checkbox input { flex: 0 0 auto; width: 18px; height: 18px; }
+.mp-vistas button[aria-pressed="true"] { color: var(--acao-tinta); background: var(--acao); border-color: var(--acao); }
+.mp-busca { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; align-items: center; }
+.mp-busca label { flex-basis: 100%; margin: 0; }
+.mp-busca input { flex: 1 1 220px; width: auto; }
+.mp-encontrados { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.mp-encontrados p { flex-basis: 100%; margin-bottom: 0; font-size: 13px; }
+.mp-encontrados button { white-space: normal; text-align: left; }
+.mp-pagina .botao-leve, .mp-unidade { display: block; font-size: 13px; font-weight: 400; color: var(--tinta-2); margin-top: 6px; }
+.mp-link { min-height: 44px; }
+.mp-controles button { min-width: 44px; }
+.mp-canvas { width: 100%; height: clamp(350px, 58vw, 590px); border: 1px solid var(--borda); border-radius: 8px; overflow: hidden; background: var(--superficie); }
+.mp-legenda { list-style: none; padding: 0; margin: 16px 0; display: flex; flex-wrap: wrap; gap: 10px 18px; font-size: 12px; }
+.mp-legenda li { display: flex; align-items: center; gap: 6px; }
+.mp-legenda span { width: 17px; height: 17px; flex: 0 0 17px; border: 1px solid #64748b; }
+.mp-detalhe { margin: 18px 0; padding: 16px; border: 1px solid var(--borda); border-radius: 8px; background: var(--acao-suave); font-size: 14px; }
+.mp-detalhe dl { display: flex; flex-wrap: wrap; gap: 16px 30px; }
+.mp-detalhe dt { color: var(--tinta-2); font-size: 13px; }
+.mp-detalhe dd { font-size: 18px; margin: 6px 0 0; }
+.mp-valor { font-size: 28px; font-weight: 700; margin: 12px 0 4px; }
+.mp-link { border: none; background: none; color: var(--acao-texto); cursor: pointer; font: inherit; text-decoration: underline; text-align: left; padding: 4px 0; }
+.mp-tabela-desktop table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.mp-tabela-desktop caption { text-align: left; padding: 12px 0; }
+.mp-tabela-desktop th, .mp-tabela-desktop td { padding: 8px 12px; border-bottom: 1px solid var(--borda); text-align: left; }
+.mp-tabela-desktop small, .mp-cards small { display: block; color: var(--tinta-3); font-size: 11px; }
+.mp-cards { display: none; }
+@media (max-width: 760px) { .mp-filtros, .mp-filtros-saude { grid-template-columns: minmax(0, 1fr); } .mp-tabela-desktop { display: none; } .mp-cards { display: grid; gap: 10px; padding: 0; list-style: none; } .mp-cards li { padding: 12px; border: 1px solid var(--borda); border-radius: 8px; } .mp-cards strong { display: block; margin: 10px 0 0; font-size: 20px; } .mp-cards p { font-size: 13px; } }

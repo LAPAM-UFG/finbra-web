@@ -13,8 +13,9 @@
     "test:educacao": "vite build --ssr testes/educacao.test.ts --outDir testes/.saida/educacao --emptyOutDir --logLevel warn && node --test testes/.saida/educacao/educacao.test.js",
     "catalogo:downloads": "vite build --ssr scripts/catalogos_downloads.ts --outDir testes/.saida/catalogos_downloads --emptyOutDir --logLevel warn",
     "test:saneamento": "vite build --ssr testes/saneamento.test.ts --outDir testes/.saida/saneamento --emptyOutDir --logLevel warn && node --test testes/.saida/saneamento/saneamento.test.js",
-    "test": "vite build --ssr testes/consultas.test.ts --outDir testes/.saida --emptyOutDir --logLevel warn && node --test testes/.saida/consultas.test.js && npm run test:saneamento && npm run test:assistencia-rankings && npm run test:assistencia-mapa",
-    "test:assistencia-mapa": "vite build --ssr testes/assistencia_mapa.test.ts --outDir testes/.saida/assistencia_mapa --emptyOutDir --logLevel warn && node --test testes/.saida/assistencia_mapa/assistencia_mapa.test.js"
+    "test": "vite build --ssr testes/consultas.test.ts --outDir testes/.saida --emptyOutDir --logLevel warn && node --test testes/.saida/consultas.test.js && npm run test:saneamento && npm run test:assistencia-rankings && npm run test:assistencia-mapa && npm run test:mapas",
+    "test:assistencia-mapa": "vite build --ssr testes/assistencia_mapa.test.ts --outDir testes/.saida/assistencia_mapa --emptyOutDir --logLevel warn && node --test testes/.saida/assistencia_mapa/assistencia_mapa.test.js",
+    "test:mapas": "vite build --ssr testes/mapas.test.ts --outDir testes/.saida/mapas --emptyOutDir --logLevel warn && node --test testes/.saida/mapas/mapas.test.js"
   },
   "dependencies": {
     "@duckdb/duckdb-wasm": "1.32.0",

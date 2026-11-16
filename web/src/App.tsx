@@ -15,6 +15,8 @@ const Downloads = pagina(() => import('./pages/Downloads').then(m => ({default:m
 const SaneamentoPainel = pagina(() => import('./pages/Saneamento').then(m => ({default:m.SaneamentoPainel})));
 const SaneamentoRankings = pagina(() => import('./pages/Saneamento').then(m => ({default:m.SaneamentoRankings})));
 const SaneamentoMetodologia = pagina(() => import('./pages/Saneamento').then(m => ({default:m.SaneamentoMetodologia})));
+const EducacaoMapa = pagina(() => import('./pages/MapasIndicadores').then(m => ({default:m.EducacaoMapa})));
+const SaudeMapa = pagina(() => import('./pages/MapasIndicadores').then(m => ({default:m.SaudeMapa})));
 const EducacaoPainel = pagina(() => import('./pages/EducacaoPainel').then(m => ({default:m.EducacaoPainel})));
 const EducacaoEvolucao = pagina(() => import('./pages/EducacaoPainel').then(m => ({default:m.EducacaoEvolucao})));
 const EducacaoRankings = pagina(() => import('./pages/EducacaoPainel').then(m => ({default:m.EducacaoRankings})));
@@ -103,7 +105,7 @@ const menuTrabalho = (): [string, [string, string][]][] => [
 /** Área de saúde (SIM, SINASC e população da SVS/MS), em /datasus; o /saude das finanças é o SIOPS. */
 const menuSaude = (): [string, [string, string][]][] => [
   [t('Indicadores de saúde', 'Health indicators'), [['/datasus', t('Visão geral', 'Overview')], ['/datasus/evolucao', t('Evolução', 'Trends')], ['/datasus/tabela', t('Tabela e exportações', 'Table and downloads')],
-    ['/datasus/rankings', 'Rankings'], ['/datasus/rede', t('Rede e acesso', 'Network and access')],
+    ['/datasus/mapa', t('Mapa de indicadores', 'Indicator map')], ['/datasus/rankings', 'Rankings'], ['/datasus/rede', t('Rede e acesso', 'Network and access')],
     ['/datasus/ambulatorial', t('Produção ambulatorial', 'Outpatient output')],
     ['/datasus/vacinacao', t('Vacinação', 'Vaccination')],
     ['/datasus/financiamento', t('Financiamento federal', 'Federal funding')]]],
@@ -145,7 +147,7 @@ const menuDownloads = (): [string, [string, string][]][] => [
 
 const menuEducacao = (): [string, [string, string][]][] => [
   [t('Educação', 'Education'), [['/educacao', t('Painel de indicadores', 'Indicator dashboard')]]],
-  [t('Explorar os dados', 'Explore the data'), [['/educacao/evolucao', t('Evolução', 'Trends')], ['/educacao/rankings', 'Rankings'], ['/educacao/tabela', t('Tabela e exportações', 'Table and downloads')]]],
+  [t('Explorar os dados', 'Explore the data'), [['/educacao/evolucao', t('Evolução', 'Trends')], ['/educacao/mapa', t('Mapa de indicadores', 'Indicator map')], ['/educacao/rankings', 'Rankings'], ['/educacao/tabela', t('Tabela e exportações', 'Table and downloads')]]],
   [t('Financiamento', 'Funding'), [['/educacao/financiamento', t('Gastos e aplicação · SIOPE', 'Expenditure and allocation · SIOPE')], ['/educacao/profissionais', t('Profissionais da educação', 'Education staff')]]],
   [t('Metodologia', 'Methodology'), [['/educacao/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
 ];
@@ -254,6 +256,7 @@ export function App() {
   for (const k of ['ano', 'uf', 'ente']) if (area !== 'munic' && area !== 'clima' && atuais.get(k)) filtros.set(k, atuais.get(k)!);
   // dentro da área de trabalho o recorte (ocupação, atividade, perfil, agrupamentos) segue entre as páginas
   const dentro = new URLSearchParams(filtros);
+  if (area === 'saude' && atuais.get('ind')) dentro.set('ind', atuais.get('ind')!);
   if (area === 'trabalho') for (const k of PARAMS_TRABALHO) if (atuais.get(k)) dentro.set(k, atuais.get(k)!);
   const buscaArea = dentro.toString() ? `?${dentro}` : '';
   const paraArea = (destino: Exclude<Area, 'ia' | 'downloads'>) => buscaEntreAreas(search, area, destino);
@@ -362,6 +365,7 @@ export function App() {
               <Route path="/lrf" element={<LrfIndicadores />} />
               <Route path="/lrf/demonstrativos" element={<LrfDemonstrativos />} />
               <Route path="/educacao" element={<EducacaoPainel />} />
+              <Route path="/educacao/mapa" element={<EducacaoMapa />} />
               <Route path="/educacao/evolucao" element={<EducacaoEvolucao />} />
               <Route path="/educacao/rankings" element={<EducacaoRankings />} />
               <Route path="/educacao/tabela" element={<EducacaoTabela />} />
@@ -383,6 +387,7 @@ export function App() {
               <Route path="/trabalho/metodologia" element={<TrabalhoMetodologia />} />
               <Route path="/trabalho/ia" element={<Navigate to={{ pathname: '/ia', search: buscaIaLegada(search, 'trabalho'), hash }} replace />} />
               <Route path="/datasus" element={<SaudeVisaoGeral />} />
+              <Route path="/datasus/mapa" element={<SaudeMapa />} />
               <Route path="/datasus/evolucao" element={<SaudeEvolucao />} />
               <Route path="/datasus/rankings" element={<SaudeRankings />} />
               <Route path="/datasus/tabela" element={<SaudeTabela />} />

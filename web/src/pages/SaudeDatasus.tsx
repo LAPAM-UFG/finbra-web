@@ -103,6 +103,7 @@ export function Atalhos({ ind, ano }: { ind: Indicador; ano?: number | null }) {
       {' · '}<Link to={para('/datasus/evolucao')}>{t('série', 'series')}</Link>
       {' · '}<Link to={para('/datasus/tabela', ano ? { ano: String(ano) } : {})}>{t('tabela', 'table')}</Link>
       {' · '}<Link to={para('/datasus/rankings', ano ? { ano: String(ano) } : {})}>{t('ranking', 'ranking')}</Link>
+      {' · '}<Link to={para('/datasus/mapa', ano ? { ano: String(ano), vista: 'mapa' } : { vista: 'mapa' })}>{t('mapa', 'map')}</Link>
     </span>
   );
 }
