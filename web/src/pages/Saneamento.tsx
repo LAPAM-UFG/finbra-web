@@ -15,7 +15,7 @@ const TEMAS=()=>[{id:'agua',nome:t('Água','Water')},{id:'esgoto',nome:t('Esgoto
 const nome=(i:IndSan)=>t(i.nome,i.nome_en);
 const fonte=(ano:number)=>ano<=2022?'SNIS':'SINISA';
 const unidade=(i:IndSan)=>({percentual:'%',pessoas:t('pessoas','people'),ligacoes:t('ligações','connections'),km:'km',m3_ano:'m³/'+t('ano','year'),t_ano:'t/'+t('ano','year'),domicilios:t('domicílios','households')}[i.unidade]??i.unidade);
-function valor(i:IndSan,v:number|null){if(v===null)return '—';const loc=t('pt-BR','en-US');if(i.unidade==='percentual')return new Intl.NumberFormat(loc,{maximumFractionDigits:1}).format(v)+'%';return new Intl.NumberFormat(loc,{maximumFractionDigits:i.unidade==='km'?1:0,notation:Math.abs(v)>=1e6?'compact':'standard'}).format(v);}
+function valor(i:IndSan,v:number|null){if(v===null)return '—';const loc=t('pt-BR','en-US');if(i.unidade==='percentual')return new Intl.NumberFormat(loc,{maximumFractionDigits:1}).format(v)+'%';return new Intl.NumberFormat(loc,{maximumFractionDigits:i.unidade==='km'||Math.abs(v)>=1e6?1:0,notation:Math.abs(v)>=1e6?'compact':'standard'}).format(v);}
 export function condicaoSan(c:number){return [t('observado','observed'),t('sem registro','no record'),t('denominador ausente','denominator missing'),t('indefinido: denominador zero','undefined: zero denominator'),t('inconsistência na origem','inconsistent source data'),t('fora da cobertura da fonte','outside source coverage'),t('sem resposta ao módulo','module not answered')][c]??t('indisponível','unavailable');}
 const numero=(v:number)=>new Intl.NumberFormat(t('pt-BR','en-US'),{maximumFractionDigits:2}).format(v);
 
@@ -30,15 +30,15 @@ function usePainelSan(){
 }
 type ContextoSan=ReturnType<typeof usePainelSan>;
 function FiltrosSan({c}:{c:ContextoSan}){
- const [busca,setBusca]=useState(''),[pedir,setPedir]=useState(false);const [sugestoes,setSugestoes]=useState<[string,string,string][]>([]);
+ const [busca,setBusca]=useState(''),[pedir,setPedir]=useState(false);const [sugestoes,setSugestoes]=useState<[string,string,string][]>([]);const[estadoBusca,setEstadoBusca]=useState<'parado'|'carregando'|'pronto'|'erro'>('parado');
  useEffect(()=>{setBusca('');setSugestoes([]);},[c.cod,c.uf]);
- useEffect(()=>{let vivo=true;if(!pedir||busca.trim().length<2){setSugestoes([]);return;}leitorSan.cadastro().then(rows=>{if(vivo)setSugestoes(rows.filter(r=>(!c.uf||r[2]===c.uf)&&corresponde(busca,r)).slice(0,30));}).catch(()=>{if(vivo)setSugestoes([]);});return()=>{vivo=false;};},[busca,c.uf,pedir]);
+ useEffect(()=>{let vivo=true;if(!pedir||busca.trim().length<2){setSugestoes([]);setEstadoBusca('parado');return;}setSugestoes([]);setEstadoBusca('carregando');leitorSan.cadastro().then(rows=>{if(vivo){setSugestoes(rows.filter(r=>(!c.uf||r[2]===c.uf)&&corresponde(busca,r)).slice(0,30));setEstadoBusca('pronto');}}).catch(()=>{if(vivo)setEstadoBusca('erro');});return()=>{vivo=false;};},[busca,c.uf,pedir]);
  const local=c.dados.dado?.territorio;
  return <section className="cartao san-filtros" aria-label={t('Escolher lugar e ano','Choose place and year')}><div className="filtros">
   <div className="campo"><label htmlFor="san-ano">{t('Ano dos dados','Data year')}</label><select id="san-ano" value={c.ano} onChange={e=>c.definir({ano:e.target.value})}>{[...(c.meta.dado?.anos??[])].reverse().map(y=><option key={y}>{y}</option>)}</select></div>
   <div className="campo"><label htmlFor="san-uf">{t('Estado','State')}</label><select id="san-uf" value={local?.uf??c.uf} onChange={e=>c.definir({uf:e.target.value,cod:null,ente:null})}><option value="">{t('Brasil · todos os estados','Brazil · all states')}</option>{c.meta.dado?.grupos.filter(g=>g.nivel==='UF').map(g=><option value={g.grupo} key={g.grupo}>{nomeDaUf(g.grupo)} ({g.grupo})</option>)}</select></div>
   <div className="campo san-busca"><label htmlFor="san-mun">{t('Município','Municipality')}</label><input id="san-mun" value={busca} onFocus={()=>setPedir(true)} onChange={e=>{setPedir(true);setBusca(e.target.value);}} autoComplete="off" placeholder={local?.nivel==='M'?local.nome:t('Busque pelo nome ou código IBGE','Search by name or IBGE code')}/>
-   {busca.trim().length>=2&&<ul className="san-sugestoes" aria-label={t('Municípios encontrados','Matching municipalities')}>{sugestoes.map(r=><li key={r[0]}><button onClick={()=>{c.definir({cod:r[0],ente:null,uf:r[2]});setBusca('');}}>{r[1]} ({r[2]})</button></li>)}{!sugestoes.length&&<li>{t('Nenhum município com essa busca.','No matching municipality.')}</li>}</ul>}
+   {busca.trim().length>=2&&<ul className="san-sugestoes" aria-live="polite" aria-label={t('Municípios encontrados','Matching municipalities')}>{sugestoes.map(r=><li key={r[0]}><button onClick={()=>{c.definir({cod:r[0],ente:null,uf:r[2]});setBusca('');}}>{r[1]} ({r[2]})</button></li>)}{estadoBusca==='carregando'&&<li>{t('Buscando municípios…','Searching municipalities…')}</li>}{estadoBusca==='erro'&&<li>{t('Não foi possível buscar. Altere a busca para tentar novamente.','Search failed. Change the search to try again.')}</li>}{estadoBusca==='pronto'&&!sugestoes.length&&<li>{t('Nenhum município com essa busca.','No matching municipality.')}</li>}</ul>}
    {c.cod&&<button className="limpar" onClick={()=>c.definir({cod:null,ente:null,uf:local?.uf??c.uf})}>{t('Ver o estado inteiro','View the whole state')}</button>}
   </div>
  </div><p className="san-mini">{t('Você pode buscar um município sem escolher o estado. Os dados aparecem automaticamente.','You can search for a municipality without choosing a state. Figures load automatically.')}</p></section>;

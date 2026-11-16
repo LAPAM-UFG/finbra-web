@@ -24,3 +24,5 @@ test('empates mantêm posições competitivas nas duas ordens',()=>{const rows:[
 test('navegação conserva município e tema nos downloads',()=>{const q=new URLSearchParams(buscaParaDownloads('?uf=GO&ente=5208707&ano=2024','saneamento'));assert.equal(q.get('area'),'saneamento');assert.equal(q.get('cod'),'5208707');assert.equal(new URLSearchParams(buscaEntreAreas('?ente=5208707','saneamento','saude')).get('ente'),'5208707');});
 
 test('exportação inclui os anos sem registro, preservando condição',()=>{const{m}=fixture();const rows=linhasCompletasSan(m,{grupo:'BR',linhas:[]});assert.equal(rows.length,2);assert.deepEqual(rows.map(l=>l[7]),[5,1]);});
+
+test('município cadastrado sem resposta conserva cadastro unitário na exportação',()=>{const{m}=fixture();assert.equal(linhaSan(m,{grupo:'5101837',linhas:[]},2024,0)[6],1);assert.equal(linhaSan(m,{grupo:'5101837',linhas:[]},2024,0)[2],null);});

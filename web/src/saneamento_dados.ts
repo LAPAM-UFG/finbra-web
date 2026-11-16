@@ -48,7 +48,7 @@ export function useRecursoSan<T>(fn:()=>Promise<T>,deps:unknown[]){
  return {...state,recarregar:()=>{leitorSan.limpar();setVersao(v=>v+1);}};
 }
 export function linhaSan(meta:MetaSan,g:GrupoSan,ano:number,idx:number):LinhaSan{
- return g.linhas.find(l=>l[0]===ano&&l[1]===idx)??[ano,idx,null,null,null,0,g.linhas[0]?.[6]??0,meta.indicadores[idx]?.anos.includes(ano)?1:5];
+ return g.linhas.find(l=>l[0]===ano&&l[1]===idx)??[ano,idx,null,null,null,0,g.linhas[0]?.[6]??(/^\d{7}$/.test(g.grupo)?1:0),meta.indicadores[idx]?.anos.includes(ano)?1:5];
 }
 /** Exportação inclui também combinações sem resposta ou sem pesquisa. */
 export function linhasCompletasSan(meta:MetaSan,g:GrupoSan):LinhaSan[]{return meta.anos.flatMap(ano=>meta.indicadores.map((_,idx)=>linhaSan(meta,g,ano,idx)));}
