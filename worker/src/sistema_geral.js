@@ -1,3 +1,4 @@
+import {SANEAMENTO,contextoSaneamento} from './sistema_saneamento.js';
 import { EDUCACAO, contextoEducacao } from './sistema_educacao.js';
 /**
  * Instruções da aba geral "Pergunte aos dados": junta as seções dos painéis marcados na página.
@@ -16,6 +17,7 @@ import { TRABALHO, contextoTrabalho } from './sistema_trabalho.js';
 import { ASSISTENCIA, contextoAssistencia } from './sistema_assistencia.js';
 
 export const PAINEIS = {
+  saneamento:{nome:'saneamento (SNIS/SINISA)',secao:SANEAMENTO},
   educacao: {nome:'educação (Inep)',secao:EDUCACAO},
   financas: { nome: 'finanças públicas', secao: FINANCAS },
   trabalho: { nome: 'mercado de trabalho', secao: TRABALHO },
@@ -171,9 +173,9 @@ export function paineisDoPedido(v) {
 }
 
 /** Blocos de sistema: o fixo (com marcador de cache) e um bloco de dados por painel. */
-export function instrucoes(paineis, { manifesto, educacao, contextoTrabalho: ctxTrabalho }) {
+export function instrucoes(paineis, { manifesto, educacao, saneamento, contextoTrabalho: ctxTrabalho }) {
   const nomes = paineis.map((p) => PAINEIS[p].nome).join(', ').replace(/, ([^,]*)$/, ' e $1');
   const fixo = [introducao(nomes), ...paineis.map((p) => PAINEIS[p].secao), ...(paineis.length > 1 ? [cruzamento(paineis)] : []), COMO_RESPONDER].join('\n\n');
-  const dados = paineis.map((p) => (p === 'educacao' ? contextoEducacao(educacao) : p === 'financas' ? contextoDosDados(manifesto) : p === 'saude' ? contextoSaude(manifesto) : p === 'munic' ? contextoMunic(manifesto) : p === 'clima' ? contextoClima(manifesto) : p === 'assistencia' ? contextoAssistencia(manifesto) : contextoTrabalho(ctxTrabalho)));
+  const dados = paineis.map((p) => (p === 'saneamento' ? contextoSaneamento(saneamento) : p === 'educacao' ? contextoEducacao(educacao) : p === 'financas' ? contextoDosDados(manifesto) : p === 'saude' ? contextoSaude(manifesto) : p === 'munic' ? contextoMunic(manifesto) : p === 'clima' ? contextoClima(manifesto) : p === 'assistencia' ? contextoAssistencia(manifesto) : contextoTrabalho(ctxTrabalho)));
   return [{ type: 'text', text: fixo, cache_control: { type: 'ephemeral' } }, ...dados.map((text) => ({ type: 'text', text }))];
 }

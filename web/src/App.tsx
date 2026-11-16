@@ -12,6 +12,9 @@ import { buscaEntreAreas, buscaIaLegada, buscaParaDownloads, type Area } from '.
 
 const Demonstrativos = pagina(() => import('./pages/Demonstrativos').then(m => ({default:m.Demonstrativos})));
 const Downloads = pagina(() => import('./pages/Downloads').then(m => ({default:m.Downloads})));
+const SaneamentoPainel = pagina(() => import('./pages/Saneamento').then(m => ({default:m.SaneamentoPainel})));
+const SaneamentoRankings = pagina(() => import('./pages/Saneamento').then(m => ({default:m.SaneamentoRankings})));
+const SaneamentoMetodologia = pagina(() => import('./pages/Saneamento').then(m => ({default:m.SaneamentoMetodologia})));
 const EducacaoPainel = pagina(() => import('./pages/EducacaoPainel').then(m => ({default:m.EducacaoPainel})));
 const EducacaoEvolucao = pagina(() => import('./pages/EducacaoPainel').then(m => ({default:m.EducacaoEvolucao})));
 const EducacaoRankings = pagina(() => import('./pages/EducacaoPainel').then(m => ({default:m.EducacaoRankings})));
@@ -146,7 +149,7 @@ const menuEducacao = (): [string, [string, string][]][] => [
   [t('Metodologia', 'Methodology'), [['/educacao/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
 ];
 
-const areaDe = (pathname: string): Area => (pathname === '/ia' ? 'ia' : pathname === '/downloads' || pathname.startsWith('/downloads/') ? 'downloads' : pathname.startsWith('/trabalho') ? 'trabalho'
+const areaDe = (pathname: string): Area => (pathname.startsWith('/saneamento') ? 'saneamento' : pathname === '/ia' ? 'ia' : pathname === '/downloads' || pathname.startsWith('/downloads/') ? 'downloads' : pathname.startsWith('/trabalho') ? 'trabalho'
   : pathname.startsWith('/datasus') ? 'saude' : pathname.startsWith('/educacao') ? 'educacao' : pathname.startsWith('/munic') ? 'munic' : pathname.startsWith('/clima') ? 'clima' : pathname.startsWith('/assistencia') ? 'assistencia' : 'financas');
 
 function lerTema(): string | null {
@@ -259,14 +262,15 @@ export function App() {
   if (area !== 'ia' && area !== 'munic' && area !== 'clima' && area !== 'downloads') filtrosIa.set('paineis', area);
   const buscaIa = `?${filtrosIa}`;
 
-  const gruposMenu = ({ financas: menu, trabalho: menuTrabalho, saude: menuSaude, educacao: menuEducacao, munic: menuMunic, clima: menuClima, assistencia: menuAssistencia, downloads: menuDownloads, ia: menuIa }[area])();
-  const linkPagina = (para: string) => ({ pathname: para, search: area === 'downloads' ? search : area === 'ia' ? buscaIa : area === 'educacao' ? buscaEntreAreas(search, 'educacao', para.includes('/financiamento') || para.includes('/profissionais') ? 'financas' : 'educacao') : area === 'munic' ? contextoMunic(search, DESTINO_MUNIC[para] ?? 'avancado', EDICOES_MUNIC) : area === 'clima' ? buscaClima(search) : area === 'assistencia' ? buscaEntreAreas(search, 'assistencia', 'assistencia') : buscaArea });
+  const gruposMenu = ({ saneamento:()=>[[t('Saneamento','Sanitation'),[['/saneamento',t('Painel de indicadores','Indicator dashboard')],['/saneamento/rankings',t('Comparar municípios','Compare municipalities')],['/saneamento/metodologia',t('Fontes e metodologia','Sources and methodology')]]]] as [string,[string,string][]][], financas: menu, trabalho: menuTrabalho, saude: menuSaude, educacao: menuEducacao, munic: menuMunic, clima: menuClima, assistencia: menuAssistencia, downloads: menuDownloads, ia: menuIa }[area])();
+  const linkPagina = (para: string) => ({ pathname: para, search: area === 'saneamento' ? buscaEntreAreas(search,'saneamento','saneamento') : area === 'downloads' ? search : area === 'ia' ? buscaIa : area === 'educacao' ? buscaEntreAreas(search, 'educacao', para.includes('/financiamento') || para.includes('/profissionais') ? 'financas' : 'educacao') : area === 'munic' ? contextoMunic(search, DESTINO_MUNIC[para] ?? 'avancado', EDICOES_MUNIC) : area === 'clima' ? buscaClima(search) : area === 'assistencia' ? buscaEntreAreas(search, 'assistencia', 'assistencia') : buscaArea });
   const areas: {id: Area; nome: string; caminho: string; busca: string}[] = [
     {id:'ia',nome:t('Pergunte aos dados (IA)','Ask the data (AI)'),caminho:'/ia',busca:buscaIa},
     {id:'financas',nome:t('Finanças públicas','Public finances'),caminho:'/receitas',busca:paraArea('financas')},
     {id:'trabalho',nome:t('Mercado de trabalho','Labour market'),caminho:'/trabalho',busca:paraArea('trabalho')},
     {id:'saude',nome:t('Saúde','Health'),caminho:'/datasus',busca:paraArea('saude')},
     {id:'educacao',nome:t('Educação','Education'),caminho:'/educacao',busca:paraArea('educacao')},
+    {id:'saneamento',nome:t('Saneamento','Sanitation'),caminho:'/saneamento',busca:paraArea('saneamento')},
     {id:'munic',nome:t('Gestão pública','Public management'),caminho:'/munic',busca:paraArea('munic')},
     {id:'clima',nome:t('Clima','Climate'),caminho:'/clima',busca:paraArea('clima')},
     {id:'assistencia',nome:t('Assistência social','Social assistance'),caminho:'/assistencia',busca:paraArea('assistencia')},
@@ -290,6 +294,7 @@ export function App() {
           trabalho: t('Mercado de trabalho · RAIS e CAGED', 'Labour market · RAIS and CAGED'),
           saude: t('Saúde · DATASUS', 'Health · DATASUS'),
           educacao: t('Educação · Inep e SIOPE', 'Education · Inep and SIOPE'),
+          saneamento: t('Saneamento · SNIS e SINISA', 'Sanitation · SNIS and SINISA'),
           munic: t('Gestão pública · MUNIC e ESTADIC', 'Public management · MUNIC and ESTADIC'),
           clima: t('Clima · CHIRPS e ERA5-Land', 'Climate · CHIRPS and ERA5-Land'),
           assistencia: t('Assistência social · CadÚnico, Bolsa Família e BPC', 'Social assistance · Cadastro Único, Bolsa Família and BPC'),
@@ -360,6 +365,9 @@ export function App() {
               <Route path="/educacao/rankings" element={<EducacaoRankings />} />
               <Route path="/educacao/tabela" element={<EducacaoTabela />} />
               <Route path="/educacao/metodologia" element={<EducacaoMetodologia />} />
+              <Route path="/saneamento" element={<SaneamentoPainel />} />
+              <Route path="/saneamento/rankings" element={<SaneamentoRankings />} />
+              <Route path="/saneamento/metodologia" element={<SaneamentoMetodologia />} />
               <Route path="/educacao/financiamento" element={<Educacao />} />
               <Route path="/educacao/profissionais" element={<RemuneracaoEducacao />} />
               <Route path="/saude" element={<Saude />} />

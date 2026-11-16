@@ -36,6 +36,7 @@ import { cadastro as carregarCadastro, type Cadastro } from '../ia_territorio';
 const LINHAS_INICIAIS = 25;
 
 const NOMES_PAINEIS = (): Record<Painel, string> => ({
+  saneamento:t('Saneamento','Sanitation'),
   educacao:t('Educação','Education'),
   financas: t('Finanças públicas', 'Public finances'),
   trabalho: t('Mercado de trabalho', 'Labour market'),
@@ -162,6 +163,7 @@ const recorteEfetivo = (p?: RespostaPronta | null) => (p
 
 /** Temas dos painéis marcados, no subtítulo ("finanças, emprego e saúde"). */
 const TEMAS = (): Record<Painel, string> => ({
+  saneamento:t('saneamento','sanitation'),
   educacao:t('educação','education'),
   financas: t('finanças', 'public finances'), trabalho: t('emprego', 'employment'), saude: t('saúde', 'health'), munic: t('gestão pública', 'public management'), clima: t('clima', 'climate'), assistencia: t('assistência social', 'social assistance'),
 });
@@ -185,6 +187,8 @@ const descricao = (p: Painel[]) => (p.length > 1
     : p[0] === 'clima'
       ? t('Pergunte em linguagem natural sobre chuva, temperatura, umidade do solo, evaporação e radiação solar dos municípios, em comparação com a normal de 1991 a 2020. A IA consulta o CHIRPS e o ERA5-Land aqui no seu navegador, faz os cálculos com SQL e explica o resultado, com as consultas à vista para conferência.',
         'Ask in plain language about rainfall, temperature, soil moisture, evaporation and solar radiation in municipalities, compared with the 1991–2020 normal. The AI queries CHIRPS and ERA5-Land here in your browser, does the calculations in SQL and explains the result, with the queries in view for checking.')
+    : p[0] === 'saneamento'
+      ? t('Pergunte sobre água, esgoto, resíduos e drenagem desde 2013. Os agregados usam municípios com dados válidos; a mudança de SNIS para SINISA em 2023 exige cautela nas comparações.','Ask about water, sewage, waste and drainage since 2013. Aggregates use municipalities with valid data; the SNIS to SINISA transition in 2023 requires care when comparing periods.')
     : p[0] === 'saude'
       ? t('Pergunte em linguagem natural sobre mortalidade, causas de morte, nascimentos, internações hospitalares do SUS, a rede de saúde (leitos, médicos, estabelecimentos), agravos como dengue e o controle do câncer (exames de rastreamento e diagnósticos). A IA consulta o SIM, o SINASC, o SIH, o CNES, o SINAN, o SISCAN, o Painel de Oncologia, o RESP e a população da SVS/MS aqui no seu navegador, faz os cálculos com SQL e explica o resultado, com as consultas à vista para conferência.',
         'Ask in plain language about mortality, causes of death, births, SUS hospital admissions, the health network (beds, physicians, facilities), diseases such as dengue and cancer control (screening tests and diagnoses). The AI queries SIM, SINASC, SIH, CNES, SINAN, SISCAN, the Oncology Panel, RESP and the SVS/MS population here in your browser, does the calculations in SQL and explains the result, with the queries in view for checking.')
@@ -192,6 +196,7 @@ const descricao = (p: Painel[]) => (p.length > 1
         'Ask in plain language about revenue, expenditure, transfers and fiscal indicators of municipalities, states and DF. The AI queries the SICONFI filings here in your browser, does the calculations in SQL and explains the result, with the queries in view for checking.'));
 
 const FONTES = (): Record<Painel, string> => ({
+  saneamento:t('saneamento (SNIS/SINISA, Ministério das Cidades)','sanitation (SNIS/SINISA, Ministry of Cities)'),
   educacao:t('Educação (Inep: Censo Escolar, Ideb e Saeb)','Education (Inep: School Census, Ideb and Saeb)'),
   financas: t('finanças públicas (SICONFI/Tesouro Nacional, IBGE, Banco Central, Portal da Transparência, Previdência)', 'public finances (SICONFI/National Treasury, IBGE, Central Bank, Transparency Portal, Social Security)'),
   trabalho: t('mercado de trabalho (RAIS e Novo CAGED, Ministério do Trabalho e Emprego)', 'labour market (RAIS and New CAGED, Ministry of Labour and Employment)'),

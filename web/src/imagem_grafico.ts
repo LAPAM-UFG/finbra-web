@@ -4,6 +4,7 @@ export type MetadadosImagem={titulo:string;contexto:string;fonte:string;escala?:
 const limpar=(s:string|undefined|null)=>(s??'').replace(/\s+/g,' ').trim();
 function textoSemBotoes(el:Element|null|undefined){const copia=el?.cloneNode(true) as Element|undefined;copia?.querySelectorAll('button,svg').forEach(e=>e.remove());return limpar(copia?.textContent);}
 export function fonteDaPagina(caminho:string){
+ if(caminho.startsWith('/saneamento'))return t('Ministério das Cidades · SNIS / SINISA','Ministry of Cities · SNIS / SINISA');
  if(caminho.startsWith('/trabalho'))return t('Ministério do Trabalho e Emprego · RAIS / Novo CAGED','Ministry of Labour and Employment · RAIS / New CAGED');
  if(caminho.startsWith('/munic'))return 'IBGE · MUNIC / ESTADIC';
  if(caminho.startsWith('/clima'))return t('CHIRPS / ERA5-Land · estimativas de grade','CHIRPS / ERA5-Land · gridded estimates');

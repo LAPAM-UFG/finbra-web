@@ -12,7 +12,7 @@
  * confere os códigos de território (conferirCodigos); lugares citados pelo nome passam pela ferramenta
  * "localizar", que usa o cadastro de entes.
  */
-import { abandonarConsultaIa, consultaLivre, prepararResultadosIa, contextoTrabalhoIa, manifestoDados, tabelaDespesaFuncao, tabelaLrf, tabelasEducacaoSaude, tabelaEducacaoInep, tabelasFns, tabelasIaClima, tabelasIaAssistencia, tabelasVacinacao, tabelasIaMunic, tabelasIaTrabalho, tabelasSaude } from './dados';
+import { abandonarConsultaIa, consultaLivre, prepararResultadosIa, contextoTrabalhoIa, manifestoDados, tabelaDespesaFuncao, tabelaLrf, tabelasEducacaoSaude, tabelaEducacaoInep, tabelaSaneamento, tabelasFns, tabelasIaClima, tabelasIaAssistencia, tabelasVacinacao, tabelasIaMunic, tabelasIaTrabalho, tabelasSaude } from './dados';
 import { guardaFns } from './ia_fns';
 import { t } from './idioma';
 import {
@@ -123,8 +123,8 @@ export async function estadoIa(): Promise<EstadoIa | null> {
 }
 
 /** Painéis que a IA pode consultar (aba "Pergunte aos dados"); cada um tem tabelas e instruções próprias. */
-export type Painel = 'financas' | 'trabalho' | 'saude' | 'munic' | 'clima' | 'assistencia' | 'educacao';
-export const PAINEIS: Painel[] = ['financas', 'trabalho', 'saude', 'munic', 'clima', 'assistencia', 'educacao'];
+export type Painel = 'financas' | 'trabalho' | 'saude' | 'munic' | 'clima' | 'assistencia' | 'educacao' | 'saneamento';
+export const PAINEIS: Painel[] = ['financas', 'trabalho', 'saude', 'munic', 'clima', 'assistencia', 'educacao', 'saneamento'];
 
 export async function chamarIa(mensagens: Mensagem[], idioma: string, paineis: Painel[] = PAINEIS, sinal?: AbortSignal, modelo: EscolhaModelo = MODELO_PADRAO): Promise<RespostaIa> {
   const contexto = paineis.includes('trabalho') ? await contextoTrabalhoIa() : undefined;
@@ -911,6 +911,7 @@ const lidaComoTabela = (nome: string) => {
   return (s: string) => lida.test(s) && !cte.test(s);
 };
 const FONTES_TABELAS: [RegExp | ((sql: string) => boolean), () => string][] = [
+  [/\bsaneamento_indicadores\b/,()=>t('SNIS/SINISA · Ministério das Cidades','SNIS/SINISA · Ministry of Cities')],
   [/\beducacao_inep\b/,()=>t('Inep: Censo Escolar, taxas educacionais, Ideb e Saeb','Inep: School Census, education rates, Ideb and Saeb')],
   [/\brais_vinculos\b/, () => t('RAIS (MTE): microdados por vínculo', 'RAIS (MTE): job-level microdata')],
   [/\brais_(uf|mun|esc_porte)\b/, () => t('RAIS (MTE): tabelas somadas dos microdados', 'RAIS (MTE): tables summed from the microdata')],
@@ -1999,6 +2000,7 @@ async function consultaSemLimite(entrada: unknown, paineis: Painel[], sinal: Abo
     if (paineis.includes('clima') && /\bclima_\w+/i.test(todas)) await tabelasIaClima();
     if (paineis.includes('assistencia') && /\bsocial_\w+/i.test(todas)) await tabelasIaAssistencia();
     if (paineis.includes('educacao') && /\beducacao_inep\b/i.test(todas)) await tabelaEducacaoInep();
+    if (paineis.includes('saneamento') && /\bsaneamento_indicadores\b/i.test(todas)) await tabelaSaneamento();
     // resultados já apurados na conversa, lidos como tabelas (res_C1…): só os completos, da mesma versão dos dados e desta conversa
     const citadas = citadasNoSql(todas);
     if (citadas.length) {

@@ -1,0 +1,14 @@
+.san-filtros .filtros{margin-bottom:8px;align-items:start;}
+.san-filtros .campo:nth-child(2){min-width:200px;}
+.san-busca{position:relative;flex:1;min-width:230px;}
+.san-busca input{width:100%;}
+.san-sugestoes{position:absolute;z-index:40;top:62px;left:0;right:0;max-height:280px;overflow:auto;margin:0;padding:6px;list-style:none;background:var(--superficie);border:1px solid var(--borda-campo);border-radius:8px;box-shadow:var(--sombra);}
+.san-sugestoes button{width:100%;text-align:left;border:0;background:transparent;color:var(--tinta);padding:10px;}
+.san-sugestoes button:hover{background:var(--acao-suave);}
+.san-mini{font-size:13px;color:var(--tinta-2);margin:8px 0;}
+.san-leitura{font-size:14px;line-height:1.6;margin:16px 0;}
+.san-historico{margin:20px 0 12px;}
+.san-historico label{display:block;font-weight:600;margin-bottom:6px;}
+.san-historico select{max-width:100%;padding:10px;background:var(--superficie);color:var(--tinta);border:1px solid var(--borda-campo);border-radius:8px;}
+.san-painel .kpi .nota span{display:block;}
+@media(max-width:800px){.san-filtros .filtros{display:grid;grid-template-columns:1fr 1fr;}.san-filtros .campo:nth-child(2){min-width:0;}.san-filtros .san-busca{grid-column:1/-1;min-width:0;}.san-filtros .campo select{min-width:0;width:100%;}}

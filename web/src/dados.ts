@@ -1,3 +1,4 @@
+import {leitorSan} from './saneamento_dados';
 import {obterMetaEducacao} from './educacao_dados';
 /**
  * Camada de dados do site: roda DuckDB no navegador (WebAssembly) e consulta os Parquet
@@ -617,6 +618,18 @@ export function tabelaEducacaoInep() {
     await con.query(`CREATE OR REPLACE VIEW educacao_inep AS SELECT * FROM read_parquet(${arq(ref.caminho)})`);
   })();
   educacaoInep.catch(()=>{educacaoInep=null;});return educacaoInep;
+}
+
+/** Carregada somente quando uma consulta cita a tabela de saneamento. */
+let saneamentoTabela:Promise<void>|null=null;
+export function tabelaSaneamento(){
+  saneamentoTabela??=(async()=>{
+    const {consulta:ref}=await leitorSan.meta();
+    if(!/^gold\/saneamento\/consulta_[a-f0-9]+\.parquet$/.test(ref.caminho))throw new Error('Tabela de saneamento indisponível.');
+    const {con}=await iniciar();
+    await con.query(`CREATE OR REPLACE VIEW saneamento_indicadores AS SELECT * FROM read_parquet(${arq(ref.caminho)})`);
+  })();
+  saneamentoTabela.catch(()=>{saneamentoTabela=null;});return saneamentoTabela;
 }
 
 // ---------------- educação (SIOPE) e saúde (SIOPS) ----------------

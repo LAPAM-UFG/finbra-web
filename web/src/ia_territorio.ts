@@ -72,6 +72,7 @@ export function codigosDoMunicipio(cod: number, paineis: Paineis): string {
   if (comMunic(paineis)) partes.push(`cod = ${cod} (7 dígitos) em munic_territorio e munic_respostas (MUNIC)`);
   if (comClima(paineis)) partes.push(`cod = ${cod} (7 dígitos) em clima_territorio, clima_anual, clima_mensal e clima_normal`);
   if (comAssistencia(paineis)) partes.push(`grupo = '${cod}' ou cod_ibge = ${cod} em social_cadunico, social_pbf e social_bpc (nivel='M')`);
+  if(paineis.includes('saneamento'))partes.push(`grupo='${cod}' AND nivel='M' em saneamento_indicadores`);
   if(paineis.includes('educacao'))partes.push(`grupo='${cod}' AND nivel='M' em educacao_inep; filtre uma rede`);
   return `Códigos: ${partes.join('; ')}.`;
 }
@@ -88,6 +89,7 @@ export function codigosDaUf(uf: string, cod: number, paineis: Paineis): string {
   if (comClima(paineis)) partes.push(`grupo = '${uf}' (sigla) em clima_agregado; municípios da UF: uf = '${uf}' em clima_territorio`);
   if (comAssistencia(paineis)) partes.push(`grupo = '${uf}' em social_cadunico, social_pbf e social_bpc: agregado da UF pronto; municípios: uf='${uf}' AND nivel='M'`);
   if (comMunic(paineis)) partes.push(`uf = '${uf}' (sigla) em munic_territorio; grupo = '${uf}' no corte 'uf' de munic_agregados; na ESTADIC, cod = ${cod} em munic_territorio e munic_respostas (pesquisa = 'estadic')`);
+  if(paineis.includes('saneamento'))partes.push(`grupo='${uf}' AND nivel='UF' em saneamento_indicadores: agregado LAPAM pronto, não governo estadual`);
   if(paineis.includes('educacao'))partes.push(`grupo='${uf}' AND nivel='UF' em educacao_inep (resultado oficial da UF), filtre uma rede`);
   return `Códigos: ${partes.join('; ')}.`;
 }
@@ -100,6 +102,7 @@ export function codigosDoDf(paineis: Paineis): string {
   if (comSaude(paineis)) partes.push("na saúde, o DF inteiro é Brasília: cod_ibge = 5300108 (ou uf = 'DF') em saude_municipios e fns_municipios (no FNS, só a Secretaria e o Fundo de Saúde do DF; municipio = 530010 em fns_composicao)");
   if (comAssistencia(paineis)) partes.push("na assistência social, use grupo='DF' (UF) ou grupo='5300108' (M): mesmo território, nunca somar os dois");
   if (comMunic(paineis)) partes.push("na gestão pública, Brasília é o município 5300108 (cod em munic_territorio e munic_respostas, pesquisa = 'munic'); o governo do DF, na ESTADIC (pesquisa = 'estadic'), é cod = 53; uf = 'DF' / grupo = 'DF' nos cortes por UF");
+  if(paineis.includes('saneamento'))partes.push("saneamento_indicadores: grupo='DF' AND nivel='UF' ou grupo='5300108' AND nivel='M', mesma área, nunca somar");
   if(paineis.includes('educacao'))partes.push("educacao_inep: grupo='DF' AND nivel='UF' ou grupo='5300108' AND nivel='M', mesma área, nunca somar; SIOPE usa governo 53");
   return `Códigos: ${partes.join('; ')}.`;
 }
@@ -158,7 +161,7 @@ export function localizar(nome: string, uf: string, cad: Cadastro): { encontrado
 /** Linha de um lugar para o modelo, com os códigos em cada formato. */
 function paraModeloLocalizado(l: Localizado, paineis: Paineis) {
   if (l.tipo === 'distrito') return { tipo: 'distrito estadual', nome: l.nome, uf: l.uf, cod_ibge: l.cod,
-    codigos: 'Somente no FNS: cod_ibge = 2605459 em fns_municipios; municipio = 260545 em fns_composicao. Classificado como MUNICIPAL pela fonte. Não é ente fiscal declarante em entes/indicadores/lrf.' };
+    codigos: (paineis.includes('saneamento') ? "Saneamento: grupo='2605459' AND nivel='M' em saneamento_indicadores. " : '') + 'Somente no FNS: cod_ibge = 2605459 em fns_municipios; municipio = 260545 em fns_composicao. Classificado como MUNICIPAL pela fonte. Não é ente fiscal declarante em entes/indicadores/lrf.' };
   if (l.tipo === 'uf') {
     return { tipo: 'uf', nome: l.nome, uf: l.uf, cod_ibge: l.cod, codigos: l.uf === 'DF' ? codigosDoDf(paineis) : codigosDaUf(l.uf, l.cod, paineis) };
   }
@@ -175,7 +178,7 @@ export function executarLocalizacao(entrada: unknown, cad: Cadastro, paineis: Pa
   const e = (entrada ?? {}) as { nome?: unknown; uf?: unknown };
   const nome = typeof e.nome === 'string' ? e.nome.slice(0, 120) : '';
   if (!nome.trim()) return { modelo: JSON.stringify({ erro: 'informe o nome do município ou da UF' }), tabela: { erro: 'nome vazio' }, erro: true };
-  const r = localizar(nome, typeof e.uf === 'string' ? e.uf : '', comSaude(paineis) || comAssistencia(paineis) ? comNoronhaFns(cad) : cad);
+  const r = localizar(nome, typeof e.uf === 'string' ? e.uf : '', comSaude(paineis) || comAssistencia(paineis) || paineis.includes('saneamento') ? comNoronhaFns(cad) : cad);
   for (const l of [...r.encontrados, ...r.sugestoes]) if (l.cod === NORONHA.cod) l.tipo = 'distrito';
   const lista = r.encontrados.length ? r.encontrados : r.sugestoes;
   const tabela = {
@@ -219,7 +222,7 @@ const TABELAS_COM_UF_EM_COD = /\b(entes|indicadores|alertas|escopos|lrf)\b/;
  */
 export function conferirCodigos(sql: string, cad: Cadastro): string | null {
   const s = sqlSemTextos(sql);
-  if (consultaSoFns(s) || /\bsocial_(cadunico|pbf|bpc|territorios)\b/.test(s)) cad = comNoronhaFns(cad);
+  if (consultaSoFns(s) || /\bsaneamento_indicadores\b/.test(s) || /\bsocial_(cadunico|pbf|bpc|territorios)\b/.test(s)) cad = comNoronhaFns(cad);
   const comTextos = sql.toLowerCase();
   const problemas: string[] = [];
   const pares: [string, number][] = [];

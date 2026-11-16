@@ -373,6 +373,15 @@ async function lerManifesto(env) {
   return manifesto.valor;
 }
 
+const saneamentoCache={valor:null,ate:0};
+async function lerSaneamento(env){
+  if(Date.now()>saneamentoCache.ate){
+    const obj=await env.DADOS.get('gold/saneamento/manifesto.json');
+    saneamentoCache.valor=obj?await obj.json():null;saneamentoCache.ate=Date.now()+60000;
+  }
+  return saneamentoCache.valor;
+}
+
 const educacaoCache={valor:null,ate:0};
 async function lerEducacao(env) {
   if(Date.now()>educacaoCache.ate){
@@ -471,6 +480,7 @@ export async function rotaIa(request, env, url) {
     system: [
       ...instrucoes(paineis, {
         educacao:paineis.includes('educacao')?await lerEducacao(env):null,
+        saneamento:paineis.includes('saneamento')?await lerSaneamento(env):null,
         // no desenvolvimento local (wrangler dev) o R2 simulado não tem o manifesto: vale o do navegador
         manifesto: (await lerManifesto(env)) ?? (local && corpo.manifesto && typeof corpo.manifesto === 'object' ? corpo.manifesto : null),
         // anos e microdados do mercado de trabalho vêm do navegador: podem existir só no computador local

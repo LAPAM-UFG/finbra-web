@@ -20,6 +20,7 @@ export default {
 
 function tipo(chave) {
   if (chave.endsWith('.json')) return 'application/json; charset=utf-8';
+  if (chave.endsWith('.ndjson')) return 'application/x-ndjson; charset=utf-8';
   if (chave.endsWith('.csv')) return 'text/csv; charset=utf-8';
   return 'application/octet-stream';
 }
