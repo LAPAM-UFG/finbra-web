@@ -3,12 +3,16 @@ import tempfile,unittest,json
 from pathlib import Path
 import numpy as np
 import pandas as pd
-from saneamento import expressao,municipio,celulas,celulas_municipais,aplicar_retificacoes,INDICADORES
+from saneamento import expressao,municipio,celulas,celulas_municipais,aplicar_retificacoes,preencher_condicoes,INDICADORES
 from assistencia_utils import destino_isolado
 
 def ind(id):return next(i for i in INDICADORES if i['id']==id)
 
 class SaneamentoTest(unittest.TestCase):
+ def test_arquivo_largo_nao_confunde_nao_resposta_com_ano_sem_pesquisa(self):
+  f=pd.DataFrame({'ano':[2013,2015,2016,2017],'san_ap_cond':[np.nan,np.nan,5,0]})
+  out=preencher_condicoes(f,[{'variavel':'san_ap','anos':[2015,2017]}])
+  self.assertEqual(out.san_ap_cond.tolist(),[5,1,5,0])
  def test_nulos_nao_sao_zero(self):
   f=pd.DataFrame({'AG001':[0,np.nan,2,2],'GE12A':[10,10,0,np.nan]})
   c=celulas(f,ind('agua_cobertura_pct'),'SNIS')

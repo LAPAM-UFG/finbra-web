@@ -150,6 +150,14 @@ def aplicar_retificacoes(frame,normalizado):
             changed.append(dict(cod_ibge=code,url=p['url'],campos=cols))
     return frame,changed
 
+def preencher_condicoes(wide,indicadores):
+    """Distingue município sem resposta de ano sem informação na fonte."""
+    for i in indicadores:
+        col=i['variavel']+'_cond';missing=wide[col].isna()|wide[col].eq(5)
+        fallback=pd.Series(np.where(wide.ano.isin(i['anos']),1,5),index=wide.index)
+        wide[col]=wide[col].where(~missing,fallback).astype('int8')
+    return wide
+
 def gerar(normalizado,cadastro,saida):
     normalizado=Path(normalizado).resolve();saida=destino_isolado(Path(saida),normalizado);work=saida/'trabalho_saneamento';dest=saida/'gold/saneamento';work.mkdir(parents=True,exist_ok=True);dest.mkdir(parents=True,exist_ok=True)
     preparar_provedores(normalizado,work)
@@ -201,8 +209,7 @@ def gerar(normalizado,cadastro,saida):
     statuses=long[long.nivel=='M'].pivot(index=[*metadata_cols,'ano'],columns='indicador',values='condicao').rename(columns={i['id']:i['variavel']+'_cond' for i in INDICADORES})
     wide=wide.join(statuses).reset_index();wide['cod_ibge']=wide.cod_ibge.astype('int64');wide['ano']=wide.ano.astype('int32');wide['esfera']='M';wide['municipio_especial']=wide.cod_ibge.isin([2605459,5300108]).astype(int)
     # Anos fora da cobertura são identificados, não interpolados nem preenchidos com zero.
-    for i in INDICADORES:
-        col=i['variavel']+'_cond';wide[col]=wide[col].fillna(5).astype('int8')
+    wide=preencher_condicoes(wide,metricmeta)
     wp=work/'municipios.parquet';wide.to_parquet(wp,index=False,compression='zstd');wref=referencia(dest,'municipios',wp.read_bytes(),'parquet')
     archive=bytearray();ordered=long.sort_values(['grupo','ano','indice']);parts=ordered.groupby('grupo',sort=False).indices;territories=[]
     allvals=ordered[['ano','indice','valor','numerador','denominador','municipios_com_dado','municipios_cadastro','condicao']].to_numpy()
