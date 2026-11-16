@@ -41,11 +41,15 @@ def referencia(dest,prefix,data,ext='json'):
 
 def preparar_provedores(normalizado,work):
     ix=json.loads((normalizado/'indice.json').read_text(encoding='utf-8'));files=ix['arquivos']
-    assinatura=digest((normalizado/'indice.json').read_bytes()+Path(__file__).with_name('saneamento_ler.py').read_bytes()+serial(INDICADORES)+b'co02a-prioridade-v1')
+    assinatura=digest((normalizado/'indice.json').read_bytes()+Path(__file__).with_name('saneamento_ler.py').read_bytes()+b'co02a-prioridade-v1')
+    needed={'GE12A','GE12B','GE06A','GE06B','POP_TOT','POP_URB','DFE0001','DFE0002'}
+    for i in INDICADORES:
+        for s in i['snis']+i['sinisa']:needed.update(re.findall('[A-Z][A-Z0-9_]+',s))
+        needed.update(c for c in i['oficial'] if c)
     marker=work/'provedores_ok.json'
     if marker.exists():
         cache=json.loads(marker.read_text(encoding='utf-8'))
-        if cache.get('assinatura')==assinatura and all((work/n).exists()and digest((work/n).read_bytes())==h for n,h in cache['arquivos'].items()):return cache['campos']
+        if cache.get('assinatura_fonte')==assinatura and needed.issubset(set(cache['campos'])|set(cache.get('ausentes',[])))and all((work/n).exists()and digest((work/n).read_bytes())==h for n,h in cache['arquivos'].items()):return cache['campos']
     db=duckdb.connect();db.execute("SET threads=4; SET memory_limit='3GB'")
     db.execute('CREATE VIEW bruto_externo AS SELECT * FROM read_parquet(['+','.join(qs(f) for f in files)+'],union_by_name=true)')
     allcols={x[0] for x in db.execute('DESCRIBE bruto_externo').fetchall()};needed=set()
@@ -77,8 +81,21 @@ def preparar_provedores(normalizado,work):
     (work/'conflitos.json').write_bytes(serial(conflict));db.close()
     if conflict:raise ValueError('Campos conflitantes entre planilhas: revisar '+str(work/'conflitos.json'))
     objects={p.name:digest(p.read_bytes()) for p in work.glob('*.parquet') if re.fullmatch(r'(snis|sinisa)_[a-z]+_20\d{2}',p.stem)}
-    marker.write_bytes(serial(dict(assinatura=assinatura,campos=fields,arquivos=objects)))
+    marker.write_bytes(serial(dict(assinatura_fonte=assinatura,campos=fields,ausentes=sorted(needed-allcols),arquivos=objects)))
     return fields
+
+def cobertura_campos(normalizado):
+    """Calendário estrutural dos formulários, distinto de respostas preenchidas."""
+    files=json.loads((normalizado/'indice.json').read_text(encoding='utf-8'))['arquivos'];out={}
+    for file in files:
+        p=Path(file);match=re.match(r'(snis|sinisa)_([a-z]+)_(20\d{2})_',p.name)
+        if not match:raise ValueError('Normalizado sem identificação de sistema, módulo e ano')
+        key=(match[1].upper(),match[2],int(match[3]));fields=out.setdefault(key,set())
+        for sheet in json.loads(p.with_suffix('.json').read_text(encoding='utf-8')):fields.update(sheet['campos'])
+    return out
+
+def expressao_disponivel(texto,fields):
+    return any(set(re.findall('[A-Z][A-Z0-9_]+',part)).issubset(fields)for part in texto.split('|'))
 
 def celulas(frame,ind,sistema):
     spec=ind['snis'] if sistema=='SNIS' else ind['sinisa'];n=expressao(frame,spec[0]);d=expressao(frame,spec[1]) if len(spec)>1 else pd.Series(1.,index=frame.index)
@@ -109,8 +126,32 @@ def municipio(frame):
     return sums
 
 def celulas_municipais(raw,frame,ind,sistema):
+    if ind.get('parear_numerador'):
+        spec=ind['snis'] if sistema=='SNIS' else ind['sinisa'];n=expressao(raw,spec[0])
+        codes=set(re.findall('[A-Z][A-Z0-9_]+',spec[0]))&set(raw)
+        ativos=raw[list(codes)].notna().any(axis=1) if codes else pd.Series(False,index=raw.index)
+        x=pd.DataFrame({'cod_ibge':raw.cod_ibge,'n':n}).loc[ativos];g=x.groupby('cod_ibge')
+        paired=g.n.sum(min_count=1);paired=paired.where(g.n.count().eq(g.size()))
+        f=frame.copy();f['NUM_PAREADO']=paired.reindex(frame.index);invalid_d=pd.Series(False,index=frame.index)
+        config=copy.deepcopy(ind);config['snis' if sistema=='SNIS' else 'sinisa']=['NUM_PAREADO',*spec[1:]]
+        if ind['id'] in ['agua_rural_pct','esgoto_rural_pct']:
+            # Calcula o residente rural dentro de cada registro antes de obter
+            # o máximo municipal. Não subtrai totais/urbanos de prestadores distintos.
+            local=raw.copy()
+            for a,b,p in [('GE12A','GE12B','POP_TOT'),('GE06A','GE06B','POP_URB')]:
+                cols=[c for c in [a,b,p]if c in local]
+                if cols:
+                    resident=local[cols].max(axis=1);local[a]=resident;local[b]=resident;local[p]=resident
+            resident_rural=expressao(local,spec[1]);denominator=resident_rural.groupby(raw.cod_ibge).max()
+            invalid_d=resident_rural.lt(0).groupby(raw.cod_ibge).any().reindex(frame.index,fill_value=False)
+            f['DEN_RESIDENTE']=denominator.reindex(frame.index)
+            config['snis' if sistema=='SNIS' else 'sinisa']=['NUM_PAREADO','DEN_RESIDENTE']
+        out=celulas(f,config,sistema)
+        invalid=pd.Series(n.lt(0).to_numpy(),index=raw.cod_ibge).groupby(level=0).any().reindex(frame.index,fill_value=False)
+        out.loc[invalid|invalid_d,'condicao']=4;out.loc[invalid|invalid_d,'valor']=np.nan
+        return out
     out=celulas(frame,ind,sistema)
-    if ind['id'] not in ['agua_perdas_pct','esgoto_tratamento_pct']:return out
+    if ind['id'] not in ['agua_perdas_pct','esgoto_tratamento_pct'] and not ind.get('parear_componentes'):return out
     # Fórmulas físicas precisam dos componentes dos mesmos prestadores. Somar
     # cada coluna ignorando nulos poderia combinar produção de A e consumo de B.
     spec=ind['snis'] if sistema=='SNIS' else ind['sinisa']
@@ -124,7 +165,9 @@ def celulas_municipais(raw,frame,ind,sistema):
     cond=np.select([q.n.isna(),q.d.isna(),q.d.eq(0)],[1,2,3],default=0)
     v=q.n/q.d.replace(0,np.nan)*ind['fator']
     bad=q.n.lt(0)|q.d.lt(0)|v.lt(0)|v.gt(100)
-    invalid=pd.Series((n.lt(0)|d.lt(0)).to_numpy(),index=raw.cod_ibge).groupby(level=0).any().reindex(frame.index,fill_value=False)
+    bad_provider=n.lt(0)|d.lt(0)
+    if ind.get('parear_componentes')and ind['unidade']=='percentual':bad_provider|=n.gt(d)
+    invalid=pd.Series(bad_provider.to_numpy(),index=raw.cod_ibge).groupby(level=0).any().reindex(frame.index,fill_value=False)
     # Mantém também inconsistências já detectadas no índice oficial municipal.
     out['condicao']=np.where(bad|invalid|out.condicao.eq(4),4,cond).astype('int8');out['valor']=v.where(out.condicao.eq(0))
     return out
@@ -160,7 +203,7 @@ def preencher_condicoes(wide,indicadores):
 
 def gerar(normalizado,cadastro,saida):
     normalizado=Path(normalizado).resolve();saida=destino_isolado(Path(saida),normalizado);work=saida/'trabalho_saneamento';dest=saida/'gold/saneamento';work.mkdir(parents=True,exist_ok=True);dest.mkdir(parents=True,exist_ok=True)
-    preparar_provedores(normalizado,work)
+    preparar_provedores(normalizado,work);schemas=cobertura_campos(normalizado)
     cad=pd.read_parquet(cadastro);cad=cad[cad.cod_ibge.astype(str).str.len()==7][['cod_ibge','nome','uf']].drop_duplicates('cod_ibge')
     if not (cad.cod_ibge==2605459).any():cad=pd.concat([cad,pd.DataFrame([dict(cod_ibge=2605459,nome='Fernando de Noronha',uf='PE')])],ignore_index=True)
     cad= cad.sort_values('cod_ibge').reset_index(drop=True);cad['cod_ibge']=cad.cod_ibge.astype('int64')
@@ -178,9 +221,11 @@ def gerar(normalizado,cadastro,saida):
                     raw,changes=aplicar_retificacoes(raw,normalizado);(work/'retificacoes_aplicadas.json').write_bytes(serial(changes))
                 moduleframes[mod]=municipio(raw);providerframes[mod]=raw
         for idx,i in enumerate(INDICADORES):
+            if not i['snis' if system=='SNIS' else 'sinisa'] or (system=='SINISA'and y<i.get('sinisa_desde',2023)):continue
             mod='ae' if y<=2022 and i['tema']in ['agua','esgoto'] else i['tema'] if i['tema']in ['agua','esgoto'] else 'rs' if i['tema']=='residuos' else 'ap'
             f=moduleframes.get(mod);available=f is not None
             if not available:continue
+            if idx>=28 and not all(expressao_disponivel(expr,schemas.get((system,mod,y),set()))for expr in i['snis'if system=='SNIS'else'sinisa']):continue
             cells=celulas_municipais(providerframes[mod],f,i,system);cells['cod_ibge']=cells.index;cells=cells.reset_index(drop=True).merge(cad,on='cod_ibge',how='inner');cells['grupo']=cells.cod_ibge.astype(str);cells['nivel']='M';cells['municipios_com_dado']=cells.valor.notna().astype(int);cells['municipios_cadastro']=1
             # Comparação independente com os indicadores publicados: não participa da conta.
             official=i['oficial'][0 if y<=2022 else 1]
@@ -203,7 +248,9 @@ def gerar(normalizado,cadastro,saida):
     long=pd.concat(allrows,ignore_index=True);long['cod_ibge']=long.cod_ibge.astype('Int64');long['ano']=long.ano.astype('int32');long['indice']=long.indice.astype('int16');long['condicao']=long.condicao.astype('int8')
     assert not long.duplicated(['grupo','ano','indicador']).any()
     print('Preparando Parquet e pacotes territoriais',flush=True)
-    for i in metricmeta:i['anos']=sorted(int(y) for y in long.loc[long.indicador.eq(i['id'])&long.valor.notna(),'ano'].unique())
+    for idx,i in enumerate(metricmeta):
+        rows=long.loc[long.indicador.eq(i['id'])]
+        i['anos']=sorted(int(y)for y in (rows if idx>=28 else rows.loc[rows.valor.notna()]).ano.unique())
     queryfile=work/'consulta.parquet';long.to_parquet(queryfile,index=False,compression='zstd');queryref=referencia(dest,'consulta',queryfile.read_bytes(),'parquet')
     metadata_cols=['cod_ibge','nome','uf'];wide=long[long.nivel=='M'].pivot(index=[*metadata_cols,'ano'],columns='indicador',values='valor').rename(columns={i['id']:i['variavel'] for i in INDICADORES})
     statuses=long[long.nivel=='M'].pivot(index=[*metadata_cols,'ano'],columns='indicador',values='condicao').rename(columns={i['id']:i['variavel']+'_cond' for i in INDICADORES})
@@ -228,6 +275,10 @@ def gerar(normalizado,cadastro,saida):
     for (year,id),frame in long[(long.nivel=='M')&long.valor.notna()&long.condicao.eq(0)].groupby(['ano','indicador']):
         rows=[[int(r.cod_ibge),str(r.nome),str(r.uf),float(r.valor),int(r.condicao)] for r in frame.itertuples()]
         ranks[id+':'+str(year)]=referencia(dest,'ranking_'+id+'_'+str(year),dict(ano=int(year),indicador=id,linhas=rows))
+    # A abertura conserva as referências dos 28 indicadores originais. A lista
+    # ampliada é buscada só quando a comparação de uma medida nova é aberta.
+    rankref=referencia(dest,'catalogo_rankings',ranks)
+    original={i['id'] for i in INDICADORES[:28]};initialranks={k:v for k,v in ranks.items() if k.rsplit(':',1)[0] in original}
     fontes=json.loads(Path(__file__).with_name('saneamento_fontes.json').read_text(encoding='utf-8'))
     notes=['Dados autodeclarados por prestadores e gestores ao Ministério das Cidades. Não constituem uma avaliação da qualidade da gestão.',
       'SNIS: referências 2013–2022. SINISA: referências 2023–2024. O ano mostrado é o dos dados; a publicação pode ocorrer depois. Há mudanças de conceitos, formulários e cobertura em 2023. As linhas históricas permanecem separadas.',
@@ -238,7 +289,7 @@ def gerar(normalizado,cadastro,saida):
       'O cadastro territorial é atual e inclui Brasília e Fernando de Noronha. A contagem de municípios no cadastro não substitui o universo histórico de participantes de cada levantamento. Município sem registro no período não recebe valores de sua UF ou do Brasil.',
       'A série de drenagem começa em 2015 e não tem observações em 2016. Nenhum ano sem pesquisa é interpolado. Atendimento com rede não inclui automaticamente soluções alternativas individuais.',
       'Saneamento tem arquivo temático próprio desde 2013, com valores e condições dos dados. A seleção principal de 297 indicadores dos demais temas é preservada.']
-    meta=dict(versao=1,gerado_em=datetime.now(timezone.utc).isoformat(),anos=years,indicadores=metricmeta,grupos=[t for t in territories if t['nivel']!='M'],municipios=municipais,cadastro=cadastroref,arquivo=aref,rankings=ranks,consulta=queryref,parquet=wref,fontes=[dict(nome=r['titulo'],url=r['url'],ano=r['ano'],modulo=r['modulo']) for r in fontes if r['tipo']=='dados'],notas=notes)
+    meta=dict(versao=1,gerado_em=datetime.now(timezone.utc).isoformat(),anos=years,indicadores=metricmeta,grupos=[t for t in territories if t['nivel']!='M'],municipios=municipais,cadastro=cadastroref,arquivo=aref,rankings=initialranks,catalogo_rankings=rankref,consulta=queryref,parquet=wref,fontes=[dict(nome=r['titulo'],url=r['url'],ano=r['ano'],modulo=r['modulo']) for r in fontes if r['tipo']=='dados'],notas=notes)
     (dest/'manifesto.json').write_bytes(serial(meta));(work/'comparacoes_oficiais.json').write_bytes(serial(audits));(work/'resumo.json').write_bytes(serial(dict(linhas=len(long),municipios=len(cad),indicadores=len(metricmeta),arquivo_bytes=aref['bytes'],comparacoes=audits)))
     print('CANDIDATO',len(long),'observações;',len(metricmeta),'indicadores;',aref['bytes'],'bytes de abertura',flush=True)
     return meta

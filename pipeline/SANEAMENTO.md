@@ -21,7 +21,7 @@ identificação municipal são descartados. No SINISA de água/esgoto, usa-se a
 Base Municipal; não se concatena a cópia de prestadores locais e regionais.
 As retificações oficiais de esgoto de 2023 são aplicadas explicitamente.
 
-As 28 definições estão em `saneamento_indicadores.py`. Não se preenchem nulos
+As 56 definições estão em `saneamento_indicadores.py`. Não se preenchem nulos
 com zero. A população residente repetida entre prestadores é considerada uma
 única vez. As fórmulas físicas exigem componentes dos mesmos prestadores;
 dados incompletos não podem formar uma razão artificial. Percentuais de UF e
@@ -45,7 +45,7 @@ quando a consulta cita a tabela.
 
 `saneamento_downloads.py` recebe um snapshot íntegro do catálogo publicado,
 seus catálogos de UF, dicionário e Parquet principal. Gera o tema separado com
-28 medidas, 28 condições e seis identificadores, Brasil e 27 UFs. Preserva as
+56 medidas, 56 condições e seis identificadores, Brasil e 27 UFs. Preserva as
 referências imutáveis da seleção principal de 297 indicadores e dos demais
 temas; não é necessário copiar esses objetos para o novo candidato.
 
@@ -76,3 +76,11 @@ Na publicação, envie somente os objetos referenciados dos candidatos,
 conferindo hashes e tamanho. Guarde o manifesto anterior dos downloads;
 publique os manifestos por último. Não use exclusão/sincronização destrutiva.
 O manifesto global e os outros dados não são alterados por este lote.
+
+A ampliação inclui atendimento rural, hidrômetros, economias (unidades atendidas),
+coleta seletiva, recuperação de resíduos, catadores e ocorrências hidrológicas
+anuais. O total de cooperativas começa em 2024; catadores e capacidade de
+retenção usam apenas a série SINISA disponível. Eventos S2ID são anuais e
+registrados; não se somam aos totais acumulados de cinco anos. A recuperação
+no SNIS exclui orgânicos, enquanto o SINISA os inclui. O catálogo completo de
+rankings é buscado sob demanda para manter leve a abertura do painel.

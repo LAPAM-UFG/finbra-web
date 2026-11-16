@@ -7,7 +7,7 @@ export type IndSan={id:string;variavel:string;nome:string;nome_en:string;descric
 /** ano, indicador, valor, numerador, denominador, observados, cadastro, condição */
 export type LinhaSan=[number,number,number|null,number|null,number|null,number,number,number];
 export type GrupoSan={grupo:string;linhas:LinhaSan[]};
-export type MetaSan={versao:1;gerado_em:string;anos:number[];indicadores:IndSan[];grupos:TerrSan[];municipios:Record<string,RefSan>;cadastro:RefSan;arquivo:RefSan;rankings:Record<string,RefSan>;consulta:RefSan;fontes:{nome:string;url:string;ano:number;modulo:string}[];notas:string[]};
+export type MetaSan={versao:1;gerado_em:string;anos:number[];indicadores:IndSan[];grupos:TerrSan[];municipios:Record<string,RefSan>;cadastro:RefSan;arquivo:RefSan;rankings:Record<string,RefSan>;catalogo_rankings?:RefSan;consulta:RefSan;fontes:{nome:string;url:string;ano:number;modulo:string}[];notas:string[]};
 export type RankingSan={ano:number;indicador:string;linhas:[number,string,string,number,number][]};
 const UF_COD:Record<string,string>={11:'RO',12:'AC',13:'AM',14:'RR',15:'PA',16:'AP',17:'TO',21:'MA',22:'PI',23:'CE',24:'RN',25:'PB',26:'PE',27:'AL',28:'SE',29:'BA',31:'MG',32:'ES',33:'RJ',35:'SP',41:'PR',42:'SC',43:'RS',50:'MS',51:'MT',52:'GO',53:'DF'};
 export const ufDoMunicipioSan=(cod:string)=>/^\d{7}$/.test(cod)?UF_COD[cod.slice(0,2)]:undefined;
@@ -38,7 +38,7 @@ export function criarLeitorSan(base:string,buscar:typeof fetch){
   if(g.grupo!==t.grupo||!Array.isArray(g.linhas))throw Error('Dados de outro território.');
   const seen=new Set<string>();for(const l of g.linhas){const key=l[0]+':'+l[1];if(l.length!==8||!m.anos.includes(l[0])||!Number.isInteger(l[1])||!m.indicadores[l[1]]||l.some(v=>v!==null&&(typeof v!=='number'||!Number.isFinite(v)))||seen.has(key)||!Number.isInteger(l[7])||l[7]<0||l[7]>6||![l[5],l[6]].every(v=>Number.isSafeInteger(v)&&v>=0)||l[5]>l[6]||(l[7]===0)!==(l[2]!==null))throw Error('Linha de saneamento inconsistente.');seen.add(key);}return g;
  });}
- function ranking(ano:number,id:string):Promise<RankingSan>{return memorizar('ranking:'+ano+':'+id,async()=>{const m=await meta(),ref=m.rankings[id+':'+ano];if(!ref)throw Error('Sem ranking desta medida neste ano.');const r=await ler<RankingSan>(ref);if(r.ano!==ano||r.indicador!==id||!Array.isArray(r.linhas)||r.linhas.some(l=>l.length!==5||ufDoMunicipioSan(String(l[0]))!==l[2]||!Number.isFinite(l[3])))throw Error('Ranking de outra referência.');return r;});}
+ function ranking(ano:number,id:string):Promise<RankingSan>{return memorizar('ranking:'+ano+':'+id,async()=>{const m=await meta(),ind=m.indicadores.find(i=>i.id===id);if(!ind)throw Error('Indicador de saneamento não encontrado.');if(!m.anos.includes(ano))throw Error('Ano fora da cobertura de saneamento.');if(!ind.anos.includes(ano))return{ano,indicador:id,linhas:[]};let ref=m.rankings[id+':'+ano];if(!ref&&m.catalogo_rankings){const catalogo=await ler<Record<string,RefSan>>(m.catalogo_rankings);ref=catalogo[id+':'+ano];}if(!ref)throw Error('Sem ranking desta medida neste ano.');const r=await ler<RankingSan>(ref);if(r.ano!==ano||r.indicador!==id||!Array.isArray(r.linhas)||r.linhas.some(l=>l.length!==5||ufDoMunicipioSan(String(l[0]))!==l[2]||!Number.isFinite(l[3])))throw Error('Ranking de outra referência.');return r;});}
  return {meta,municipios,cadastro,territorio,grupo,ranking,limpar:()=>cache.clear()};
 }
 export const leitorSan=criarLeitorSan(BASE_DADOS,(u,i)=>fetch(u,i));

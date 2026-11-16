@@ -44,7 +44,7 @@ def gerar(base,painel,saida,stata,rscript):
     dictionary=[d for d in ler(base/old['dicionario']['caminho']) if d['area']!='saneamento']
     ids=[i['variavel'] for i in meta['indicadores']];columns=[v for id in ids for v in [id,id+'_cond']]
     df=pq.read_table(source).to_pandas()
-    units={'percentual':'% (0 a 100)','pessoas':'pessoas','ligacoes':'ligações','km':'km','m3_ano':'m³/ano','t_ano':'toneladas/ano','domicilios':'domicílios'}
+    units={'economias':'unidades atendidas (economias)','entidades':'entidades','ocorrencias':'ocorrências/ano','obitos':'óbitos/ano','imoveis':'imóveis/ano','m3':'m³ de armazenamento','percentual':'% (0 a 100)','pessoas':'pessoas','ligacoes':'ligações','km':'km','m3_ano':'m³/ano','t_ano':'toneladas/ano','domicilios':'domicílios'}
     for i in meta['indicadores']:
         years=sorted(int(y) for y in df.loc[df[i['variavel']].notna(),'ano'].unique())
         for cond in [False,True]:
@@ -99,7 +99,7 @@ def gerar(base,painel,saida,stata,rscript):
     for uf,ref in old['recortes_uf'].items():
         cat=ler(base/ref['caminho']);cat['arquivos']=[a for a in cat['arquivos'] if a.get('area')!='saneamento'];cat['arquivos'].extend(a for a in new if a['uf']==uf)
         m['recortes_uf'][uf]=referencia(saida,work,'catalogo_'+uf.lower(),cat)
-    m['areas']=[a for a in m['areas'] if a['id']!='saneamento']+[dict(id='saneamento',nome='Saneamento',nome_en='Sanitation',descricao='28 indicadores e condições: água, esgoto, resíduos e drenagem, desde 2013; quebra SNIS/SINISA em 2023.',descricao_en='28 indicators and data status: water, sewage, waste and drainage since 2013; SNIS/SINISA methodology break in 2023.')]
+    m['areas']=[a for a in m['areas'] if a['id']!='saneamento']+[dict(id='saneamento',nome='Saneamento',nome_en='Sanitation',descricao=f'{len(ids)} indicadores e condições: água, esgoto, resíduos e drenagem, desde 2013; quebra SNIS/SINISA em 2023.',descricao_en=f'{len(ids)} indicators and data status: water, sewage, waste and drainage since 2013; SNIS/SINISA methodology break in 2023.')]
     template=next(a for a in old['arquivos'] if a['id']=='dicionario_json')
     def dict_item(id,fmt,path,label):m['arquivos'].append({**template,**registrar(saida,path,id,fmt),'id':id,'formato':fmt,'linhas':len(dictionary),'variaveis':None,'nome':label,'nome_en':label})
     m['dicionario']=dref;m['arquivos'].append({**template,**dref,'id':'dicionario_json','linhas':len(dictionary),'nome':'Dicionário dos downloads — JSON','nome_en':'Download dictionary — JSON'})
@@ -117,7 +117,7 @@ def gerar(base,painel,saida,stata,rscript):
     assert len(pd.read_excel(excel,engine='calamine'))==len(dictionary)
     dict_item('dicionario_excel','xlsx',excel,'Dicionário — Excel');dict_item('dicionario_rds','rds',rdict,'Dicionário — R')
     m['gerado_em']=stamp;m['notas']=[n for n in m['notas'] if not n.startswith('Saneamento:')]
-    m['notas'].append('Saneamento: arquivo temático próprio, Brasil/UF, desde 2013, com 28 valores e 28 códigos de condição. SNIS até 2022 e SINISA desde 2023: definições e cobertura mudam. Drenagem começa em 2015 e não tem 2016. Não se interpolam ausências. Os demais temas e a seleção principal de 297 indicadores permanecem nos mesmos objetos imutáveis.')
+    m['notas'].append(f'Saneamento: arquivo temático próprio, Brasil/UF, desde 2013, com {len(ids)} valores e {len(ids)} códigos de condição. SNIS até 2022 e SINISA desde 2023: definições e cobertura mudam. Drenagem começa em 2015 e não tem 2016. Não se interpolam ausências. Os demais temas e a seleção principal de 297 indicadores permanecem nos mesmos objetos imutáveis.')
     m.setdefault('fontes_complementares',{})['saneamento']=dict(caminho='gold/saneamento/manifesto.json',sha256=sha(painel/'gold/saneamento/manifesto.json'),gerado_em=meta['gerado_em'])
     for index,a in enumerate(m['arquivos']):
         if a['tipo']=='metodologia'and a['formato']=='txt':

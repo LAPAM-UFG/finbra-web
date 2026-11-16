@@ -1,14 +1,55 @@
 """Casos pequenos que distinguem conta válida, ausência e mistura de prestadores."""
-import tempfile,unittest,json
+import tempfile,unittest,json,copy
+from unittest.mock import patch
 from pathlib import Path
 import numpy as np
 import pandas as pd
-from saneamento import expressao,municipio,celulas,celulas_municipais,aplicar_retificacoes,preencher_condicoes,INDICADORES
+from saneamento import expressao,expressao_disponivel,municipio,celulas,celulas_municipais,aplicar_retificacoes,preencher_condicoes,preparar_provedores,INDICADORES
 from assistencia_utils import destino_isolado
 
 def ind(id):return next(i for i in INDICADORES if i['id']==id)
 
 class SaneamentoTest(unittest.TestCase):
+ def test_cache_recarrega_componentes_novos_e_reutiliza_mudancas_de_rotulo(self):
+  with tempfile.TemporaryDirectory()as t:
+   root=Path(t);n=root/'normalizado';w=root/'candidato';n.mkdir();w.mkdir();f=n/'base.parquet'
+   pd.DataFrame({'cod_ibge':[5208707],'prestador':['A'],'sistema':['SNIS'],'modulo':['ae'],'ano':[2013],'folha':['base'],'AG001':[1.],'AG002':[10.]}).to_parquet(f)
+   (n/'indice.json').write_text(json.dumps({'arquivos':[str(f)]}),encoding='utf-8')
+   config=copy.deepcopy(ind('agua_pop'))
+   with patch('saneamento.INDICADORES',[config]):preparar_provedores(n,w)
+   config['snis']=['AG002'];config['sinisa']=[]
+   with patch('saneamento.INDICADORES',[config]):preparar_provedores(n,w)
+   out=w/'snis_ae_2013.parquet';self.assertEqual(pd.read_parquet(out).AG002.iloc[0],10)
+   stamp=out.stat().st_mtime_ns;config['nome']='Outro rótulo'
+   with patch('saneamento.INDICADORES',[config]):preparar_provedores(n,w)
+   self.assertEqual(out.stat().st_mtime_ns,stamp)
+ def test_proporcao_do_estoque_nao_se_confunde_com_indice_oficial_de_dois_anos(self):
+  c=celulas(pd.DataFrame({'GTA0003':[100],'GTA0004':[50],'IAG1003':[40],'provedores':[1]}),ind('agua_hidrometro_pct'),'SINISA');self.assertEqual(c.valor.iloc[0],50);self.assertEqual(c.condicao.iloc[0],0)
+ def test_calendario_usa_campos_do_formulario_e_preserva_alternativas(self):
+  self.assertTrue(expressao_disponivel('GE12A|POP_TOT',{'POP_TOT'}))
+  self.assertFalse(expressao_disponivel('GTA0008+GTA0015',{'GTA0008'}))
+  self.assertTrue(expressao_disponivel('GTA0004',{'GTA0004'}))
+ def test_residente_rural_nao_mistura_populacoes_de_prestadores_distintos(self):
+  f=pd.DataFrame({'cod_ibge':[5208707,5208707],'prestador':['A','B'],'AG001':[100,70],'AG026':[80,40],'GE12A':[250,200],'GE06A':[160,100]})
+  c=celulas_municipais(f,municipio(f),ind('agua_rural_pct'),'SNIS');self.assertEqual(c.valor.iloc[0],50)
+ def test_rural_usa_o_mesmo_prestador_sem_duplicar_populacao(self):
+  f=pd.DataFrame({'cod_ibge':[5208707,5208707],'prestador':['A','B'],'AG001':[100,70],'AG026':[80,40],'GE12A':[200,200],'GE06A':[100,100]})
+  c=celulas_municipais(f,municipio(f),ind('agua_rural_pct'),'SNIS');self.assertEqual(c.valor.iloc[0],50)
+  f.loc[1,'AG026']=np.nan;c=celulas_municipais(f,municipio(f),ind('agua_rural_pop'),'SNIS');self.assertTrue(c.valor.isna().all());self.assertEqual(c.condicao.iloc[0],1)
+ def test_hidrometros_nao_misturam_componentes_entre_prestadores(self):
+  f=pd.DataFrame({'cod_ibge':[5208707,5208707],'prestador':['A','B'],'AG004':[np.nan,25],'AG002':[50,np.nan]})
+  c=celulas_municipais(f,municipio(f),ind('agua_hidrometro_pct'),'SNIS');self.assertTrue(c.valor.isna().all())
+ def test_agregado_nao_esconde_ligacoes_micromedidas_maiores_que_ativas(self):
+  f=pd.DataFrame({'cod_ibge':[5208707,5208707],'prestador':['A','B'],'AG004':[160,30],'AG002':[100,400]})
+  c=celulas_municipais(f,municipio(f),ind('agua_hidrometro_pct'),'SNIS');self.assertTrue(c.valor.isna().all());self.assertEqual(c.condicao.iloc[0],4)
+ def test_zero_de_hidrometros_e_dado_valido(self):
+  c=celulas(pd.DataFrame({'GTA0004':[0],'GTA0003':[10]}),ind('agua_hidrometro_pct'),'SINISA');self.assertEqual(c.valor.iloc[0],0);self.assertEqual(c.condicao.iloc[0],0)
+ def test_unidades_de_agua_incluem_urbano_e_rural(self):
+  c=celulas(pd.DataFrame({'GTA0008':[80],'GTA0015':[20],'GTA0009':[60],'GTA0016':[10]}),ind('agua_economias'),'SINISA');self.assertEqual(c.valor.iloc[0],100)
+ def test_faturamento_e_volume_nao_dinheiro(self):
+  c=celulas(pd.DataFrame({'GTA1221':[2.5]}),ind('agua_faturada_m3'),'SINISA');self.assertEqual(c.valor.iloc[0],2500);self.assertEqual(ind('agua_faturada_m3')['unidade'],'m3_ano')
+ def test_eventos_anuais_nao_sao_acumulados_em_cinco_anos(self):
+  c=celulas(pd.DataFrame({'RI028':[500],'RI029':[20]}),ind('desalojados_s2id'),'SNIS');self.assertEqual(c.valor.iloc[0],20)
  def test_arquivo_largo_nao_confunde_nao_resposta_com_ano_sem_pesquisa(self):
   f=pd.DataFrame({'ano':[2013,2015,2016,2017],'san_ap_cond':[np.nan,np.nan,5,0]})
   out=preencher_condicoes(f,[{'variavel':'san_ap','anos':[2015,2017]}])

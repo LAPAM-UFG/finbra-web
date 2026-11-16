@@ -5,10 +5,11 @@ SNIS a outra do SINISA no gráfico. Os componentes não preenchidos continuam nu
 """
 CONDICOES={0:'observado',1:'sem registro na fonte',2:'denominador ausente',3:'denominador zero',4:'inconsistência nos dados de origem',5:'fora da cobertura da fonte',6:'sem resposta ao módulo'}
 
-def m(id,nome,en,tema,unidade,snis,sinisa,oficial=None,descricao='',pct=False):
+def m(id,nome,en,tema,unidade,snis,sinisa,oficial=None,descricao='',pct=False,parear_numerador=False,parear_componentes=False,sinisa_desde=2023):
     return dict(id=id,variavel='san_'+id,nome=nome,nome_en=en,tema=tema,unidade=unidade,
         snis=snis,sinisa=sinisa,oficial=oficial or [None,None],fator=100 if pct else 1,
-        descricao=descricao or nome,descricao_en=en,regra_agregado='razao' if pct else 'soma')
+        descricao=descricao or nome,descricao_en=en,regra_agregado='razao' if pct else 'soma',
+        parear_numerador=parear_numerador,parear_componentes=parear_componentes,sinisa_desde=sinisa_desde)
 
 INDICADORES=[
  m('agua_pop','Pessoas atendidas com água','People served by water supply','agua','pessoas',['AG001'],['GTA0001+GTA0002']),
@@ -44,6 +45,59 @@ INDICADORES=[
  m('drenagem_rede_pct','Vias com rede pluvial subterrânea','Roads with underground stormwater drainage','drenagem','percentual',['IE024','IE017'],['GAP0305','GAP0304'],['IN021','IAP0002'],pct=True),
  m('inundacao_risco_dom','Domicílios urbanos sob risco de inundação','Urban households at risk of flooding','drenagem','domicilios',['RI013'],['GAP2110']),
  m('inundacao_risco_pct','Domicílios urbanos sob risco de inundação','Urban households at risk of flooding','drenagem','percentual',['RI013','GE008'],['GAP2110','GAP2103'],['IN040','IGR0001'],pct=True),
+]
+INDICADORES += [
+ m('agua_rural_pop','Moradores rurais atendidos com água','Rural residents served by water supply','agua','pessoas',['AG001-AG026'],['GTA0002'],parear_numerador=True,
+   descricao='População rural atendida com rede de água. No SNIS, atendimento total menos urbano, com componentes dos mesmos prestadores; no SINISA, informação rural direta.'),
+ m('agua_rural_pct','Atendimento rural com água','Rural population served by water supply','agua','percentual',['AG001-AG026','GE12A-GE06A'],['GTA0002','DFE0003'],[None,'IAG0003'],pct=True,parear_numerador=True,
+   descricao='Moradores rurais atendidos com rede divididos pela população rural informada. Não inclui automaticamente poços e outras soluções individuais.'),
+ m('esgoto_rural_pop','Moradores rurais atendidos com esgoto','Rural residents served by sewage collection','esgoto','pessoas',['ES001-ES026'],['GTE0002'],parear_numerador=True),
+ m('esgoto_rural_pct','Atendimento rural com esgoto','Rural population served by sewage collection','esgoto','percentual',['ES001-ES026','GE12A-GE06A'],['GTE0002','DFE0003'],[None,'IES0003'],pct=True,parear_numerador=True,
+   descricao='Moradores rurais atendidos com rede coletora divididos pela população rural informada. Não mede cobertura de fossas ou outras soluções individuais.'),
+ m('agua_hidrometros','Ligações de água com hidrômetro','Metered active water connections','agua','ligacoes',['AG004'],['GTA0004']),
+ m('agua_hidrometro_pct','Ligações de água com hidrômetro','Share of active water connections with meters','agua','percentual',['AG004','AG002'],['GTA0004','GTA0003'],pct=True,parear_componentes=True,
+   descricao='Proporção calculada pelo LAPAM com as contagens de ligações ativas e micromedidas declaradas no ano. Difere do índice oficial IAG1003 do SINISA, que utiliza médias do ano atual e anterior. Uma ligação pode atender várias unidades.'),
+ m('agua_economias','Unidades com água (economias ativas)','Active units served by water supply','agua','economias',['AG003'],['GTA0008+GTA0015'],
+   descricao='Unidades ativas atendidas, incluindo residências, lojas e outros usos. Uma ligação pode atender várias economias; não é uma contagem de famílias ou apenas de domicílios.'),
+ m('agua_econ_resid','Unidades residenciais com água','Active residential units served by water supply','agua','economias',['AG013'],['GTA0009+GTA0016']),
+ m('agua_micromedida_m3','Água medida pelos hidrômetros','Water volume measured by customer meters','agua','m3_ano',['AG008*1000'],['GTA1214*1000']),
+ m('agua_medida_pct','Água consumida com medição','Metered share of consumed water','agua','percentual',['AG008','AG010'],['GTA1214','GTA1211'],['IN044','IAG2002'],pct=True,parear_componentes=True,
+   descricao='Volume micromedido dividido pelo volume consumido. Difere da parcela de ligações com hidrômetro e não mede sozinho a precisão dos aparelhos.'),
+ m('agua_faturada_m3','Volume de água faturado','Billed water volume','agua','m3_ano',['AG011*1000'],['GTA1221*1000'],
+   descricao='Volume usado no faturamento da água, em m³ por ano. Não é receita em reais nem volume necessariamente medido; pode incluir regras de consumo mínimo.'),
+ m('agua_inativas','Ligações inativas de água','Inactive water connections','agua','ligacoes',['AG021-AG002'],['GTA0005'],parear_numerador=True,
+   descricao='No SNIS, ligações totais menos ativas; no SINISA, informação direta. Não deve ser interpretado como número de famílias sem acesso à água.'),
+ m('esgoto_economias','Unidades com esgoto (economias ativas)','Active units served by sewage collection','esgoto','economias',['ES003'],['GTE0006+GTE0016'],
+   descricao='Unidades ativas atendidas pela rede, incluindo usos residenciais e não residenciais. Uma ligação pode atender várias unidades; não é uma contagem de famílias.'),
+ m('esgoto_econ_resid','Unidades residenciais com esgoto','Active residential units served by sewage collection','esgoto','economias',['ES008'],['GTE0008+GTE0018']),
+ m('seletiva_massa_t','Resíduos recolhidos na coleta seletiva','Waste collected through selective collection','residuos','t_ano',['CS026'],['GTR1026'],
+   descricao='SNIS: massa recolhida na coleta seletiva, excluída a matéria orgânica. SINISA: massa das rotas de coleta seletiva domiciliar. As definições mudam em 2023.'),
+ m('residuos_recup_t','Resíduos recuperados','Recovered household waste','residuos','t_ano',['CS009'],['GTR1029'],
+   descricao='SNIS: materiais recuperados, exceto orgânicos e rejeitos. SINISA: resíduos domiciliares secos e orgânicos recuperados. Recuperação não equivale automaticamente a reciclagem industrial; há mudança de escopo em 2023.'),
+ m('residuos_recup_pct','Recuperados em relação ao coletado','Recovered waste relative to collected waste','residuos','percentual',['CS009','CO119'],['GTR1029','GTR1028'],pct=True,parear_componentes=True,
+   descricao='Massa recuperada dividida pela massa domiciliar e pública coletada nos mesmos municípios. SNIS exclui orgânicos do numerador; SINISA inclui secos e orgânicos. Indicador calculado pelo LAPAM; comparação entre sistemas exige essa ressalva.'),
+ m('residuos_cooperativas','Associações e cooperativas de catadores','Waste picker associations and cooperatives','residuos','entidades',[],['GTR1309'],sinisa_desde=2024,
+   descricao='Quantidade municipal declarada no SINISA 2024. Sem série municipal equivalente consolidada no SNIS utilizado; anos anteriores permanecem sem valor.'),
+ m('catadores_organizados','Catadores em associações/cooperativas','Waste pickers in associations and cooperatives','residuos','pessoas',[],['GTR1310'],
+   descricao='Quantidade declarada de catadores organizados que atuam no município. A soma territorial é de registros municipais, sem cadastro nominal para deduplicar pessoas que atuem em mais de um município.'),
+ m('catadores_autonomos','Catadores autônomos ou informais','Independent or informal waste pickers','residuos','pessoas',[],['GTR1311'],
+   descricao='Quantidade declarada de catadores que atuam de maneira autônoma, fora de associações/cooperativas. Ausência de estimativa municipal não é zero; a soma é de registros municipais, sem deduplicação nominal.'),
+ m('enxurradas_s2id','Enxurradas registradas no S2ID','Flash floods recorded in S2ID','drenagem','ocorrencias',['RI023'],['GAP2202'],
+   descricao='Ocorrências urbanas no ano de referência registradas no S2ID e informadas ao SNIS/SINISA. Não soma o acumulado dos últimos cinco anos nem eventos não registrados.'),
+ m('alagamentos_s2id','Alagamentos registrados no S2ID','Urban flooding recorded in S2ID','drenagem','ocorrencias',['RI025'],['GAP2205'],
+   descricao='Ocorrências urbanas no ano de referência registradas no S2ID e informadas ao SNIS/SINISA. Não soma o acumulado dos últimos cinco anos nem eventos não registrados.'),
+ m('inundacoes_s2id','Inundações registradas no S2ID','River floods recorded in S2ID','drenagem','ocorrencias',['RI027'],['GAP2208'],
+   descricao='Ocorrências urbanas no ano de referência registradas no S2ID e informadas ao SNIS/SINISA. Não soma o acumulado dos últimos cinco anos nem eventos não registrados.'),
+ m('desalojados_s2id','Desabrigados ou desalojados (S2ID)','Homeless or displaced people recorded in S2ID','drenagem','pessoas',['RI029'],['GAP2212'],
+   descricao='Pessoas desabrigadas ou desalojadas por eventos hidrológicos urbanos no ano de referência, registradas no S2ID e informadas ao SNIS/SINISA. Não é o total de pessoas expostas ao risco nem o acumulado de cinco anos.'),
+ m('obitos_hidrologicos','Óbitos por eventos hidrológicos (S2ID)','Deaths from hydrological events recorded in S2ID','drenagem','obitos',['RI031'],['GAP2216'],
+   descricao='Óbitos decorrentes de eventos hidrológicos urbanos no ano de referência, registrados no S2ID e informados ao SNIS/SINISA. Não se confunde com a estatística de mortalidade do SIM.'),
+ m('imoveis_atingidos','Imóveis atingidos por eventos hidrológicos','Properties affected by hydrological events','drenagem','imoveis',['RI032'],['GAP2219'],
+   descricao='Imóveis urbanos atingidos no ano de referência. É uma contagem de imóveis afetados por eventos, diferente da quantidade de domicílios situados em áreas de risco.'),
+ m('parques_lineares_km','Parques lineares: extensão','Linear parks: total length','drenagem','km',['IE044'],['GAP1403'],
+   descricao='Extensão declarada de parques lineares ao longo de cursos de água naturais perenes em áreas urbanas. Não equivale à extensão de toda a rede de drenagem.'),
+ m('reservatorios_m3','Capacidade dos reservatórios de cheias','Flood retention reservoir capacity','drenagem','m3',[],['GAP1401'],
+   descricao='Capacidade total declarada das estruturas de retenção/contenção para amortecimento de cheias no SINISA. Volume de armazenamento, não vazão ou água potável produzida por ano. Sem série SNIS municipal equivalente neste recorte.'),
 ]
 for i in INDICADORES:
     assert len(i['variavel']+'_cond')<=32
