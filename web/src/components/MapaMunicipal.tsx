@@ -4,7 +4,7 @@ import { MapChart } from 'echarts/charts';
 import { TooltipComponent } from 'echarts/components';
 import { CanvasRenderer } from 'echarts/renderers';
 import { centroDaMalha, tamanhoMapa, type MalhaMunicipal } from '../geografia_municipal';
-import { CORES_MAPA, COR_AUSENTE_MAPA, condicaoMapa, corMapa, formatarMapa, legendaMapa, valorEfetivoMapa } from '../mapas_apresentacao';
+import { coresLegendaMapa, condicaoMapa, corMapa, formatarMapa, legendaMapa, valorEfetivoMapa } from '../mapas_apresentacao';
 import type { IndicadorMapa, LinhaMapaDados } from '../mapas_dados';
 import { idioma, t } from '../idioma';
 echarts.use([MapChart, TooltipComponent, CanvasRenderer]);
@@ -28,7 +28,7 @@ export default function MapaMunicipal({ malha, uf, indicador: i, linhas, ano, se
       chart.current?.setOption({ tooltip: { trigger: 'item', confine: true, extraCssText: 'max-width:min(280px, calc(100vw - 64px));white-space:normal;overflow-wrap:anywhere;', backgroundColor: css.getPropertyValue('--superficie').trim(), textStyle: { color: css.getPropertyValue('--tinta').trim() }, formatter: (p: { name?: string }) => {
         const l = dados.get(p.name ?? ''); if (!l) return '';
         const unidade = idioma() === 'en' ? i.unidade_en : i.unidade;
-        return `<strong>${html(l.nome)} (${l.uf})</strong><br>${formatarMapa(i, l.valor)}${unidade === '%' ? '' : ` ${html(unidade)}`}<br>${html(condicaoMapa(l))}<br>${t('Toque ou clique para ver o detalhe.', 'Tap or click to see details.')}`;
+        return `<strong>${html(l.nome)} (${l.uf})</strong><br>${formatarMapa(i, l.valor)}${unidade === '%' || unidade === 'R$' && i.formato === 'moeda' ? '' : ` ${html(unidade)}`}<br>${html(condicaoMapa(l))}<br>${t('Toque ou clique para ver o detalhe.', 'Tap or click to see details.')}`;
       } }, series: [{ data: malha.features.map(f => {
         const l = dados.get(f.properties.name); const v = l ? valorEfetivoMapa(l, ressalvas) : null;
         return { name: f.properties.name, value: v ?? '-', itemStyle: { areaColor: corMapa(v, i.escala), borderWidth: f.properties.name === selecionado ? 2.5 : l?.condicao === 8 && ressalvas ? 1.5 : .35, borderColor: f.properties.name === selecionado || l?.condicao === 8 && ressalvas ? '#e77722' : css.getPropertyValue('--superficie').trim() } };
@@ -48,7 +48,7 @@ export default function MapaMunicipal({ malha, uf, indicador: i, linhas, ano, se
   return <>
     <div className="mp-controles" role="group" aria-label={t('Controles do mapa', 'Map controls')}><button className="botao-leve" aria-label={t('Ampliar mapa', 'Zoom in')} onClick={() => zoom(1.6)}>+</button><button className="botao-leve" aria-label={t('Reduzir mapa', 'Zoom out')} onClick={() => zoom(1 / 1.6)}>−</button><button className="botao-leve" onClick={() => chart.current?.setOption({ series: [{ center: centro, zoom: 1 }] })}>{t('Reenquadrar', 'Reset view')}</button></div>
     <div ref={ref} className="mp-canvas" role="img" aria-label={`${idioma() === 'en' ? i.nome_en : i.nome} · ${ano} · ${uf}`} />
-    <ul className="mp-legenda" aria-label={t('Legenda do mapa', 'Map legend')}>{legendaMapa(i).map((l, k) => <li key={k}><span aria-hidden="true" style={{ background: k < 6 ? CORES_MAPA[k] : COR_AUSENTE_MAPA }} />{l}</li>)}{ressalvas && linhas.some(l => l.condicao === 8) && <li><span aria-hidden="true" style={{ border: '2px solid #e77722' }} />{t('Ressalva do Inep', 'Inep flag')}</li>}</ul>
+    <ul className="mp-legenda" aria-label={t('Legenda do mapa', 'Map legend')}>{legendaMapa(i).map((l, k) => <li key={k}><span aria-hidden="true" style={{ background: coresLegendaMapa(i)[k] }} />{l}</li>)}{ressalvas && linhas.some(l => l.condicao === 8) && <li><span aria-hidden="true" style={{ border: '2px solid #e77722' }} />{t('Ressalva do Inep', 'Inep flag')}</li>}</ul>
     <p className="mp-nota">{t('Faixas numéricas fixas para este indicador em todos os anos e estados. Zero registrado e ausência de valor têm cores diferentes.', 'Fixed numeric ranges for this indicator across years and states. Reported zero and missing values have different colours.')}</p>
   </>;
 }

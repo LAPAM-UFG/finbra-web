@@ -1,4 +1,5 @@
 import { useMicroNoPainel } from '../trabalho_disponibilidade';
+import { Link } from 'react-router-dom';
 import { BuscaPainel, corresponde, TemaPainel, useExplorarPainel } from '../explorar_painel';
 import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { useApi, type Linha } from '../api';
@@ -133,7 +134,7 @@ function montarIndicadores(r: PainelRais, c: CagedAno | null, baseIpca: unknown,
 }
 
 export function TrabalhoPainel() {
-  const { anoRais, escopo, rotulo, temDados, meta, caged } = useTrabalho();
+  const { anoRais, escopo, rotulo, temDados, meta, caged, f } = useTrabalho();
   const { busca } = useRecorte();
   const raiz = useRef<HTMLDivElement>(null);
   const explorar=useExplorarPainel(['empregos','remuneracao','perfil','raca','escolaridade','vinculos','atividades','caged','historicos'].map(b=>'trabalho-'+b));
@@ -178,7 +179,7 @@ export function TrabalhoPainel() {
   const meta2: [string, string][] = [[t('Recorte', 'Scope'), rotulo], [t('Universo', 'Universe'), t('vínculos ativos em 31/12 (todos)', 'jobs active on Dec 31 (all)')],
     [t('Fonte', 'Source'), fonteRais()], ...(nota ? [[t('Comparabilidade', 'Comparability'), nota] as [string, string]] : [])];
   const cartoes = (b: Bloco) => indicadores.filter((i) => i.bloco === b).map((i) => (
-    <Kpi key={i.id} rotulo={i.rotulo} valor={formatar(i)} nota={i.nota} dica={i.dica} />
+    <Kpi key={i.id} rotulo={i.rotulo} valor={formatar(i)} nota={<>{i.nota}{' · '}<Link aria-label={t(`Mapa de ${i.rotulo}`, `Map of ${i.rotulo}`)} to={'/trabalho/mapa?' + new URLSearchParams({ ind: i.id, ano: String(i.ano), ...((f.alvo?.uf ?? f.uf) ? { uf: (f.alvo?.uf ?? f.uf)! } : {}), ...Object.fromEntries(Object.entries(escopo).filter(([k, v]) => ['uf', 'ente'].includes(k) && v != null).map(([k, v]) => [k, k === 'ente' && String(v) === '53' ? '5300108' : String(v)])) })}>{t('Mapa', 'Map')}</Link></>} dica={i.dica} />
   ));
   const cobCaged = caged ? `${caged.de ? `${String(caged.de % 100).padStart(2, '0')}/${Math.floor(caged.de / 100)}` : '–'}–${caged.ate ? `${String(caged.ate % 100).padStart(2, '0')}/${Math.floor(caged.ate / 100)}` : '–'}` : '';
   const textosTemas:Record<string,string>={empregos:'emprego empregos estabelecimento estabelecimento vínculos jobs establishments',remuneracao:'salário salario remuneração mulheres homens massa pay payroll income',perfil:'sexo mulheres homens idade jovem escolaridade superior profile age education',atividades:'CNAE atividade setor concentração HHI agropecuária indústria comércio serviços agricultura industry trade services '+lista.map(x=>x.divisao_nome).join(' '),caged:'CAGED admissão contratação desligamento saldo admissões demissões movimento hiring separation',historicos:'séries históricas evolução empregos remuneração perfil setores sexo mulheres homens trends time series history'};

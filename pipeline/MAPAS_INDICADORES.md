@@ -100,3 +100,80 @@ com verificação de conteúdo e os dois ponteiros por último. Preserve todos o
 objetos e manifestos anteriores, inclusive geografia, downloads e API. Não use
 sincronização com exclusão. Novas edições de Saúde/Educação devem preparar os
 mapas correspondentes antes da atualização final dos seus ponteiros.
+
+## Mercado de Trabalho e Saneamento
+
+Rotas adicionais: `/trabalho/mapa` e `/saneamento/mapa`, com atalhos nos
+cartões e nos menus. Reutilizam o cadastro, a cartografia, a busca, o mapa,
+a tabela e as exportações. A exceção ao contexto SQL se restringe também a
+`/trabalho/mapa`; as outras rotas de Trabalho continuam com seu contexto.
+
+Trabalho oferece 166 escolhas: 28 indicadores gerais de RAIS/CAGED e
+contagem, participação e remuneração nominal de dezembro nas categorias de
+raça/cor, escolaridade, agrupamento MTE e vínculo detalhado. Inclui categorias
+não informadas e códigos observados fora do dicionário. Usa os pacotes de
+abertura publicados e os helpers originais `calcularRais`, `somarCagedAno`,
+`lerPerfil` e `distribuicao`. Perfis fecham em cada total municipal da RAIS;
+remuneração divide a massa por todos os vínculos ativos da categoria. Categoria
+com zero vínculos e categoria sem remuneração válida continuam sem média.
+
+RAIS cobre 2010–2025; o mapa anual do Novo CAGED cobre 2020–2026, com oito
+meses em 2026 nesta edição. Cada indicador tem seu próprio último ano.
+Valores negativos de variação/saldo usam faixas roxas, positivas usam azuis,
+zero e ausência têm cores próprias. A variação em 2022/2023 sinaliza a quebra
+de série; as notas técnicas estão nos links da fonte. O mapa usa números
+municipais gerais; os filtros da consulta personalizada têm página própria.
+
+Saneamento inclui os 56 indicadores da edição publicada (2013–2024), com
+referência SNIS até 2022 e SINISA desde 2023. A drenagem não interpola 2016.
+O detalhe e os arquivos preservam os componentes; o CSV/Excel conserva também
+o código original da condição e seu dicionário: 0 observado, 1 sem registro,
+2 denominador ausente, 3 denominador zero, 4 inconsistência na origem,
+5 fora da cobertura e 6 sem resposta ao módulo. Nenhuma ausência vira zero.
+
+- [MTE — RAIS](https://www.gov.br/trabalho-e-emprego/pt-br/assuntos/estatisticas-trabalho/rais).
+- [MTE — Novo CAGED](https://www.gov.br/trabalho-e-emprego/pt-br/assuntos/estatisticas-trabalho/novo-caged).
+- [Ministério das Cidades — SNIS](https://www.gov.br/cidades/pt-br/acesso-a-informacao/acoes-e-programas/saneamento/snis).
+- [Ministério das Cidades — SINISA](https://www.gov.br/cidades/pt-br/acesso-a-informacao/acoes-e-programas/saneamento/sinisa).
+
+Para preparar uma revisão nova, na raiz:
+
+```powershell
+python pipeline/mapas_trabalho_fontes.py --revisao C:/revisao/mapas_novos --bases E:/finbra/data
+```
+
+Esse comando grava os snapshots dos quatro manifestos, confere os hashes e
+reutiliza arquivos locais idênticos. Somente fontes faltantes são baixadas
+para `revisao/fontes`. Recusa reusar um snapshot cujo manifesto mudou. Na
+pasta `web`, compile `scripts/preparar_mapas_trabalho.ts` como SSR e execute
+com a pasta de revisão. O extrator aplica os helpers originais e escreve os
+intermediários, o catálogo e o relatório de conciliação; exige intermediários
+novos para evitar mistura de execuções. Depois, na raiz:
+
+```powershell
+python pipeline/mapas_trabalho_saneamento.py --revisao C:/revisao/mapas_novos --saida E:/finbra/candidato_mapas_novos
+```
+
+O gerador recusa destino sobreposto às fontes/revisão e candidato preenchido.
+Compile e execute `scripts/auditar_mapas_trabalho.ts` com a pasta de revisão
+e o candidato. Para Saneamento:
+
+```powershell
+python pipeline/auditar_mapas_saneamento.py --revisao C:/revisao/mapas_novos --candidato E:/finbra/candidato_mapas_novos
+```
+
+A auditoria inicial conferiu 14.635.017 valores de Trabalho com os helpers
+originais e o leitor real do site, e 3.270.177 valores de Saneamento com o
+NDJSON original, incluindo componentes, condições, 70.737 valores negativos
+e todos os offsets e hashes. Os novos testes cobrem cores negativas, ano
+parcial, quebras de série, remuneração ausente, condição original e recusa de
+abertura desatualizada. Rode também a suíte completa, build e navegador.
+
+O candidato contém 227 arquivos (488,6 MB) sob `gold/mapas/`, incluindo o
+cadastro idêntico já publicado. Envie somente referências dos novos catálogos
+e seus dois manifestos por último. Preserve Saúde, Educação, geografia,
+downloads, APIs e os demais objetos. O histórico inteiro fica no R2: o
+cliente pede apenas indicador/ano/UF, ou a concatenação das 27 UFs. Abertura
+direta de tabela dispensa malha e renderizador. O catálogo de Trabalho
+confere a impressão digital do bloco de abertura e sua compatibilidade com
+RAIS/CAGED/perfis/IPCA atuais; Saneamento confere o hash do manifesto temático.

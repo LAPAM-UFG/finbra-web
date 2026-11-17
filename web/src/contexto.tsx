@@ -21,11 +21,11 @@ const Ctx = createContext<Contexto | null>(null);
  */
 export function ProvedorDados({ children, sobDemanda = false, silencioso = false }: { children: ReactNode; sobDemanda?: boolean; silencioso?: boolean }) {
   const caminho = useLocation().pathname;
-  const mapaSaudePronto = /^\/datasus\/mapa\/?$/.test(caminho);
+  const mapaPronto = /^\/(datasus|trabalho)\/mapa\/?$/.test(caminho);
   const educacaoPronta = caminho.startsWith('/educacao') && !['/educacao/financiamento', '/educacao/profissionais'].includes(caminho.replace(/\/+$/, ''));
-  const precisa = sobDemanda || !(mapaSaudePronto || educacaoPronta || caminho.startsWith('/saneamento') || caminho === '/clima' || caminho.startsWith('/clima/') || caminho === '/assistencia' || caminho.startsWith('/assistencia/') || caminho === '/downloads' || caminho.startsWith('/downloads/'));
+  const precisa = sobDemanda || !(mapaPronto || educacaoPronta || caminho.startsWith('/saneamento') || caminho === '/clima' || caminho.startsWith('/clima/') || caminho === '/assistencia' || caminho.startsWith('/assistencia/') || caminho === '/downloads' || caminho.startsWith('/downloads/'));
   // /datasus: contexto completo pelo pacote de abertura da saúde (saude_meta e saude_entes devolvem o mesmo que meta e entes; sem pacote, o motor responde)
-  const saude = !sobDemanda && !mapaSaudePronto && (caminho === '/datasus' || caminho.startsWith('/datasus/'));
+  const saude = !sobDemanda && !mapaPronto && (caminho === '/datasus' || caminho.startsWith('/datasus/'));
   const financeiroEducacao=['/educacao/financiamento','/educacao/profissionais'].includes(caminho.replace(/\/+$/,''));
   const meta = useApi<Meta>(precisa ? (financeiroEducacao?'educacao_fin_meta':saude ? 'saude_meta' : 'meta') : null);
   const entes = useApi<Ente[]>(precisa ? (financeiroEducacao?'educacao_fin_entes':saude ? 'saude_entes' : 'entes') : null);
