@@ -6,12 +6,14 @@ import { Grafico, linhas } from "../components/Grafico";
 import { exportar, type Tabela } from "../exportar";
 import { idioma, local, t } from "../idioma";
 import { UF_NOMES } from "../ufs";
+import { linkHistoricoCadunico } from '../cadunico_historico';
 import {
   obterComparacoes,
   obterGeografiaComparacao,
   obterGrupoComparacao,
   obterListaComparacao,
   obterListaReferencias,
+  enderecoDownloadHistorico,
   type AreaComparacao,
   type CatalogoComparacao,
   type DefComparacao,
@@ -235,7 +237,9 @@ export function Comparacoes({
   const [busca, setBusca] = useState("");
   const raiz = RAIZES_COMPARACAO[area];
   const rede =
-    area === "educacao"
+    area === 'assistencia' && sp.get('conjunto') === 'cadunico_historico'
+      ? 'cadunico_historico'
+      : area === "educacao"
       ? (sp.get("rede") ?? "todas")
       : area === "gestao" && sp.get("pesq") === "estadic"
         ? "estadic"
@@ -317,6 +321,7 @@ export function Comparacoes({
           {t("Voltar ao painel", "Back to dashboard")}
         </Link>
       </nav>
+      {area === 'assistencia' && rede !== 'cadunico_historico' && <p className="cp-nota"><Link to={linkHistoricoCadunico(sp)}>{t('Novo: histórico do CadÚnico desde 2018 — municípios de SP e famílias no Brasil →', 'New: Cadastro Único history since 2018 — SP municipalities and families in Brazil →')}</Link></p>}
       {catalogo.carregando && <Estado carregando />}
       {catalogo.erro && (
         <Estado erro={catalogo.erro} tentarNovamente={catalogo.recarregar} />
@@ -358,6 +363,7 @@ function Conteudo({
   setBusca,
 }: PropsConteudo) {
   const estadual = area === "gestao" && m.rede === "estadic";
+  const historicoCadunico = area === 'assistencia' && m.rede === 'cadunico_historico';
   const codRaw = (sp.get("cod") ?? sp.get("ente"))?.trim().toUpperCase(),
     cod = codRaw === "53" && !estadual ? "5300108" : codRaw;
   const codValido =
@@ -478,6 +484,21 @@ function Conteudo({
   return (
     <>
       <section className="cartao">
+        {area === 'assistencia' && <div className="cp-filtros"><div>
+          <label htmlFor="cp-conjunto">{t('Conjunto de dados', 'Dataset')}</label>
+          <select id="cp-conjunto" value={historicoCadunico ? 'cadunico_historico' : 'todas'} onChange={e => {
+            setBusca('');
+            mudar({ conjunto: e.target.value === 'todas' ? null : e.target.value, indicador: null, ind: null, inicio: null, periodo: null, ano: null, mes: null, minimo: null, coorte: null, comparar: null });
+          }}>
+            <option value="todas">{t('Todos os indicadores: retrato atual e pagamentos', 'All indicators: current snapshot and payments')}</option>
+            <option value="cadunico_historico">{t('CadÚnico: histórico parcial (2018–2026)', 'Cadastro Único: partial history (2018–2026)')}</option>
+          </select>
+        </div></div>}
+        {historicoCadunico && <aside className="cp-aviso" aria-label={t('Abrangência do histórico', 'Historical coverage')}>
+          <strong>{t('Histórico recuperado: 645 municípios de São Paulo, 01/2018 a 08/2026.', 'Recovered history: 645 São Paulo municipalities, Jan/2018 to Aug/2026.')}</strong>
+          <p>{t('No Brasil, há série de famílias; pessoas e pessoas por família não estão disponíveis. Municípios de outros estados continuam apenas com o retrato atual. Para comparar um município paulista com suas regiões e o estado, digite seu nome abaixo.', 'Brazil has a family time series; people and people per family are unavailable. Municipalities in other states still have only the current snapshot. To compare a São Paulo municipality with its regions and state, enter its name below.')}</p>
+          <p>{t('04/2025 fica sem valor por divergência de referência entre as fontes. Esta série não é emendada ao retrato de 10/2026. Cadastros não equivalem a benefícios recebidos.', 'Apr/2025 stays missing due to a reference-month discrepancy between sources. This series is not spliced with the Oct/2026 snapshot. Registrations are not benefits received.')}</p>
+        </aside>}
         <div className="cp-filtros">
           <div>
             <label htmlFor="cp-estado">
@@ -782,7 +803,7 @@ function Conteudo({
                 )}
           </p>
         )}
-        {i.alerta && <p className="cp-aviso">{textoComparacao(i, "alerta")}</p>}
+        {i.alerta && !historicoCadunico && <p className="cp-aviso">{textoComparacao(i, "alerta")}</p>}
         {i.id === "aps_potencial" && (
           <p className="cp-nota">
             {t(
@@ -865,6 +886,7 @@ function Conteudo({
               "Definition, coverage and original data",
             )}
           </summary>
+          {historicoCadunico && <p className="cp-nota">{textoComparacao(i, 'alerta')}</p>}
           <p className="cp-nota">
             {t(
               "As razões usam os numeradores e denominadores dos mesmos municípios com dados. A cobertura pode mudar entre períodos. Ausência, proteção da fonte e denominador zero permanecem sem valor; zero registrado continua zero.",
@@ -903,7 +925,7 @@ function Conteudo({
               {t("Geografia IBGE", "IBGE geography")}
             </a>
           </p>
-          <Link
+          {!historicoCadunico && <Link
             to={{
               pathname: "/downloads",
               search: `?area=${area}${estado !== "BR" ? "&uf=" + estado : ""}${codValido ? "&cod=" + codValido : ""}`,
@@ -913,8 +935,8 @@ function Conteudo({
               "Tabelas originais, dicionário e API para R e Stata",
               "Original tables, dictionary and API for R and Stata",
             )}
-          </Link>
-          {area === "assistencia" && (
+          </Link>}
+          {area === "assistencia" && !historicoCadunico && (
             <p>
               <Link
                 to={{
@@ -934,6 +956,11 @@ function Conteudo({
               </Link>
             </p>
           )}
+          {historicoCadunico && <div className="cp-acoes">
+            <span>{t('Base histórica completa (contagens mensais):', 'Complete historical dataset (monthly counts):')}</span>
+            {m.downloads_historico?.map(a => <a key={a.formato} href={enderecoDownloadHistorico(a)} download>{a.formato === 'dta' ? 'Stata (.dta)' : a.formato.toUpperCase()}</a>)}
+            {m.dicionario_historico && <a href={enderecoDownloadHistorico(m.dicionario_historico)} download>{t('Dicionário sucinto (JSON)', 'Concise dictionary (JSON)')}</a>}
+          </div>}
           {area === "educacao" && (
             <p>
               <Link
@@ -1172,8 +1199,8 @@ function Serie({
           l.s.n[k],
           l.s.d[k],
           condicaoComparacao(l.s.c[k]),
-          l.s.q[k],
-          l.total,
+          l.s.c[k] === 22 ? null : l.s.q[k],
+          l.s.c[k] === 22 ? null : l.total,
           i.binario && l.municipio && l.s.r?.[k] != null
             ? formatoComparacao(i, l.s.r[k], true)
             : l.s.r?.[k],
@@ -1219,7 +1246,7 @@ function Serie({
                   ? t("Resposta registrada", "Recorded answer")
                   : condicaoComparacao(l.s.c[p2])
                 : t("Fora da cobertura", "Outside coverage")}
-              {!l.municipio && p2 >= 0
+              {!l.municipio && p2 >= 0 && l.s.c[p2] !== 22
                 ? ` · ${numero(l.s.q[p2])}/${numero(l.total)} ${m.rede === "estadic" ? t("governos", "governments") : t("municípios", "municipalities")}`
                 : ""}
             </p>
@@ -1284,7 +1311,7 @@ function Serie({
                         {formatoComparacao(i, l.s.v[k], l.municipio)}
                         <small>
                           {condicaoComparacao(l.s.c[k])}
-                          {!l.municipio ? ` · ${l.s.q[k]}/${l.total}` : ""}
+                          {!l.municipio && l.s.c[k] !== 22 ? ` · ${l.s.q[k]}/${l.total}` : ""}
                         </small>
                       </td>
                     ))}

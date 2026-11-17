@@ -13,6 +13,7 @@ import { idioma, local, t } from '../idioma';
 import { conceitoSocial } from '../assistencia_ajuda';
 import { AjudaAssistencia } from '../components/AjudaAssistencia';
 import { EconomiaAssistencia } from '../components/EconomiaAssistencia';
+import { indicadorHistoricoCadunico, linkHistoricoCadunico } from '../cadunico_historico';
 
 /* ============================== básicos ============================== */
 
@@ -653,7 +654,7 @@ function PainelCorpo({ c }: { c: Ctx }) {
                   );
                 })}
               </div>
-              {fo === 'cadunico' && comps.length <= 1 && <p className="as-retrato">{t('Retrato cadastral; histórico ainda indisponível.', 'Registry snapshot; history not yet available.')}</p>}
+              {fo === 'cadunico' && comps.length <= 1 && <p className="as-retrato">{t('Os perfis abaixo são o retrato cadastral atual. ', 'The profiles below show the current registry snapshot. ')}<Link to={linkHistoricoCadunico(c.sp)}>{t('Ver histórico de famílias e pessoas: municípios de SP e famílias no Brasil →', 'View family and people history: SP municipalities and families in Brazil →')}</Link></p>}
               {fo === 'pbf' && <p className="as-retrato">{t('Reúne a folha mensal do MDS e os pagamentos da CGU, que são séries diferentes, com datas próprias. Famílias da folha não são os responsáveis pagos nos pagamentos CGU.', 'Combines the MDS monthly payroll and CGU payments, which are different series with their own dates. Families in the payroll are not the guardians paid in the CGU payments.')}</p>}
               {fo === 'bpc' && <p className="as-retrato">{t('Idosos e pessoas com deficiência: tipos indisponíveis (a fonte não traz a espécie do benefício e eles não são inferidos).', 'Older adults and people with disabilities: types unavailable (the source does not carry the benefit type and they are not inferred).')}</p>}
             </section>
@@ -672,7 +673,7 @@ function PainelCorpo({ c }: { c: Ctx }) {
               <p>{descInd(sel)}</p>
             </div>
             <div className="as-atalhos">
-              <Link to={c.link(PATH.evolucao, { indicador: sel.id })}>{t('Evolução', 'Trend')}</Link>
+              <Link to={indicadorHistoricoCadunico[sel.id] ? linkHistoricoCadunico(c.sp, indicadorHistoricoCadunico[sel.id]) : c.link(PATH.evolucao, { indicador: sel.id })}>{t('Evolução', 'Trend')}</Link>
               <Link to={c.link(PATH.rankings, { indicador: sel.id })}>{t('Ranking', 'Ranking')}</Link>
               <Link to={c.link(PATH.tabela, { indicador: sel.id, fonte: sel.fonte })}>{t('Tabela', 'Table')}</Link>
             </div>
@@ -908,7 +909,7 @@ function EvolucaoCorpo({ c }: { c: Ctx }) {
         {!carregando && !erro && g.dados && (
           unico ? (
             <>
-              <p className="as-resumo"><strong>{fonte === 'cadunico' ? t('Retrato cadastral; histórico ainda indisponível.', 'Registry snapshot; history not yet available.') : t('Este indicador tem um único mês publicado.', 'This indicator has a single published month.')}</strong>{' '}
+              <p className="as-resumo"><strong>{fonte === 'cadunico' ? t('Este recorte contém apenas o retrato cadastral atual.', 'This selection contains only the current registry snapshot.') : t('Este indicador tem um único mês publicado.', 'This indicator has a single published month.')}</strong>{' '}
                 {ultimo ? t(`Único mês disponível: ${mesSocial(ultimo.competencia)}.`, `Only month available: ${mesSocial(ultimo.competencia)}.`) : ''}</p>
               {ultimo && <p className="as-grande" style={{ fontSize: 26, fontWeight: 650, margin: '4px 0' }}><Val i={ind} v={valDe(ultimo, ind.id)} cond={condDe(ultimo, ind.id)} longo /></p>}
             </>

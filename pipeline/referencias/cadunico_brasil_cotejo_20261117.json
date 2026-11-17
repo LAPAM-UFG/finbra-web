@@ -1,0 +1,669 @@
+{
+  "url": "https://aplicacoes.cidadania.gov.br/vis/data3/v.php?q%5B%5D=oNOclsLerpibuKep3bV%2Bgmhi05Kv2rmg2a19ZW51ZXKmaX6JaV2Jl2CacWCNrMmim66Wp9icrrJyk7jNps94mb7nwJl3g5ub5ayyiXKgzM6vuADtyuC%2Fo1y8pK7apW2ynE29wqAt6p%2FG3MBUn6mZm%2Bytv6%2BbjsqBodlddr7frqewuqRaPNO7t5qc09Fu5rmvmA%3D%3D",
+  "consultado_em": "2026-11-17",
+  "modo": "Tabela da página oficial obtida pelo índice público de busca; o acesso direto redireciona à manutenção. Usada para cotejo de contagens e referências, sem dados pessoais.",
+  "referencias": [
+    {
+      "competencia": 201208,
+      "familias": 24201831
+    },
+    {
+      "competencia": 201209,
+      "familias": 24489009
+    },
+    {
+      "competencia": 201210,
+      "familias": 24689683
+    },
+    {
+      "competencia": 201211,
+      "familias": 24862456
+    },
+    {
+      "competencia": 201212,
+      "familias": 25063802
+    },
+    {
+      "competencia": 201301,
+      "familias": 25172131
+    },
+    {
+      "competencia": 201302,
+      "familias": 25319728
+    },
+    {
+      "competencia": 201303,
+      "familias": 25385573
+    },
+    {
+      "competencia": 201304,
+      "familias": 25687268
+    },
+    {
+      "competencia": 201305,
+      "familias": 25800472
+    },
+    {
+      "competencia": 201306,
+      "familias": 25991694
+    },
+    {
+      "competencia": 201307,
+      "familias": 26228217
+    },
+    {
+      "competencia": 201308,
+      "familias": 26461693
+    },
+    {
+      "competencia": 201309,
+      "familias": 26666907
+    },
+    {
+      "competencia": 201310,
+      "familias": 26844667
+    },
+    {
+      "competencia": 201311,
+      "familias": 27037821
+    },
+    {
+      "competencia": 201312,
+      "familias": 27194588
+    },
+    {
+      "competencia": 201401,
+      "familias": 27294078
+    },
+    {
+      "competencia": 201402,
+      "familias": 27480767
+    },
+    {
+      "competencia": 201403,
+      "familias": 27708136
+    },
+    {
+      "competencia": 201404,
+      "familias": 27884336
+    },
+    {
+      "competencia": 201405,
+      "familias": 28018423
+    },
+    {
+      "competencia": 201406,
+      "familias": 28227088
+    },
+    {
+      "competencia": 201407,
+      "familias": 28400619
+    },
+    {
+      "competencia": 201408,
+      "familias": 28644611
+    },
+    {
+      "competencia": 201409,
+      "familias": 28726586
+    },
+    {
+      "competencia": 201410,
+      "familias": 28864998
+    },
+    {
+      "competencia": 201411,
+      "familias": 29012262
+    },
+    {
+      "competencia": 201412,
+      "familias": 29164446
+    },
+    {
+      "competencia": 201501,
+      "familias": 26660629
+    },
+    {
+      "competencia": 201502,
+      "familias": 26840512
+    },
+    {
+      "competencia": 201503,
+      "familias": 27037471
+    },
+    {
+      "competencia": 201504,
+      "familias": 27189653
+    },
+    {
+      "competencia": 201505,
+      "familias": 27368455
+    },
+    {
+      "competencia": 201506,
+      "familias": 27506752
+    },
+    {
+      "competencia": 201507,
+      "familias": 26483636
+    },
+    {
+      "competencia": 201508,
+      "familias": 26687913
+    },
+    {
+      "competencia": 201509,
+      "familias": 26850486
+    },
+    {
+      "competencia": 201510,
+      "familias": 27000748
+    },
+    {
+      "competencia": 201511,
+      "familias": 27150567
+    },
+    {
+      "competencia": 201512,
+      "familias": 27325069
+    },
+    {
+      "competencia": 201601,
+      "familias": 26145603
+    },
+    {
+      "competencia": 201602,
+      "familias": 26295124
+    },
+    {
+      "competencia": 201603,
+      "familias": 26504859
+    },
+    {
+      "competencia": 201604,
+      "familias": 26752115
+    },
+    {
+      "competencia": 201605,
+      "familias": 26957954
+    },
+    {
+      "competencia": 201606,
+      "familias": 27160008
+    },
+    {
+      "competencia": 201607,
+      "familias": 27392336
+    },
+    {
+      "competencia": 201608,
+      "familias": 27577027
+    },
+    {
+      "competencia": 201609,
+      "familias": 27745078
+    },
+    {
+      "competencia": 201610,
+      "familias": 27925293
+    },
+    {
+      "competencia": 201611,
+      "familias": 28045561
+    },
+    {
+      "competencia": 201612,
+      "familias": 26456063
+    },
+    {
+      "competencia": 201701,
+      "familias": 26589866
+    },
+    {
+      "competencia": 201702,
+      "familias": 26771992
+    },
+    {
+      "competencia": 201703,
+      "familias": 26979934
+    },
+    {
+      "competencia": 201704,
+      "familias": 27270427
+    },
+    {
+      "competencia": 201705,
+      "familias": 27509623
+    },
+    {
+      "competencia": 201706,
+      "familias": 27719440
+    },
+    {
+      "competencia": 201707,
+      "familias": 27976018
+    },
+    {
+      "competencia": 201708,
+      "familias": 28227835
+    },
+    {
+      "competencia": 201709,
+      "familias": 25598020
+    },
+    {
+      "competencia": 201710,
+      "familias": 26054041
+    },
+    {
+      "competencia": 201711,
+      "familias": 26458633
+    },
+    {
+      "competencia": 201712,
+      "familias": 26946898
+    },
+    {
+      "competencia": 201801,
+      "familias": 27294911
+    },
+    {
+      "competencia": 201802,
+      "familias": 27566806
+    },
+    {
+      "competencia": 201803,
+      "familias": 26698288
+    },
+    {
+      "competencia": 201804,
+      "familias": 27037383
+    },
+    {
+      "competencia": 201805,
+      "familias": 27465454
+    },
+    {
+      "competencia": 201806,
+      "familias": 27775454
+    },
+    {
+      "competencia": 201807,
+      "familias": 28016031
+    },
+    {
+      "competencia": 201808,
+      "familias": 26551733
+    },
+    {
+      "competencia": 201809,
+      "familias": 26925187
+    },
+    {
+      "competencia": 201810,
+      "familias": 27409237
+    },
+    {
+      "competencia": 201811,
+      "familias": 27755037
+    },
+    {
+      "competencia": 201812,
+      "familias": 26913731
+    },
+    {
+      "competencia": 201901,
+      "familias": 27313209
+    },
+    {
+      "competencia": 201902,
+      "familias": 27656256
+    },
+    {
+      "competencia": 201903,
+      "familias": 27928695
+    },
+    {
+      "competencia": 201904,
+      "familias": 27581649
+    },
+    {
+      "competencia": 201905,
+      "familias": 27906817
+    },
+    {
+      "competencia": 201906,
+      "familias": 28250663
+    },
+    {
+      "competencia": 201907,
+      "familias": 28523266
+    },
+    {
+      "competencia": 201908,
+      "familias": 28913303
+    },
+    {
+      "competencia": 201909,
+      "familias": 27796543
+    },
+    {
+      "competencia": 201910,
+      "familias": 28240279
+    },
+    {
+      "competencia": 201911,
+      "familias": 28564401
+    },
+    {
+      "competencia": 201912,
+      "familias": 28884000
+    },
+    {
+      "competencia": 202001,
+      "familias": 29080635
+    },
+    {
+      "competencia": 202002,
+      "familias": 28174603
+    },
+    {
+      "competencia": 202003,
+      "familias": 28484729
+    },
+    {
+      "competencia": 202004,
+      "familias": 28605430
+    },
+    {
+      "competencia": 202005,
+      "familias": 28782308
+    },
+    {
+      "competencia": 202006,
+      "familias": 28955032
+    },
+    {
+      "competencia": 202007,
+      "familias": 29122334
+    },
+    {
+      "competencia": 202008,
+      "familias": 29337569
+    },
+    {
+      "competencia": 202009,
+      "familias": 29511780
+    },
+    {
+      "competencia": 202010,
+      "familias": 29734614
+    },
+    {
+      "competencia": 202011,
+      "familias": 28680858
+    },
+    {
+      "competencia": 202012,
+      "familias": 28875190
+    },
+    {
+      "competencia": 202101,
+      "familias": 29054469
+    },
+    {
+      "competencia": 202102,
+      "familias": 29336969
+    },
+    {
+      "competencia": 202103,
+      "familias": 29592371
+    },
+    {
+      "competencia": 202104,
+      "familias": 29847849
+    },
+    {
+      "competencia": 202105,
+      "familias": 30087195
+    },
+    {
+      "competencia": 202106,
+      "familias": 30323524
+    },
+    {
+      "competencia": 202107,
+      "familias": 30646963
+    },
+    {
+      "competencia": 202108,
+      "familias": 30905999
+    },
+    {
+      "competencia": 202109,
+      "familias": 31159533
+    },
+    {
+      "competencia": 202110,
+      "familias": 31450267
+    },
+    {
+      "competencia": 202111,
+      "familias": 32166847
+    },
+    {
+      "competencia": 202112,
+      "familias": 32553506
+    },
+    {
+      "competencia": 202201,
+      "familias": 32889601
+    },
+    {
+      "competencia": 202202,
+      "familias": 33771329
+    },
+    {
+      "competencia": 202203,
+      "familias": 34243568
+    },
+    {
+      "competencia": 202204,
+      "familias": 35086638
+    },
+    {
+      "competencia": 202205,
+      "familias": 35754647
+    },
+    {
+      "competencia": 202206,
+      "familias": 36362548
+    },
+    {
+      "competencia": 202207,
+      "familias": 37118686
+    },
+    {
+      "competencia": 202208,
+      "familias": 38088297
+    },
+    {
+      "competencia": 202209,
+      "familias": 39032711
+    },
+    {
+      "competencia": 202210,
+      "familias": 40054367
+    },
+    {
+      "competencia": 202211,
+      "familias": 40719144
+    },
+    {
+      "competencia": 202212,
+      "familias": 41293865
+    },
+    {
+      "competencia": 202301,
+      "familias": 41519690
+    },
+    {
+      "competencia": 202302,
+      "familias": 41951403
+    },
+    {
+      "competencia": 202303,
+      "familias": 42288619
+    },
+    {
+      "competencia": 202304,
+      "familias": 41827355
+    },
+    {
+      "competencia": 202305,
+      "familias": 41902786
+    },
+    {
+      "competencia": 202306,
+      "familias": 42208065
+    },
+    {
+      "competencia": 202307,
+      "familias": 42533652
+    },
+    {
+      "competencia": 202308,
+      "familias": 42818208
+    },
+    {
+      "competencia": 202309,
+      "familias": 43122529
+    },
+    {
+      "competencia": 202310,
+      "familias": 43333790
+    },
+    {
+      "competencia": 202311,
+      "familias": 43579171
+    },
+    {
+      "competencia": 202312,
+      "familias": 43882020
+    },
+    {
+      "competencia": 202401,
+      "familias": 41745555
+    },
+    {
+      "competencia": 202402,
+      "familias": 41636739
+    },
+    {
+      "competencia": 202403,
+      "familias": 41950775
+    },
+    {
+      "competencia": 202404,
+      "familias": 42025329
+    },
+    {
+      "competencia": 202405,
+      "familias": 41811043
+    },
+    {
+      "competencia": 202406,
+      "familias": 41920523
+    },
+    {
+      "competencia": 202407,
+      "familias": 40436548
+    },
+    {
+      "competencia": 202408,
+      "familias": 40811422
+    },
+    {
+      "competencia": 202409,
+      "familias": 40444723
+    },
+    {
+      "competencia": 202410,
+      "familias": 40776532
+    },
+    {
+      "competencia": 202411,
+      "familias": 41112462
+    },
+    {
+      "competencia": 202412,
+      "familias": 41539082
+    },
+    {
+      "competencia": 202501,
+      "familias": 40652068
+    },
+    {
+      "competencia": 202502,
+      "familias": 40640792
+    },
+    {
+      "competencia": 202503,
+      "familias": 40820923
+    },
+    {
+      "competencia": 202505,
+      "familias": 41454440
+    },
+    {
+      "competencia": 202506,
+      "familias": 41763488
+    },
+    {
+      "competencia": 202507,
+      "familias": 41675612
+    },
+    {
+      "competencia": 202508,
+      "familias": 41096779
+    },
+    {
+      "competencia": 202509,
+      "familias": 41356636
+    },
+    {
+      "competencia": 202510,
+      "familias": 41523353
+    },
+    {
+      "competencia": 202511,
+      "familias": 41690377
+    },
+    {
+      "competencia": 202512,
+      "familias": 41753937
+    },
+    {
+      "competencia": 202601,
+      "familias": 41868646
+    },
+    {
+      "competencia": 202602,
+      "familias": 42228336
+    },
+    {
+      "competencia": 202603,
+      "familias": 42242445
+    },
+    {
+      "competencia": 202604,
+      "familias": 42438978
+    }
+  ],
+  "conferencia_final": {
+    "competencia": 202608,
+    "familias": 43218806,
+    "url": "https://cecad.cidadania.gov.br/painel01.php",
+    "consulta": "2026-11-17; página oficial indexada, referência de agosto de 2026"
+  }
+}

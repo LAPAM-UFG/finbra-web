@@ -79,6 +79,10 @@ const condicoes: Record<number, [string, string]> = {
     "Valor real ou IPCA indisponível nesta edição",
     "Real amount or IPCA unavailable in this edition",
   ],
+  22: [
+    'Total nacional publicado pela fonte, incluindo São Paulo',
+    'Published national total, including São Paulo',
+  ],
 };
 export const condicaoComparacao = (c: number) =>
   t(...(condicoes[c] ?? [String(c), String(c)]));

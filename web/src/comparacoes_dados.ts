@@ -53,6 +53,7 @@ export type DefComparacao = {
   marcador?: Record<string, string>;
   avaliacao?: boolean;
   edicoes?: unknown[];
+  historico_cadunico?: boolean;
 };
 export type SerieComparacao = {
   v: (number | null)[];
@@ -98,7 +99,17 @@ export type CatalogoComparacao = {
   indicadores: DefComparacao[];
   indices: Record<string, ObjetoComparacao>;
   quantidades: Record<string, number>;
+  downloads_historico?: (ObjetoComparacao & { formato: 'csv' | 'parquet' | 'dta' })[];
+  dicionario_historico?: ObjetoComparacao;
 };
+
+/** Downloads completos são opcionais e nunca são buscados ao abrir o painel. */
+export function enderecoDownloadHistorico(o: ObjetoComparacao): string {
+  if (!/^gold\/comparacoes\/cadunico_historico_[a-z0-9_]+\.(csv|parquet|dta|json)$/.test(o?.caminho) ||
+      !/^[a-f0-9]{64}$/.test(o?.sha256) || !Number.isSafeInteger(o?.bytes) || o.bytes < 1)
+    throw new Error('Arquivo do histórico inválido.');
+  return `${BASE_DADOS}${o.caminho}`;
+}
 type ManifestoComparacao = {
   versao: 1;
   geografia: ObjetoComparacao;
@@ -274,6 +285,17 @@ export function obterComparacoes(
     )
       throw new Error("Catálogo de outra área ou edição.");
     const ids = new Set<string>();
+    if (m.downloads_historico) {
+      if (area !== 'assistencia' || rede !== 'cadunico_historico' || !Array.isArray(m.downloads_historico) ||
+          m.downloads_historico.length !== 3 || new Set(m.downloads_historico.map(x => x.formato)).size !== 3)
+        throw new Error('Downloads do histórico inválidos.');
+      for (const o of m.downloads_historico) {
+        if (!['csv', 'parquet', 'dta'].includes(o.formato) || !o.caminho.endsWith('.' + o.formato)) throw new Error('Formato do histórico inválido.');
+        enderecoDownloadHistorico(o);
+      }
+      if (!m.dicionario_historico) throw new Error('Dicionário do histórico ausente.');
+      enderecoDownloadHistorico(m.dicionario_historico);
+    }
     for (const i of m.indicadores) {
       if (
         !/^[a-z][a-z0-9_]*$/.test(i.id) ||
@@ -303,7 +325,9 @@ export function obterComparacoes(
     // Revalida só as fontes deste painel. Uma nova edição nunca é misturada
     // silenciosamente com referências antigas; outras áreas não bloqueiam esta.
     const chaves =
-      area === "gestao"
+      area === 'assistencia' && rede === 'cadunico_historico'
+        ? [] // Catálogo independente, com distribuições Seade e cotejo MDS fixados por hash.
+        : area === "gestao"
         ? ["gold/munic/painel_respostas.parquet"]
         : area === "clima"
           ? [
@@ -428,6 +452,7 @@ export function validarSerieComparacao(
   s: SerieComparacao,
   tamanho: number,
   quantidade: number,
+  agregadoPublicado = false,
 ) {
   for (const a of [s.v, s.n, s.d, s.r].filter((a) => a !== undefined))
     if (!Array.isArray(a) || a.length !== tamanho || a.some((x) => !finito(x)))
@@ -435,7 +460,7 @@ export function validarSerieComparacao(
   if (
     !Array.isArray(s.c) ||
     s.c.length !== tamanho ||
-    s.c.some((c) => !Number.isInteger(c) || c < 0 || c > 21) ||
+    s.c.some((c) => !Number.isInteger(c) || c < 0 || c > (agregadoPublicado ? 22 : 21)) ||
     !Array.isArray(s.q) ||
     s.q.length !== tamanho ||
     s.q.some((q) => !Number.isInteger(q) || q < 0 || q > quantidade)
@@ -445,12 +470,13 @@ export function validarSerieComparacao(
     s.v.some(
       (v, k) =>
         (s.c[k] === 1 && v !== 0) ||
-        (v === null && [0, 1, 6, 11, 12, 16, 18].includes(s.c[k])),
+        (v === null && [0, 1, 6, 11, 12, 16, 18, 22].includes(s.c[k])) ||
+        (s.c[k] === 22 && (s.q[k] !== 0 || s.n[k] === null || s.d[k] === null || s.d[k]! <= 0)),
     )
   )
     throw new Error("Valor e condição divergentes.");
   if (s.com_ressalvas)
-    validarSerieComparacao(s.com_ressalvas, tamanho, quantidade);
+    validarSerieComparacao(s.com_ressalvas, tamanho, quantidade, agregadoPublicado);
 }
 export function obterGrupoComparacao(
   m: CatalogoComparacao,
@@ -486,6 +512,7 @@ export function obterGrupoComparacao(
           s,
           m.indicadores[k].periodos.length,
           x.quantidade,
+          m.area === 'assistencia' && m.rede === 'cadunico_historico' && grupo === 'BR' && m.indicadores[k].id === 'cad_hist_familias',
         ),
       );
       if (!["M", "E"].includes(terr.nivel))
@@ -493,8 +520,8 @@ export function obterGrupoComparacao(
           // Soma de um conjunto vazio é zero matemático, mas não é um componente
           // observado. Na consulta e exportação, referência sem base fica em branco.
           for (const y of [s, ...(s.com_ressalvas ? [s.com_ressalvas] : [])]) {
-            y.n = y.n.map((v, k) => (y.q[k] === 0 ? null : v));
-            y.d = y.d.map((v, k) => (y.q[k] === 0 ? null : v));
+            y.n = y.n.map((v, k) => (y.q[k] === 0 && y.c[k] !== 22 ? null : v));
+            y.d = y.d.map((v, k) => (y.q[k] === 0 && y.c[k] !== 22 ? null : v));
           }
         });
       return x;
