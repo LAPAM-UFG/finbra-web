@@ -68,7 +68,7 @@ const condicoes: Record<number, [string, string]> = {
   13: ["Sem remuneração válida", "No valid pay"],
   14: ["Sem vínculos na categoria", "No jobs in this category"],
   15: ["Remuneração não publicada", "Pay not published"],
-  16: ["Cobertura municipal incompleta", "Incomplete municipal coverage"],
+  16: ["Cobertura incompleta", "Incomplete coverage"],
   17: ["Resposta fora do previsto", "Unexpected response"],
   18: ["Ressalva de qualidade fiscal", "Fiscal data quality flag"],
   20: [
