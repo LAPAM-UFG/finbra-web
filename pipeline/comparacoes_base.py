@@ -20,6 +20,47 @@ def sha(b):
     return hashlib.sha256(b).hexdigest()
 
 
+FONTES_GLOBAIS_COMPARACOES = {
+    "trabalho": ["rais", "caged", "rais_perfis"],
+    "saude": [
+        "cnes",
+        "icsap",
+        "oncologia",
+        "populacao_svs",
+        "resp",
+        "sih",
+        "sim",
+        "sinan",
+        "sinasc",
+        "siscan",
+        "aps",
+        "fns",
+        "vacinacao",
+    ],
+    "assistencia": ["assistencia"],
+}
+
+
+def compatibilidade_global(manifesto):
+    """Descritores das fontes efetivamente usadas, sem depender do restante do gold.
+
+    JSON como texto mantém os descritores de outros prefixos fora do grafo CAS
+    das comparações. O cliente ignora datas de processamento e ordena as chaves.
+    """
+    return {
+        area: dict(
+            fontes=chaves,
+            json_referencia=json.dumps(
+                {k: manifesto["fontes"].get(k) for k in chaves},
+                ensure_ascii=False,
+                separators=(",", ":"),
+                allow_nan=False,
+            ),
+        )
+        for area, chaves in FONTES_GLOBAIS_COMPARACOES.items()
+    }
+
+
 def numeros(a):
     return [float(x) if math.isfinite(float(x)) else None for x in a]
 
@@ -491,6 +532,9 @@ class Gravador:
             geografia=self.georef,
             catalogos=self.catalogos,
             origens=self.origens,
+            compatibilidade_global=compatibilidade_global(
+                json.loads((self.rev / "global_base.json").read_bytes())
+            ),
             observacoes=[
                 "Valores relativos ou intensivos, conforme a definição de cada indicador.",
                 "Associação regional atual do IBGE (divisão 2017), aplicada à série sem reconstruir limites históricos.",

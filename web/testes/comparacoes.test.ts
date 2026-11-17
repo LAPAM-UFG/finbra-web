@@ -24,10 +24,75 @@ test("fluxo anual parcial não é apresentado como crescimento contra um ano com
 });
 import {
   validarSerieComparacao,
+  fontesGlobaisCompativeis,
   type DefComparacao,
   type GeografiaComparacao,
   type LinhaComparacao,
 } from "../src/comparacoes_dados";
+
+test("atualização fiscal, ordem das chaves e datas de processamento não invalidam outra área", () => {
+  const fontes = {
+    rais: { anos: [2024], processado_em: "antes" },
+    caged: { ate: 202609 },
+    rais_perfis: {
+      indice: { caminho: "gold/perfil.json", sha256: "original" },
+    },
+  };
+  const ref = {
+    fontes: Object.keys(fontes),
+    json_referencia: JSON.stringify(fontes),
+  };
+  const atual = {
+    gerado_em: "depois",
+    base_ipca: 2026,
+    fontes: {
+      siconfi: { anos: [2025] },
+      rais_perfis: fontes.rais_perfis,
+      caged: fontes.caged,
+      rais: { processado_em: "depois", anos: [2024] },
+    },
+  };
+  assert.equal(fontesGlobaisCompativeis(atual, ref), true);
+  assert.equal(
+    fontesGlobaisCompativeis(
+      {
+        ...atual,
+        fontes: {
+          ...atual.fontes,
+          rais_perfis: {
+            indice: { caminho: "gold/perfil.json", sha256: "novo" },
+          },
+        },
+      },
+      ref,
+    ),
+    false,
+  );
+});
+
+test("fonte ausente e referência de compatibilidade inválida continuam recusadas", () => {
+  const ref = {
+    fontes: ["assistencia"],
+    json_referencia: JSON.stringify({
+      assistencia: { versao: 1, abertura: { sha256: "original" } },
+    }),
+  };
+  assert.equal(fontesGlobaisCompativeis({ fontes: {} }, ref), false);
+  assert.equal(
+    fontesGlobaisCompativeis(
+      { fontes: {} },
+      { fontes: [], json_referencia: "{}" },
+    ),
+    false,
+  );
+  assert.equal(
+    fontesGlobaisCompativeis(
+      { fontes: {} },
+      { ...ref, json_referencia: "truncado" },
+    ),
+    false,
+  );
+});
 
 test("o gráfico separa anos parciais e aplica as quebras da RAIS somente à RAIS", () => {
   const caged = {

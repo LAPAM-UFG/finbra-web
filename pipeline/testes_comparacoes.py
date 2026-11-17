@@ -4,13 +4,137 @@ import unittest
 import json, tempfile
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 import numpy as np
-from comparacoes_base import Quadro, por_base, Gravador
+from comparacoes_base import Quadro, por_base, Gravador, compatibilidade_global
 from comparacoes_saude import montar, definicao
 from comparacoes import Comparacoes
 
 
 class TestesComparacao(unittest.TestCase):
+    def test_envio_comparacoes_inclui_ndjson_e_publica_manifesto_por_ultimo(self):
+        import r2
+
+        enviados = []
+
+        def upload(local, bucket, chave, **kwargs):
+            enviados.append((chave, kwargs["ExtraArgs"]))
+
+        with tempfile.TemporaryDirectory() as td, patch.object(
+            r2, "remotos", return_value={}
+        ), patch("builtins.print"):
+            raiz = Path(td)
+            dest = raiz / "gold/comparacoes"
+            dest.mkdir(parents=True)
+            for nome in ["manifesto.json", "z_indice.json", "series.ndjson"]:
+                (dest / nome).write_text("{}\n")
+            r2.enviar(SimpleNamespace(upload_file=upload), "teste", ["gold"], raiz=raiz)
+            self.assertEqual(
+                [x[0] for x in enviados],
+                [
+                    "gold/comparacoes/series.ndjson",
+                    "gold/comparacoes/z_indice.json",
+                    "gold/comparacoes/manifesto.json",
+                ],
+            )
+            self.assertEqual(enviados[-1][1]["CacheControl"], "no-cache")
+            self.assertIn("immutable", enviados[0][1]["CacheControl"])
+            enviados.clear()
+
+            def falhar(local, bucket, chave, **kwargs):
+                enviados.append(chave)
+                raise RuntimeError("envio interrompido")
+
+            with self.assertRaisesRegex(RuntimeError, "envio interrompido"):
+                r2.enviar(
+                    SimpleNamespace(upload_file=falhar), "teste", ["gold"], raiz=raiz
+                )
+            self.assertNotIn("gold/comparacoes/manifesto.json", enviados)
+
+    def test_envio_reconhece_md5_de_objeto_comparativo_publicado_sem_metadado_customizado(
+        self,
+    ):
+        import r2
+
+        with tempfile.TemporaryDirectory() as td, patch("builtins.print"):
+            raiz = Path(td)
+            dest = raiz / "gold/comparacoes"
+            dest.mkdir(parents=True)
+            arq = dest / "series.ndjson"
+            arq.write_bytes(b"{}\n")
+            chave = "gold/comparacoes/series.ndjson"
+            with patch.object(r2, "remotos", return_value={chave: {"Size": 3}}):
+                s3 = SimpleNamespace(
+                    head_object=lambda **kw: {"ETag": '"' + r2.md5(arq) + '"'},
+                    upload_file=lambda *a, **kw: self.fail(
+                        "objeto idêntico não deve subir novamente"
+                    ),
+                )
+                r2.enviar(s3, "teste", ["gold"], raiz=raiz)
+
+    def test_assinatura_global_preserva_descritores_sem_criar_referencias_cas_externas(
+        self,
+    ):
+        fontes = {
+            "rais": {"anos": [2024]},
+            "assistencia": {
+                "abertura": {
+                    "caminho": "gold/assistencia/indice.json",
+                    "sha256": "original",
+                    "bytes": 2,
+                }
+            },
+        }
+        out = compatibilidade_global({"fontes": fontes})
+        self.assertEqual(out["trabalho"]["fontes"], ["rais", "caged", "rais_perfis"])
+        self.assertIsInstance(out["assistencia"]["json_referencia"], str)
+        self.assertEqual(
+            json.loads(out["assistencia"]["json_referencia"]),
+            {"assistencia": fontes["assistencia"]},
+        )
+
+    def test_sync_fiscal_ignora_comparacoes_e_preserva_opcao_de_microdados(self):
+        import r2
+
+        objetos = {
+            "gold/manifesto.json": {"Size": 2},
+            "gold/comparacoes/manifesto.json": {"Size": 2},
+            "gold/comparacoes/series.ndjson": {"Size": 3},
+            "silver/trabalho/micro/teste.parquet": {"Size": 3},
+        }
+        baixados = []
+
+        def download(bucket, chave, destino, **kwargs):
+            baixados.append(chave)
+            Path(destino).write_bytes(b"x" * objetos[chave]["Size"])
+
+        with tempfile.TemporaryDirectory() as td, patch.object(
+            r2, "remotos", return_value=objetos
+        ), patch("builtins.print"):
+            raiz = Path(td)
+            s3 = SimpleNamespace(download_file=download)
+            r2.baixar(
+                s3,
+                "teste",
+                ["silver", "gold"],
+                raiz=raiz,
+                ignorar=("gold/comparacoes/*",),
+            )
+            self.assertEqual(baixados, ["gold/manifesto.json"])
+            self.assertFalse((raiz / "gold/comparacoes").exists())
+            self.assertFalse((raiz / "silver/trabalho/micro").exists())
+            baixados.clear()
+            r2.baixar(
+                s3,
+                "teste",
+                ["silver", "gold"],
+                com_micro=True,
+                raiz=raiz,
+                ignorar=("gold/comparacoes/*",),
+            )
+            self.assertEqual(baixados, ["silver/trabalho/micro/teste.parquet"])
+            self.assertEqual((raiz / "gold/manifesto.json").read_bytes(), b"xx")
+
     def test_razao_publicada_com_componente_protegido_nao_reconstroi_contagem(self):
         q = self.quadro([10, 249], [5, np.nan])
         q.definicao.update(metodo_referencia="razao", fator=1)

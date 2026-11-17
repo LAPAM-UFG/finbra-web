@@ -60,7 +60,7 @@ jobs:
           echo "anos=$anos" >> "$GITHUB_OUTPUT"
 
       - name: Baixar camadas atuais do R2
-        run: python pipeline/r2.py baixar --camadas silver gold
+        run: python pipeline/r2.py baixar --camadas silver gold --ignorar "gold/comparacoes/*"
 
       - name: Extrair da API do Tesouro
         run: python pipeline/extract.py --anos ${{ steps.anos.outputs.anos }} --atualizar
@@ -69,7 +69,7 @@ jobs:
         run: python pipeline/processar.py --anos ${{ steps.anos.outputs.anos }}
 
       - name: Enviar ao R2
-        run: python pipeline/r2.py enviar
+        run: python pipeline/r2.py enviar --ignorar "gold/comparacoes/*"
 
       - name: Guardar logs e validação
         if: always()

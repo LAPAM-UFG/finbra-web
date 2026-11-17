@@ -78,3 +78,14 @@ No navegador, um índice pequeno localiza a série do território ou a lista de 
 indicador/período. Cada leitura Range exige HTTP 206, tamanho, Content-Range e
 SHA-256 corretos. O motor SQL e os microdados não são iniciados nessas páginas.
 Fonte atualizada exige preparar uma nova edição; caches nunca misturam catálogos.
+No manifesto geral, a compatibilidade usa somente os descritores das fontes que
+alimentam cada área; datas de processamento e alterações fiscais não invalidam
+Saúde, Trabalho ou Assistência. Mudanças nos arquivos, métodos ou cobertura das
+próprias fontes continuam exigindo nova edição. O manifesto registra esses
+descritores em `compatibilidade_global`; edições antigas mantêm a checagem por SHA.
+As duas rotinas fiscais mensais ignoram `gold/comparacoes/*` no download e no
+envio: não precisam baixar essa edição e não podem republicar seu ponteiro antigo.
+O envio de um candidato isolado por `r2.py enviar --raiz CANDIDATO --camadas gold`,
+sem `--limpar`, inclui NDJSON e deixa `gold/comparacoes/manifesto.json` por último,
+depois de todos os dados e índices. Valide o candidato e confira as fontes remotas
+antes desse envio; preserve a edição anterior para reversão.

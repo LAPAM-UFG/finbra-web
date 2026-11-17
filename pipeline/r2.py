@@ -80,6 +80,7 @@ def enviar(s3, bucket, camadas, limpar=False, ignorar=(), raiz=DATA):
     locais = [p for c in camadas for p in sorted((raiz / c).rglob("*")) if p.is_file() and (
         p.suffix in (".parquet", ".csv", ".json") or
         (p.is_relative_to(raiz / "gold/saneamento") and p.suffix == ".ndjson") or
+        (p.is_relative_to(raiz / "gold/comparacoes") and p.suffix == ".ndjson") or
         (p.is_relative_to(raiz / "gold/abertura") and p.suffix in (".bin", ".gz"))
     )]
     # caminhos que não sobem (ex.: dados ainda incompletos): padrões como silver/lrf/* ou gold/lrf.parquet
@@ -90,16 +91,22 @@ def enviar(s3, bucket, camadas, limpar=False, ignorar=(), raiz=DATA):
         chave = caminho.relative_to(raiz).as_posix()
         soma = md5(caminho)
         if chave in existentes and existentes[chave]["Size"] == caminho.stat().st_size:
-            meta = s3.head_object(Bucket=bucket, Key=chave).get("Metadata", {})
-            if meta.get("md5") == soma:
+            cabecalho = s3.head_object(Bucket=bucket, Key=chave)
+            meta = cabecalho.get("Metadata", {})
+            if meta.get("md5") == soma or (chave.startswith("gold/comparacoes/") and cabecalho.get("ETag") == '"' + soma + '"'):
                 return "igual", chave, 0
-        s3.upload_file(str(caminho), bucket, chave, Config=TRANSFERENCIA, ExtraArgs={"Metadata": {"md5": soma}})
+        extras = {"Metadata": {"md5": soma}}
+        if chave.startswith("gold/comparacoes/"):
+            extras["CacheControl"] = "no-cache" if chave == "gold/comparacoes/manifesto.json" else "public, max-age=31536000, immutable"
+        s3.upload_file(str(caminho), bucket, chave, Config=TRANSFERENCIA, ExtraArgs=extras)
         return "enviado", chave, caminho.stat().st_size
 
     # os .json (manifesto, índice dos microdados) apontam para os outros arquivos: sobem depois deles
     with ThreadPoolExecutor(max_workers=6) as pool:
         resultados = list(pool.map(um, [p for p in locais if p.suffix != ".json"]))
-        resultados += list(pool.map(um, [p for p in locais if p.suffix == ".json"]))
+        resultados += list(pool.map(um, [p for p in locais if p.suffix == ".json" and p.relative_to(raiz).as_posix() != "gold/comparacoes/manifesto.json"]))
+    # O ponteiro das comparações só pode aparecer depois de todos os seus índices.
+    resultados += [um(p) for p in locais if p.relative_to(raiz).as_posix() == "gold/comparacoes/manifesto.json"]
     enviados = [r for r in resultados if r[0] == "enviado"]
     for _, chave, tamanho in enviados:
         print(f"  enviado  {chave}  ({tamanho / 1e6:.1f} MB)")
@@ -118,9 +125,9 @@ def enviar(s3, bucket, camadas, limpar=False, ignorar=(), raiz=DATA):
 MICRO = "silver/trabalho/micro/"  # microdados da RAIS e do CAGED (~33 GB): só descem com --com-micro
 
 
-def baixar(s3, bucket, camadas, com_micro=False, raiz=DATA):
+def baixar(s3, bucket, camadas, com_micro=False, raiz=DATA, ignorar=()):
     objetos = {k: v for c in camadas for k, v in remotos(s3, bucket, f"{c}/").items()
-               if com_micro or not k.startswith(MICRO)}
+               if (com_micro or not k.startswith(MICRO)) and not any(fnmatch(k, g) for g in ignorar)}
 
     def um(item):
         chave, obj = item
@@ -156,7 +163,7 @@ def main():
     p.add_argument("--camadas", nargs="+", choices=CAMADAS, default=list(CAMADAS))
     p.add_argument("--limpar", action="store_true",
                    help="com enviar: apaga do bucket os arquivos dessas camadas que não existem localmente")
-    p.add_argument("--ignorar", nargs="+", default=[], help="com enviar: padrões de caminho que não sobem (ex.: 'silver/lrf/*')")
+    p.add_argument("--ignorar", nargs="+", default=[], help="padrões de caminho que não são baixados nem enviados (ex.: 'silver/lrf/*')")
     p.add_argument("--raiz", type=Path, default=DATA,
                    help="pasta com as camadas (ex.: E:/finbra/micro para os microdados)")
     p.add_argument("--com-micro", action="store_true",
@@ -172,7 +179,7 @@ def main():
     elif args.acao == "enviar":
         enviar(s3, bucket, args.camadas, args.limpar, args.ignorar, args.raiz)
     else:
-        baixar(s3, bucket, args.camadas, args.com_micro, args.raiz)
+        baixar(s3, bucket, args.camadas, args.com_micro, args.raiz, ignorar=args.ignorar)
 
 
 if __name__ == "__main__":

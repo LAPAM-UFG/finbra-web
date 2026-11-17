@@ -104,7 +104,60 @@ type ManifestoComparacao = {
   geografia: ObjetoComparacao;
   catalogos: Record<string, ObjetoComparacao>;
   origens: Record<string, { sha256: string; bytes: number; etag?: string }>;
+  compatibilidade_global?: Partial<
+    Record<AreaComparacao, CompatibilidadeGlobal>
+  >;
 };
+
+type CompatibilidadeGlobal = { fontes: string[]; json_referencia: string };
+
+/** Uma retificação fiscal não altera as fontes de Saúde, Trabalho ou Assistência. */
+export function fontesGlobaisCompativeis(
+  manifesto: unknown,
+  referencia: CompatibilidadeGlobal,
+): boolean {
+  try {
+    if (
+      !referencia ||
+      !Array.isArray(referencia.fontes) ||
+      !referencia.fontes.length ||
+      referencia.fontes.some((k) => typeof k !== "string" || !k) ||
+      !manifesto ||
+      typeof manifesto !== "object" ||
+      Array.isArray(manifesto)
+    )
+      return false;
+    const fontes = (manifesto as { fontes?: Record<string, unknown> }).fontes;
+    if (!fontes || typeof fontes !== "object" || Array.isArray(fontes))
+      return false;
+    const volateis = new Set([
+      "gerado_em",
+      "geradoEm",
+      "processado_em",
+      "atualizado_em",
+    ]);
+    const ordenar = (v: unknown): unknown => {
+      if (Array.isArray(v)) return v.map(ordenar);
+      if (v && typeof v === "object")
+        return Object.fromEntries(
+          Object.entries(v)
+            .filter(([k]) => !volateis.has(k))
+            .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+            .map(([k, x]) => [k, ordenar(x)]),
+        );
+      return v;
+    };
+    const esperado = JSON.parse(referencia.json_referencia);
+    if (!esperado || typeof esperado !== "object" || Array.isArray(esperado))
+      return false;
+    const atual = Object.fromEntries(
+      referencia.fontes.map((k) => [k, fontes[k] ?? null]),
+    );
+    return JSON.stringify(ordenar(atual)) === JSON.stringify(ordenar(esperado));
+  } catch {
+    return false;
+  }
+}
 type IndiceGrupo = {
   versao: 1;
   area: AreaComparacao;
@@ -280,20 +333,34 @@ export function obterComparacoes(
       chaves
         .filter((k) => raiz.origens[k])
         .map((k) =>
-          memo(`origem:${k}`, async () => {
+          memo(`origem:${area}:${k}`, async () => {
             const origem = raiz.origens[k];
             const resposta = await fetch(`${BASE_DADOS}${k}`, {
               cache: "no-cache",
               ...(origem.etag ? { method: "HEAD" } : {}),
             });
-            const ok =
-              resposta.ok &&
-              (origem.etag
-                ? resposta.headers.get("ETag") === origem.etag &&
-                  Number(resposta.headers.get("Content-Length")) ===
-                    origem.bytes
-                : (await digest(await resposta.arrayBuffer())) ===
-                  origem.sha256);
+            let ok = resposta.ok;
+            if (ok && origem.etag) {
+              ok =
+                resposta.headers.get("ETag") === origem.etag &&
+                Number(resposta.headers.get("Content-Length")) === origem.bytes;
+            } else if (ok) {
+              const bytes = await resposta.arrayBuffer();
+              const compatibilidade =
+                k === "gold/manifesto.json"
+                  ? raiz.compatibilidade_global?.[area]
+                  : undefined;
+              if (compatibilidade) {
+                try {
+                  ok = fontesGlobaisCompativeis(
+                    JSON.parse(new TextDecoder().decode(bytes)),
+                    compatibilidade,
+                  );
+                } catch {
+                  ok = false;
+                }
+              } else ok = (await digest(bytes)) === origem.sha256;
+            }
             if (!ok)
               throw new Error(
                 "A fonte foi atualizada. As comparações precisam ser preparadas para a nova edição.",
