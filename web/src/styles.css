@@ -32,6 +32,9 @@
   --sombra: 0 1px 2px rgba(15, 30, 44, 0.05);
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
+.atalho-comparacoes { display:flex; flex-wrap:wrap; align-items:center; gap:.4rem 1rem; padding:.8rem 1rem; margin-bottom:1rem; border:1px solid var(--borda); border-radius:.6rem; background:var(--superficie); }
+.atalho-comparacoes a { font-weight:600; }
+.atalho-comparacoes span { color:var(--tinta-2); font-size:.82rem; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
     color-scheme: dark;

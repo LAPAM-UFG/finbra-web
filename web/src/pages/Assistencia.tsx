@@ -414,7 +414,9 @@ const SEM_DADO = () => t('sem dado publicado', 'no data published');
 const SEM_COMPARAVEL = () => t('sem dado comparável nesse mês', 'no comparable data for that month');
 
 /** Valor de comparação (UF ou Brasil) exatamente na mesma competência do território. */
-function CelulaComp({ i, gr, ref0 }: { i: IndicadorSocial; gr: GrupoSocial | undefined; ref0: LinhaSocial | undefined }) {
+const comparavelSocial = (i: IndicadorSocial) => i.unidade !== 'numero' && !(i.unidade === 'moeda' && i.acumulavel);
+function CelulaComp({ i, gr, ref0, c }: { i: IndicadorSocial; gr: GrupoSocial | undefined; ref0: LinhaSocial | undefined; c: Ctx }) {
+  if (!comparavelSocial(i)) return <Link to={c.link('/assistencia/comparar', { indicador: i.id })}>{t('Comparar por habitante', 'Compare per inhabitant')}</Link>;
   if (!ref0) return <span className="as-nulo">–</span>;
   const l = linInd(gr, i, ref0.competencia);
   return l ? <Val i={i} v={valDe(l, i.id)} cond={condDe(l, i.id)} longo /> : <span className="as-nulo">{SEM_COMPARAVEL()}</span>;
@@ -520,8 +522,8 @@ function TemaCorpo({ itens, gT, gU, gB, sel, onSel, c }: {
                   </td>
                   <td className="as-num">{l ? mesSocial(l.competencia) : '–'}</td>
                   <td className="as-num">{l ? <Val i={i} v={valDe(l, i.id)} cond={condDe(l, i.id)} longo /> : <span className="as-nulo">{c.f.mes ? t(`sem dado em ${mesSocial(c.f.mes)}`, `no data for ${mesSocial(c.f.mes)}`) : SEM_DADO()}</span>}</td>
-                  {mostraU && <td className="as-num"><CelulaComp i={i} gr={gU} ref0={l} /></td>}
-                  {mostraB && <td className="as-num"><CelulaComp i={i} gr={gB} ref0={l} /></td>}
+                  {mostraU && <td className="as-num"><CelulaComp i={i} gr={gU} ref0={l} c={c} /></td>}
+                  {mostraB && <td className="as-num"><CelulaComp i={i} gr={gB} ref0={l} c={c} /></td>}
                 </tr>
               );
             })}
@@ -636,7 +638,7 @@ function PainelCorpo({ c }: { c: Ctx }) {
                 {dest.map((i, k) => {
                   const l = linhasD[k]; const v = valDe(l, i.id);
                   const comp = (gr: GrupoSocial | undefined, rot: string) => {
-                    if (!gr || !l) return null;
+                    if (!gr || !l || !comparavelSocial(i)) return null;
                     const lc = linInd(gr, i, l.competencia);
                     return lc ? `${rot}: ${valDe(lc, i.id) === null ? (condDe(lc, i.id) ? condTxt(condDe(lc, i.id)!) : '–') : fmt(i, valDe(lc, i.id))}` : `${rot}: ${SEM_COMPARAVEL()}`;
                   };
@@ -806,8 +808,8 @@ function EvolucaoCorpo({ c }: { c: Ctx }) {
   const ind = indSelecionado(c)!;
   const fonte = ind.fonte;
   const cmp = (c.sp.get('cmp') ?? '').split(',');
-  const podeUf = f.terr.nivel === 'M' && !!f.terr.uf;
-  const podeBr = f.terr.nivel !== 'BR';
+  const podeUf = comparavelSocial(ind) && f.terr.nivel === 'M' && !!f.terr.uf;
+  const podeBr = comparavelSocial(ind) && f.terr.nivel !== 'BR';
   const usaUf = podeUf && cmp.includes('uf'); const usaBr = podeBr && cmp.includes('br');
   const g = useGrupo(f.terr.grupo);
   const gu = useGrupo(usaUf ? f.terr.uf : null);
@@ -912,7 +914,7 @@ function EvolucaoCorpo({ c }: { c: Ctx }) {
             </>
           ) : (
             <>
-              {(usaUf || usaBr) && <p className="as-resumo">{t('Atenção: estado e Brasil têm valores muito maiores que um município; a linha do território pode parecer achatada.', 'Note: states and Brazil have much larger values than a municipality; the territory line may look flat.')}</p>}
+              {!comparavelSocial(ind) && <p className="as-resumo"><Link to={c.link('/assistencia/comparar', { indicador: ind.id })}>{t('Comparar com regiões, estado e Brasil em valores por habitante', 'Compare with regions, state and Brazil in values per inhabitant')}</Link></p>}
               <Grafico opcao={opcao} altura={320} nome={`assistencia_${ind.id}`}
                 descricao={t('Gráfico de linha mensal; lacunas indicam meses sem valor. Os valores estão na tabela abaixo.', 'Monthly line chart; gaps mean months without a value. Values are in the table below.')} />
               <p className="as-resumo">{t('Meses sem valor aparecem como lacunas na linha, não como zero.', 'Months without a value appear as gaps in the line, not as zero.')}</p>

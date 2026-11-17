@@ -17,10 +17,11 @@ export function buscaEntreAreas(search: string, origem: Area, destino: Exclude<A
   if (origem === destino) {
     const chaves = origem === 'munic' ? ['pesq', 'uf', 'cod', 'ano'] : origem === 'clima' ? ['uf', 'cod', 'ano', 'variavel'] : origem === 'educacao' ? ['uf', 'cod', 'ente', 'ano', 'ind', 'rede'] : origem === 'saneamento' ? ['uf','cod','ente','ano','ind','ordem'] : origem === 'assistencia' ? ['uf', 'cod', 'mes', 'ano', 'ano_pib', 'medida'] : ['uf', 'ente', 'ano'];
     for (const k of chaves) if (atual.get(k)) saida.set(k, atual.get(k)!);
+    if (['financas', 'trabalho', 'saude'].includes(origem) && atual.get('cod') && !saida.has('ente')) saida.set('ente', atual.get('cod') === '5300108' ? '53' : atual.get('cod')!);
     return query(saida);
   }
   const porCod = origem === 'clima' || origem === 'munic' || origem === 'assistencia' || origem === 'educacao' || origem === 'saneamento';
-  const codigoPedido = (origem === 'educacao' || origem === 'saneamento' ? atual.get('cod') ?? atual.get('ente') : atual.get(porCod ? 'cod' : 'ente'))?.trim() ?? '';
+  const codigoPedido = (atual.get('cod') ?? atual.get(porCod ? 'cod' : 'ente') ?? atual.get('ente'))?.trim() ?? '';
   const ufPedida = (atual.get('uf') ?? '').trim().toUpperCase();
   const codigo = codigoPedido || (origem === 'munic' && atual.get('pesq') === 'estadic' && ufPedida in COD_UF ? String(COD_UF[ufPedida]) : '');
   const ufCodigo = ufPorCodigo.get(codigo) ?? (/^\d{7}$/.test(codigo) ? ufPorCodigo.get(codigo.slice(0, 2)) : undefined);

@@ -47,15 +47,16 @@ function EvolucaoRecorte({ escopo, rotulo }: { escopo: Params; rotulo: string })
   const anos = useAnosConsulta();
   const [indicador, setIndicador] = useState<'vinculos' | 'rem_real' | 'mulheres' | 'superior'>('vinculos');
   const [modo, setModo] = useState<Transformacao>('nivel');
+  const compararReferencias = indicador !== 'vinculos' || modo === 'indice' || modo === 'var_pct';
   const base = recorte.base && anos.includes(recorte.base) ? recorte.base : anos[0];
   const rec = { ...recorte, situacao: recorte.situacao || 'ativos' };
   const esc = escopo as Record<string, string | number>;
   const principal = useApi<SerieConsulta>('trab_consulta_serie', { ...paramsConsulta(esc, rec), agrupar: 'total' });
   const temListas = !!(Object.keys(rec.listas).length || rec.muns);
   const refUf = f.alvo && f.alvo.esfera === 'M' ? f.alvo.uf : null;
-  const ufSerie = useApi<SerieConsulta>(refUf ? 'trab_consulta_serie' : null, { ...paramsConsulta({ uf: refUf! }, rec), agrupar: 'total' });
+  const ufSerie = useApi<SerieConsulta>(refUf && compararReferencias ? 'trab_consulta_serie' : null, { ...paramsConsulta({ uf: refUf! }, rec), agrupar: 'total' });
   // o Brasil vem das tabelas pré-somadas, que não têm os filtros avançados: só entra quando o recorte é comparável
-  const brSerie = useApi<SerieConsulta>(Object.keys(esc).length && !temListas ? 'trab_consulta_serie' : null, { ...paramsConsulta({}, rec), agrupar: 'total' });
+  const brSerie = useApi<SerieConsulta>(compararReferencias && Object.keys(esc).length && !temListas ? 'trab_consulta_serie' : null, { ...paramsConsulta({}, rec), agrupar: 'total' });
   const percentual = indicador === 'mulheres' || indicador === 'superior';
   const valor = (s: SerieConsulta | undefined) => (s?.linhas ?? []).map((r) => {
     const fator = s!.fatores[Number(r.ano)];
@@ -70,8 +71,8 @@ function EvolucaoRecorte({ escopo, rotulo }: { escopo: Params; rotulo: string })
   };
   const series = [
     { nome: rotulo, valores: transformar(valor(principal.dados), anosS, modo, base, percentual) },
-    ...(refUf && ufSerie.dados ? [{ nome: refUf, valores: transformar(alinhar(ufSerie.dados), anosS, modo, base, percentual) }] : []),
-    ...(brSerie.dados ? [{ nome: t('Brasil', 'Brazil'), valores: transformar(alinhar(brSerie.dados), anosS, modo, base, percentual) }] : []),
+    ...(compararReferencias && refUf && ufSerie.dados ? [{ nome: refUf, valores: transformar(alinhar(ufSerie.dados), anosS, modo, base, percentual) }] : []),
+    ...(compararReferencias && brSerie.dados ? [{ nome: t('Brasil', 'Brazil'), valores: transformar(alinhar(brSerie.dados), anosS, modo, base, percentual) }] : []),
   ];
   const formato = modo === 'indice' ? (v: number) => numero1(v)
     : modo === 'var_pct' ? (v: number) => pct(v)
@@ -90,7 +91,7 @@ function EvolucaoRecorte({ escopo, rotulo }: { escopo: Params; rotulo: string })
       <div className="cabeca-cartao">
         <div>
           <h3>{t('Evolução do recorte da consulta', 'Recorte over time')}</h3>
-          <p className="desc">{nomeInd} · {nomeModo} · {rotulo}{refUf ? `, ${refUf}` : ''}{brSerie.dados ? t(' e Brasil', ' and Brazil') : ''}</p>
+          <p className="desc">{nomeInd} · {nomeModo} · {rotulo}{compararReferencias && refUf ? `, ${refUf}` : ''}{compararReferencias && brSerie.dados ? t(' e Brasil', ' and Brazil') : ''}</p>
         </div>
       </div>
       <EtiquetasRecorte recorte={recorte} definir={definir} />
@@ -120,6 +121,7 @@ function EvolucaoRecorte({ escopo, rotulo }: { escopo: Params; rotulo: string })
           </div>
         )}
       </div>
+      {!compararReferencias && <p className="nota-base">{t('Contagens e variações absolutas mostram somente o recorte escolhido. Para comparar seu crescimento com a UF e o Brasil, escolha variação percentual ou índice de base 100.', 'Counts and absolute changes show only the selected scope. Choose percentage change or a base-100 index to compare growth with the state and Brazil.')} <Link to={`/trabalho/comparar?${new URLSearchParams({ ...(f.alvo?.uf ? {uf:f.alvo.uf}:{}), ...(f.alvo?.esfera === 'M' ? {cod:String(f.alvo.cod_ibge)}:{}), indicador:'por_mil' })}`}>{t('Comparações gerais da RAIS com regiões e valores relativos', 'General RAIS comparisons with regions and relative values')}</Link></p>}
       <Estado carregando={principal.carregando} erro={principal.erro} tentarNovamente={principal.recarregar} cancelar={cancelarConsultasTrabalho} />
       {principal.dados && (
         <>
@@ -130,7 +132,7 @@ function EvolucaoRecorte({ escopo, rotulo }: { escopo: Params; rotulo: string })
               { titulo: t('Ativos com remuneração informada', 'Active jobs with pay reported'), valores: (principal.dados.linhas ?? []).map((r) => num(r.n_rem_dez)), formato: numero },
             ]}
             metadados={[[t('Indicador', 'Indicator'), `${nomeInd} — ${nomeModo}`], [t('Território', 'Territory'), rotulo],
-              [t('Referências', 'References'), [refUf, brSerie.dados ? t('Brasil (tabelas pré-somadas)', 'Brazil (pre-aggregated tables)') : null].filter(Boolean).join(', ') || t('nenhuma', 'none')],
+              [t('Referências', 'References'), compararReferencias ? [refUf, brSerie.dados ? t('Brasil (tabelas pré-somadas)', 'Brazil (pre-aggregated tables)') : null].filter(Boolean).join(', ') || t('nenhuma', 'none') : t('nenhuma — contagem ou variação absoluta do recorte', 'none — scope count or absolute change')],
               [t('Recorte', 'Recorte'), JSON.stringify({ cbo: rec.cbo, cnae: rec.cnae, situacao: rec.situacao, sexo: rec.sexo, ...rec.listas })],
               ...(nota ? [[t('Comparabilidade', 'Comparability'), nota] as [string, string]] : []), ['SQL', principal.dados.sql]]} />
           <p className="legenda-tabela">† {t('ano com quebra de série apontada pelo MTE.', 'year with a series break reported by the Ministry.')}
@@ -438,7 +440,8 @@ export function TrabalhoRankings() {
   const uf = f.alvo?.uf ?? f.uf ?? undefined;
   const dados = useApi<Linha[]>(temDados && anoRais ? 'trab_municipios' : null, { uf, ano: anoRais });
   const [campoOrd, sentido] = (params.get('rord') ?? 'empregos_por_mil:desc').split(':');
-  const ordem = { campo: campoOrd, desc: sentido !== 'asc' };
+  const camposComparaveis = ['empregos_por_mil', 'remuneracao_media', 'var_empregos', 'pct_mulheres', 'pct_superior', 'pct_adm_publica'];
+  const ordem = { campo: camposComparaveis.includes(campoOrd) ? campoOrd : 'empregos_por_mil', desc: sentido !== 'asc' };
   const [todos, setTodos] = useState(false);
   const [buscaNome, setBuscaNome] = useState('');
   const quebra = anoRais ? quebrasEntre(anoRais - 1, anoRais)[0] : undefined;
@@ -507,7 +510,7 @@ export function TrabalhoRankings() {
               <div className="campo">
                 <label htmlFor="r-ind">{t('Indicador', 'Indicator')}</label>
                 <select id="r-ind" value={ordem.campo} onChange={(e) => definir({ rord: `${e.target.value}:${ordem.desc ? 'desc' : 'asc'}` })}>
-                  {colunas.map((c) => <option key={c.campo} value={c.campo}>{tituloHistorico(c.campo)}</option>)}
+                  {colunas.filter(c => camposComparaveis.includes(c.campo)).map((c) => <option key={c.campo} value={c.campo}>{tituloHistorico(c.campo)}</option>)}
                 </select>
               </div>
             }
@@ -568,8 +571,8 @@ export function TrabalhoRankings() {
           </div>
         </div>
         <div className="cabeca-cartao">
-          <p className="desc">{t(`Universo: ${numero(universo.length)} municípios${recorte.min ? ` com pelo menos ${numero(recorte.min)} vínculos ativos` : ''}; ${numero(classificados)} com posição em ${colOrd?.titulo.toLowerCase() ?? ordem.campo} (sem o valor, sem posição; empates com a mesma posição: 1, 2, 2, 4). Clique no título de uma coluna para ordenar (a ordem vai no endereço da página). Volume, intensidade, remuneração e crescimento são rankings diferentes; a remuneração traz ao lado quantos ativos têm o valor (os demais contam como zero).`,
-            `Universe: ${numero(universo.length)} municipalities${recorte.min ? ` with at least ${numero(recorte.min)} active jobs` : ''}; ${numero(classificados)} ranked on ${colOrd?.titulo.toLowerCase() ?? ordem.campo} (no value, no rank; ties share a position: 1, 2, 2, 4). Click a column header to sort (the order goes in the page address). Volume, intensity, pay and growth are different rankings; pay comes with how many active jobs have the value (the rest count as zero).`)}{' '}
+          <p className="desc">{t(`Universo: ${numero(universo.length)} municípios${recorte.min ? ` com pelo menos ${numero(recorte.min)} vínculos ativos` : ''}; ${numero(classificados)} com posição em ${colOrd?.titulo.toLowerCase() ?? ordem.campo} (sem o valor, sem posição; empates com a mesma posição: 1, 2, 2, 4). As taxas, médias e proporções permitem ordenar; os totais permanecem como contexto; a remuneração traz ao lado quantos ativos têm o valor (os demais contam como zero).`,
+            `Universe: ${numero(universo.length)} municipalities${recorte.min ? ` with at least ${numero(recorte.min)} active jobs` : ''}; ${numero(classificados)} ranked on ${colOrd?.titulo.toLowerCase() ?? ordem.campo} (no value, no rank; ties share a position: 1, 2, 2, 4). Rates, means and shares can be sorted; totals remain as context; pay comes with how many active jobs have the value (the rest count as zero).`)}{' '}
             <Dica rotulo={t('Vínculos por mil habitantes', 'Jobs per thousand inhabitants')}>{notaPorMil(anoRais)}</Dica></p>
           <BotoesExportar nome={`trabalho_ranking_${anoRais}`} obter={() => ({
             colunas: [t('Posição', 'Rank'), 'cod_ibge', t('Município', 'Municipality'), 'UF', t('População', 'Population'), ...colunas.map((c) => c.titulo),
@@ -596,9 +599,9 @@ export function TrabalhoRankings() {
                     <th>{t('Município', 'Municipality')}</th><th>#</th>
                     {colunas.map((c) => (
                       <th key={c.campo} aria-sort={ordem.campo === c.campo ? (ordem.desc ? 'descending' : 'ascending') : 'none'} title={c.tipo}>
-                        <button className="valor-exato" onClick={() => definir({ rord: `${c.campo}:${ordem.campo === c.campo && ordem.desc ? 'asc' : 'desc'}` })}>
+                        {camposComparaveis.includes(c.campo) ? <button className="valor-exato" onClick={() => definir({ rord: `${c.campo}:${ordem.campo === c.campo && ordem.desc ? 'asc' : 'desc'}` })}>
                           {c.titulo}{ordem.campo === c.campo ? (ordem.desc ? ' ▼' : ' ▲') : ''}
-                        </button>
+                        </button> : c.titulo}
                       </th>
                     ))}
                   </tr>

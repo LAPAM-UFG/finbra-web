@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { useApi, type Linha } from '../api';
 import { AjudaTrabalho, CapacidadeTrabalho } from '../components/AjudaTrabalho';
 import { Dica } from '../components/Dica';
@@ -104,7 +105,8 @@ export function TrabalhoPerfil() {
   const universo = useApi<Serie>(p ? 'trab_consulta_serie' : null, { ...escopo, situacao: 'ativos', de, ate, agrupar: 'total' });
   const perfil = useApi<Perfil>(p ? 'trab_perfil' : null, { ...p, ano: ate, dimensoes: dimensoes.join(',') });
   const ufCmp = useApi<ResultadoConsulta>(p && tipo === 'municipio' && f.alvo ? 'trab_consulta' : null, { ...paramsConsulta({ uf: f.alvo?.uf ?? '' }, rec), ano: ate, agrupar: 'total' });
-  const brCmp = useApi<ResultadoConsulta>(p && tipo === 'municipio' ? 'trab_consulta' : null, { ...paramsConsulta({}, { ...rec, listas: {} }), ano: ate, agrupar: 'total' });
+  const brasilComparavel = !Object.keys(rec.listas).length && !rec.muns;
+  const brCmp = useApi<ResultadoConsulta>(p && tipo === 'municipio' && brasilComparavel ? 'trab_consulta' : null, { ...paramsConsulta({}, { ...rec, listas: {} }), ano: ate, agrupar: 'total' });
 
   const real = recorte.moeda === 'real';
   const fatorRef = real ? perfil.dados?.fator_real ?? 1 : 1;
@@ -161,13 +163,13 @@ export function TrabalhoPerfil() {
     ...(tipo === 'municipio' ? [{ nome: t('6 comparação territorial', '6 territorial comparison'), tabela: tabelaComparacao() }] : []),
   ];
   function tabelaComparacao(): Tabela {
-    const linhas = [[rotulo, total], [f.alvo?.uf ?? 'UF', ufCmp.dados?.linhas[0]], [t('Brasil', 'Brazil'), brCmp.dados?.linhas[0]]] as [string, Linha | undefined][];
+    const linhas = [[rotulo, total], [f.alvo?.uf ?? 'UF', ufCmp.dados?.linhas[0]], ...(brasilComparavel ? [[t('Brasil', 'Brazil'), brCmp.dados?.linhas[0]]] : [])] as [string, Linha | undefined][];
     return {
-      colunas: [t('Território', 'Territory'), t('Vínculos ativos', 'Active jobs'), t('Rem. dezembro (média)', 'December pay (avg)'), t('Rem. dezembro (mediana)', 'December pay (median)'), t('Com valor informado', 'With pay reported'), t('% mulheres', '% women'), t('% superior', '% college')],
-      linhas: linhas.map(([n, r]) => [n, num(r?.vinculos), num(r?.rem_dez_media) === null ? null : num(r?.rem_dez_media)! * fatorRef,
-        num(r?.rem_dez_mediana) === null ? null : num(r?.rem_dez_mediana)! * fatorRef, num(r?.n_rem_dez), div(num(r?.mulheres), num(r?.vinculos)), div(num(r?.superior), num(r?.vinculos))]),
+      colunas: [t('Território', 'Territory'), t('Rem. dezembro (média)', 'December pay (avg)'), t('Rem. dezembro (mediana)', 'December pay (median)'), t('% com remuneração informada', '% with pay reported'), t('% mulheres', '% women'), t('% superior', '% college'), t('Vínculos ativos (contexto)', 'Active jobs (context)'), t('Com valor informado (contexto)', 'With pay reported (context)')],
+      linhas: linhas.map(([n, r]) => [n, num(r?.rem_dez_media) === null ? null : num(r?.rem_dez_media)! * fatorRef,
+        num(r?.rem_dez_mediana) === null ? null : num(r?.rem_dez_mediana)! * fatorRef, div(num(r?.n_rem_dez), num(r?.vinculos)), div(num(r?.mulheres), num(r?.vinculos)), div(num(r?.superior), num(r?.vinculos)), num(r?.vinculos), num(r?.n_rem_dez)]),
       metadados: metaPerfil(t('6. Distribuição territorial: comparação', '6. Territorial distribution: comparison'), undefined,
-        [[t('Brasil', 'Brazil'), t('tabelas pré-somadas (sem mediana; filtros avançados não se aplicam ao Brasil)', 'pre-aggregated tables (no median; advanced filters do not apply to Brazil)')]]),
+        [[t('Brasil', 'Brazil'), brasilComparavel ? t('tabelas pré-somadas (sem mediana)', 'pre-aggregated tables (no median)') : t('excluído: filtros avançados não disponíveis na base do Brasil', 'excluded: advanced filters unavailable in Brazil data')], [t('Contagens', 'Counts'), t('somente contexto no download; não são medidas de comparação', 'download context only; not comparison measures')]]),
     };
   }
   const exportarTudo = () => {
@@ -314,19 +316,19 @@ export function TrabalhoPerfil() {
                   ))}
                   {x.n === 6 && tipo === 'municipio' && (
                     <>
-                      <div className="cabeca-cartao"><h4>{t('Comparação: município, UF e Brasil', 'Comparison: municipality, state and Brazil')}</h4>
+                      <div className="cabeca-cartao"><h4>{brasilComparavel ? t('Comparação: município, UF e Brasil', 'Comparison: municipality, state and Brazil') : t('Comparação: município e UF', 'Comparison: municipality and state')}</h4>
                         <BotoesExportar nome={`perfil_${recorte.cbo}_6_comparacao`} obter={tabelaComparacao} /></div>
                       <Estado carregando={ufCmp.carregando || brCmp.carregando} erro={ufCmp.erro ?? brCmp.erro} cancelar={cancelarConsultasTrabalho} />
                       <div className="rolagem">
                         <table>
-                          <thead><tr>{tabelaComparacao().colunas.map((c) => <th key={c}>{c}</th>)}</tr></thead>
+                          <thead><tr>{tabelaComparacao().colunas.slice(0, 6).map((c) => <th key={c}>{c}</th>)}</tr></thead>
                           <tbody>{tabelaComparacao().linhas.map((l) => (
-                            <tr key={String(l[0])}><td>{l[0]}</td><td>{numero(l[1] as number)}</td><td>{reaisExato(l[2] as number)}</td><td>{reaisExato(l[3] as number)}</td>
-                              <td>{numero(l[4] as number)}</td><td>{pct(l[5] as number)}</td><td>{pct(l[6] as number)}</td></tr>
+                            <tr key={String(l[0])}><td>{l[0]}</td><td>{reaisExato(l[1] as number)}</td><td>{reaisExato(l[2] as number)}</td>
+                              <td>{pct(l[3] as number)}</td><td>{pct(l[4] as number)}</td><td>{pct(l[5] as number)}</td></tr>
                           ))}</tbody>
                         </table>
                       </div>
-                      <p className="nota-base">{t('O Brasil vem das tabelas pré-somadas (sem mediana) e sem os filtros avançados; município e UF, dos microdados.', 'Brazil comes from the pre-aggregated tables (no median) and without the advanced filters; municipality and state, from the microdata.')}</p>
+                      <p className="nota-base">{brasilComparavel ? t('O Brasil vem das tabelas pré-somadas (sem mediana); município e UF, dos microdados.', 'Brazil comes from the pre-aggregated tables (no median); municipality and state, from the microdata.') : t('O Brasil foi excluído: seus dados pré-somados não oferecem os filtros avançados escolhidos.', 'Brazil was excluded: its pre-aggregated data do not offer the selected advanced filters.')} {t('As contagens ficam no download como contexto.', 'Counts remain in the download as context.')} <Link to={`/trabalho/comparar?${new URLSearchParams({ ...(f.alvo?.uf ? {uf:f.alvo.uf}:{}), ...(f.alvo?.esfera === 'M' ? {cod:String(f.alvo.cod_ibge)}:{}), indicador:'por_mil' })}`}>{t('Indicadores gerais da RAIS: comparação regional e temporal', 'General RAIS indicators: regional and temporal comparison')}</Link></p>
                     </>
                   )}
                 </section>

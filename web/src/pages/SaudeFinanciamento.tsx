@@ -204,7 +204,7 @@ function Ranking({ dados, carregando, erro, recarregar, ref_, uf, rotulo, alvo, 
   dados: Linha[] | undefined; carregando: boolean; erro?: string; recarregar: () => void; ref_: number; uf: string | null; rotulo: string; alvo: number | null;
   comuns: [string, string][]; base: number;
 }) {
-  const [medida, setMedida] = useState<'percapita' | 'liquido'>('percapita');
+  const medida: 'percapita' | 'liquido' = 'percapita';
   const [maiores, setMaiores] = useState(true);
   const ordenados = useMemo(() => ordenarMunicipios(dados ?? [], medida, maiores), [dados, medida, maiores]);
   const mostrados = ordenados.slice(0, 50);
@@ -220,8 +220,7 @@ function Ranking({ dados, carregando, erro, recarregar, ref_, uf, rotulo, alvo, 
           <p className="desc">{t('só municípios com repasse registrado no ano; o DF aparece como destinatário distrital (†)', 'only municipalities with a transfer recorded in the year; the DF appears as a district recipient (†)')}</p>
         </div>
         <div className="alternar" role="group" aria-label={t('Medida do ranking', 'Ranking measure')}>
-          <button className={medida === 'percapita' ? 'ativo' : ''} onClick={() => setMedida('percapita')}>{t('Por habitante', 'Per inhabitant')}</button>
-          <button className={medida === 'liquido' ? 'ativo' : ''} onClick={() => setMedida('liquido')}>{t('Líquido total', 'Net total')}</button>
+          <span>{t('Por habitante', 'Per inhabitant')}</span>
         </div>
         <div className="alternar" role="group" aria-label={t('Ordem', 'Order')}>
           <button className={maiores ? 'ativo' : ''} onClick={() => setMaiores(true)}>{t('Maiores', 'Highest')}</button>

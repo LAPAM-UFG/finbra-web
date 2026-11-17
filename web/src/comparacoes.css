@@ -1,0 +1,184 @@
+.cp-intro {
+  max-width: 80ch;
+  color: var(--tinta-2);
+}
+.cp-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+.cp-nav a {
+  border: 1px solid var(--borda);
+  border-radius: 1.5rem;
+  padding: 0.45rem 0.85rem;
+  text-decoration: none;
+}
+.cp-nav a[aria-current] {
+  background: var(--superficie-2);
+  font-weight: 650;
+}
+.cp-filtros {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 0.8rem;
+}
+.cp-filtros label,
+.cp-campo label {
+  display: block;
+  font-size: 0.82rem;
+  margin-bottom: 0.3rem;
+  color: var(--tinta-2);
+}
+.cp-filtros input,
+.cp-filtros select,
+.cp-campo input,
+.cp-campo select {
+  width: 100%;
+  min-height: 40px;
+  box-sizing: border-box;
+}
+.cp-busca {
+  position: relative;
+}
+.cp-opcoes {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  background: var(--superficie);
+  box-shadow: 0 3px 10px #0002;
+  border: 1px solid var(--borda);
+  border-radius: 0.4rem;
+  z-index: 6;
+  max-height: 320px;
+  overflow: auto;
+}
+.cp-opcoes button {
+  display: block;
+  border: 0;
+  background: none;
+  color: var(--tinta);
+  padding: 0.65rem;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+.cp-opcoes button:hover,
+.cp-opcoes button[aria-selected="true"] {
+  background: var(--superficie-2);
+}
+.cp-controles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: end;
+  margin: 1rem 0;
+}
+.cp-controles > div {
+  flex: 1;
+  min-width: min(200px, 100%);
+}
+.cp-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1rem;
+  padding: 0.65rem 0;
+}
+.cp-checkboxes label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+}
+.cp-checkboxes input {
+  min-height: 20px;
+  min-width: 20px;
+}
+.cp-resumos {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: 0.8rem;
+  margin: 1rem 0;
+}
+.cp-resumo {
+  border: 1px solid var(--borda);
+  border-radius: 0.5rem;
+  padding: 0.85rem;
+}
+.cp-resumo h4 {
+  margin: 0 0 0.7rem;
+  font-size: 0.9rem;
+}
+.cp-resumo strong {
+  display: block;
+  font-size: 1.6rem;
+  font-variant-numeric: tabular-nums;
+}
+.cp-resumo p {
+  margin: 0.45rem 0 0;
+  font-size: 0.8rem;
+  color: var(--tinta-2);
+}
+.cp-nota {
+  font-size: 0.84rem;
+  color: var(--tinta-2);
+  line-height: 1.5;
+}
+.cp-aviso {
+  padding: 0.75rem;
+  border-left: 3px solid var(--serie-2, #b08a32);
+  background: var(--superficie-2);
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+.cp-detalhes {
+  margin: 1rem 0;
+}
+.cp-detalhes summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 0.4rem 0;
+}
+.cp-tabela {
+  max-width: 100%;
+  overflow: auto;
+}
+.cp-tabela table {
+  width: 100%;
+}
+.cp-tabela th,
+.cp-tabela td {
+  vertical-align: top;
+}
+.cp-tabela small {
+  display: block;
+  font-weight: 400;
+  color: var(--tinta-2);
+  margin-top: 0.3rem;
+}
+.cp-acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+.cp-recorte-atual {
+  padding: 0.75rem 0;
+  color: var(--tinta-2);
+}
+.cp-tabela tr[aria-current] {
+  background: var(--superficie-2);
+  font-weight: 650;
+}
+@media (max-width: 600px) {
+  .cp-filtros {
+    grid-template-columns: 1fr;
+  }
+  .cp-tabela {
+    font-size: 0.82rem;
+  }
+  .cp-resumos {
+    grid-template-columns: 1fr;
+  }
+}

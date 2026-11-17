@@ -21,7 +21,8 @@ const Ctx = createContext<Contexto | null>(null);
  */
 export function ProvedorDados({ children, sobDemanda = false, silencioso = false }: { children: ReactNode; sobDemanda?: boolean; silencioso?: boolean }) {
   const caminho = useLocation().pathname;
-  const mapaPronto = /^\/(datasus|trabalho)\/mapa\/?$/.test(caminho);
+  const comparacaoPronta = /^(\/comparar|\/(datasus|trabalho|educacao|saneamento|assistencia|munic|clima)\/comparar|\/(trabalho|educacao|saneamento|assistencia)\/rankings|\/(educacao|assistencia)\/evolucao)\/?$/.test(caminho);
+  const mapaPronto = comparacaoPronta || /^\/(datasus|trabalho)\/mapa\/?$/.test(caminho);
   const educacaoPronta = caminho.startsWith('/educacao') && !['/educacao/financiamento', '/educacao/profissionais'].includes(caminho.replace(/\/+$/, ''));
   const precisa = sobDemanda || !(mapaPronto || educacaoPronta || caminho.startsWith('/saneamento') || caminho === '/clima' || caminho.startsWith('/clima/') || caminho === '/assistencia' || caminho.startsWith('/assistencia/') || caminho === '/downloads' || caminho.startsWith('/downloads/'));
   // /datasus: contexto completo pelo pacote de abertura da saúde (saude_meta e saude_entes devolvem o mesmo que meta e entes; sem pacote, o motor responde)

@@ -45,7 +45,7 @@ export function Rankings() {
   const [busca, setBusca] = useSearchParams();
   const nomes = indicadores();
   const campo = nomes[busca.get('ind') ?? ''] ? busca.get('ind')! : 'receita_bruta';
-  const perCapita = busca.get('medida') !== 'total';
+  const perCapita = true;
   const ordem: 'desc' | 'asc' = busca.get('ordem') === 'asc' ? 'asc' : 'desc';
   const pagina = Math.max(1, Number(busca.get('pag')) || 1);
   const vista = busca.get('vista') === 'evolucao' ? 'evolucao' : 'anual';
@@ -79,7 +79,6 @@ export function Rankings() {
     <>
       <div className="alternar" role="group" aria-label={t('Medida', 'Measure')}>
         <button aria-pressed={perCapita} className={perCapita ? 'ativo' : ''} onClick={() => definir({ medida: null })}>Per capita</button>
-        <button aria-pressed={!perCapita} className={!perCapita ? 'ativo' : ''} onClick={() => definir({ medida: 'total' })}>Total</button>
       </div>
       <div className="alternar" role="group" aria-label={t('Ordem', 'Order')}>
         <button aria-pressed={ordem === 'desc'} className={ordem === 'desc' ? 'ativo' : ''} onClick={() => definir({ ordem: null })}>{t('Maiores primeiro', 'Highest first')}</button>

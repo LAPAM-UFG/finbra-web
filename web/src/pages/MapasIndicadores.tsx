@@ -33,7 +33,8 @@ function PaginaMapa({ area }: { area: AreaMapa }) {
   const ufPedida = (sp.get('uf') ?? 'BR').toUpperCase(); const uf = Object.hasOwn(UF_NOMES, ufPedida) ? ufPedida : 'BR';
   const tabela = sp.get('vista') === 'tabela';
   const meta = useSocial(`mapa-catalogo:${area}:${rede}`, () => obterCatalogoMapa(area, rede)); const m = meta.dados;
-  const indPedido = sp.get('ind'); const i = m?.indicadores.find(x => x.id === indPedido) ?? m?.indicadores[0];
+  const padrao = area === 'trabalho' ? 'por_mil' : area === 'educacao' ? 'integral_pct' : null;
+  const indPedido = sp.get('ind'); const i = m?.indicadores.find(x => x.id === indPedido) ?? m?.indicadores.find(x => x.id === padrao) ?? m?.indicadores[0];
   const anoPedido = sp.get('ano'); const ano = anoPedido && /^\d{4}$/.test(anoPedido) ? Number(anoPedido) : i?.anos.at(-1);
   const dados = useSocial(m && i && ano ? `mapa:${area}:${rede}:${i.indice.sha256}:${ano}:${uf}` : null, () => obterDadosMapa(m!, i!, ano!, uf));
   const geo = useSocial(tabela ? null : `malha:${uf}`, () => obterMalhaMunicipal(uf));
@@ -63,7 +64,7 @@ function PaginaMapa({ area }: { area: AreaMapa }) {
   const disponiveis = linhas?.filter(l => valorEfetivoMapa(l, ressalvas) !== null).length ?? 0;
   const alertados = linhas?.filter(l => l.condicao === 8).length ?? 0;
   const destino = area === 'saude' ? '/datasus' : '/' + area;
-  const caminhoSerie = area === 'saneamento' ? destino : destino + '/evolucao';
+  const caminhoSerie = destino + '/comparar';
   const linkMunicipio = (l: LinhaMapaDados, evolucao = false) => {
     const p = new URLSearchParams({ uf: l.uf, [usaEnte ? 'ente' : 'cod']: String(l.cod), ind: i!.id, ano: String(ano), ...(area === 'educacao' && rede !== 'todas' ? { rede } : {}) });
     return `${evolucao ? caminhoSerie : destino}?${p}${area === 'educacao' && !evolucao ? '#ed-ind-' + i!.id : ''}`;

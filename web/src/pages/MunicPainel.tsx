@@ -294,6 +294,7 @@ function CartaoIndicador({ c, pesquisa, escopo, lang }: { c: CartaoMunic; pesqui
       </header>
       {contextoDoIndicador(ind, lang) && <p className="mp-contexto">{contextoDoIndicador(ind, lang)}</p>}
       {corpo}
+      <p className="mp-links"><Link to={{ pathname: '/munic/comparar', search: '?' + new URLSearchParams({ pesq: pesquisa, indicador: ind.id, ano: String(f.ano), ...(escopo.tipo === 'territorio' ? { cod: String(escopo.cod) } : escopo.tipo === 'uf' ? { uf: escopo.uf } : {}) }).toString() }}>{t('Comparar e acompanhar no tempo', 'Compare and track over time')}</Link></p>
       <details className="mp-pergunta">
         <summary>{t('Pergunta do IBGE', 'IBGE question')}</summary>
         <p>{f.rotulo}</p>
@@ -330,7 +331,7 @@ function CorpoBinario({ r, brasil, universo, pesquisa, escopo, condicao }: { r: 
   );
 }
 
-function CorpoNumerico({ r, brasil, universo, unidade, pesquisa, escopo, condicao }: { r: ResumoNumerico; brasil: ResumoNumerico | null; universo: number | null; unidade?: string; pesquisa: Pesquisa; escopo: { tipo: string }; condicao: string }) {
+function CorpoNumerico({ r, universo, unidade, pesquisa, condicao }: { r: ResumoNumerico; brasil: ResumoNumerico | null; universo: number | null; unidade?: string; pesquisa: Pesquisa; escopo: { tipo: string }; condicao: string }) {
   if (condicao === 'sem_dados') return <p className="mp-vazio">{t('Sem dados neste recorte.', 'No data in this scope.')}</p>;
   if (condicao === 'inesperada') return <p className="mp-vazio">{t('Há respostas fora do previsto; a soma não foi calculada.', 'There are unexpected answers; the sum was not computed.')}</p>;
   const cob = cobertura(r.n, universo);
@@ -341,7 +342,6 @@ function CorpoNumerico({ r, brasil, universo, unidade, pesquisa, escopo, condica
       <p className="mp-num">{r.media === null ? t('Nenhum território com valor válido.', 'No territory with a valid value.') : `${t('Média por território com valor', 'Mean per territory with a value')}: ${numero1(r.media)}`}</p>
       <p className="mp-num">{numero(r.n)} {universo !== null ? `${t('de', 'of')} ${numero(universo)} ` : ''}{unidadePais(pesquisa)} {t('com valor válido', 'with a valid value')}{cob !== null ? ` · ${pct(cob)}` : ''}</p>
       {sem && <p className="mp-num mp-aviso">{sem}</p>}
-      {brasil && escopo.tipo === 'uf' && brasil.soma !== null && <p className="mp-comp">{t('Brasil', 'Brazil')}: {numero(brasil.soma)} · {t('média', 'mean')} {numero1(brasil.media)} ({numero(brasil.n)} {t('com valor', 'with a value')})</p>}
     </>
   );
 }
@@ -358,7 +358,7 @@ function CorpoTerritorio({ c }: { c: CartaoMunic }) {
   const comp = (r: ResumoBinario | ResumoNumerico | null, rotulo: string) => {
     if (!r) return null;
     if ('pct' in r) return r.pct === null ? null : <p className="mp-comp">{rotulo}: {pct(r.pct)} {t('responderam Sim', 'answered Yes')} ({numero(r.sim)} {t('de', 'of')} {numero(r.base)})</p>;
-    return r.media === null ? null : <p className="mp-comp">{rotulo}: {t('média', 'mean')} {numero1(r.media)} {t('por território', 'per territory')} ({numero(r.n)} {t('com valor', 'with a value')})</p>;
+    return null; // Pessoal de governos de tamanhos diferentes exige base populacional.
   };
   return <>{principal}{comp(c.ufDoTerritorio, 'UF')}{comp(c.brasil, t('Brasil', 'Brazil'))}</>;
 }
