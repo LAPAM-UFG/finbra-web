@@ -1,6 +1,7 @@
 /** Séries e listas prontas: leitura parcial, edição fixada e ausência explícita. */
 import { BASE_DADOS } from "./manifesto";
 import { UF_NOMES } from "./ufs";
+import { permiteAgregadoHistorico } from "./cadunico_historico";
 
 export type AreaComparacao =
   | "assistencia"
@@ -55,6 +56,8 @@ export type DefComparacao = {
   edicoes?: unknown[];
   historico_cadunico?: boolean;
   ufs_historico?: string[];
+  ufs_agregados_historico?: string[];
+  ultimo_periodo_uf?: Record<string, number>;
   cobertura_titulo?: string;
   cobertura_titulo_en?: string;
   cobertura_nota?: string;
@@ -517,7 +520,7 @@ export function obterGrupoComparacao(
           s,
           m.indicadores[k].periodos.length,
           x.quantidade,
-          m.area === 'assistencia' && m.rede === 'cadunico_historico' && grupo === 'BR' && m.indicadores[k].id === 'cad_hist_familias',
+          permiteAgregadoHistorico(m.area, m.rede, terr.nivel, m.indicadores[k].id),
         ),
       );
       if (!["M", "E"].includes(terr.nivel))
@@ -666,6 +669,11 @@ export function obterListaReferencias(
         s.v.some((v) => !finito(v))
       )
         throw new Error("Valores de referências incompletos.");
+      if (s.c.includes(22)) {
+        if (!permiteAgregadoHistorico(m.area, m.rede, nivel, i.id))
+          throw new Error('Agregado publicado fora do contexto histórico.');
+        validarSerieComparacao(s, keys.length, Math.max(...keys.map(key => m.quantidades[key])), true);
+      }
       return keys.map((key, k) => {
         const ter = g.territorios[key];
         return {
@@ -682,8 +690,8 @@ export function obterListaReferencias(
           q: s.q[k],
           total: m.quantidades[key],
           v: s.v[k],
-          n: s.q[k] === 0 ? null : s.n[k],
-          d: s.q[k] === 0 ? null : s.d[k],
+          n: s.q[k] === 0 && s.c[k] !== 22 ? null : s.n[k],
+          d: s.q[k] === 0 && s.c[k] !== 22 ? null : s.d[k],
           c: s.c[k],
           r: null,
         };

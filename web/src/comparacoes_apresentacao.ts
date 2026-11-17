@@ -80,8 +80,8 @@ const condicoes: Record<number, [string, string]> = {
     "Real amount or IPCA unavailable in this edition",
   ],
   22: [
-    'Total nacional publicado pela fonte, incluindo São Paulo',
-    'Published national total, including São Paulo',
+    'Agregado oficial publicado (Brasil inclui os 27 estados)',
+    'Published official aggregate (Brazil includes all 27 states)',
   ],
 };
 export const condicaoComparacao = (c: number) =>

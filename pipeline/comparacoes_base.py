@@ -109,6 +109,10 @@ class Quadro:
         if self.validacao_extra is not None:
             assert self.validacao_extra.shape == shape
 
+    def grupo_territorio(self, key, pos, municipio=False, incluir_ressalvas=False):
+        """Permite distinguir um agregado oficial de regiões com os mesmos membros."""
+        return self.grupo(pos, municipio, incluir_ressalvas)
+
     def grupo(self, pos, municipio=False, incluir_ressalvas=False):
         v = self.valores[:, pos]
         n = self.numeradores[:, pos]
@@ -349,9 +353,9 @@ class Gravador:
                         and key.isdigit()
                         or self.geo.territorios.get(key, {}).get("nivel") == "E"
                     )
-                    g = q.grupo(pos, municipio=unitario)
+                    g = q.grupo_territorio(key, pos, municipio=unitario)
                     if not unitario and np.any(np.isin(q.condicoes[:, pos], [8, 18])):
-                        g["com_ressalvas"] = q.grupo(pos, incluir_ressalvas=True)
+                        g["com_ressalvas"] = q.grupo_territorio(key, pos, incluir_ressalvas=True)
                     dados.append(g)
                 if self.geo.territorios[key]["nivel"] in [
                     "UF",

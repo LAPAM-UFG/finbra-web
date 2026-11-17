@@ -1,10 +1,12 @@
 O histórico recuperado é um conjunto separado, acessível em Assistência social →
 Comparações → Conjunto de dados → CadÚnico: históricos oficiais. Não substitui nem
 emenda o retrato público de outubro de 2026. Cobertura mensal: 645 municípios de
-São Paulo, de janeiro de 2018 a agosto de 2026; para Brasil, somente famílias.
+São Paulo (01/2018–08/2026), 102 de Alagoas e os totais das 27 UFs e Brasil
+(01/2013–05/2026). Brasil tem famílias até 08/2026 pela Seade; pessoas e pessoas
+por família terminam em 05/2026. Totais estaduais não preenchem municípios.
 Cobertura anual adicional: 144 municípios do Pará (famílias, 2013–2024) e 853 de
-Minas Gerais (percentual de pessoas, 2014–2024). Total: 1.642 municípios, com
-indicadores, períodos e conceitos próprios. Os demais estados e os perfis do
+Minas Gerais (percentual de pessoas, 2014–2024). Total: 1.744 municípios, com
+indicadores, períodos e conceitos próprios. Municípios dos demais estados e os perfis do
 retrato atual continuam sem histórico recuperado.
 
 Origem: distribuições públicas CSV e dicionários da Fundação Seade, com dados do
@@ -29,10 +31,11 @@ usa a mesma população IBGE e geografia fixadas nas comparações, incluindo Ce
 por `comparacoes.py`. Destinos sobrepostos são recusados antes de qualquer escrita.
 
 Comparações e rankings usam famílias/pessoas por mil habitantes ou pessoas por
-família. As referências de região/estado são razões das somas com cobertura
-explícita. Brasil usa seu total nacional publicado e população nacional, nunca a
-soma paulista como substituto do país; condição 22 distingue esse caso e não
-inventa uma cobertura municipal. Estoques mensais não são somados no tempo.
+família. As referências regionais são razões das somas com cobertura
+explícita. UFs mensais usam estoques estaduais publicados; Brasil usa a soma das
+27 UFs, nunca o subconjunto municipal recuperado. Condição 22 distingue estes
+agregados oficiais sem inventar uma cobertura municipal. Estoques mensais não são
+somados no tempo.
 
 Fontes anuais alternativas: anuários da Fapespa 2018, 2020 e 2024 (SAGI/MDS),
 e IMRS da Fundação João Pinheiro (MDS/SAGI). `cadunico_estaduais.py --saida
@@ -72,3 +75,25 @@ geração não faz upload; arquivos imutáveis precedem a troca condicional do p
 
 Validações: `python -m unittest discover -s pipeline -p 'testes_cadunico_*.py'`
 e, em `web`, `npm run test:cadunico-historico` (incluído em `npm test`).
+
+A distribuição SEPLAG/AL (licença CC BY) vem do catálogo oficial
+https://dados.al.gov.br/catalogo/dataset/dados-de-assistencia-social, com origem
+MDS/SAGICAD · VIS DATA. `cadunico_alagoas.py --saida PASTA_NOVA` adquire somente
+os três CSV anunciados (municípios, estados e regiões), com TLS verificado,
+URL, data, edição e SHA-256. A edição fixada contém 08/2012–05/2026, exceto
+04/2025; a entrega começa em 2013. Nova cobertura/edição exige revisão.
+Use `--alagoas PASTA_ADQUIRIDA_ALAGOAS` na geração do histórico.
+
+O pipeline exige soma dos 102 municípios igual ao total de AL nas duas medidas,
+soma das cinco regiões igual à soma das 27 UFs e igualdade com 164 referências
+nacionais independentes do MDS. Sobreposições SP/BR com Seade exigem valores
+idênticos. A base completa unifica somente território/mês coincidentes com
+contagens iguais, preservando fonte e frequência; não duplica observações.
+Pessoas no Brasil e em outras UFs passam a estar disponíveis desde 2013.
+
+Na geração das referências, a chave territorial distingue uma UF de uma região
+com os mesmos municípios (caso DF). Agregados oficiais só têm condição 22 nos
+três indicadores mensais de UF/Brasil. Regiões sem municípios recuperados ficam
+fora da cobertura, mesmo quando há total oficial da UF. A abertura usa o último
+mês coberto por estado e medida. CSV/Parquet/Stata/dicionário são atualizados;
+continuam disponíveis por URL HTTP para R e Stata, sem carregar na abertura.

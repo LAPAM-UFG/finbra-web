@@ -1,7 +1,7 @@
-"""Histórico público do MDS redistribuído pela Fundação Seade, sem dados pessoais.
+"""Histórico público do CadÚnico, com fontes oficiais e sem dados pessoais.
 
 Não substitui o Observatório atual. Gera um catálogo separado de comparações,
-com a cobertura recuperada explícita: municípios de SP e famílias no Brasil.
+com cobertura explícita por fonte: SP, AL, PA, MG, totais das UFs e Brasil.
 Aquisição e geração são separadas; nunca faz upload nem altera as entradas.
 """
 
@@ -39,6 +39,22 @@ AVISO_EN = (
     "Apr/2025 remains missing: the MDS series does not publish this month, while the Seade file repeats May/2025 values. "
     "No interpolation, summing of monthly stocks or splicing with the Observatory snapshot. "
     "Registration is not receipt of a benefit or a poverty rate."
+)
+AVISO_AL = (
+    "Histórico mensal: Alagoas (102 municípios), 27 UFs e Brasil, 01/2013–05/2026, "
+    "distribuição SEPLAG/AL do MDS/VIS DATA (CC BY). São Paulo: 645 municípios, 01/2018–08/2026, "
+    "distribuição Seade. Totais estaduais publicados não preenchem municípios sem série. "
+    "04/2025 fica sem valor, sem interpolação. Famílias e pessoas são estoques cadastrais: "
+    "não somar meses, nem interpretar como beneficiários ou taxa de pobreza. "
+    "Não se emenda ao retrato de 10/2026; PA e MG têm indicadores anuais próprios."
+)
+AVISO_AL_EN = (
+    "Monthly history: Alagoas (102 municipalities), 27 states and Brazil, Jan/2013–May/2026, "
+    "MDS/VIS DATA redistributed by SEPLAG/AL (CC BY). São Paulo: 645 municipalities, Jan/2018–Aug/2026, "
+    "Seade distribution. Published state totals do not fill municipalities without a series. "
+    "Apr/2025 stays missing, without interpolation. Families and people are registry stocks: "
+    "do not sum months or interpret them as benefit recipients or a poverty rate. "
+    "Not spliced with the Oct/2026 snapshot; PA and MG have separate annual measures."
 )
 
 
@@ -135,18 +151,28 @@ class QuadroHistorico(Quadro):
     """Brasil publicado não é a soma do subconjunto paulista recuperado."""
 
     def grupo(self, pos, municipio=False, incluir_ressalvas=False):
-        if not municipio and len(pos) == self.valores.shape[1]:
+        if not municipio and len(pos) == self.valores.shape[1] and hasattr(self, 'brasil_publicado'):
             assert set(pos) == set(range(self.valores.shape[1]))
             return copy.deepcopy(self.brasil_publicado)
         return super().grupo(pos, municipio, incluir_ressalvas)
 
+    def grupo_territorio(self, key, pos, municipio=False, incluir_ressalvas=False):
+        if not municipio and key in getattr(self, 'agregados_publicados', {}):
+            return copy.deepcopy(self.agregados_publicados[key])
+        resultado = super().grupo_territorio(key, pos, municipio, incluir_ressalvas)
+        if np.all(self.condicoes[:, pos] == 5):
+            resultado['c'] = [5] * len(self.periodos)
+        return resultado
 
-def gerar(fontes, revisao, saida, repo, estaduais=None):
+
+def gerar(fontes, revisao, saida, repo, estaduais=None, alagoas=None):
     fontes, revisao, saida = map(lambda p: Path(p).resolve(), [fontes, revisao, saida])
     destino_isolado(saida, fontes)
     destino_isolado(saida, revisao)
     if estaduais:
         destino_isolado(saida, Path(estaduais))
+    if alagoas:
+        destino_isolado(saida, Path(alagoas))
     assert not saida.exists() or not any(saida.iterdir()), "Use candidato novo/vazio"
     prov = json.loads((fontes / "proveniencia.json").read_bytes())
     registros = {x["arquivo"]: x for x in prov["arquivos"]}
@@ -160,21 +186,61 @@ def gerar(fontes, revisao, saida, repo, estaduais=None):
     try:
         municipios_sp = [x[0] for x in g.m if x[2] == "SP"]
         assert len(municipios_sp) == 645
-        municipal, familias_br, periodos = normalizar(
+        municipal, familias_br, periodos_sp = normalizar(
             pd.read_csv(fontes / "bd_cad_pbf.csv", low_memory=False),
             pd.read_csv(fontes / "br_sp_var.csv"), municipios_sp,
         )
+        mensal_al = uf_al = brasil_al = prov_al = None
+        periodos = periodos_sp
+        if alagoas:
+            from cadunico_alagoas import carregar
+            codigos_al = [x[0] for x in g.m if x[2] == 'AL']
+            assert len(codigos_al) == 102
+            mensal_al, uf_al, brasil_al, prov_al = carregar(alagoas, codigos_al)
+            periodos = [a*100+m for a in range(2013,2027) for m in range(1,13) if a*100+m <= periodos_sp[-1]]
         py = {p: k for k, p in enumerate(periodos)}
         f = np.full((len(periodos), len(g.m)), np.nan)
         p = f.copy()
         for linha in municipal.itertuples(index=False):
             k, j = py[linha.competencia], g.pos[linha.cod_ibge]
             f[k, j], p[k, j] = linha.familias, linha.pessoas
+        if mensal_al is not None:
+            for linha in mensal_al.itertuples(index=False):
+                k, j = py[linha.competencia], g.pos[linha.codigo]
+                f[k, j], p[k, j] = linha.familias, linha.pessoas
         populacao, anos_base = g.populacao(periodos)
+        aviso, aviso_en = (AVISO_AL, AVISO_AL_EN) if alagoas else (AVISO, AVISO_EN)
         fonte = {"nome": "MDS/Sagicad · distribuição pública da Fundação Seade", "url": PAGINA}
+        fontes_mensais = [fonte]
+        agregados = {}
+        if alagoas:
+            from cadunico_alagoas import UF, PAGINA as PAGINA_AL
+            fontes_mensais.append(dict(nome="MDS/VIS DATA · SEPLAG/AL (CC BY)", url=PAGINA_AL))
+            uf_codigo = {v:k for k,v in UF.items()}
+            publicado = uf_al.set_index(['codigo', 'competencia'])
+            sp = municipal.groupby('competencia')[['familias', 'pessoas']].sum(min_count=645)
+            for uf, pos in {**g.uf, 'BR': np.arange(len(g.m))}.items():
+                dados = np.full((len(periodos), 2), np.nan)
+                for k, mes in enumerate(periodos):
+                    if uf == 'BR' and mes in brasil_al.index:
+                        dados[k] = brasil_al.loc[mes, ['familias', 'pessoas']]
+                    elif uf != 'BR' and (uf_codigo[uf], mes) in publicado.index:
+                        dados[k] = publicado.loc[(uf_codigo[uf], mes), ['familias', 'pessoas']]
+                    if uf == 'SP' and mes in sp.index:
+                        anterior = sp.loc[mes, ['familias', 'pessoas']].to_numpy(float)
+                        comuns = np.isfinite(dados[k]) & np.isfinite(anterior)
+                        assert np.array_equal(dados[k, comuns], anterior[comuns]), f'Total SP diverge entre fontes: {mes}'
+                        dados[k] = np.where(np.isfinite(dados[k]), dados[k], anterior)
+                    if uf == 'BR' and mes in familias_br.index and np.isfinite(familias_br.loc[mes]):
+                        assert not np.isfinite(dados[k, 0]) or dados[k, 0] == familias_br.loc[mes], f'Total Brasil diverge entre fontes: {mes}'
+                        dados[k, 0] = familias_br.loc[mes]
+                agregados[uf] = (dados, np.nansum(populacao[:, pos], axis=1))
         cotejo = g.writer.objeto('cadunico_historico_cotejo_mds', json.loads(Path(__file__).with_name('referencias').joinpath('cadunico_brasil_cotejo_20261117.json').read_bytes()))
-        linhagem = g.writer.objeto("cadunico_historico_fontes", dict(prov, aviso=AVISO, aviso_en=AVISO_EN, cotejo=cotejo,
+        linhagem = g.writer.objeto("cadunico_historico_fontes", dict(prov, aviso=aviso, aviso_en=aviso_en, cotejo=cotejo,
             regra_brasil='BR_CAD_F + SP_CAD_F até 04/2021; BR_CAD_F desde 05/2021, quando passa a incluir SP. Cotejo de 99 meses com a tabela oficial do MDS e do total de 08/2026 com o CECAD.'))
+        if alagoas:
+            linhagem = g.writer.objeto('cadunico_historico_fontes', dict(seade=linhagem, alagoas=prov_al,
+                regra='Totais das 27 UFs publicados pela fonte MDS/VIS DATA; Brasil = soma das 27 UFs, cotejada em 164 meses com o MDS e com as cinco regiões. AL municipal soma ao total estadual. Sobreposições SP/BR exigem contagens idênticas.'))
         out = []
         for id, pt, en, valores, denominadores, fator, unidade, unidade_en in [
             (IDS[0], "Famílias no CadÚnico", "Families in Cadastro Único", f, populacao, 1000, "famílias por 1.000 habitantes", "families per 1,000 inhabitants"),
@@ -187,6 +253,8 @@ def gerar(fontes, revisao, saida, repo, estaduais=None):
             c = np.where(np.isfinite(v), np.where(v == 0, 1, 0), 2).astype(np.uint8)
             c[np.isfinite(valores) & ~np.isfinite(denominadores)] = 3
             c[np.isfinite(valores) & (denominadores == 0)] = 4
+            if alagoas:
+                c[:, [j for j,x in enumerate(g.m) if x[2] not in ['SP', 'AL']]] = 5
             densidade = fator == 1000
             definicao = dict(id=id, nome=pt + (" por 1.000 habitantes" if densidade else ""),
                 nome_en=en + (" per 1,000 inhabitants" if densidade else ""), nome_original=pt, nome_original_en=en,
@@ -197,26 +265,41 @@ def gerar(fontes, revisao, saida, repo, estaduais=None):
                 normalizacao="Soma dos numeradores dividida pela soma dos denominadores dos municípios com dados. Brasil: total de famílias publicado, incluindo SP, dividido pela população nacional de referência do IBGE." if id == IDS[0] else "Pessoas cadastradas divididas pela população residente de referência do IBGE, vezes 1.000. Referências regionais usam a razão das somas; Brasil indisponível nesta série." if densidade else "Pessoas cadastradas divididas por famílias cadastradas. Referências regionais usam a razão das somas; o total Brasil não está disponível nesta série.",
                 normalizacao_en="Sum of numerators divided by the sum of denominators for municipalities with data. Brazil: published family total, including SP, divided by the IBGE reference national population." if id == IDS[0] else "Registered people divided by the IBGE reference resident population, times 1,000. Regional references use the ratio of sums; Brazil is unavailable in this series." if densidade else "Registered people divided by registered families. Regional references use the ratio of sums; Brazil is unavailable in this series.",
                 frequencia="mensal", metodo_referencia="razao", fator=fator, ranking=True, minimo=0,
-                fonte_nome=fonte["nome"], fontes=[fonte], alerta=AVISO, alerta_en=AVISO_EN,
-                historico_cadunico=True, ufs_historico=['SP'],
-                cobertura_titulo='São Paulo: 645 municípios, 01/2018 a 08/2026; Brasil: famílias.',
-                cobertura_titulo_en='São Paulo: 645 municipalities, Jan/2018 to Aug/2026; Brazil: families.',
+                fonte_nome='; '.join(x['nome'] for x in fontes_mensais), fontes=fontes_mensais, alerta=aviso, alerta_en=aviso_en,
+                historico_cadunico=True, ufs_historico=['SP', 'AL'] if alagoas else ['SP'],
+                cobertura_titulo='Famílias e pessoas: 27 estados e Brasil; municípios de SP e AL.' if alagoas else 'São Paulo: 645 municípios, 01/2018 a 08/2026; Brasil: famílias.',
+                cobertura_titulo_en='Families and people: 27 states and Brazil; SP and AL municipalities.' if alagoas else 'São Paulo: 645 municipalities, Jan/2018 to Aug/2026; Brazil: families.',
                 notas_anos={"202504": ["Mês não confirmado na fonte original; não preenchido com os valores de maio.", "Month unconfirmed in the original source; not filled with May values."]})
             if densidade:
                 definicao["anos_base_demografica"] = anos_base
+            if alagoas:
+                definicao.update(ufs_agregados_historico=sorted(g.uf),
+                    ultimo_periodo_uf={uf: 202608 if uf == 'SP' or uf == 'BR' and id == IDS[0] else 202605 for uf in [*g.uf, 'BR']},
+                    normalizacao='Famílias ou pessoas / população IBGE × 1.000. UFs: estoques estaduais publicados; Brasil: soma das 27 UFs. Regiões: razão das somas dos municípios com dados. Contagens coincidentes entre fontes exigem igualdade; não somar períodos.' if densidade else 'Pessoas / famílias do mesmo mês e território. UFs: estoques estaduais publicados; Brasil: soma das 27 UFs. Regiões: razão das somas dos municípios com dados.',
+                    normalizacao_en='Families or people / IBGE population × 1,000. States: published state stocks; Brazil: sum of all 27 states. Regions: ratio of sums for municipalities with data. Overlapping source counts must match; do not sum periods.' if densidade else 'People / families in the same month and territory. States: published state stocks; Brazil: sum of all 27 states. Regions: ratio of sums for municipalities with data.')
             q = QuadroHistorico(definicao, periodos, v, valores.copy(), denominadores.copy(), c,
                 originais=valores.copy() if densidade else v.copy())
             nacional = dict(v=[], n=[], d=[], c=[], q=[])
-            for k, mes in enumerate(periodos):
+            for k, mes in enumerate(periodos_sp):
                 n = float(familias_br.loc[mes]) if id == IDS[0] else np.nan
-                demografia = populacao[k]
+                demografia = populacao[py[mes]]
                 assert np.isfinite(demografia).sum() >= 5570, "População nacional incompleta"
                 d = float(np.nansum(demografia))
                 valido = np.isfinite(n) and d > 0
                 for campo, x in dict(v=n / d * fator if valido else None, n=n if valido else None,
                     d=d if valido else None, c=22 if valido else 2, q=0).items():
                     nacional[campo].append(x)
-            q.brasil_publicado = nacional
+            if not alagoas:
+                q.brasil_publicado = nacional
+            else:
+                q.agregados_publicados = {}
+                for uf, (contagens_uf, pop_uf) in agregados.items():
+                    nn = contagens_uf[:, 0 if id == IDS[0] else 1]
+                    dd = pop_uf if densidade else contagens_uf[:, 0]
+                    valido = np.isfinite(nn) & np.isfinite(dd) & (dd > 0)
+                    q.agregados_publicados[uf] = dict(v=[float(n/d*fator) if ok else None for n,d,ok in zip(nn,dd,valido)],
+                        n=[float(x) if ok else None for x,ok in zip(nn,valido)], d=[float(x) if ok else None for x,ok in zip(dd,valido)],
+                        c=[22 if ok else 4 if np.isfinite(n) and d == 0 else 2 for n,d,ok in zip(nn,dd,valido)], q=[0]*len(periodos))
             out.append(q)
         anuais = None
         if estaduais:
@@ -245,6 +328,28 @@ def gerar(fontes, revisao, saida, repo, estaduais=None):
         tabela = tabela[["territorio", "municipio", "uf", "ano", "mes", "familias", "pessoas", "pessoas_por_familia", "condicao", "fonte"]]
         tabela['frequencia'] = 'mensal'
         tabela['percentual_pessoas_fjp'] = np.nan
+        if alagoas:
+            from cadunico_alagoas import juntar_mensais
+            # A lacuna de abril é explícita; não estender AL/UF até o fim da edição SP.
+            meses_al = [mes for mes in periodos if mes <= 202605]
+            codigos_al = [x[0] for x in g.m if x[2] == 'AL']
+            mal = mensal_al.set_index(['codigo', 'competencia']).reindex(pd.MultiIndex.from_product(
+                [codigos_al, meses_al], names=['codigo', 'competencia'])).reset_index()
+            mal['territorio'] = mal.codigo.astype(str)
+            mal['municipio'] = mal.codigo.map({x[0]:x[1] for x in g.m})
+            mal['uf'] = 'AL'
+            mal['ano'], mal['mes'] = mal.competencia // 100, mal.competencia % 100
+            mal['fonte'] = 'MDS/VIS DATA; SEPLAG/AL (CC BY)'
+            nomes_uf = {x['regiao-imediata']['regiao-intermediaria']['UF']['sigla']: x['regiao-imediata']['regiao-intermediaria']['UF']['nome']
+                        for x in json.loads((revisao / 'ibge_localidades.json').read_bytes())}
+            novas = []
+            for uf, (counts, _) in agregados.items():
+                for mes in meses_al:
+                    ff, pp = counts[py[mes]]
+                    novas.append(dict(territorio=uf, municipio='Brasil' if uf == 'BR' else nomes_uf[uf],
+                        uf='' if uf == 'BR' else uf, ano=mes//100, mes=mes%100, familias=ff, pessoas=pp,
+                        fonte='MDS/VIS DATA; SEPLAG/AL (CC BY)'))
+            tabela = juntar_mensais([tabela, mal, pd.DataFrame(novas)])[list(tabela.columns)]
         if anuais is not None:
             tabela = pd.concat([tabela, anuais.drop(columns=['cod_ibge'])], ignore_index=True)[list(tabela.columns)]
         downloads = []
@@ -256,37 +361,39 @@ def gerar(fontes, revisao, saida, repo, estaduais=None):
                 stata = tabela.copy()
                 stata["territorio"] = stata.territorio.astype(str)
                 stata.to_stata(temporario, write_index=False, version=118, variable_labels={
-                    "territorio": "Código IBGE (7 dígitos), SP ou BR", "ano": "Ano de referência", "mes": "Mês informado pela fonte; ausente se não informado",
-                    "familias": "Famílias cadastradas (estoque; nunca somar meses)", "pessoas": "Pessoas cadastradas; Brasil, PA e MG indisponíveis",
+                    "territorio": "Código IBGE (7 dígitos), sigla UF ou BR", "ano": "Ano de referência", "mes": "Mês informado pela fonte; ausente se não informado",
+                    "familias": "Famílias cadastradas (estoque; nunca somar meses)", "pessoas": "Pessoas cadastradas; cobertura conforme dicionário",
                     "pessoas_por_familia": "Pessoas / famílias; indefinido se famílias = 0", "condicao": "Ausência não equivale a zero",
-                    "frequencia": "Mensal (Seade) ou anual (Fapespa/FJP)", "percentual_pessoas_fjp": "Percentual municipal publicado pelo IMRS (MG)"})
+                    "frequencia": "Mensal (Seade/SEPLAG-AL) ou anual (Fapespa/FJP)", "percentual_pessoas_fjp": "Percentual municipal publicado pelo IMRS (MG)"})
             h = sha(temporario.read_bytes())
             final = temporario.with_name(f"cadunico_historico_{h[:16]}.{formato}")
             temporario.rename(final)
             downloads.append(dict(formato=formato, caminho="gold/comparacoes/" + final.name, bytes=final.stat().st_size, sha256=h))
         dicionario = g.writer.objeto("cadunico_historico_dicionario", dict(
             titulo="CadÚnico: histórico recuperado",
-            aviso="Fontes e frequências distintas: SP, famílias e pessoas mensais (2018–2026); Brasil, somente famílias mensais; PA, famílias anuais (2013–2024); MG, percentual de pessoas anual (2014–2024). Use frequencia, ano e mes para identificar a observação. Não se somam estoques nem se inferem contagens dos percentuais." if estaduais else AVISO,
-            aviso_en="Distinct sources and frequencies: SP, monthly families and people (2018–2026); Brazil, monthly families only; PA, yearly families (2013–2024); MG, yearly people percentage (2014–2024). Use frequencia, ano and mes to identify observations. Stocks are not summed and counts are not inferred from percentages." if estaduais else AVISO_EN, fonte=PAGINA,
-            variaveis={"territorio": "Código IBGE do município (7 dígitos), SP ou BR. Regiões usam a associação IBGE atual (divisão 2017).",
+            aviso=aviso + (' PA: famílias anuais (2013–2024); MG: percentual municipal anual (2014–2024). Use frequencia, ano e mes. Não se inferem contagens dos percentuais.' if estaduais else ''),
+            aviso_en=aviso_en + (' PA: yearly families (2013–2024); MG: yearly municipal percentage (2014–2024). Use frequencia, ano and mes. Counts are not inferred from percentages.' if estaduais else ''), fonte=PAGINA, fontes_mensais=fontes_mensais,
+            variaveis={"territorio": "Código IBGE do município (7 dígitos), sigla da UF ou BR. Regiões usam a associação IBGE atual (divisão 2017).",
                 "municipio": "Nome do município ou do agregado.", "uf": "Sigla do estado; vazio no Brasil.",
-                "ano": "Ano da observação mensal ou anual, conforme frequencia.", "mes": "Mês informado pela fonte, de 1 a 12; vazio nas observações anuais de MG e PA até 2023. PA 2024 = julho. Nunca inferir dezembro.", "familias": "Famílias cadastradas; estoque, não somar meses nem tratar como média anual. SP/BR mensais (Seade); PA anual (Fapespa). Brasil = BR_CAD_F + SP_CAD_F até 04/2021; desde 05/2021, BR_CAD_F já inclui SP. Regra cotejada com MDS.",
-                "pessoas": "Pessoas cadastradas no mês. Disponível apenas para SP.", "pessoas_por_familia": "Pessoas / famílias do mesmo território e mês, apenas SP. Ausente quando um componente falta ou o denominador é zero.",
+                "ano": "Ano da observação mensal ou anual, conforme frequencia.", "mes": "Mês informado pela fonte, de 1 a 12; vazio nas observações anuais de MG e PA até 2023. PA 2024 = julho. Nunca inferir dezembro.", "familias": "Famílias cadastradas; estoque, não somar meses nem tratar como média anual. Mensal: AL/27 UFs/BR desde 2013 até 05/2026 (SEPLAG/AL); SP municipal desde 2018 até 08/2026 e BR até 08/2026 (Seade). PA anual (Fapespa). Sobreposições validadas; ausências em 04/2025." if alagoas else "Famílias cadastradas; estoque. SP/BR mensais (Seade); PA anual (Fapespa). Brasil corrigido conforme cotejo MDS.",
+                "pessoas": "Pessoas cadastradas no mês. AL/27 UFs/BR: 2013–05/2026; SP municipal: 2018–08/2026. Ausente nas séries anuais PA/MG." if alagoas else "Pessoas cadastradas no mês. Disponível apenas para SP.", "pessoas_por_familia": "Pessoas / famílias do mesmo território e mês. Ausente quando um componente falta ou o denominador é zero.",
                 "condicao": "registrado ou sem_publicacao_confirmada. Campos ausentes permanecem vazios.", "fonte": "Órgão responsável pela distribuição das observações públicas.",
-                "frequencia": "mensal: Seade (SP e famílias BR). anual: Fapespa (PA) ou FJP (MG); estoques, não acumulados.",
+                "frequencia": "mensal: Seade e SEPLAG/AL (MDS). anual: Fapespa (PA) ou FJP (MG); estoques, não acumulados.",
                 "percentual_pessoas_fjp": "População inscrita no CadÚnico / população estimada × 100, percentual municipal publicado no IMRS (MG), 2014–2024. Sem inferir contagens; não é taxa de pobreza. Referências regionais do painel são medianas, não agregados oficiais."},
-            fontes_anuais=prov_estaduais if estaduais else None))
+            fontes_anuais=prov_estaduais if estaduais else None, fontes_alagoas=prov_al))
         cat["downloads_historico"] = downloads
         cat["dicionario_historico"] = dicionario
-        cat["cobertura_historico"] = dict(municipios=1642 if estaduais else 645, ufs=['SP', 'PA', 'MG'] if estaduais else ['SP'],
-            mensal=dict(uf='SP', municipios=645, inicio=periodos[0], fim=periodos[-1], meses_com_valor=len(periodos)-1),
+        total_municipios = (1642 if estaduais else 645) + (102 if alagoas else 0)
+        cat["cobertura_historico"] = dict(municipios=total_municipios, ufs=(['SP', 'PA', 'MG'] if estaduais else ['SP']) + (['AL'] if alagoas else []),
+            mensal=dict(uf='SP', municipios=645, inicio=periodos_sp[0], fim=periodos_sp[-1], meses_com_valor=len(periodos_sp)-1),
+            alagoas=dict(municipios=102,inicio=201301,fim=202605,meses_com_valor=160,ufs_agregados=27) if alagoas else None,
             anual=dict(PA=dict(municipios=144,inicio=2013,fim=2024), MG=dict(municipios=853,inicio=2014,fim=2024)) if estaduais else {})
         g.writer.catalogos["assistencia_cadunico_historico"] = g.writer.objeto("assistencia_cadunico_historico_catalogo", cat)
         g.writer.concluir()
-        resumo = dict(ok=True, municipios=1642 if estaduais else 645, indicadores=len(out), periodos_mensais=len(periodos), meses_com_valor=len(periodos)-1,
+        resumo = dict(ok=True, municipios=total_municipios, indicadores=len(out), periodos_mensais=len(periodos), meses_com_valor=len(periodos)-1,
             linhas_download=len(tabela), janeiro_2018_brasil=float(familias_br.loc[201801]),
             ultima_referencia=periodos[-1], brasil_ultima=float(familias_br.iloc[-1]),
-            aviso=AVISO, arquivos=downloads, fontes=linhagem)
+            aviso=aviso, arquivos=downloads, fontes=linhagem)
         (saida / "validacao_historico.json").write_bytes(compacto(resumo))
         return resumo
     finally:
@@ -301,5 +408,6 @@ if __name__ == "__main__":
     for nome in ["fontes", "revisao", "saida"]: c.add_argument("--"+nome, type=Path, required=True)
     c.add_argument("--repo", type=Path, default=Path(__file__).resolve().parent.parent)
     c.add_argument('--estaduais', type=Path)
+    c.add_argument('--alagoas', type=Path)
     args = parser.parse_args()
-    print(json.dumps(baixar(args.saida) if args.comando == "baixar" else gerar(args.fontes, args.revisao, args.saida, args.repo, args.estaduais), ensure_ascii=True), flush=True)
+    print(json.dumps(baixar(args.saida) if args.comando == "baixar" else gerar(args.fontes, args.revisao, args.saida, args.repo, args.estaduais, args.alagoas), ensure_ascii=True), flush=True)

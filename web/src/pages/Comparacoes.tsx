@@ -321,7 +321,7 @@ export function Comparacoes({
           {t("Voltar ao painel", "Back to dashboard")}
         </Link>
       </nav>
-      {area === 'assistencia' && rede !== 'cadunico_historico' && <p className="cp-nota"><Link to={linkHistoricoCadunico(sp)}>{t('Histórico do CadÚnico: séries oficiais de SP, PA e MG e famílias no Brasil →', 'Cadastro Único history: official SP, PA and MG series and families in Brazil →')}</Link></p>}
+      {area === 'assistencia' && rede !== 'cadunico_historico' && <p className="cp-nota"><Link to={linkHistoricoCadunico(sp)}>{t('Histórico do CadÚnico: todos os estados e séries municipais recuperadas →', 'Cadastro Único history: all states and recovered municipal series →')}</Link></p>}
       {catalogo.carregando && <Estado carregando />}
       {catalogo.erro && (
         <Estado erro={catalogo.erro} tentarNovamente={catalogo.recarregar} />
@@ -407,7 +407,7 @@ function Conteudo({
       : null);
   const baseInd =
     m.indicadores.find((i) => i.id === idPedido) ??
-    (historicoCadunico ? m.indicadores.find(i => i.id === indicadorCadunicoLocal(estado)) : null) ??
+    (historicoCadunico ? m.indicadores.find(i => i.id === indicadorCadunicoLocal(estado, !!codValido || /^(I:|T:)/.test(grupo))) : null) ??
     m.indicadores.find(
       (i) => i.id === (estadual ? "e_rh_direta_16" : padroes[area]),
     ) ??
@@ -415,7 +415,13 @@ function Conteudo({
     m.indicadores[0];
   const i = baseInd,
     idx = m.indicadores.indexOf(i),
-    pp = i.periodos_com_valor ?? i.periodos;
+    periodos = i.periodos_com_valor ?? i.periodos,
+    ultimoLocal = historicoCadunico && i.ultimo_periodo_uf
+      ? vistaRanking && sp.get('nivel') === 'UF'
+        ? Math.min(...Object.values(i.ultimo_periodo_uf))
+        : i.ultimo_periodo_uf[estado]
+      : undefined,
+    pp = ultimoLocal ? periodos.filter(p => p <= ultimoLocal) : periodos;
   const periodoRaw = Number(
     sp.get("periodo") ?? sp.get("mes") ?? sp.get("ano"),
   );
@@ -492,18 +498,18 @@ function Conteudo({
             mudar({ conjunto: e.target.value === 'todas' ? null : e.target.value, indicador: null, ind: null, inicio: null, periodo: null, ano: null, mes: null, minimo: null, coorte: null, comparar: null });
           }}>
             <option value="todas">{t('Todos os indicadores: retrato atual e pagamentos', 'All indicators: current snapshot and payments')}</option>
-            <option value="cadunico_historico">{t('CadÚnico: históricos oficiais (SP, PA e MG)', 'Cadastro Único: official history (SP, PA and MG)')}</option>
+            <option value="cadunico_historico">{t('CadÚnico: históricos oficiais', 'Cadastro Único: official history')}</option>
           </select>
         </div></div>}
         {historicoCadunico && <aside className="cp-aviso" aria-label={t('Abrangência do histórico', 'Historical coverage')}>
           <strong>{t(i.cobertura_titulo ?? 'São Paulo: 645 municípios, 01/2018 a 08/2026; Brasil: famílias.', i.cobertura_titulo_en ?? 'São Paulo: 645 municipalities, Jan/2018 to Aug/2026; Brazil: families.')}</strong>
-          <p>{t('Escolha o indicador: SP tem famílias e pessoas mensais; PA, famílias por ano (2013–2024); MG, percentual da população por ano (2014–2024). As fontes e frequências permanecem separadas. Outros estados ainda não têm histórico recuperado.', 'Choose a measure: SP has monthly families and people; PA, families by year (2013–2024); MG, population percentage by year (2014–2024). Sources and frequencies stay separate. Other states still have no recovered history.')}</p>
+          <p>{t('Mensais: 27 estados, Brasil e os 102 municípios de AL, de 01/2013 a 05/2026; os 645 municípios de SP, de 01/2018 a 08/2026. Anuais: PA, famílias (2013–2024); MG, percentual da população (2014–2024). As séries anuais têm conceitos e datas próprios.', 'Monthly: all 27 states, Brazil and the 102 AL municipalities, Jan/2013–May/2026; the 645 SP municipalities, Jan/2018–Aug/2026. Yearly: PA, families (2013–2024); MG, population percentage (2014–2024). Yearly series have their own definitions and reference dates.')}</p>
           {i.frequencia === 'anual'
             ? <p>{t(i.cobertura_nota ?? i.alerta ?? '', i.cobertura_nota_en ?? i.alerta_en ?? '')}</p>
             : <p>{t('04/2025 fica sem valor por divergência de referência entre as fontes. Esta série não é emendada ao retrato de 10/2026. Cadastros não equivalem a benefícios recebidos.', 'Apr/2025 stays missing due to a reference-month discrepancy between sources. This series is not spliced with the Oct/2026 snapshot. Registrations are not benefits received.')}</p>}
-          {i.ufs_historico && estado !== 'BR' && !i.ufs_historico.includes(estado) && <p>
-            {t('O indicador escolhido não cobre este estado.', 'The chosen measure does not cover this state.')} {' '}
-            {['PA', 'MG', 'SP'].includes(estado) && <button className="botao-leve" onClick={() => mudar({indicador: indicadorCadunicoLocal(estado), inicio: null, periodo: null, ano: null, mes: null})}>{t('Ver histórico disponível neste estado', 'View available history for this state')}</button>}
+          {i.ufs_historico && estado !== 'BR' && !i.ufs_historico.includes(estado) && (codValido || /^(I:|T:)/.test(grupo) || !i.ufs_agregados_historico?.includes(estado)) && <p>
+            {t(i.ufs_agregados_historico?.includes(estado) ? 'Este município ou região ainda não tem série mensal recuperada; os totais do estado e do Brasil estão disponíveis nas referências.' : 'O indicador escolhido não cobre este estado.', i.ufs_agregados_historico?.includes(estado) ? 'This municipality or region has no recovered monthly series yet; state and Brazil totals are available as references.' : 'The chosen measure does not cover this state.')} {' '}
+            {['PA', 'MG', 'SP', 'AL'].includes(estado) && i.id !== indicadorCadunicoLocal(estado) && <button className="botao-leve" onClick={() => mudar({indicador: indicadorCadunicoLocal(estado), inicio: null, periodo: null, ano: null, mes: null})}>{t('Ver histórico disponível neste estado', 'View available history for this state')}</button>}
           </p>}
         </aside>}
         <div className="cp-filtros">
@@ -895,7 +901,10 @@ function Conteudo({
           </summary>
           {historicoCadunico && <p className="cp-nota">{textoComparacao(i, 'alerta')}</p>}
           <p className="cp-nota">
-            {t(
+            {historicoCadunico && i.ufs_agregados_historico ? t(
+              'Referências estaduais usam os estoques publicados de cada UF; Brasil usa a soma das 27 UFs. A cobertura municipal recuperada é independente destes totais. Ausências permanecem sem valor; não se somam estoques de meses diferentes.',
+              'State references use each state’s published stocks; Brazil uses the sum of all 27 states. Recovered municipal coverage is independent of these totals. Missing data stay missing; stocks from different months are not summed.',
+            ) : t(
               "As razões usam os numeradores e denominadores dos mesmos municípios com dados. A cobertura pode mudar entre períodos. Ausência, proteção da fonte e denominador zero permanecem sem valor; zero registrado continua zero.",
               "Ratios use numerators and denominators from the same municipalities with data. Coverage may change across periods. Missing data, source protections and zero denominators remain missing; recorded zero stays zero.",
             )}
@@ -1710,7 +1719,7 @@ function Lista({
                             </Link>
                             <small>
                               {condicaoComparacao(x.c)}
-                              {x.q !== undefined
+                              {x.q !== undefined && x.c !== 22
                                 ? ` · ${x.q}/${x.total} ${m.rede === "estadic" ? t("governos", "governments") : t("municípios", "municipalities")}`
                                 : ""}
                               {x.d !== null
