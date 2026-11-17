@@ -26,14 +26,16 @@ IDS = ["cad_hist_familias", "cad_hist_pessoas", "cad_hist_pessoas_por_familia"]
 AVISO = (
     "Histórico recuperado: 01/2018–08/2026, somente municípios de São Paulo; "
     "o total Brasil está disponível apenas para famílias. MDS/Sagicad, redistribuído pela Fundação Seade. "
-    "Os demais municípios e os perfis do retrato de 10/2026 não têm histórico recuperado. "
+    "Esta distribuição mensal cobre SP; séries anuais de outras fontes oficiais aparecem em indicadores próprios. "
+    "Os perfis do retrato de 10/2026 não têm histórico recuperado nesta distribuição. "
     "04/2025 permanece sem valor: a série do MDS não publica esse mês, enquanto o arquivo Seade "
     "repete os valores de 05/2025. Não se interpola, não se somam estoques mensais e não se emenda "
     "esta série ao retrato do Observatório. Cadastro não equivale a recebimento de benefício nem a taxa de pobreza."
 )
 AVISO_EN = (
     "Recovered history: Jan/2018–Aug/2026, São Paulo municipalities only; Brazil totals are available for families only. "
-    "MDS/Sagicad data redistributed by Fundação Seade. Other municipalities and the Oct/2026 snapshot profiles have no recovered history. "
+    "MDS/Sagicad data redistributed by Fundação Seade. This monthly distribution covers SP; yearly series from other official sources have separate indicators. "
+    "The Oct/2026 snapshot profiles have no recovered history in this distribution. "
     "Apr/2025 remains missing: the MDS series does not publish this month, while the Seade file repeats May/2025 values. "
     "No interpolation, summing of monthly stocks or splicing with the Observatory snapshot. "
     "Registration is not receipt of a benefit or a poverty rate."
@@ -139,10 +141,12 @@ class QuadroHistorico(Quadro):
         return super().grupo(pos, municipio, incluir_ressalvas)
 
 
-def gerar(fontes, revisao, saida, repo):
+def gerar(fontes, revisao, saida, repo, estaduais=None):
     fontes, revisao, saida = map(lambda p: Path(p).resolve(), [fontes, revisao, saida])
     destino_isolado(saida, fontes)
     destino_isolado(saida, revisao)
+    if estaduais:
+        destino_isolado(saida, Path(estaduais))
     assert not saida.exists() or not any(saida.iterdir()), "Use candidato novo/vazio"
     prov = json.loads((fontes / "proveniencia.json").read_bytes())
     registros = {x["arquivo"]: x for x in prov["arquivos"]}
@@ -194,7 +198,9 @@ def gerar(fontes, revisao, saida, repo):
                 normalizacao_en="Sum of numerators divided by the sum of denominators for municipalities with data. Brazil: published family total, including SP, divided by the IBGE reference national population." if id == IDS[0] else "Registered people divided by the IBGE reference resident population, times 1,000. Regional references use the ratio of sums; Brazil is unavailable in this series." if densidade else "Registered people divided by registered families. Regional references use the ratio of sums; Brazil is unavailable in this series.",
                 frequencia="mensal", metodo_referencia="razao", fator=fator, ranking=True, minimo=0,
                 fonte_nome=fonte["nome"], fontes=[fonte], alerta=AVISO, alerta_en=AVISO_EN,
-                historico_cadunico=True,
+                historico_cadunico=True, ufs_historico=['SP'],
+                cobertura_titulo='São Paulo: 645 municípios, 01/2018 a 08/2026; Brasil: famílias.',
+                cobertura_titulo_en='São Paulo: 645 municipalities, Jan/2018 to Aug/2026; Brazil: families.',
                 notas_anos={"202504": ["Mês não confirmado na fonte original; não preenchido com os valores de maio.", "Month unconfirmed in the original source; not filled with May values."]})
             if densidade:
                 definicao["anos_base_demografica"] = anos_base
@@ -212,6 +218,13 @@ def gerar(fontes, revisao, saida, repo):
                     nacional[campo].append(x)
             q.brasil_publicado = nacional
             out.append(q)
+        anuais = None
+        if estaduais:
+            from cadunico_estaduais import quadros_estaduais
+            quadros, anuais, prov_estaduais = quadros_estaduais(estaduais, g)
+            out.extend(quadros)
+            linhagem = g.writer.objeto('cadunico_historico_fontes', dict(mensal=linhagem, anuais=prov_estaduais,
+                regra='Séries distintas por fonte, território e frequência; sem interpolação ou inferência de contagens.'))
         cat = g.writer.area("assistencia", out, dict(tipo="objeto", **linhagem), rede="cadunico_historico")
         # Arquivos completos de contagens, não apenas a série ou o ranking em tela.
         tabela = municipal.copy()
@@ -230,6 +243,10 @@ def gerar(fontes, revisao, saida, repo):
         tabela["condicao"] = np.where(tabela.familias.notna(), "registrado", "sem_publicacao_confirmada")
         tabela["fonte"] = "MDS/Sagicad; Fundação Seade"
         tabela = tabela[["territorio", "municipio", "uf", "ano", "mes", "familias", "pessoas", "pessoas_por_familia", "condicao", "fonte"]]
+        tabela['frequencia'] = 'mensal'
+        tabela['percentual_pessoas_fjp'] = np.nan
+        if anuais is not None:
+            tabela = pd.concat([tabela, anuais.drop(columns=['cod_ibge'])], ignore_index=True)[list(tabela.columns)]
         downloads = []
         for formato in ["csv", "parquet", "dta"]:
             temporario = g.writer.dest / ("cadunico_historico_temporario." + formato)
@@ -239,26 +256,34 @@ def gerar(fontes, revisao, saida, repo):
                 stata = tabela.copy()
                 stata["territorio"] = stata.territorio.astype(str)
                 stata.to_stata(temporario, write_index=False, version=118, variable_labels={
-                    "territorio": "Código IBGE (7 dígitos), SP ou BR", "ano": "Ano de referência", "mes": "Mês de referência",
-                    "familias": "Famílias cadastradas (estoque mensal)", "pessoas": "Pessoas cadastradas; Brasil indisponível",
-                    "pessoas_por_familia": "Pessoas / famílias; indefinido se famílias = 0", "condicao": "Ausência não equivale a zero"})
+                    "territorio": "Código IBGE (7 dígitos), SP ou BR", "ano": "Ano de referência", "mes": "Mês informado pela fonte; ausente se não informado",
+                    "familias": "Famílias cadastradas (estoque; nunca somar meses)", "pessoas": "Pessoas cadastradas; Brasil, PA e MG indisponíveis",
+                    "pessoas_por_familia": "Pessoas / famílias; indefinido se famílias = 0", "condicao": "Ausência não equivale a zero",
+                    "frequencia": "Mensal (Seade) ou anual (Fapespa/FJP)", "percentual_pessoas_fjp": "Percentual municipal publicado pelo IMRS (MG)"})
             h = sha(temporario.read_bytes())
             final = temporario.with_name(f"cadunico_historico_{h[:16]}.{formato}")
             temporario.rename(final)
             downloads.append(dict(formato=formato, caminho="gold/comparacoes/" + final.name, bytes=final.stat().st_size, sha256=h))
         dicionario = g.writer.objeto("cadunico_historico_dicionario", dict(
-            titulo="CadÚnico: histórico recuperado", aviso=AVISO, aviso_en=AVISO_EN, fonte=PAGINA,
+            titulo="CadÚnico: histórico recuperado",
+            aviso="Fontes e frequências distintas: SP, famílias e pessoas mensais (2018–2026); Brasil, somente famílias mensais; PA, famílias anuais (2013–2024); MG, percentual de pessoas anual (2014–2024). Use frequencia, ano e mes para identificar a observação. Não se somam estoques nem se inferem contagens dos percentuais." if estaduais else AVISO,
+            aviso_en="Distinct sources and frequencies: SP, monthly families and people (2018–2026); Brazil, monthly families only; PA, yearly families (2013–2024); MG, yearly people percentage (2014–2024). Use frequencia, ano and mes to identify observations. Stocks are not summed and counts are not inferred from percentages." if estaduais else AVISO_EN, fonte=PAGINA,
             variaveis={"territorio": "Código IBGE do município (7 dígitos), SP ou BR. Regiões usam a associação IBGE atual (divisão 2017).",
-                "municipio": "Nome do município ou do agregado.", "uf": "SP para municípios e estado; vazio no Brasil.",
-                "ano": "Ano da referência mensal.", "mes": "Mês da referência, de 1 a 12.", "familias": "Famílias cadastradas no mês; estoque, não somar meses. Brasil = BR_CAD_F + SP_CAD_F até 04/2021; desde 05/2021, BR_CAD_F já inclui SP. Regra cotejada com a série oficial do MDS.",
-                "pessoas": "Pessoas cadastradas no mês. Não disponível para Brasil.", "pessoas_por_familia": "Pessoas / famílias do mesmo território e mês. Ausente quando um componente falta ou o denominador é zero.",
-                "condicao": "registrado ou sem_publicacao_confirmada. Campos ausentes permanecem vazios.", "fonte": "Origem das contagens: MDS/Sagicad, redistribuição Fundação Seade."}))
+                "municipio": "Nome do município ou do agregado.", "uf": "Sigla do estado; vazio no Brasil.",
+                "ano": "Ano da observação mensal ou anual, conforme frequencia.", "mes": "Mês informado pela fonte, de 1 a 12; vazio nas observações anuais de MG e PA até 2023. PA 2024 = julho. Nunca inferir dezembro.", "familias": "Famílias cadastradas; estoque, não somar meses nem tratar como média anual. SP/BR mensais (Seade); PA anual (Fapespa). Brasil = BR_CAD_F + SP_CAD_F até 04/2021; desde 05/2021, BR_CAD_F já inclui SP. Regra cotejada com MDS.",
+                "pessoas": "Pessoas cadastradas no mês. Disponível apenas para SP.", "pessoas_por_familia": "Pessoas / famílias do mesmo território e mês, apenas SP. Ausente quando um componente falta ou o denominador é zero.",
+                "condicao": "registrado ou sem_publicacao_confirmada. Campos ausentes permanecem vazios.", "fonte": "Órgão responsável pela distribuição das observações públicas.",
+                "frequencia": "mensal: Seade (SP e famílias BR). anual: Fapespa (PA) ou FJP (MG); estoques, não acumulados.",
+                "percentual_pessoas_fjp": "População inscrita no CadÚnico / população estimada × 100, percentual municipal publicado no IMRS (MG), 2014–2024. Sem inferir contagens; não é taxa de pobreza. Referências regionais do painel são medianas, não agregados oficiais."},
+            fontes_anuais=prov_estaduais if estaduais else None))
         cat["downloads_historico"] = downloads
         cat["dicionario_historico"] = dicionario
-        cat["cobertura_historico"] = dict(municipios=645, uf="SP", inicio=periodos[0], fim=periodos[-1], meses_com_valor=len(periodos)-1)
+        cat["cobertura_historico"] = dict(municipios=1642 if estaduais else 645, ufs=['SP', 'PA', 'MG'] if estaduais else ['SP'],
+            mensal=dict(uf='SP', municipios=645, inicio=periodos[0], fim=periodos[-1], meses_com_valor=len(periodos)-1),
+            anual=dict(PA=dict(municipios=144,inicio=2013,fim=2024), MG=dict(municipios=853,inicio=2014,fim=2024)) if estaduais else {})
         g.writer.catalogos["assistencia_cadunico_historico"] = g.writer.objeto("assistencia_cadunico_historico_catalogo", cat)
         g.writer.concluir()
-        resumo = dict(ok=True, municipios=645, periodos=len(periodos), meses_com_valor=len(periodos)-1,
+        resumo = dict(ok=True, municipios=1642 if estaduais else 645, indicadores=len(out), periodos_mensais=len(periodos), meses_com_valor=len(periodos)-1,
             linhas_download=len(tabela), janeiro_2018_brasil=float(familias_br.loc[201801]),
             ultima_referencia=periodos[-1], brasil_ultima=float(familias_br.iloc[-1]),
             aviso=AVISO, arquivos=downloads, fontes=linhagem)
@@ -275,5 +300,6 @@ if __name__ == "__main__":
     c = sub.add_parser("gerar")
     for nome in ["fontes", "revisao", "saida"]: c.add_argument("--"+nome, type=Path, required=True)
     c.add_argument("--repo", type=Path, default=Path(__file__).resolve().parent.parent)
+    c.add_argument('--estaduais', type=Path)
     args = parser.parse_args()
-    print(json.dumps(baixar(args.saida) if args.comando == "baixar" else gerar(args.fontes, args.revisao, args.saida, args.repo), ensure_ascii=True), flush=True)
+    print(json.dumps(baixar(args.saida) if args.comando == "baixar" else gerar(args.fontes, args.revisao, args.saida, args.repo, args.estaduais), ensure_ascii=True), flush=True)

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { linkHistoricoCadunico, indicadorHistoricoCadunico } from '../src/cadunico_historico';
+import { linkHistoricoCadunico, indicadorHistoricoCadunico, indicadorCadunicoLocal } from '../src/cadunico_historico';
 import { condicaoComparacao } from '../src/comparacoes_apresentacao';
 import { enderecoDownloadHistorico, validarSerieComparacao } from '../src/comparacoes_dados';
 
@@ -16,6 +16,16 @@ test('atalho de pessoas não troca a medida por famílias', () => {
   const u = linkHistoricoCadunico(new URLSearchParams(), indicadorHistoricoCadunico.cad_qtd_pessoas);
   assert.ok(u.includes('indicador=cad_hist_pessoas'));
   assert.equal(indicadorHistoricoCadunico.cad_perfil_qualquer, undefined);
+});
+test('atalho geral abre a distribuição disponível para PA ou MG, com prioridade ao município', () => {
+  for (const [filtro, id] of [['uf=PA', 'cad_hist_pa_familias_anual'], ['uf=MG', 'cad_hist_mg_pessoas_pct'], ['cod=3106200&uf=PA', 'cad_hist_mg_pessoas_pct'], ['cod=BR&uf=MG', 'cad_hist_familias']]) {
+    const u = new URL(linkHistoricoCadunico(new URLSearchParams(filtro)), 'https://example.test');
+    assert.equal(u.searchParams.get('indicador'), id);
+  }
+  assert.equal(indicadorCadunicoLocal('GO'), 'cad_hist_familias');
+});
+test('uma medida pedida explicitamente não é trocada por medida anual diferente', () => {
+  assert.ok(linkHistoricoCadunico(new URLSearchParams('uf=MG'), 'cad_hist_familias').includes('indicador=cad_hist_familias'));
 });
 test('Brasil publicado tem condição própria, sem atribuir cobertura municipal ao arquivo parcial', () => {
   assert.match(condicaoComparacao(22), /Total nacional publicado/);

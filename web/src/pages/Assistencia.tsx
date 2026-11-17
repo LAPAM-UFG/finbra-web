@@ -654,7 +654,7 @@ function PainelCorpo({ c }: { c: Ctx }) {
                   );
                 })}
               </div>
-              {fo === 'cadunico' && comps.length <= 1 && <p className="as-retrato">{t('Os perfis abaixo são o retrato cadastral atual. ', 'The profiles below show the current registry snapshot. ')}<Link to={linkHistoricoCadunico(c.sp)}>{t('Ver histórico de famílias e pessoas: municípios de SP e famílias no Brasil →', 'View family and people history: SP municipalities and families in Brazil →')}</Link></p>}
+              {fo === 'cadunico' && comps.length <= 1 && <p className="as-retrato">{t('Os perfis abaixo são o retrato cadastral atual. ', 'The profiles below show the current registry snapshot. ')}<Link to={linkHistoricoCadunico(c.sp)}>{t('Ver históricos oficiais: SP, PA, MG e famílias no Brasil →', 'View official history: SP, PA, MG and families in Brazil →')}</Link></p>}
               {fo === 'pbf' && <p className="as-retrato">{t('Reúne a folha mensal do MDS e os pagamentos da CGU, que são séries diferentes, com datas próprias. Famílias da folha não são os responsáveis pagos nos pagamentos CGU.', 'Combines the MDS monthly payroll and CGU payments, which are different series with their own dates. Families in the payroll are not the guardians paid in the CGU payments.')}</p>}
               {fo === 'bpc' && <p className="as-retrato">{t('Idosos e pessoas com deficiência: tipos indisponíveis (a fonte não traz a espécie do benefício e eles não são inferidos).', 'Older adults and people with disabilities: types unavailable (the source does not carry the benefit type and they are not inferred).')}</p>}
             </section>

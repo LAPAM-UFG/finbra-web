@@ -54,6 +54,11 @@ export type DefComparacao = {
   avaliacao?: boolean;
   edicoes?: unknown[];
   historico_cadunico?: boolean;
+  ufs_historico?: string[];
+  cobertura_titulo?: string;
+  cobertura_titulo_en?: string;
+  cobertura_nota?: string;
+  cobertura_nota_en?: string;
 };
 export type SerieComparacao = {
   v: (number | null)[];

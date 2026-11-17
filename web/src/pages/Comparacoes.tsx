@@ -6,7 +6,7 @@ import { Grafico, linhas } from "../components/Grafico";
 import { exportar, type Tabela } from "../exportar";
 import { idioma, local, t } from "../idioma";
 import { UF_NOMES } from "../ufs";
-import { linkHistoricoCadunico } from '../cadunico_historico';
+import { indicadorCadunicoLocal, linkHistoricoCadunico } from '../cadunico_historico';
 import {
   obterComparacoes,
   obterGeografiaComparacao,
@@ -321,7 +321,7 @@ export function Comparacoes({
           {t("Voltar ao painel", "Back to dashboard")}
         </Link>
       </nav>
-      {area === 'assistencia' && rede !== 'cadunico_historico' && <p className="cp-nota"><Link to={linkHistoricoCadunico(sp)}>{t('Novo: histórico do CadÚnico desde 2018 — municípios de SP e famílias no Brasil →', 'New: Cadastro Único history since 2018 — SP municipalities and families in Brazil →')}</Link></p>}
+      {area === 'assistencia' && rede !== 'cadunico_historico' && <p className="cp-nota"><Link to={linkHistoricoCadunico(sp)}>{t('Histórico do CadÚnico: séries oficiais de SP, PA e MG e famílias no Brasil →', 'Cadastro Único history: official SP, PA and MG series and families in Brazil →')}</Link></p>}
       {catalogo.carregando && <Estado carregando />}
       {catalogo.erro && (
         <Estado erro={catalogo.erro} tentarNovamente={catalogo.recarregar} />
@@ -407,6 +407,7 @@ function Conteudo({
       : null);
   const baseInd =
     m.indicadores.find((i) => i.id === idPedido) ??
+    (historicoCadunico ? m.indicadores.find(i => i.id === indicadorCadunicoLocal(estado)) : null) ??
     m.indicadores.find(
       (i) => i.id === (estadual ? "e_rh_direta_16" : padroes[area]),
     ) ??
@@ -491,13 +492,19 @@ function Conteudo({
             mudar({ conjunto: e.target.value === 'todas' ? null : e.target.value, indicador: null, ind: null, inicio: null, periodo: null, ano: null, mes: null, minimo: null, coorte: null, comparar: null });
           }}>
             <option value="todas">{t('Todos os indicadores: retrato atual e pagamentos', 'All indicators: current snapshot and payments')}</option>
-            <option value="cadunico_historico">{t('CadÚnico: histórico parcial (2018–2026)', 'Cadastro Único: partial history (2018–2026)')}</option>
+            <option value="cadunico_historico">{t('CadÚnico: históricos oficiais (SP, PA e MG)', 'Cadastro Único: official history (SP, PA and MG)')}</option>
           </select>
         </div></div>}
         {historicoCadunico && <aside className="cp-aviso" aria-label={t('Abrangência do histórico', 'Historical coverage')}>
-          <strong>{t('Histórico recuperado: 645 municípios de São Paulo, 01/2018 a 08/2026.', 'Recovered history: 645 São Paulo municipalities, Jan/2018 to Aug/2026.')}</strong>
-          <p>{t('No Brasil, há série de famílias; pessoas e pessoas por família não estão disponíveis. Municípios de outros estados continuam apenas com o retrato atual. Para comparar um município paulista com suas regiões e o estado, digite seu nome abaixo.', 'Brazil has a family time series; people and people per family are unavailable. Municipalities in other states still have only the current snapshot. To compare a São Paulo municipality with its regions and state, enter its name below.')}</p>
-          <p>{t('04/2025 fica sem valor por divergência de referência entre as fontes. Esta série não é emendada ao retrato de 10/2026. Cadastros não equivalem a benefícios recebidos.', 'Apr/2025 stays missing due to a reference-month discrepancy between sources. This series is not spliced with the Oct/2026 snapshot. Registrations are not benefits received.')}</p>
+          <strong>{t(i.cobertura_titulo ?? 'São Paulo: 645 municípios, 01/2018 a 08/2026; Brasil: famílias.', i.cobertura_titulo_en ?? 'São Paulo: 645 municipalities, Jan/2018 to Aug/2026; Brazil: families.')}</strong>
+          <p>{t('Escolha o indicador: SP tem famílias e pessoas mensais; PA, famílias por ano (2013–2024); MG, percentual da população por ano (2014–2024). As fontes e frequências permanecem separadas. Outros estados ainda não têm histórico recuperado.', 'Choose a measure: SP has monthly families and people; PA, families by year (2013–2024); MG, population percentage by year (2014–2024). Sources and frequencies stay separate. Other states still have no recovered history.')}</p>
+          {i.frequencia === 'anual'
+            ? <p>{t(i.cobertura_nota ?? i.alerta ?? '', i.cobertura_nota_en ?? i.alerta_en ?? '')}</p>
+            : <p>{t('04/2025 fica sem valor por divergência de referência entre as fontes. Esta série não é emendada ao retrato de 10/2026. Cadastros não equivalem a benefícios recebidos.', 'Apr/2025 stays missing due to a reference-month discrepancy between sources. This series is not spliced with the Oct/2026 snapshot. Registrations are not benefits received.')}</p>}
+          {i.ufs_historico && estado !== 'BR' && !i.ufs_historico.includes(estado) && <p>
+            {t('O indicador escolhido não cobre este estado.', 'The chosen measure does not cover this state.')} {' '}
+            {['PA', 'MG', 'SP'].includes(estado) && <button className="botao-leve" onClick={() => mudar({indicador: indicadorCadunicoLocal(estado), inicio: null, periodo: null, ano: null, mes: null})}>{t('Ver histórico disponível neste estado', 'View available history for this state')}</button>}
+          </p>}
         </aside>}
         <div className="cp-filtros">
           <div>
@@ -957,7 +964,7 @@ function Conteudo({
             </p>
           )}
           {historicoCadunico && <div className="cp-acoes">
-            <span>{t('Base histórica completa (contagens mensais):', 'Complete historical dataset (monthly counts):')}</span>
+            <span>{t('Base histórica completa (séries mensais e anuais):', 'Complete historical dataset (monthly and yearly series):')}</span>
             {m.downloads_historico?.map(a => <a key={a.formato} href={enderecoDownloadHistorico(a)} download>{a.formato === 'dta' ? 'Stata (.dta)' : a.formato.toUpperCase()}</a>)}
             {m.dicionario_historico && <a href={enderecoDownloadHistorico(m.dicionario_historico)} download>{t('Dicionário sucinto (JSON)', 'Concise dictionary (JSON)')}</a>}
           </div>}
