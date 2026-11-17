@@ -144,6 +144,7 @@ test("incluir ressalvas conserva o valor original e não transforma nulo em zero
 });
 test("município oferece ambas as regiões; região imediata oferece a intermediária; ESTADIC não se reparte em municípios", () => {
   const g = {
+    municipios: [[5208905, "Goiás", "GO", "520002", "5201"]],
     territorios: {
       "5208905": {
         nivel: "M",
@@ -151,7 +152,7 @@ test("município oferece ambas as regiões; região imediata oferece a intermedi
         imediata: "I:520002",
         intermediaria: "T:5201",
       },
-      "I:520002": { nivel: "imediata", uf: "GO", intermediaria: "T:5201" },
+      "I:520002": { nivel: "imediata", uf: "GO" },
       "E:52": { nivel: "E" },
       BR: { nivel: "BR" },
     },

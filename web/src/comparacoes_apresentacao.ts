@@ -133,9 +133,15 @@ export function referenciasComparacao(
   if (!x) return [];
   if (x.nivel === "E") return ["E:BR"];
   if (x.nivel === "E_BR" || chave === "BR") return [];
+  const municipio =
+    !x.intermediaria && x.nivel === "imediata"
+      ? g.municipios.find((m) => `I:${m[3]}` === chave)
+      : undefined;
+  const intermediaria =
+    x.intermediaria ?? (municipio ? `T:${municipio[4]}` : undefined);
   return [
     ...new Set(
-      [x.imediata, x.intermediaria, x.uf, "BR"].filter(
+      [x.imediata, intermediaria, x.uf, "BR"].filter(
         (k): k is string => !!k && k !== chave,
       ),
     ),

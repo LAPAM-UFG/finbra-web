@@ -1352,19 +1352,11 @@ function Lista({
       : nivel !== "M"
         ? [...(estado !== "BR" ? [estado] : []), "BR"]
         : [
-            ...new Set([
-              ...(g.territorios[grupo].imediata
-                ? [
-                    g.territorios[grupo].imediata!,
-                    g.territorios[grupo].intermediaria!,
-                  ]
-                : []),
-              ...(grupo.startsWith("I:") || grupo.startsWith("T:")
-                ? [grupo]
-                : []),
-              ...(estado !== "BR" ? [estado] : []),
-              "BR",
-            ]),
+            ...new Set(
+              [grupo, ...referenciasComparacao(g, grupo)].filter(
+                (k) => g.territorios[k]?.nivel !== "M",
+              ),
+            ),
           ];
   const uf = coorte === "BR" ? "BR" : (g.territorios[coorte].uf ?? coorte);
   const minimoRaw = Number(sp.get("minimo") ?? i.minimo ?? 0);
