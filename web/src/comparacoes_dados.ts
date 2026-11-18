@@ -11,6 +11,7 @@ export type AreaComparacao =
   | "saneamento"
   | "financas"
   | "clima"
+  | "agropecuaria"
   | "gestao";
 export type ObjetoComparacao = {
   caminho: string;
@@ -335,6 +336,8 @@ export function obterComparacoes(
     const chaves =
       area === 'assistencia' && rede === 'cadunico_historico'
         ? [] // Catálogo independente, com distribuições Seade e cotejo MDS fixados por hash.
+        : area === "agropecuaria"
+        ? ["gold/agropecuaria/manifesto.json"]
         : area === "gestao"
         ? ["gold/munic/painel_respostas.parquet"]
         : area === "clima"
@@ -461,6 +464,7 @@ export function validarSerieComparacao(
   tamanho: number,
   quantidade: number,
   agregadoPublicado = false,
+  coberturaMunicipalConhecida = false,
 ) {
   for (const a of [s.v, s.n, s.d, s.r].filter((a) => a !== undefined))
     if (!Array.isArray(a) || a.length !== tamanho || a.some((x) => !finito(x)))
@@ -479,13 +483,16 @@ export function validarSerieComparacao(
       (v, k) =>
         (s.c[k] === 1 && v !== 0) ||
         (v === null && [0, 1, 6, 11, 12, 16, 18, 22].includes(s.c[k])) ||
-        (s.c[k] === 22 && (s.q[k] !== 0 || s.n[k] === null || s.d[k] === null || s.d[k]! <= 0)),
+        (s.c[k] === 22 && ((!coberturaMunicipalConhecida && s.q[k] !== 0) || s.n[k] === null || s.d[k] === null || s.d[k]! <= 0)),
     )
   )
     throw new Error("Valor e condição divergentes.");
   if (s.com_ressalvas)
-    validarSerieComparacao(s.com_ressalvas, tamanho, quantidade, agregadoPublicado);
+    validarSerieComparacao(s.com_ressalvas, tamanho, quantidade, agregadoPublicado, coberturaMunicipalConhecida);
 }
+/** PAM/PPM tem componentes oficiais e, separadamente, cobertura municipal conhecida. */
+export const permiteAgregadoPublicado = (area:AreaComparacao,rede:string,nivel:string,id:string) =>
+  area==='agropecuaria'&&['UF','BR'].includes(nivel)||permiteAgregadoHistorico(area,rede,nivel,id);
 export function obterGrupoComparacao(
   m: CatalogoComparacao,
   g: GeografiaComparacao,
@@ -520,7 +527,8 @@ export function obterGrupoComparacao(
           s,
           m.indicadores[k].periodos.length,
           x.quantidade,
-          permiteAgregadoHistorico(m.area, m.rede, terr.nivel, m.indicadores[k].id),
+          permiteAgregadoPublicado(m.area, m.rede, terr.nivel, m.indicadores[k].id),
+          m.area==='agropecuaria'&&['UF','BR'].includes(terr.nivel),
         ),
       );
       if (!["M", "E"].includes(terr.nivel))
@@ -670,9 +678,9 @@ export function obterListaReferencias(
       )
         throw new Error("Valores de referências incompletos.");
       if (s.c.includes(22)) {
-        if (!permiteAgregadoHistorico(m.area, m.rede, nivel, i.id))
+        if (!permiteAgregadoPublicado(m.area, m.rede, nivel, i.id))
           throw new Error('Agregado publicado fora do contexto histórico.');
-        validarSerieComparacao(s, keys.length, Math.max(...keys.map(key => m.quantidades[key])), true);
+        validarSerieComparacao(s, keys.length, Math.max(...keys.map(key => m.quantidades[key])), true, m.area==='agropecuaria'&&nivel==='UF');
       }
       return keys.map((key, k) => {
         const ter = g.territorios[key];

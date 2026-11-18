@@ -38,8 +38,9 @@ test('indicadores adicionais aparecem no tema e na busca; a seleção principal 
  assert.equal(filtrarDicionario(idx,'docentes','')[0].arquivo_principal,false);
 });
 
-test('Downloads não leva filtros para os painéis',()=>{
- assert.equal(buscaEntreAreas('?uf=GO&ano=2020&ente=5208707','downloads','saude'),'');
+test('Downloads preserva lugar e ano ao voltar aos painéis',()=>{
+ assert.equal(buscaEntreAreas('?uf=GO&ano=2020&ente=5208707','downloads','saude'),'?uf=GO&ente=5208707&ano=2020');
+ assert.equal(buscaEntreAreas('?uf=GO&ano=2020&cod=5208707','downloads','agropecuaria'),'?uf=GO&cod=5208707&ano=2020');
  assert.ok(buscaEntreAreas('?uf=GO&ente=5208707','saude','assistencia').includes('cod=5208707'));
 });
 

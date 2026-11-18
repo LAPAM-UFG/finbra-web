@@ -49,6 +49,7 @@ export const RAIZES_COMPARACAO: Record<AreaComparacao, string> = {
   financas: "",
   clima: "/clima",
   gestao: "/munic",
+  agropecuaria: "/agropecuaria",
 };
 const titulos: Record<AreaComparacao, [string, string]> = {
   assistencia: ["Assistência social", "Social assistance"],
@@ -59,6 +60,7 @@ const titulos: Record<AreaComparacao, [string, string]> = {
   financas: ["Finanças públicas", "Public finances"],
   clima: ["Clima", "Climate"],
   gestao: ["Gestão pública", "Public management"],
+  agropecuaria: ["Agropecuária", "Agriculture and livestock"],
 };
 const padroes: Record<AreaComparacao, string> = {
   assistencia: "cad_qtd_familias",
@@ -69,6 +71,7 @@ const padroes: Record<AreaComparacao, string> = {
   financas: "fin_receita_liquida",
   clima: "chuva_mm",
   gestao: "m_rh_direta_16",
+  agropecuaria: "leite_vaca",
 };
 const numero = (v: number) => v.toLocaleString(local());
 const nome = (i: DefComparacao) => textoComparacao(i, "nome");
