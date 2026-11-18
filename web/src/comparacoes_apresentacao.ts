@@ -232,6 +232,10 @@ export function rupturaComparacao(
     return "metodo";
   return null;
 }
+/** Liga apenas observações existentes em anos vizinhos nas mudanças da RAIS. */
+export function pontePontilhadaRais(antes: number, depois: number, a: number | null, b: number | null): boolean {
+  return depois === antes + 1 && [2022, 2023].includes(depois) && a !== null && b !== null && Number.isFinite(a) && Number.isFinite(b);
+}
 export function ranquearComparacao(
   linhas: LinhaComparacao[],
   ordem: "maior" | "menor",

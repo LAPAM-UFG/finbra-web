@@ -1,4 +1,5 @@
 import { useId, useMemo, useState } from "react";
+import type { LineSeriesOption } from 'echarts/charts';
 import { Link, useSearchParams } from "react-router-dom";
 import { useSocial } from "../assistencia_dados";
 import { Estado } from "../components/Kpi";
@@ -35,6 +36,7 @@ import {
   variacaoComparacao,
   periodosComparaveis,
   rupturaComparacao,
+  pontePontilhadaRais,
 } from "../comparacoes_apresentacao";
 import "../comparacoes.css";
 
@@ -1094,6 +1096,7 @@ function Serie({
   const grafico = () => {
     const eixos: (number | string)[] = [],
       indices: (number | null)[] = [];
+    const pontes: { de: number; ate: number; antes: number; depois: number }[] = [];
     for (const [j, p] of janela.entries()) {
       const antes = janela[j - 1];
       const parcial = linhasSerie.some(
@@ -1103,7 +1106,9 @@ function Serie({
       );
       const ruptura =
         j > 0 ? rupturaComparacao(area, i, antes, p, parcial) : null;
-      if (ruptura) {
+      if (area === 'trabalho' && ruptura === 'metodo') {
+        pontes.push({ de: eixos.length - 1, ate: eixos.length, antes, depois: p });
+      } else if (ruptura) {
         eixos.push(
           (ruptura === "parcial"
             ? t("Período parcial", "Partial period")
@@ -1124,8 +1129,8 @@ function Serie({
       <Grafico
         nome={`${m.area}_${i.id}_${grupo}`}
         descricao={t(
-          "Evolução na unidade do indicador; lacunas não são preenchidas. Anos parciais e mudanças de método interrompem a linha. Todos os valores estão na tabela da série.",
-          "Trends in the indicator unit; gaps are not filled. Partial years and methodology changes break the line. All values are in the series table.",
+          area === 'trabalho' ? 'Evolução na unidade do indicador. Mudanças da RAIS são ligadas por pontilhados; dados ausentes continuam sem ligação. Valores na tabela da série.' : 'Evolução na unidade do indicador; lacunas não são preenchidas. Anos parciais e mudanças de método interrompem a linha. Todos os valores estão na tabela da série.',
+          area === 'trabalho' ? 'Trends in the indicator unit. Dotted segments connect RAIS methodology changes; missing observations remain disconnected. Values are in the series table.' : 'Trends in the indicator unit; gaps are not filled. Partial years and methodology changes break the line. All values are in the series table.',
         )}
         altura={340}
         opcao={(cores) => {
@@ -1155,15 +1160,27 @@ function Serie({
               textStyle: { color: cores.tinta2 },
             },
             color: paleta,
-            series: ss.map((s, k) => ({
-              name: s.nome,
-              type: "line",
-              data: s.valores,
-              connectNulls: false,
-              symbolSize: 5,
-              itemStyle: { color: paleta[k] },
-              lineStyle: { color: paleta[k], width: 2 },
-            })),
+            series: ss.flatMap<LineSeriesOption>((s, k) => {
+              const estilo = { name: s.nome, type: 'line' as const, connectNulls: false, symbolSize: 5, itemStyle: { color: paleta[k] }, lineStyle: { color: paleta[k], width: 2 } };
+              if (!pontes.length) return [{ ...estilo, data: s.valores }];
+              // Marcadores e tooltip mantêm todos os dados originais; os trechos
+              // separados deixam o eixo anual regular e não preenchem ausências.
+              const limites = [0, ...pontes.map(p => p.ate), s.valores.length];
+              const solidos = limites.slice(0, -1).flatMap((de, j) => limites[j + 1] - de < 2 ? [] : [{
+                ...estilo, data: s.valores.map((v, n) => n >= de && n < limites[j + 1] ? v : null),
+                symbol: 'none', silent: true, tooltip: { show: false }, z: 2,
+              }]);
+              const pontilhados = pontes.flatMap(p => pontePontilhadaRais(p.antes, p.depois, s.valores[p.de], s.valores[p.ate]) ? [{
+                ...estilo, data: [[eixos[p.de], s.valores[p.de]], [eixos[p.ate], s.valores[p.ate]]],
+                symbol: 'none', silent: true, tooltip: { show: false }, z: 2,
+                lineStyle: { color: paleta[k], width: 2, type: 'dotted' as const },
+              }] : []);
+              return [{ ...estilo, data: s.valores, lineStyle: { color: paleta[k], width: 0 }, emphasis: { lineStyle: { width: 0 } }, z: 3,
+                ...(k === 0 ? { markLine: { silent: true, symbol: 'none', lineStyle: { color: cores.tinta3, width: 1, type: 'dotted' as const },
+                  label: { position: 'insideEndTop' as const, color: cores.tinta2, fontSize: 10, formatter: '{b}' },
+                  data: pontes.map(p => ({ xAxis: periodoComparacao(p.depois), name: t(`Mudança ${p.depois}`, `Change ${p.depois}`) })) } } : {}),
+              }, ...solidos, ...pontilhados];
+            }),
           };
         }}
       />

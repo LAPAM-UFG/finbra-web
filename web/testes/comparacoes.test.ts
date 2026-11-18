@@ -10,7 +10,16 @@ import {
   variacaoComparacao,
   periodosComparaveis,
   rupturaComparacao,
+  pontePontilhadaRais,
 } from "../src/comparacoes_apresentacao";
+test('pontilhado da RAIS preserva lacunas, valores negativos e anos sem quebra', () => {
+  assert.equal(pontePontilhadaRais(2021,2022,100,120),true);
+  assert.equal(pontePontilhadaRais(2022,2023,-5,0),true);
+  assert.equal(pontePontilhadaRais(2021,2022,null,120),false);
+  assert.equal(pontePontilhadaRais(2022,2023,120,null),false);
+  assert.equal(pontePontilhadaRais(2021,2023,100,150),false);
+  assert.equal(pontePontilhadaRais(2023,2024,100,150),false);
+});
 test("fluxo anual parcial não é apresentado como crescimento contra um ano completo", () => {
   const d = {
     id: "caged_saldo",
