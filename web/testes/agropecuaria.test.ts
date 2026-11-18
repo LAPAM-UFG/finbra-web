@@ -4,6 +4,7 @@ import { validarGrupoAgro, type CatalogoAgro, type GrupoAgro } from '../src/agro
 import { buscaEntreAreas, buscaParaDownloads } from '../src/navegacao';
 import { linkComparacaoRaio, type IndicadorRaio } from '../src/raio_x';
 import { permiteAgregadoPublicado, validarSerieComparacao, type GeografiaComparacao } from '../src/comparacoes_dados';
+import { numeroAgro } from '../src/agropecuaria_apresentacao';
 
 const cat={versao:1,anos:[2013,2025],produtos:[],indicadores:[{id:'ag_pam_0_valor'}],condicoes:{}}as unknown as CatalogoAgro;
 const grupo:GrupoAgro={versao:1,grupo:'5208905',anos:[2013,2025],valores:[[0],[null]],condicoes:[[1],[20]]};
@@ -37,4 +38,20 @@ test('agregados oficiais PAM/PPM mantêm a cobertura municipal sem afrouxar outr
  assert.equal(permiteAgregadoPublicado('agropecuaria','todas','UF','leite_vaca'),true);
  assert.equal(permiteAgregadoPublicado('agropecuaria','todas','M','leite_vaca'),false);
  assert.equal(permiteAgregadoPublicado('saude','todas','UF','leite_vaca'),false);
+});
+
+test('medidas calculadas mantêm ausência, denominador zero e proteção',()=>{
+ const c={...cat,derivados:[{id:'valor_un_ani_2682'}]}as CatalogoAgro;
+ const g={...grupo,derivados:[[1.85],[null]],condicoes_derivados:[[0],[4]]};
+ assert.doesNotThrow(()=>validarGrupoAgro(g,'5208905',c));
+ assert.throws(()=>validarGrupoAgro(grupo,'5208905',c));
+ assert.throws(()=>validarGrupoAgro({...g,derivados:[[1.85],[0]]},'5208905',c));
+ assert.throws(()=>validarGrupoAgro({...g,condicoes_derivados:[[20],[4]]},'5208905',c));
+ assert.throws(()=>validarGrupoAgro({...g,derivados:[[1.85,2],[null]]},'5208905',c));
+ assert.doesNotThrow(()=>validarGrupoAgro({...g,derivados:[[0],[null]],condicoes_derivados:[[1],[20]]},'5208905',c));
+});
+
+test('valor positivo muito pequeno não é mostrado como zero',()=>{
+ assert.equal(numeroAgro(0),'0');assert.match(numeroAgro(.001),/^<0[,.]01$/);
+ assert.equal(numeroAgro(null),'—');assert.match(numeroAgro(1.85),/1[,.]85/);
 });

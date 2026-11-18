@@ -130,14 +130,14 @@ def gerar(fontes, destino):
         for bucket,ref in am['indices'].items():
             agro_indices[bucket]=ler(ref['caminho']);agro_paths[bucket]=paths[agro_indices[bucket]['arquivo']['caminho']]
         for j,i in enumerate(ac['indicadores']):
-            total={'lavouras':'Total das lavouras','origem_animal':'Total dos produtos de origem animal','aquicultura':'Total da aquicultura'}.get(i['familia'],'Total')
-            total_en={'lavouras':'All crops','origem_animal':'All animal products','aquicultura':'All aquaculture'}.get(i['familia'],'Total')
+            total={'lavouras':'Total das lavouras','origem_animal':'Total dos produtos de origem animal','aquicultura':'Total da aquicultura','silvicultura':'Total da silvicultura','extracao_vegetal':'Total da extração vegetal','florestas_plantadas':'Total das florestas plantadas'}.get(i['familia'],'Total')
+            total_en={'lavouras':'All crops','origem_animal':'All animal products','aquicultura':'All aquaculture','silvicultura':'All forestry','extracao_vegetal':'All forest extraction','florestas_plantadas':'All planted forests'}.get(i['familia'],'Total')
             label=i['nome'].replace('Total ·',total+' ·',1)if i['categoria']=='0'else i['nome']
             label_en=i['nome_en'].replace('Total ·',total_en+' ·',1)if i['categoria']=='0'else i['nome_en']
             agro_defs.append(dict(id=i['id'],nome=label,nome_en=label_en,descricao=i['descricao'],descricao_en=i['descricao'],
                 tema=i['familia'],tema_en=i['familia'],unidade=i['unidade'],unidade_en=i['unidade'],formato='moeda'if i['medida']=='valor'else'numero',periodos=am['anos'],
                 frequencia='anual',metodo_referencia='razao',normalizacao='Valor original da PAM/PPM. Use produtividade e percentuais para comparar lugares.',normalizacao_en='Original PAM/PPM value. Use yields and shares to compare places.',fator=1,ranking=False,
-                fonte_nome='IBGE · PAM / PPM',fontes=[dict(nome='SIDRA '+i['tabela'],url='https://sidra.ibge.gov.br/tabela/'+i['tabela'])],area='agropecuaria',rede='todas',catalogo='agropecuaria_original',indice=j,
+                fonte_nome='IBGE · PAM / PPM / PEVS',fontes=[dict(nome='SIDRA '+i['tabela'],url='https://sidra.ibge.gov.br/tabela/'+i['tabela'])],area='agropecuaria',rede='todas',catalogo='agropecuaria_original',indice=j,
                 alerta='Valor nominal do próprio ano, sem desconto da inflação; não é PIB.'if i['medida']=='valor'else'',alerta_en='Nominal current-year value, without inflation adjustment; not GDP.'if i['medida']=='valor'else''))
         defs+=agro_defs
     saida=destino/'gold/raiox';saida.mkdir(parents=True)

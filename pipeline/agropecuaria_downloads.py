@@ -23,23 +23,23 @@ def gerar(base,painel,saida,stata,rscript):
  import gzip
  catalog=ler(painel/'gold/agropecuaria/manifesto.json')['catalogo'];raw=(painel/catalog['caminho']).read_bytes();assert len(raw)==catalog['bytes']
  import hashlib
- assert hashlib.sha256(raw).hexdigest()==catalog['sha256'];cat=json.loads(gzip.decompress(raw));ids=[i['id']for i in cat['indicadores']]
+ assert hashlib.sha256(raw).hexdigest()==catalog['sha256'];cat=json.loads(gzip.decompress(raw));raw_count=len(cat['indicadores']);definitions=list(cat['indicadores'])+[dict(i,id=i['variavel_download'],tabela='calculado',variavel_sidra=i['numerador_id']+'/'+i['denominador_id'],categoria='',descricao=i['descricao']+' Fórmula: '+i['numerador_id']+' / '+i['denominador_id']+' × '+str(i['fator'])+'. '+i.get('alerta',''))for i in cat.get('derivados',[])];ids=[i['id']for i in definitions]
  main=next(a for a in old['arquivos']if a['id']=='painel_brasil_parquet');assert sha(base/main['caminho'])==main['sha256']
- dictionary=ler(base/old['dicionario']['caminho']);keys=[d for d in dictionary if d['variavel']in KEYS];assert len(keys)==len(KEYS)
+ dictionary=[d for d in ler(base/old['dicionario']['caminho'])if d.get('area')!='agropecuaria'];keys=[d for d in dictionary if d['variavel']in KEYS];assert len(keys)==len(KEYS)
  source=painel/'trabalho_agropecuaria/municipios.parquet'
  frame=pq.read_table(source,columns=['ano',*ids]).to_pandas()
  years_by_id={id:sorted(int(y)for y in frame.loc[frame[id].notna(),'ano'].unique())for id in ids};del frame
  added=[]
- for i in cat['indicadores']:
+ for i in definitions:
   for cond in [False,True]:
    id=i['id']+('_cond'if cond else'')
    added.append(dict(variavel=id,nome=('Condição: 'if cond else'')+i['nome'],descricao=('Condição do dado de '+i['id']if cond else i['descricao']),area='agropecuaria',tabela='painel',
-       unidade='código de condição'if cond else i['unidade'],fonte=f"IBGE · SIDRA {i['tabela']} · variável {i['variavel_sidra']} · categoria {i['categoria']}",tipo='inteiro'if cond else'numero',
-       regra_anual='Referência anual da PAM/PPM; estoques de rebanhos em 31/12. Não somar estoques entre anos.',observacao='Arquivo temático próprio. Categorias incluem totais e subgrupos; não somar categorias sobrepostas. Valores monetários nominais em R$ do próprio ano; não são PIB. Ausências e sigilo permanecem sem valor.',anos_observados=years_by_id[i['id']],arquivo_principal=False,ano_de=min(years_by_id[i['id']],default=None),ano_ate=max(years_by_id[i['id']],default=None),variavel_original=id,
+       unidade='código de condição'if cond else i['unidade'],fonte=("IBGE · componentes PAM/PPM/PEVS · cálculo LAPAM/UFG"if i['tabela']=='calculado'else f"IBGE · SIDRA {i['tabela']} · variável {i['variavel_sidra']} · categoria {i['categoria']}"),tipo='inteiro'if cond else'numero',
+       regra_anual='Referência anual PAM/PPM/PEVS; rebanhos e área de florestas plantadas em 31/12. Vacas ordenhadas e ovinos tosquiados referem-se ao ano. Não somar estoques entre anos.',observacao='Arquivo temático próprio. Categorias incluem totais e subgrupos; não somar categorias sobrepostas. Valores monetários nominais em R$ do próprio ano; não são PIB. Ausências e sigilo permanecem sem valor.',anos_observados=years_by_id[i['id']],arquivo_principal=False,ano_de=min(years_by_id[i['id']],default=None),ano_ate=max(years_by_id[i['id']],default=None),variavel_original=id,
        **({'stata_rotulos':{str(k):v for k,v in CONDICOES.items()}}if cond else{})))
  assert not set(d['variavel']for d in dictionary)&set(d['variavel']for d in added);dictionary+=added
  e=Enxuto.__new__(Enxuto);e.root=saida;e.origem=base;e.base=base;e.work=work;e.dest=dest;e.dictionary=copy.deepcopy(keys+added);e.pending=[]
- e.db=duckdb.connect();e.db.execute("SET threads=2; SET memory_limit='3GB'")
+ assert len(KEYS)+len(ids)*2<=2048,'Arquivo acima do limite Stata BE';e.db=duckdb.connect();e.db.execute("SET threads=2; SET memory_limit='3GB'")
  e.p=Painel.__new__(Painel);e.p.db=e.db;e.p.root=saida;e.p.work=work;e.p.dest=dest;e.p.files=[]
  e.db.execute('CREATE VIEW anterior AS SELECT '+','.join(qi(k)for k in KEYS)+' FROM read_parquet('+qs((base/main['caminho']).as_posix())+') WHERE ano BETWEEN 2013 AND '+str(max(cat['anos'])))
  e.db.execute('CREATE VIEW agro AS SELECT * FROM read_parquet('+qs(source.as_posix())+')')
@@ -72,22 +72,22 @@ def gerar(base,painel,saida,stata,rscript):
  for a in new:
   if a['formato']=='parquet':previews[a['uf']]=referencia(saida,work,'previa_'+a['id'].removesuffix('_parquet'),previa(pq.read_table(saida/a['caminho']).to_pandas(),dictionary,a))
  for a in new:a['previa']=previews[a['uf']]
- m['arquivos']=[a for a in m['arquivos']if not(a['tipo']=='dicionario'and a.get('escopo')=='principal')];m['arquivos'].extend(a for a in new if not a['uf'])
+ m['arquivos']=[a for a in m['arquivos']if a.get('area')!='agropecuaria'and not(a['tipo']=='dicionario'and a.get('escopo')=='principal')];m['arquivos'].extend(a for a in new if not a['uf'])
  for uf,ref in old['recortes_uf'].items():
-  catalog=ler(base/ref['caminho']);catalog['arquivos'].extend(a for a in new if a['uf']==uf);m['recortes_uf'][uf]=referencia(saida,work,'catalogo_'+uf.lower(),catalog)
- m['areas'].append(dict(id='agropecuaria',nome='Agropecuária',nome_en='Agriculture and livestock',descricao=f'{len(ids)} medidas da PAM/PPM desde 2013: lavouras, rebanhos, produtos de origem animal e aquicultura. Categorias incluem totais e subgrupos.',descricao_en=f'{len(ids)} PAM/PPM measures since 2013: crops, livestock, animal products and aquaculture. Categories include totals and subgroups.'))
+  catalog=ler(base/ref['caminho']);catalog['arquivos']=[a for a in catalog['arquivos']if a.get('area')!='agropecuaria'];catalog['arquivos'].extend(a for a in new if a['uf']==uf);m['recortes_uf'][uf]=referencia(saida,work,'catalogo_'+uf.lower(),catalog)
+ m['areas']=[a for a in m['areas']if a['id']!='agropecuaria'];m['areas'].append(dict(id='agropecuaria',nome='Agropecuária',nome_en='Agriculture and livestock',descricao=f'{raw_count} medidas oficiais e {len(ids)-raw_count} calculadas desde 2013: PAM, PPM e PEVS. Inclui extração vegetal, silvicultura e florestas plantadas. Categorias incluem totais e subgrupos.',descricao_en=f'{raw_count} official and {len(ids)-raw_count} calculated measures since 2013: PAM, PPM and PEVS, including forestry, extraction and planted forest areas. Categories include totals and subgroups.'))
  template=next(a for a in old['arquivos']if a['id']=='dicionario_json')
  def dict_item(id,fmt,path,label):m['arquivos'].append({**template,**registrar(saida,path,id,fmt),'id':id,'formato':fmt,'linhas':len(dictionary),'variaveis':None,'nome':label,'nome_en':label})
  m['dicionario']=dref;m['arquivos'].append({**template,**dref,'id':'dicionario_json','linhas':len(dictionary)})
  flat=pd.DataFrame([{k:json.dumps(v,ensure_ascii=False)if isinstance(v,(dict,list))else v for k,v in row.items()}for row in dictionary]);csv=work/'dicionario.csv';flat.to_csv(csv,index=False,sep=';',encoding='utf-8-sig');zipped=work/'dicionario.csv.zip'
  with zipfile.ZipFile(zipped,'w',zipfile.ZIP_DEFLATED)as z:z.write(csv,'dicionario.csv')
  dict_item('dicionario_csv','csv.zip',zipped,'Dicionário — CSV');excel=work/'dicionario.xlsx';flat.to_excel(excel,index=False,engine='openpyxl',freeze_panes=(1,0));dict_item('dicionario_excel','xlsx',excel,'Dicionário — Excel');dict_item('dicionario_rds','rds',rdict,'Dicionário — R')
- m['gerado_em']=stamp;m['notas'].append(f'Agropecuária: {len(ids)} medidas e respectivas condições, desde 2013, em arquivo temático Brasil/UF. Fonte: IBGE PAM/PPM, tabelas 5457, 3939, 74, 94 e 3940. Dinheiro convertido de mil R$ para R$ nominais; demais unidades mantidas conforme SIDRA. Totais e subgrupos não devem ser somados. A seleção principal de 297 indicadores permanece no mesmo objeto imutável.')
+ m['gerado_em']=stamp;m['notas']=[n for n in m['notas']if not n.startswith('Agropecuária:')];m['notas'].append(f'Agropecuária: {raw_count} medidas oficiais, {len(ids)-raw_count} calculadas e respectivas condições, desde 2013, em arquivo temático Brasil/UF. Fonte: IBGE PAM/PPM/PEVS, tabelas 5457, 3939, 74, 94, 3940, 95, 289, 291 e 5930. Valores por unidade são razões implícitas, não cotações de mercado. Dinheiro convertido de mil R$ para R$ nominais; demais unidades mantidas conforme SIDRA. Totais e subgrupos não devem ser somados. A seleção principal de 297 indicadores permanece no mesmo objeto imutável.')
  m.setdefault('fontes_complementares',{})['agropecuaria']=dict(caminho='gold/agropecuaria/manifesto.json',sha256=sha(painel/'gold/agropecuaria/manifesto.json'),gerado_em=meta['gerado_em'])
  for j,item in enumerate(m['arquivos']):
   if item['tipo']=='metodologia'and item['formato']=='txt':
    txt=work/'metodologia.txt';txt.write_text('\n\n'.join(m['notas'])+'\n',encoding='utf-8');m['arquivos'][j]={**item,**registrar(saida,txt,item['id'],'txt')}
- assert all(next(a for a in m['arquivos']if a['id']==o['id'])==o for o in old['arquivos']if o['tipo']=='painel')
+ assert all(next(a for a in m['arquivos']if a['id']==o['id'])==o for o in old['arquivos']if o['tipo']=='painel' or o['tipo']=='area'and o.get('area')!='agropecuaria')
  (dest/'manifesto.json').write_bytes(compacto(m));audit=dict(ok=True,arquivos_novos=len(new),stata_celulas=stata_cells,r_celulas=r_cells,variaveis_agro=len(ids),variaveis_principais=m['resumo']['variaveis'],origem_sha256=sha(base/'gold/downloads/manifesto.json'),manifesto_sha256=sha(dest/'manifesto.json'))
  (work/'auditoria.json').write_bytes(compacto(audit));print(json.dumps(audit),flush=True);e.db.close()
 

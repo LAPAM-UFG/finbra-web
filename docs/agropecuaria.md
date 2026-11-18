@@ -1,7 +1,7 @@
-# Agropecuária — PAM e PPM
+# Agropecuária — PAM, PPM e PEVS
 
 O painel `/agropecuaria` abre com números prontos, sem executar consultas de
-microdados. A edição inicial cobre 2013–2025, municípios, UFs, Distrito Federal
+microdados. A edição ampliada cobre 2013–2025, municípios, UFs, Distrito Federal
 e Brasil. Usa estas tabelas oficiais do IBGE:
 
 | SIDRA | Conteúdo |
@@ -11,8 +11,12 @@ e Brasil. Usa estas tabelas oficiais do IBGE:
 | [74](https://sidra.ibge.gov.br/tabela/74) | Produtos de origem animal e valores |
 | [94](https://sidra.ibge.gov.br/tabela/94) | Vacas ordenhadas |
 | [3940](https://sidra.ibge.gov.br/tabela/3940) | Aquicultura, inclusive espécies e formas jovens |
+| [95](https://sidra.ibge.gov.br/tabela/95) | Ovinos tosquiados no ano |
+| [289](https://sidra.ibge.gov.br/tabela/289) | Extração vegetal nativa: quantidades e valores |
+| [291](https://sidra.ibge.gov.br/tabela/291) | Silvicultura: produtos, espécies, finalidades e valores |
+| [5930](https://sidra.ibge.gov.br/tabela/5930) | Área de florestas plantadas existente em 31/12 |
 
-São 130 categorias e 503 medidas originais. Totais e subgrupos permanecem
+São 241 categorias e 704 medidas originais. Totais e subgrupos permanecem
 identificados; não se somam café total com suas variedades, galináceos com
 galinhas, suínos com matrizes ou peixes com suas espécies. As duas medidas
 inaplicáveis de quantidade/rendimento do total de todas as lavouras são omitidas.
@@ -30,7 +34,7 @@ Traço no SIDRA significa zero; `..` é não aplicável, `...` é indisponível 
 em 31/12; vacas ordenhadas se referem ao ano. Sua relação com o rebanho bovino
 não é uma participação medida no mesmo instante. Estoques não se somam entre anos.
 
-Comparações, mapas e rankings usam 35 medidas relativas: produtividade, valor
+Comparações, mapas e rankings usam 88 medidas relativas: produtividade, valor
 por hectare, participações na área e relações entre subconjuntos de rebanhos.
 Produtividade calculada pode diferir do rendimento arredondado publicado.
 UF e Brasil usam componentes oficiais; regiões imediatas/intermediárias usam
@@ -63,7 +67,7 @@ seu recorte pronto. Os downloads são um arquivo temático com chave
 de 297 indicadores e seus objetos são preservados. Os códigos de condição
 acompanham cada medida no arquivo temático e no dicionário.
 
-O Raio X inclui as 503 medidas originais e as 35 relativas. As originais abrem
+O Raio X inclui as 704 medidas originais e as 88 relativas. As originais abrem
 somente a série do próprio território; as relativas oferecem comparação com
 regiões, UF e Brasil. A edição com nove áreas usa
 `gold/raiox/v2_manifesto.json`; o cliente novo aceita o manifesto antigo quando
@@ -89,3 +93,25 @@ anteriores. Objetos imutáveis vêm antes dos ponteiros. Atualizar conjuntamente
 downloads e a referência desse manifesto nas comparações, após conferir que
 os dados principais continuam idênticos. Não usar sincronização com exclusão
 nem enviar o gold local inteiro.
+
+## Ampliação: medidas prontas e limites
+
+Os arquivos temáticos e a API incluem as 704 medidas oficiais e as 88
+calculadas, cada uma acompanhada de sua condição: 1.590 colunas com as seis
+chaves, abaixo do limite do Stata BE. A seleção principal de 297 indicadores
+continua igual. O dicionário descreve os componentes e o fator de cada fórmula.
+
+Valores unitários são **implícitos e nominais**, calculados como valor da
+produção dividido pela quantidade; não são cotações de mercado, preço individual
+recebido por produtor ou renda líquida. Para leite e ovos, convertem-se as
+quantidades de mil litros/mil dúzias antes de calcular R$/litro ou R$/dúzia.
+Lã por ovino usa os animais tosquiados no ano, sem usar o rebanho total.
+
+Área de florestas plantadas é estoque em 31/12, não área colhida, mata nativa
+ou desmatamento. Extração de vegetação nativa permanece separada da produção
+de florestas plantadas e das lavouras, inclusive o açaí. Não se somam carvão em
+toneladas com lenha ou madeira em m³, nem totais com seus subgrupos.
+
+Os cálculos também são pré-computados no recorte de cada território. O maior
+recorte completo tem 118.022 bytes; abrir o painel não baixa o Brasil inteiro
+nem inicia SQL/WebAssembly. Apenas a seleção de mapa carrega sua geometria.

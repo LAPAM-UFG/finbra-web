@@ -15,6 +15,13 @@ class AgropecuariaTest(unittest.TestCase):
   v,c=proporcao(np.array([1500.]),np.array([1000.]),np.array([0]),np.array([0]),1000)
   self.assertEqual(v[0],1500);self.assertEqual(c[0],0)
 
+ def test_valor_unitario_leite_ovos_e_rendimento_la_respeitam_unidades(self):
+  n=np.array([73815000.,48000.]);d=np.array([39900.,20.]);z=np.zeros(2,dtype=int)
+  v,c=proporcao(n,d,z,z,.001)
+  np.testing.assert_allclose(v,[1.85,2.4]);self.assertEqual(c.tolist(),[0,0])
+  v,c=proporcao(np.array([6687312.]),np.array([2211118.]),np.array([0]),np.array([0]),1)
+  self.assertAlmostEqual(v[0],6687312/2211118);self.assertEqual(c[0],0)
+
  def test_numerador_ausente_precede_denominador_e_zero_nao_define_razao(self):
   v,c=proporcao(np.array([np.nan,0,0,2,2]),np.array([0,0,5,np.nan,4]),np.array([20,1,1,0,0]),np.array([1,1,0,2,0]),100)
   self.assertEqual(c.tolist(),[20,4,1,3,0]);self.assertTrue(np.isnan(v[0]));self.assertEqual(v[2],0);self.assertEqual(v[4],50)

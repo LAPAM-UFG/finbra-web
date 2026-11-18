@@ -318,7 +318,7 @@ export function App() {
           trabalho: t('Mercado de trabalho · RAIS e CAGED', 'Labour market · RAIS and CAGED'),
           saude: t('Saúde · DATASUS', 'Health · DATASUS'),
           educacao: t('Educação · Inep e SIOPE', 'Education · Inep and SIOPE'),
-          agropecuaria: t('Agropecuária · PAM e PPM','Agriculture and livestock · PAM and PPM'),
+          agropecuaria: t('Agropecuária · PAM, PPM e PEVS','Agriculture and livestock · PAM, PPM and PEVS'),
           saneamento: t('Saneamento · SNIS e SINISA', 'Sanitation · SNIS and SINISA'),
           munic: t('Gestão pública · MUNIC e ESTADIC', 'Public management · MUNIC and ESTADIC'),
           clima: t('Clima · CHIRPS e ERA5-Land', 'Climate · CHIRPS and ERA5-Land'),

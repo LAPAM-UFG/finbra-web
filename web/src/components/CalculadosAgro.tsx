@@ -1,0 +1,25 @@
+import { useSearchParams, Link } from 'react-router-dom';
+import type { CatalogoAgro, GrupoAgro, CalculadoAgro } from '../agropecuaria_dados';
+import { condicaoAgro, numeroAgro as fmt } from '../agropecuaria_apresentacao';
+import { t } from '../idioma';
+import { Kpi } from './Kpi';
+import { Dica } from './Dica';
+import { BotoesExportar } from './Exportar';
+import { SerieAgro } from './SerieAgro';
+
+export function CalculadosAgro({c,d,ano,grupo,uf}:{c:CatalogoAgro;d:GrupoAgro;ano:number;grupo:string;uf:string}){
+ const[sp,setSp]=useSearchParams();const defs=c.derivados??[];if(!defs.length||!d.derivados||!d.condicoes_derivados)return null;
+ const pedido=sp.get('calc')??(defs.some(i=>i.id===sp.get('ind'))?sp.get('ind'):'leite_vaca'),idx=Math.max(0,defs.findIndex(i=>i.id===pedido)),i=defs[idx],y=c.anos.indexOf(ano);
+ const escolher=(id:string)=>{const p=new URLSearchParams(window.location.search);p.set('calc',id);setSp(p);};
+ const texto=(i:CalculadoAgro,v:number|null)=>v===null?'—':(i.unidade.startsWith('R$')?'R$ ':'')+fmt(v)+(i.unidade==='%'?'%':'');
+ const ajuda=(i:CalculadoAgro)=><Dica rotulo={t('Como é calculado: ','Calculation: ')+t(i.nome,i.nome_en)}><p>{t(i.descricao,i.descricao_en)}</p><p>{i.numerador_nome} ÷ {i.denominador_nome}{i.fator!==1?` × ${i.fator}`:''}.</p><p>{t(i.alerta??'',i.alerta_en??'')}</p></Dica>;
+ const links=new URLSearchParams({...(uf?{uf}:{}),...(grupo.length===7?{cod:grupo}:{}),indicador:i.id,ind:i.id,ano:String(ano),periodo:String(ano)});
+ const tab=()=>({colunas:[t('Local','Place'),t('Ano','Year'),t('Variável','Variable'),t('Indicador','Indicator'),t('Valor','Value'),t('Unidade','Unit'),t('Condição','Condition')],linhas:c.anos.flatMap((a,y)=>defs.map((i,j)=>[grupo,a,i.variavel_download,t(i.nome,i.nome_en),d.derivados![y][j],i.unidade,condicaoAgro(d.condicoes_derivados![y][j])])),metadados:[[t('Fonte','Source'),'IBGE · PAM / PPM / PEVS; cálculos LAPAM/UFG'],[t('Regra','Method'),t('Razões de componentes do mesmo ano e lugar. Valores por unidade são implícitos, nominais e não são cotações de mercado.','Same-year, same-place component ratios. Unit values are implicit, nominal and are not market quotes.')]] as [string,string][]});
+ return <section className="cartao" id="ag-calculados"><h3>{t('Produtividade, participação e valor por unidade','Productivity, shares and unit values')}</h3><p>{t('Os cálculos já estão prontos. Compare proporções e produtividade, sem confundir lugares grandes com desempenho melhor. Valor por unidade é uma razão da pesquisa, não uma cotação de mercado.','Calculations are ready. Compare shares and productivity without mistaking size for performance. Unit value is a survey ratio, not a market quote.')}</p>
+ <div className="kpis ag-kpis">{['leite_vaca','valor_un_ani_2682','valor_un_pam_40124','valor_pct_40124'].map(id=>{const j=defs.findIndex(i=>i.id===id);if(j<0)return null;const def=defs[j],v=d.derivados![y][j];return <Kpi key={id} rotulo={<>{t(def.nome,def.nome_en)}{ajuda(def)}</>} valor={v===null?condicaoAgro(d.condicoes_derivados![y][j]):texto(def,v)} nota={<>{def.unidade}{' · '}<button className="ag-link" onClick={()=>escolher(id)}>{t('Ver série','View series')}</button></>}/>;})}</div>
+ <div className="campo ag-calc-campo"><label htmlFor="ag-calc">{t('Escolher medida calculada','Choose a calculated measure')}</label><select id="ag-calc" value={i.id} onChange={e=>escolher(e.target.value)}>{[...new Set(defs.map(i=>i.tema))].map(tema=><optgroup key={tema} label={tema}>{defs.filter(i=>i.tema===tema).map(i=><option key={i.id} value={i.id}>{t(i.nome,i.nome_en)} · {i.unidade}</option>)}</optgroup>)}</select></div>
+ <p><strong>{t(i.nome,i.nome_en)}</strong> · {i.unidade}{ajuda(i)}</p>{i.unidade.startsWith('R$')&&<p className="ag-nota">{t('Valores nominais do próprio ano, sem desconto da inflação. A composição e a qualidade da produção também podem variar.','Nominal current-year values without inflation adjustment. Output composition and quality can also vary.')}</p>}
+ <SerieAgro anos={c.anos} vs={d.derivados.map(row=>row[idx])} nome={t(i.nome,i.nome_en)}/><details><summary>{t('Ver cada ano e a condição do dado','View each year and data status')}</summary><table><thead><tr><th>{t('Ano','Year')}</th><th>{i.unidade}</th><th>{t('Condição','Condition')}</th></tr></thead><tbody>{c.anos.map((a,k)=><tr key={a}><td>{a}</td><td>{texto(i,d.derivados![k][idx])}</td><td>{condicaoAgro(d.condicoes_derivados![k][idx])}</td></tr>)}</tbody></table></details>
+ <div className="ag-acoes"><Link className="botao" to={'/agropecuaria/comparar?'+links}>{t('Comparar com regiões e outros lugares','Compare with regions and other places')}</Link><Link className="botao" to={'/agropecuaria/mapa?'+links}>{t('Ver no mapa','View on map')}</Link><BotoesExportar nome={`agro_calculados_${grupo}`} obter={tab}/></div>
+ <p className="ag-nota">{t('As mesmas medidas calculadas, com condições e fórmulas, estão no arquivo de Agropecuária para R, Stata, CSV e Parquet.','The same calculated measures, with data status and formulas, are included in Agriculture downloads for R, Stata, CSV and Parquet.')}</p></section>;
+}

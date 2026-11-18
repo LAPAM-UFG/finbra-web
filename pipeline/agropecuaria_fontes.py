@@ -12,7 +12,9 @@ import requests
 API = 'https://servicodados.ibge.gov.br/api/v3/agregados/'
 TABELAS = {'5457': ('782', ['8331','216','214','112','215']),
            '3939': ('79', ['105']), '74': ('80', ['106','215']),
-           '94': (None, ['107']), '3940': ('654', ['4146','215'])}
+           '94': (None, ['107']), '3940': ('654', ['4146','215']),
+           '95': (None, ['108']), '289': ('193', ['144','145']),
+           '291': ('194', ['142','143']), '5930': ('734', ['6549'])}
 ANOS = list(range(2013, 2026))
 
 def compacto(x): return json.dumps(x,ensure_ascii=False,separators=(',',':'),allow_nan=False).encode()
@@ -59,7 +61,9 @@ def adquirir(saida, geografia, workers=6):
             try:
                 r=requests.get(url,params=params,timeout=150,headers={'User-Agent':'Finbra-LAPAM/1.0'})
                 r.raise_for_status();data=r.json()
-                if not isinstance(data,list) or {str(v['id']) for v in data}!=set(vs):raise ValueError('Variáveis incompletas')
+                # A API devolve [] quando não há registro do tema na UF (ex.:
+                # silvicultura no AC). Isso é ausência, nunca produção zero.
+                if not isinstance(data,list) or data and {str(v['id']) for v in data}!=set(vs):raise ValueError('Variáveis incompletas')
                 for v in data:
                     if len(v['resultados'])!=len(cats):raise ValueError('Produtos incompletos')
                     for result in v['resultados']:
@@ -70,7 +74,7 @@ def adquirir(saida, geografia, workers=6):
                 body=r.content
                 descriptor=dict(tabela=tab,uf=uf,categorias=cats,variaveis=vs,url=r.url,
                     arquivo=p.relative_to(saida).as_posix(),bytes=len(body),sha256=sha(body),
-                    obtido_em=datetime.now(timezone.utc).isoformat())
+                    obtido_em=datetime.now(timezone.utc).isoformat(),sem_registros=not data)
                 temp=p.with_suffix('.tmp');temp.write_bytes(gzip.compress(body,compresslevel=3,mtime=0));temp.replace(p)
                 meta.write_bytes(compacto(descriptor));return descriptor
             except (requests.RequestException,ValueError,AssertionError):
