@@ -13,12 +13,13 @@
     "test:educacao": "vite build --ssr testes/educacao.test.ts --outDir testes/.saida/educacao --emptyOutDir --logLevel warn && node --test testes/.saida/educacao/educacao.test.js",
     "catalogo:downloads": "vite build --ssr scripts/catalogos_downloads.ts --outDir testes/.saida/catalogos_downloads --emptyOutDir --logLevel warn",
     "test:saneamento": "vite build --ssr testes/saneamento.test.ts --outDir testes/.saida/saneamento --emptyOutDir --logLevel warn && node --test testes/.saida/saneamento/saneamento.test.js",
-    "test": "vite build --ssr testes/consultas.test.ts --outDir testes/.saida --emptyOutDir --logLevel warn && node --test testes/.saida/consultas.test.js && npm run test:saneamento && npm run test:assistencia-rankings && npm run test:assistencia-mapa && npm run test:mapas && npm run test:comparacoes && npm run test:cadunico-historico && npm run test:assistencia-referencias",
+    "test": "vite build --ssr testes/consultas.test.ts --outDir testes/.saida --emptyOutDir --logLevel warn && node --test testes/.saida/consultas.test.js && npm run test:saneamento && npm run test:assistencia-rankings && npm run test:assistencia-mapa && npm run test:mapas && npm run test:comparacoes && npm run test:cadunico-historico && npm run test:assistencia-referencias && npm run test:raio-x",
     "test:assistencia-mapa": "vite build --ssr testes/assistencia_mapa.test.ts --outDir testes/.saida/assistencia_mapa --emptyOutDir --logLevel warn && node --test testes/.saida/assistencia_mapa/assistencia_mapa.test.js",
     "test:mapas": "vite build --ssr testes/mapas.test.ts --outDir testes/.saida/mapas --emptyOutDir --logLevel warn && node --test testes/.saida/mapas/mapas.test.js",
     "test:comparacoes": "vite build --ssr testes/comparacoes.test.ts --outDir testes/.saida/comparacoes --emptyOutDir --logLevel warn && node --test testes/.saida/comparacoes/comparacoes.test.js",
     "test:cadunico-historico": "vite build --ssr testes/cadunico_historico.test.ts --outDir testes/.saida/cadunico_historico --emptyOutDir --logLevel warn && node --test testes/.saida/cadunico_historico/cadunico_historico.test.js",
-    "test:assistencia-referencias": "vite build --ssr testes/assistencia_referencias.test.ts --outDir testes/.saida/assistencia_referencias --emptyOutDir --logLevel warn && node --test testes/.saida/assistencia_referencias/assistencia_referencias.test.js"
+    "test:assistencia-referencias": "vite build --ssr testes/assistencia_referencias.test.ts --outDir testes/.saida/assistencia_referencias --emptyOutDir --logLevel warn && node --test testes/.saida/assistencia_referencias/assistencia_referencias.test.js",
+    "test:raio-x": "vite build --ssr testes/raio_x.test.ts --outDir testes/.saida/raio_x --emptyOutDir --logLevel warn && node --test testes/.saida/raio_x/raio_x.test.js"
   },
   "dependencies": {
     "@duckdb/duckdb-wasm": "1.32.0",

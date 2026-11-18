@@ -1,0 +1,107 @@
+import { lazy, Suspense, useEffect, useId, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { BuscaRaioX } from '../components/BuscaRaioX';
+import { Estado } from '../components/Kpi';
+import { useSocial } from '../assistencia_dados';
+import { periodoComparacao, textoComparacao } from '../comparacoes_apresentacao';
+import { AREAS_RAIO, REDES_RAIO, apresentacaoRaio, buscarIndicadorRaio, chaveRaio, indicadoresRaio, leitorRaio, nomeAreaRaio, nomeRedeRaio, nomeTerritorioRaio, retratoDoAnoRaio, type CatalogoRaio, type IndicadorRaio } from '../raio_x';
+import type { GeografiaComparacao } from '../comparacoes_dados';
+import { idioma, local, t } from '../idioma';
+import { exportar, type Tabela } from '../exportar';
+import '../raio_x.css';
+
+const DetalheRaioX=lazy(()=>import('../components/DetalheRaioX'));
+const destaques=['referencias:rx_populacao','referencias:rx_pib_hab','trabalho_todas:empregos','trabalho_todas:rem_media_real','saude_todas:mortalidade_infantil','educacao_todas:mat_total','saneamento_todas:agua_cobertura_pct','assistencia_todas:cad_qtd_familias'];
+
+export function RaioX() {
+  const [sp,setSp]=useSearchParams();
+  const boot=useSocial('raiox:edicao',async()=>{const m=await leitorRaio.meta();const [c,g]=await Promise.all([leitorRaio.catalogo(m),leitorRaio.geografia(m)]);return {m,c,g};});
+  return <div className="raio-x">
+    <header className="rx-cabecalho"><span className="rx-selo">LAPAM · {t('Retrato do território','Territory profile')}</span><h2>{t('Raio X','Territory X-ray')}</h2><p>{t('Escolha um lugar e conheça seus números. População, economia e serviços públicos reunidos em uma página.','Choose a place and explore its figures. Population, economy and public services together on one page.')}</p></header>
+    {boot.carregando&&<Estado carregando/>}{boot.erro&&<Estado erro={boot.erro} mensagem={t('Não foi possível abrir o Raio X.','Could not open the territory profile.')} tentarNovamente={boot.recarregar}/>}
+    {boot.dados&&<CorpoRaioX key={boot.dados.m.catalogo.sha256} {...boot.dados} sp={sp} setSp={setSp}/>}
+  </div>;
+}
+
+function CorpoRaioX({m,c,g,sp,setSp}:{m:Awaited<ReturnType<typeof leitorRaio.meta>>;c:CatalogoRaio;g:GeografiaComparacao;sp:URLSearchParams;setSp:ReturnType<typeof useSearchParams>[1]}) {
+  const id=useId();const codigo=(sp.get('cod')??sp.get('ente')??'').trim();const uf=(sp.get('uf')??'').toUpperCase();
+  const codUf=g.governos.find(x=>x[0]==='E:'+codigo)?.[2];
+  const grupo=codigo&&g.territorios[codigo]?.nivel==='M'?codigo:codUf??(g.territorios[uf]?.nivel==='UF'?uf:'BR');
+  const invalido=!!codigo&&g.territorios[codigo]?.nivel!=='M'&&!codUf||!!uf&&!g.territorios[uf]||g.territorios[grupo]?.nivel==='M'&&!!uf&&uf!==g.territorios[grupo].uf;
+  const rede=REDES_RAIO.includes(sp.get('rede') as typeof REDES_RAIO[number])?sp.get('rede')!:'todas';
+  const anoStr=sp.get('ano');const ano=anoStr&&/^\d{4}$/.test(anoStr)&&m.anos.includes(Number(anoStr))?Number(anoStr):null;
+  const tema=AREAS_RAIO.some(a=>a.id===sp.get('tema'))?sp.get('tema')!:'todos';
+  const busca=sp.get('busca')??'';const soValores=sp.get('com_valor')==='1';const ressalvas=sp.get('ressalvas')==='1';
+  const ind=sp.get('ind');const [abertas,setAbertas]=useState<string[]>([]);const [recolhidas,setRecolhidas]=useState<string[]>([]);const [limites,setLimites]=useState<Record<string,number>>({});
+  const ter=g.territorios[grupo];const nome=nomeTerritorioRaio(g,grupo);
+  const foto=useSocial(`rx:${m.catalogo.sha256}:${grupo}`,()=>leitorRaio.retrato(m,g,grupo));
+  const anoDados=useSocial(ano&&foto.dados?`rx-ano:${m.catalogo.sha256}:${grupo}:${ano}:${rede}`:null,()=>retratoDoAnoRaio(c,g,foto.dados!,ano!,rede));
+  const r=ano?anoDados.dados?.retrato:foto.dados;
+  const erros=anoDados.dados?.erros??{};
+  // A URL muda antes do commit de navegação do React. Ler o endereço atual
+  // preserva filtros que o usuário acabou de alterar em interações rápidas.
+  const mudar=(valores:Record<string,string|null>,replace=false)=>{const n=new URLSearchParams(window.location.search);for(const[k,v]of Object.entries(valores))if(v===null||v==='')n.delete(k);else n.set(k,v);setSp(n,{replace});};
+  const escolher=(chave:string)=>{const x=g.territorios[chave];const n=new URLSearchParams(window.location.search);n.delete('ente');n.delete('ind');if(x.nivel==='M'){n.set('cod',chave);n.set('uf',x.uf!);}else{n.delete('cod');if(chave==='BR')n.delete('uf');else n.set('uf',chave);}setSp(n);};
+  const disponiveis=useMemo(()=>indicadoresRaio(c,grupo,rede),[c,grupo,rede]);
+  const linhas=useMemo(()=>disponiveis.map(({i,k})=>({i,k,a:apresentacaoRaio(i,r?.linhas[k]??null,grupo,ressalvas)})),[disponiveis,r,grupo,ressalvas]);
+  const filtradas=useMemo(()=>linhas.filter(x=>(tema==='todos'||x.i.area===tema)&&buscarIndicadorRaio(x.i,busca)&&(!soValores||x.a.valor!==null)),[linhas,tema,busca,soValores]);
+  const comValor=linhas.filter(x=>x.a.valor!==null).length;
+  const focar=(i:IndicadorRaio)=>{setRecolhidas(xs=>xs.filter(x=>x!==i.area));setAbertas(xs=>xs.includes(i.area)?xs:[...xs,i.area]);mudar({ind:chaveRaio(i),tema:i.area,busca:null,com_valor:null});setLimites(x=>({...x,[i.area]:Math.max(25,linhas.filter(x=>x.i.area===i.area).findIndex(x=>chaveRaio(x.i)===chaveRaio(i))+1)}));};
+  useEffect(()=>{if(ind&&r){const alvo=document.getElementById('rx-'+ind.replace(':','-'));if(alvo)alvo.scrollIntoView({block:'start',behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});}},[ind,r]);
+  useEffect(()=>setRecolhidas([]),[busca,tema]);
+  const tabela=(dicionario=false):Tabela=>({
+    colunas:dicionario?['variavel','area','rede','indicador','definicao','unidade','unidade_comparavel','metodo','fonte','notas']:['territorio','codigo','area','rede','variavel','indicador','referencia','valor','unidade','valor_comparavel','unidade_comparavel','numerador','denominador','condicao','municipios_com_dados','valor_com_ressalva_incluido','definicao','fonte'],
+    linhas:filtradas.map(({i,a})=>dicionario?[chaveRaio(i),nomeAreaRaio(i.area),i.rede,a.nome,textoComparacao(i,'descricao'),a.unidade,textoComparacao(i,'unidade'),textoComparacao(i,'normalizacao'),i.fonte_nome,textoComparacao(i,'alerta')]:[nome,grupo,nomeAreaRaio(i.area),i.rede,chaveRaio(i),a.nome,a.ponto?.[0]??null,a.valor,a.unidade,a.comparavel,textoComparacao(i,'unidade'),a.ponto?.[2]??null,a.ponto?.[3]??null,a.condicao,a.ponto?.[5]??null,ressalvas?1:0,textoComparacao(i,'descricao'),i.fonte_nome]),
+    metadados:[[t('Território','Territory'),nome],[t('Referência','Reference'),ano?String(ano):t('Último dado local de cada indicador; datas diferentes são identificadas.','Latest local observation for each indicator; different dates are identified.')],[t('Rede de ensino','School network'),nomeRedeRaio(rede)],[t('Escopo','Scope'),t('Finanças são dos municípios do recorte. MUNIC e ESTADIC preservam universos separados. Referências com mediana não são consolidados oficiais.','Finances refer to municipalities in scope. MUNIC and ESTADIC keep separate universes. Median references are not official consolidated results.')],[t('Fontes','Sources'),t('Fontes oficiais indicadas em cada variável; organização LAPAM/UFG.','Official sources identified for each variable; prepared by LAPAM/UFG.')]],
+  });
+  const exportavel=!!r&&!Object.keys(erros).length;
+  return <>
+    <section className="rx-filtros" aria-label={t('Escolher território e referência','Choose territory and reference')}>
+      <BuscaRaioX g={g} grupo={grupo} escolher={escolher}/>
+      <div className="rx-campo"><label htmlFor={`${id}-ano`}>{t('Quando?','When?')}</label><select id={`${id}-ano`} value={ano??''} onChange={e=>mudar({ano:e.target.value||null,ind:null})}><option value="">{t('Último dado de cada indicador','Latest observation for each indicator')}</option>{[...m.anos].reverse().map(a=><option key={a} value={a}>{a}</option>)}</select><small>{t('A data acompanha cada número.','Each figure has its own date.')}</small></div>
+    </section>
+    {(invalido||anoStr&&!ano)&&<p role="status" className="rx-nota">{t('Há um filtro inválido no endereço. O território e a referência efetivamente usados aparecem abaixo.','The URL contains an invalid filter. The actual territory and reference are identified below.')}</p>}
+    <div className="rx-titulo-territorio"><div><h3>{nome}</h3><p>{ter.nivel==='M'?(grupo==='2605459'?t(`Distrito estadual · código IBGE ${grupo}`,`State district · IBGE code ${grupo}`):grupo==='5300108'?t(`DF · território equivalente · código IBGE ${grupo}`,`DF · equivalent territory · IBGE code ${grupo}`):t(`Município · código IBGE ${grupo}`,`Municipality · IBGE code ${grupo}`)):grupo==='BR'?t('Visão nacional','National overview'):grupo==='DF'?t('Visão do Distrito Federal','Federal District overview'):t('Visão do estado e dos seus municípios','State and its municipalities')} · {ano??t('Últimas referências disponíveis','Latest available references')}</p></div><span className="rx-contagem">{disponiveis.length.toLocaleString(local())} {t('indicadores no recorte','indicators in scope')}</span></div>
+    {(grupo==='DF'||grupo==='5300108')&&<p className="rx-nota">{t('O Distrito Federal é um ente único. Algumas bases usam Brasília como território equivalente; Brasília e DF nunca são somados. Na ESTADIC, os indicadores descrevem o governo distrital.','The Federal District is a single entity. Some datasets use Brasília as an equivalent territory; Brasília and DF are never added together. ESTADIC indicators describe the district government.')}</p>}
+    {ter.nivel!=='M'&&grupo!=='DF'&&<p className="rx-nota">{t('Cada fonte mantém seu universo: as finanças reúnem prefeituras; MUNIC descreve os municípios; ESTADIC descreve o governo estadual. Taxas usam seus componentes; algumas referências são medianas municipais, identificadas nos detalhes.','Each source keeps its own universe: finances cover municipal governments; MUNIC describes municipalities; ESTADIC describes state government. Rates use their components; some references are municipal medians, identified in the details.')}</p>}
+    {foto.carregando&&<Estado carregando/>}{foto.erro&&<Estado erro={foto.erro} mensagem={t('Não foi possível carregar o retrato deste lugar.','Could not load this place’s profile.')} tentarNovamente={foto.recarregar}/>}
+    {anoDados.carregando&&<Estado carregando/>}{anoDados.erro&&<Estado erro={anoDados.erro} mensagem={t('Não foi possível carregar o ano escolhido.','Could not load the selected year.')} tentarNovamente={anoDados.recarregar}/>}
+    {!!Object.keys(erros).length&&<div role="status" className="rx-nota">{t('Algumas séries não carregaram. As áreas disponíveis continuam visíveis; os downloads aguardam uma leitura completa.','Some series did not load. Available areas remain visible; downloads wait for a complete read.')} <button className="botao-leve" onClick={anoDados.recarregar}>{t('Tentar novamente','Retry')}</button></div>}
+    {r&&<>
+      <section className="rx-destaques" aria-label={t('Números em destaque','Key figures')}>
+        {destaques.map(key=>{const x=linhas.find(x=>chaveRaio(x.i)===key.replace('educacao_todas:',`educacao_${rede}:`));if(!x)return null;return <button type="button" key={key} className="rx-destaque" onClick={()=>focar(x.i)}><span>{x.a.nome}</span><strong>{x.a.texto}</strong><small>{x.a.unidade} · {x.a.ponto?periodoComparacao(x.a.ponto[0]):'—'}</small><small className="rx-status">{x.a.condicao}</small></button>;})}
+      </section>
+      <section className="rx-explorar" id="rx-indicadores">
+        <div className="rx-secao-titulo"><div><h3>{t('Explore todos os indicadores','Explore all indicators')}</h3><p>{comValor.toLocaleString(local())} {t('com valor; os demais mantêm a condição do dado.','with a value; remaining indicators keep their data status.')}</p></div><div className="rx-acoes"><button className="botao-leve" onClick={()=>{setRecolhidas([]);setAbertas(AREAS_RAIO.map(a=>a.id));}}>{t('Abrir áreas','Expand areas')}</button><button className="botao-leve" onClick={()=>{setRecolhidas(AREAS_RAIO.map(a=>a.id));setAbertas([]);mudar({ind:null});}}>{t('Recolher','Collapse')}</button></div></div>
+        <div className="rx-buscar-indicadores"><div className="rx-campo"><label htmlFor={`${id}-busca`}>{t('Buscar indicador','Find an indicator')}</label><input id={`${id}-busca`} type="search" value={busca} placeholder={t('Ex.: salário, vacinação, Bolsa Família','E.g. wages, vaccination, Bolsa Família')} onChange={e=>mudar({busca:e.target.value||null,ind:null},true)}/></div><div className="rx-campo"><label htmlFor={`${id}-tema`}>{t('Tema','Topic')}</label><select id={`${id}-tema`} value={tema} onChange={e=>mudar({tema:e.target.value==='todos'?null:e.target.value,ind:null})}><option value="todos">{t('Todos os temas','All topics')}</option>{AREAS_RAIO.map(a=><option key={a.id} value={a.id}>{t(a.nome,a.en)}</option>)}</select></div><div className="rx-campo"><label htmlFor={`${id}-rede`}>{t('Rede de ensino','School network')}</label><select id={`${id}-rede`} value={rede} onChange={e=>mudar({rede:e.target.value,ind:null})}>{REDES_RAIO.map(r=><option key={r} value={r}>{nomeRedeRaio(r)}</option>)}</select></div></div>
+        <div className="rx-opcoes-filtro"><label><input type="checkbox" checked={soValores} onChange={e=>mudar({com_valor:e.target.checked?'1':null,ind:null})}/>{t('Somente indicadores com valor','Only indicators with a value')}</label><label><input type="checkbox" checked={ressalvas} onChange={e=>mudar({ressalvas:e.target.checked?'1':null})}/>{t('Incluir valores com ressalva da fonte','Include source-flagged values')}</label>{(busca||tema!=='todos'||soValores)&&<button className="botao-leve" onClick={()=>mudar({busca:null,tema:null,com_valor:null,ind:null})}>{t('Mostrar todos os indicadores','Show all indicators')}</button>}<span role="status">{filtradas.length.toLocaleString(local())} {t('indicadores encontrados','indicators found')}</span></div>
+        {ressalvas&&<p className="rx-nota">{t('Valores com ressalva fiscal ou do Inep foram incluídos por sua escolha. Consulte a condição e as notas da fonte antes de interpretar.','Fiscal or Inep flagged values are included by your choice. Check the status and source notes before interpreting them.')}</p>}
+        <nav className="rx-temas" aria-label={t('Áreas do Raio X','X-ray areas')}>{AREAS_RAIO.map(area=>{const xs=filtradas.filter(x=>x.i.area===area.id);return <a key={area.id} href={`#rx-area-${area.id}`} onClick={()=>{setRecolhidas(a=>a.filter(x=>x!==area.id));setAbertas(a=>a.includes(area.id)?a:[...a,area.id]);}}>{t(area.nome,area.en)} <span>{xs.length}</span></a>;})}</nav>
+        {!filtradas.length&&<p role="status">{t('Nenhum indicador com esses filtros. Tente outro termo ou mostre também os indicadores sem valor.','No indicators match these filters. Try another term or include indicators without a value.')}</p>}
+        {AREAS_RAIO.map(area=>{
+          const xs=filtradas.filter(x=>x.i.area===area.id);if(!xs.length)return null;
+          const aberta=xs.some(x=>chaveRaio(x.i)===ind)||!recolhidas.includes(area.id)&&(abertas.includes(area.id)||!!busca||tema===area.id);const limite=Math.max(limites[area.id]??25,xs.findIndex(x=>chaveRaio(x.i)===ind)+1);
+          return <section key={area.id} className="rx-area" id={`rx-area-${area.id}`} aria-label={t(area.nome,area.en)}>
+            <h4><button className="rx-abrir-area" aria-expanded={aberta} aria-controls={`${id}-${area.id}`} onClick={()=>{setRecolhidas(a=>aberta?[...a,area.id]:a.filter(x=>x!==area.id));setAbertas(a=>aberta?a.filter(x=>x!==area.id):[...a,area.id]);if(aberta&&xs.some(x=>chaveRaio(x.i)===ind))mudar({ind:null});}}><span>{t(area.nome,area.en)}</span><span className="rx-area-total">{xs.length} {t('indicadores','indicators')} · {xs.filter(x=>x.a.valor!==null).length} {t('com valor','with a value')} <b aria-hidden="true">{aberta?'−':'+'}</b></span></button></h4>
+            {aberta&&<div id={`${id}-${area.id}`} className="rx-area-conteudo">
+              {area.id==='gestao'&&ter.nivel!=='M'&&<p className="rx-ajuda">{t('MUNIC: municípios do recorte. ESTADIC: governo estadual/DF. Os dois universos não são somados.','MUNIC: municipalities in scope. ESTADIC: state/DF government. These universes are not added.')}</p>}
+              {area.id==='educacao'&&<p className="rx-ajuda">{t('Rede selecionada:','Selected school network:')} {nomeRedeRaio(rede)}.</p>}
+              {xs.slice(0,limite).map(({i,k,a})=>{const uid=chaveRaio(i);const aberto=ind===uid;const erro=erros[i.catalogo];return <article key={uid} className="rx-indicador" id={'rx-'+uid.replace(':','-')}>
+                <button type="button" className="rx-linha" aria-expanded={aberto} aria-controls={`${id}-detalhe-${k}`} onClick={()=>mudar({ind:aberto?null:uid})}>
+                  <span className="rx-nome-indicador"><strong>{a.nome}</strong><small>{i.catalogo==='gestao_estadic'?'ESTADIC · ':i.area==='gestao'?'MUNIC · ':''}{textoComparacao(i,'tema')} <span aria-hidden="true" className="rx-interrogacao">?</span></small></span>
+                  <span className="rx-numero"><strong>{erro?'—':a.texto}</strong><small>{a.unidade}</small></span>
+                  <span className="rx-data"><span>{a.ponto?periodoComparacao(a.ponto[0]):'—'}</span><small>{erro?t('Falha de carregamento','Loading failed'):a.condicao}</small></span>
+                </button>
+                {aberto&&<div id={`${id}-detalhe-${k}`}><Suspense fallback={<Estado carregando/>}><DetalheRaioX c={c} g={g} r={r} i={i} p={a.ponto} ressalvas={ressalvas} ano={ano}/></Suspense></div>}
+              </article>;})}
+              {xs.length>limite&&<button type="button" className="botao-leve rx-mais" onClick={()=>setLimites(v=>({...v,[area.id]:limite+25}))}>{t(`Mostrar mais ${Math.min(25,xs.length-limite)} indicadores`,`Show ${Math.min(25,xs.length-limite)} more indicators`)} <small>({Math.min(limite,xs.length)}/{xs.length})</small></button>}
+            </div>}
+          </section>;
+        })}
+      </section>
+      <section className="rx-download" id="rx-download"><div><h3>{t('Leve os dados deste lugar','Download this place’s data')}</h3><p>{t('Exporta todos os indicadores encontrados pelos filtros, inclusive os que estão em áreas recolhidas. A referência, a condição e a fonte acompanham cada valor.','Exports all indicators matching the filters, including collapsed areas. Each value includes its date, status and source.')}</p></div><div className="rx-acoes">{(['csv','xlsx'] as const).map(f=><button type="button" className="botao" key={f} disabled={!exportavel||!filtradas.length} onClick={()=>exportar(`raiox_${grupo}_${ano??'ultimos'}`,f,tabela(),idioma()==='en'?'.':',')}>{f==='csv'?'CSV':'Excel'}</button>)}<button type="button" className="botao-leve" disabled={!exportavel||!filtradas.length} onClick={()=>exportar(`dicionario_raiox_${grupo}`,'csv',tabela(true),idioma()==='en'?'.':',')}>{t('Dicionário sucinto','Concise dictionary')}</button></div></section>
+    </>}
+    <details className="rx-metodo"><summary>{t('Como ler este retrato','How to read this profile')}</summary><p>{t('Os indicadores têm datas, unidades e universos diferentes. A opção mais recente usa a última observação local e informa a data; um ano escolhido nunca é preenchido com outro ano. Estoques mensais não são somados. Ausência de informação não significa zero.','Indicators have different dates, units and universes. Latest mode uses the latest local observation and identifies its date; a selected year is never filled with a different year. Monthly stocks are not added. Missing data do not mean zero.')}</p><p>{t('Os detalhes preservam as regras dos painéis de origem: razões de componentes compatíveis, medianas identificadas e respostas MUNIC/ESTADIC em seus próprios universos. Comparações entre territórios usam medidas relativas, não o tamanho absoluto. Não há uma nota geral de qualidade do lugar.','Details preserve each source dashboard’s rules: ratios of compatible components, identified medians and MUNIC/ESTADIC responses in their own universes. Comparisons use relative measures rather than absolute size. There is no overall place-quality score.')}</p><p>{t('Os resumos e as séries são preparados a partir das fontes oficiais já publicadas no site. Ao abrir um indicador, o histórico e suas referências são carregados sob demanda. Recortes especializados continuam nas abas temáticas.','Summaries and series are prepared from the official sources already published on the site. History and references load when an indicator is opened. Specialized breakdowns remain in the thematic dashboards.')}</p></details>
+    <p className="rx-atualizado">{t('Retrato preparado em','Profile prepared on')} {new Date(m.gerado_em).toLocaleDateString(local(),{timeZone:'America/Sao_Paulo'})} · {t('A data do dado aparece em cada indicador.','The observation date is shown for each indicator.')}</p>
+  </>;
+}

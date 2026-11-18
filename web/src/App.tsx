@@ -10,6 +10,7 @@ import { CURADORIA } from './munic_curadoria';
 import { PARAMS_TRABALHO } from './trabalho_comum';
 import { buscaEntreAreas, buscaIaLegada, buscaParaDownloads, type Area } from './navegacao';
 const Comparacoes = pagina(() => import('./pages/Comparacoes').then(m => ({ default: m.Comparacoes })));
+const RaioX = pagina(() => import('./pages/RaioX').then(m => ({default:m.RaioX})));
 
 const Demonstrativos = pagina(() => import('./pages/Demonstrativos').then(m => ({default:m.Demonstrativos})));
 const Downloads = pagina(() => import('./pages/Downloads').then(m => ({default:m.Downloads})));
@@ -152,7 +153,7 @@ const menuEducacao = (): [string, [string, string][]][] => [
   [t('Metodologia', 'Methodology'), [['/educacao/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
 ];
 
-const areaDe = (pathname: string): Area => (pathname.startsWith('/saneamento') ? 'saneamento' : pathname === '/ia' ? 'ia' : pathname === '/downloads' || pathname.startsWith('/downloads/') ? 'downloads' : pathname.startsWith('/trabalho') ? 'trabalho'
+const areaDe = (pathname: string): Area => (pathname === '/raio-x' ? 'raiox' : pathname.startsWith('/saneamento') ? 'saneamento' : pathname === '/ia' ? 'ia' : pathname === '/downloads' || pathname.startsWith('/downloads/') ? 'downloads' : pathname.startsWith('/trabalho') ? 'trabalho'
   : pathname.startsWith('/datasus') ? 'saude' : pathname.startsWith('/educacao') ? 'educacao' : pathname.startsWith('/munic') ? 'munic' : pathname.startsWith('/clima') ? 'clima' : pathname.startsWith('/assistencia') ? 'assistencia' : 'financas');
 
 function lerTema(): string | null {
@@ -265,11 +266,11 @@ export function App() {
   // a aba da IA abre com o tema da área de onde se veio (só ordena os exemplos): território e ano dos filtros do painel não
   // vão junto, porque a pergunta diz o recorte e a IA escolhe as fontes
   const filtrosIa = new URLSearchParams(area === 'ia' ? atuais : undefined);
-  if (area !== 'ia' && area !== 'munic' && area !== 'clima' && area !== 'downloads') filtrosIa.set('paineis', area);
+  if (area !== 'ia' && area !== 'munic' && area !== 'clima' && area !== 'downloads' && area !== 'raiox') filtrosIa.set('paineis', area);
   const buscaIa = `?${filtrosIa}`;
 
-  const gruposMenu = ({ saneamento:()=>[[t('Saneamento','Sanitation'),[['/saneamento',t('Painel de indicadores','Indicator dashboard')],['/saneamento/mapa',t('Mapa de indicadores','Indicator map')],['/saneamento/rankings',t('Comparar municípios','Compare municipalities')],['/saneamento/metodologia',t('Fontes e metodologia','Sources and methodology')]]]] as [string,[string,string][]][], financas: menu, trabalho: menuTrabalho, saude: menuSaude, educacao: menuEducacao, munic: menuMunic, clima: menuClima, assistencia: menuAssistencia, downloads: menuDownloads, ia: menuIa }[area])();
-  if (area !== 'downloads' && area !== 'ia') {
+  const gruposMenu = ({ raiox:()=>[] as [string,[string,string][]][], saneamento:()=>[[t('Saneamento','Sanitation'),[['/saneamento',t('Painel de indicadores','Indicator dashboard')],['/saneamento/mapa',t('Mapa de indicadores','Indicator map')],['/saneamento/rankings',t('Comparar municípios','Compare municipalities')],['/saneamento/metodologia',t('Fontes e metodologia','Sources and methodology')]]]] as [string,[string,string][]][], financas: menu, trabalho: menuTrabalho, saude: menuSaude, educacao: menuEducacao, munic: menuMunic, clima: menuClima, assistencia: menuAssistencia, downloads: menuDownloads, ia: menuIa }[area])();
+  if (area !== 'downloads' && area !== 'ia' && area !== 'raiox') {
     const raizComparacao = ({ financas: '', trabalho: '/trabalho', saude: '/datasus', educacao: '/educacao', munic: '/munic', clima: '/clima', assistencia: '/assistencia', saneamento: '/saneamento' })[area];
     gruposMenu.unshift([t('Comparações', 'Comparisons'), [[`${raizComparacao}/comparar`, t('Regiões e evolução', 'Regions and trends')]]]);
   }
@@ -284,6 +285,7 @@ export function App() {
     return { pathname: para, search: area === 'saneamento' ? '?' + filtrosSaneamento.toString() : area === 'downloads' ? search : area === 'ia' ? buscaIa : area === 'educacao' ? buscaEntreAreas(search, 'educacao', para.includes('/financiamento') || para.includes('/profissionais') ? 'financas' : 'educacao') : area === 'munic' ? contextoMunic(search, DESTINO_MUNIC[para] ?? 'avancado', EDICOES_MUNIC) : area === 'clima' ? buscaClima(search) : area === 'assistencia' ? buscaEntreAreas(search, 'assistencia', 'assistencia') : buscaArea };
   };
   const areas: {id: Area; nome: string; caminho: string; busca: string}[] = [
+    {id:'raiox',nome:t('Raio X','Territory X-ray'),caminho:'/raio-x',busca:paraArea('raiox')},
     {id:'ia',nome:t('Pergunte aos dados (IA)','Ask the data (AI)'),caminho:'/ia',busca:buscaIa},
     {id:'financas',nome:t('Finanças públicas','Public finances'),caminho:'/receitas',busca:paraArea('financas')},
     {id:'trabalho',nome:t('Mercado de trabalho','Labour market'),caminho:'/trabalho',busca:paraArea('trabalho')},
@@ -319,6 +321,7 @@ export function App() {
           assistencia: t('Assistência social · CadÚnico, Bolsa Família e BPC', 'Social assistance · Cadastro Único, Bolsa Família and BPC'),
           downloads: t('Baixar dados municipais', 'Download municipal data'),
           ia: t('Pergunte aos dados · LAPAM/UFG', 'Ask the data · LAPAM/UFG'),
+          raiox: t('Raio X do território · LAPAM/UFG', 'Territory X-ray · LAPAM/UFG'),
         }[area]}</h1>
         <nav className="areas" aria-label={t('Áreas', 'Areas')}>
           {areas.filter(a=>a.id!=='downloads').map(a=><Link key={a.id} to={{pathname:a.caminho,search:a.busca}} className={area===a.id?'ativo':''} aria-current={area===a.id?'page':undefined}>{a.nome}</Link>)}
@@ -338,8 +341,8 @@ export function App() {
           <AlternarTema />
         </div>
       </header>
-      <div className={`casca${area === 'ia' ? ' casca-ia' : ''}`}>
-        <nav className={`menu${area === 'ia' ? ' menu-ia' : ''}`} aria-label={t('Páginas', 'Pages')}>
+      <div className={`casca${area === 'ia' ? ' casca-ia' : area === 'raiox' ? ' casca-raiox' : ''}`}>
+        {area !== 'raiox' && <nav className={`menu${area === 'ia' ? ' menu-ia' : ''}`} aria-label={t('Páginas', 'Pages')}>
           {area !== 'ia' && <div className="menu-mobile">
             <label className="sr-only" htmlFor="pagina-painel">{t('Página do painel','Dashboard page')}</label>
             <select id="pagina-painel" value={gruposMenu.some(([,xs])=>xs.some(([p])=>p===caminhoMenu))?caminhoMenu:''} onChange={e=>navegar(linkPagina(e.target.value))}>
@@ -359,13 +362,14 @@ export function App() {
           ))}
           </div>
           {area === 'ia' && <Suspense fallback={null}><HistoricoIa /></Suspense>}
-        </nav>
+        </nav>}
         {/* a chave refaz as páginas ao trocar o idioma: gráficos e textos memorizados são recalculados */}
         <main key={idioma} id="conteudo" tabIndex={-1}>
-          {!['ia', 'downloads'].includes(area) && /^\/(receitas|despesas|despesas-orcamentarias|socioeconomico|trabalho|datasus|educacao|saneamento|assistencia|munic|clima|rankings)\/?$/.test(pathname) && <aside className="atalho-comparacoes"><Link to={linkPagina(`${({ financas: '', trabalho: '/trabalho', saude: '/datasus', educacao: '/educacao', munic: '/munic', clima: '/clima', assistencia: '/assistencia', saneamento: '/saneamento', ia: '', downloads: '' })[area]}/comparar`)}>{t('Comparar com regiões e acompanhar no tempo →', 'Compare with regions and track changes over time →')}</Link><span>{t('Taxas, proporções e valores por habitante; totais nas tabelas originais.', 'Rates, shares and values per inhabitant; totals in the original tables.')}</span></aside>}
+          {!['ia', 'downloads', 'raiox'].includes(area) && /^\/(receitas|despesas|despesas-orcamentarias|socioeconomico|trabalho|datasus|educacao|saneamento|assistencia|munic|clima|rankings)\/?$/.test(pathname) && <aside className="atalho-comparacoes"><Link to={linkPagina(`${({ financas: '', trabalho: '/trabalho', saude: '/datasus', educacao: '/educacao', munic: '/munic', clima: '/clima', assistencia: '/assistencia', saneamento: '/saneamento', ia: '', downloads: '', raiox: '' })[area]}/comparar`)}>{t('Comparar com regiões e acompanhar no tempo →', 'Compare with regions and track changes over time →')}</Link><span>{t('Taxas, proporções e valores por habitante; totais nas tabelas originais.', 'Rates, shares and values per inhabitant; totals in the original tables.')}</span></aside>}
           <Suspense fallback={<p className="carregando" role="status">{t('Abrindo o painel…', 'Opening the dashboard…')}</p>}><ProvedorDados>
             <Routes>
               <Route path="/" element={<Navigate to={{ pathname: '/ia', search: buscaIaLegada(search), hash }} replace />} />
+              <Route path="/raio-x" element={<RaioX />} />
               <Route path="/receitas" element={<ReceitasVisaoGeral />} />
               <Route path="/receitas/evolucao" element={<ReceitasEvolucao />} />
               <Route path="/fpm" element={<Fpm />} />
