@@ -22,7 +22,7 @@ const sha = async (b: ArrayBuffer) => Array.from(new Uint8Array(await crypto.sub
 function objeto(o: Objeto) {
   if (!o || !/^gold\/assistencia\/economia_[a-z0-9_]+\.(json|ndjson)$/.test(o.caminho) || !Number.isSafeInteger(o.bytes) || o.bytes < 1 || !/^[a-f0-9]{64}$/.test(o.sha256)) throw new Error('Catálogo anual inválido.');
 }
-async function lerJson<T>(o: Objeto): Promise<T> {
+export async function lerJson<T>(o: Objeto): Promise<T> {
   objeto(o);
   const r = await fetch(`${BASE_DADOS}${o.caminho}`);
   if (!r.ok) throw new Error('Índice anual indisponível.');
@@ -30,7 +30,7 @@ async function lerJson<T>(o: Objeto): Promise<T> {
   if (b.byteLength !== o.bytes || await sha(b) !== o.sha256) throw new Error('Índice anual incompleto.');
   return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(b)) as T;
 }
-async function lerTrecho<T>(arquivo: Objeto, trecho: Trecho): Promise<T> {
+export async function lerTrecho<T>(arquivo: Objeto, trecho: Trecho): Promise<T> {
   objeto(arquivo);
   const [inicio, tamanho, hash] = trecho;
   if (!Number.isSafeInteger(inicio) || inicio < 0 || !Number.isSafeInteger(tamanho) || tamanho < 1 || inicio + tamanho > arquivo.bytes || !/^[a-f0-9]{64}$/.test(hash)) throw new Error('Trecho anual inválido.');

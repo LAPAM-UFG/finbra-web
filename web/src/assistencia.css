@@ -122,7 +122,12 @@
 .as-perfil .cartao { margin-bottom: 6px; }
 @media (max-width: 800px) { .as-perfis { grid-template-columns: minmax(0, 1fr); } }
 .as-recorte { margin: 10px 0 14px; color: var(--tinta-2); font-weight: 600; overflow-wrap: anywhere; }
-.as-ranking-pib-filtros { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, .9fr) minmax(0, 1.2fr); gap: 14px; }
+.as-economia-filtros { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 14px 0; }
+.as-economia-filtros .as-economia-filtro { display: grid; min-width: 0; gap: 6px; }
+.as-economia-filtros select { width: 100%; min-width: 0; }
+.as-referencia-nota { padding: 12px; margin: 12px 0; background: var(--acao-suave); border-left: 3px solid var(--acao); font-size: 13px; }
+.as-referencia-nota p { margin: 6px 0; }
+.as-ranking-pib-filtros { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
 .as-ranking-pib-filtros .as-campo select { min-width: 0; width: 100%; }
 .as-ranking-pib-busca { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 16px; }
 .as-ranking-pib-busca label { flex-basis: 100%; font-size: 14px; }
@@ -156,6 +161,7 @@
 .as-mapa-pib-encontrados p { flex-basis: 100%; margin-bottom: 0; font-size: 13px; }
 .as-mapa-pib-encontrados button { min-height: 44px; white-space: normal; text-align: left; }
 @media (max-width: 760px) {
+  .as-economia-filtros { grid-template-columns: minmax(0, 1fr); }
   .as-ranking-pib-filtros { grid-template-columns: minmax(0, 1fr); }
   .as-ranking-pib-desktop { display: none; }
   .as-ranking-pib-cards { display: grid; gap: 10px; list-style: none; padding: 0; margin: 14px 0; }

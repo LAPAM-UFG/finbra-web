@@ -136,7 +136,7 @@ const menuIa = (): [string, [string, string][]][] => [];
 
 const menuAssistencia = (): [string, [string, string][]][] => [
   [t('Assistência social', 'Social assistance'), [['/assistencia', t('Painel de indicadores', 'Indicator dashboard')]]],
-  [t('Explorar os dados', 'Explore the data'), [['/assistencia/evolucao', t('Evolução', 'Trends')], ['/assistencia/rankings', t('Rankings mensais', 'Monthly rankings')], ['/assistencia/rankings-pib', t('Pagamentos / PIB', 'Payments / GDP')], ['/assistencia/tabela', t('Tabela e exportações', 'Table and downloads')]]],
+  [t('Explorar os dados', 'Explore the data'), [['/assistencia/evolucao', t('Evolução', 'Trends')], ['/assistencia/rankings', t('Rankings mensais', 'Monthly rankings')], ['/assistencia/comparacoes-pagamentos', t('Comparações dos pagamentos', 'Payment comparisons')], ['/assistencia/tabela', t('Tabela e exportações', 'Table and downloads')]]],
   [t('Metodologia', 'Methodology'), [['/assistencia/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
 ];
 
@@ -215,6 +215,7 @@ export function App() {
   const { search, pathname, hash } = useLocation();
   const navegacao = useNavigationType();
   const area = areaDe(pathname);
+  const caminhoMenu = pathname === '/assistencia/rankings-pib' ? '/assistencia/comparacoes-pagamentos' : pathname;
   // ao ir para outra página, ela abre no início; mudar só os filtros (mesmo caminho), seguir uma âncora (#...) e Voltar/Avançar
   // (POP, em que o navegador restaura a posição) não mexem na rolagem
   const caminhoAnterior = useRef(pathname);
@@ -296,9 +297,9 @@ export function App() {
   ];
   useEffect(()=>{
     const nome=areas.find(a=>a.id===area)?.nome??'LAPAM';
-    const pagina=gruposMenu.flatMap(([,itens])=>itens).find(([p])=>p===pathname)?.[1];
+    const pagina=gruposMenu.flatMap(([,itens])=>itens).find(([p])=>p===caminhoMenu)?.[1];
     document.title=`LAPAM · ${nome}${pagina?' · '+pagina:''}`;
-  },[pathname,idioma,area]);
+  },[caminhoMenu,idioma,area]);
 
 
 
@@ -341,8 +342,8 @@ export function App() {
         <nav className={`menu${area === 'ia' ? ' menu-ia' : ''}`} aria-label={t('Páginas', 'Pages')}>
           {area !== 'ia' && <div className="menu-mobile">
             <label className="sr-only" htmlFor="pagina-painel">{t('Página do painel','Dashboard page')}</label>
-            <select id="pagina-painel" value={gruposMenu.some(([,xs])=>xs.some(([p])=>p===pathname))?pathname:''} onChange={e=>navegar(linkPagina(e.target.value))}>
-              {!gruposMenu.some(([,xs])=>xs.some(([p])=>p===pathname)) && <option value="" disabled>{t('Escolha uma página','Choose a page')}</option>}
+            <select id="pagina-painel" value={gruposMenu.some(([,xs])=>xs.some(([p])=>p===caminhoMenu))?caminhoMenu:''} onChange={e=>navegar(linkPagina(e.target.value))}>
+              {!gruposMenu.some(([,xs])=>xs.some(([p])=>p===caminhoMenu)) && <option value="" disabled>{t('Escolha uma página','Choose a page')}</option>}
               {gruposMenu.map(([grupo,xs])=><optgroup key={grupo} label={grupo}>{xs.map(([para,rotulo])=><option key={para} value={para}>{area==='financas'?`${grupo} · ${rotulo}`:rotulo}</option>)}</optgroup>)}
             </select>
           </div>}
@@ -350,7 +351,7 @@ export function App() {
             <div key={grupo} style={{ display: 'contents' }}>
               <h4>{grupo}</h4>
               {itens.map(([para, rotulo]) => (
-                <NavLink key={para} to={linkPagina(para)} end className={({ isActive }) => (isActive ? 'ativo' : '')}>
+                <NavLink key={para} to={linkPagina(para)} end aria-current={para===caminhoMenu?'page':undefined} className={({ isActive }) => (isActive || para===caminhoMenu ? 'ativo' : '')}>
                   {rotulo}
                 </NavLink>
               ))}
@@ -436,6 +437,7 @@ export function App() {
               <Route path="/assistencia/serie" element={<AssistenciaEvolucao />} />
               <Route path="/assistencia/rankings" element={<Comparacoes area="assistencia" rankings />} />
               <Route path="/assistencia/rankings-pib" element={<AssistenciaPibRankings />} />
+              <Route path="/assistencia/comparacoes-pagamentos" element={<AssistenciaPibRankings />} />
               <Route path="/assistencia/tabela" element={<AssistenciaTabela />} />
               <Route path="/assistencia/metodologia" element={<AssistenciaMetodologia />} />
               <Route path="/downloads" element={<Downloads />} />
