@@ -1,0 +1,8 @@
+.mob-painel .campo { min-width:0; }
+.mob-painel .ag-filtros { grid-template-columns:minmax(0,1fr) 240px; }
+.mob-painel select { width:100%; max-width:100%; }
+.mob-painel .ag-tabela th:first-child { max-width:32rem; }
+.mob-painel .ag-tabela small { display:block; }
+.mob-painel .ag-nota { line-height:1.55; }
+.mob-painel section[id] { scroll-margin-top:12px; }
+@media(max-width:600px){.mob-painel .ag-filtros { grid-template-columns:1fr; }.mob-painel .ag-acoes .botao { white-space:normal; }}

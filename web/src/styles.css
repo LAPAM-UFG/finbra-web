@@ -147,6 +147,9 @@ main { padding: 24px 28px 48px; min-width: 0; }
   .topo { flex-wrap: wrap; padding: 8px 12px; }
   .areas { order: 3; flex: 1 1 100%; }
 }
+@media (min-width:801px) and (max-width:1500px) {
+  .areas { flex-wrap:wrap; overflow-x:visible; }
+}
 @media (max-width: 800px) {
   .casca { grid-template-columns: 1fr; }
   .casca:not(.casca-ia) { background: none; }

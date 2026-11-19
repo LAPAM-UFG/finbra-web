@@ -1,0 +1,264 @@
+{
+  "versao": 1,
+  "regra": "Correspondências explícitas por UF. Não se aplica aproximação automática; município não informado permanece só no total da fonte.",
+  "fontes": [
+    "https://www.ibge.gov.br/explica/codigos-dos-municipios.php",
+    "https://geoftp.ibge.gov.br/cartas_e_mapas/bases_cartograficas_continuas/bcim/versao2016/informacoes_tecnicas/documentacao_tecnica/DocTecnica_BCIM_VOL_I_03nov16.pdf"
+  ],
+  "correspondencias": [
+    {
+      "uf": "BA",
+      "nome_senatran": "LAGEDO DO TABOCAL",
+      "cod_ibge": 2919058,
+      "nome_ibge": "Lajedo do Tabocal"
+    },
+    {
+      "uf": "BA",
+      "nome_senatran": "SANTA TERESINHA",
+      "cod_ibge": 2928505,
+      "nome_ibge": "Santa Terezinha"
+    },
+    {
+      "uf": "GO",
+      "nome_senatran": "BOM JESUS",
+      "cod_ibge": 5203500,
+      "nome_ibge": "Bom Jesus de Goiás"
+    },
+    {
+      "uf": "MG",
+      "nome_senatran": "AMPARO DA SERRA",
+      "cod_ibge": 3102506,
+      "nome_ibge": "Amparo do Serra"
+    },
+    {
+      "uf": "MG",
+      "nome_senatran": "BARAO D0 MONTE ALTO",
+      "cod_ibge": 3105509,
+      "nome_ibge": "Barão do Monte Alto"
+    },
+    {
+      "uf": "MG",
+      "nome_senatran": "BRASOPOLIS",
+      "cod_ibge": 3108909,
+      "nome_ibge": "Brazópolis"
+    },
+    {
+      "uf": "MG",
+      "nome_senatran": "GOUVEA",
+      "cod_ibge": 3127602,
+      "nome_ibge": "Gouveia"
+    },
+    {
+      "uf": "MG",
+      "nome_senatran": "QUELUZITA",
+      "cod_ibge": 3153806,
+      "nome_ibge": "Queluzito"
+    },
+    {
+      "uf": "MT",
+      "nome_senatran": "POXOREO",
+      "cod_ibge": 5107008,
+      "nome_ibge": "Poxoréu"
+    },
+    {
+      "uf": "MT",
+      "nome_senatran": "SANTO ANTONIO DO LEVERGER",
+      "cod_ibge": 5107800,
+      "nome_ibge": "Santo Antônio de Leverger"
+    },
+    {
+      "uf": "PA",
+      "nome_senatran": "ELDORADO DOS CARAJAS",
+      "cod_ibge": 1502954,
+      "nome_ibge": "Eldorado do Carajás"
+    },
+    {
+      "uf": "PA",
+      "nome_senatran": "SANTA ISABEL DO PARA",
+      "cod_ibge": 1506500,
+      "nome_ibge": "Santa Izabel do Pará"
+    },
+    {
+      "uf": "PB",
+      "nome_senatran": "CAMPO DE SANTANA",
+      "cod_ibge": 2516409,
+      "nome_ibge": "Tacima"
+    },
+    {
+      "uf": "PB",
+      "nome_senatran": "SANTAREM",
+      "cod_ibge": 2513653,
+      "nome_ibge": "Joca Claudino"
+    },
+    {
+      "uf": "PB",
+      "nome_senatran": "SAO DOMINGOS DE POMBAL",
+      "cod_ibge": 2513968,
+      "nome_ibge": "São Domingos"
+    },
+    {
+      "uf": "PE",
+      "nome_senatran": "BELEM DE SAO FRANCISCO",
+      "cod_ibge": 2601607,
+      "nome_ibge": "Belém do São Francisco"
+    },
+    {
+      "uf": "PE",
+      "nome_senatran": "IGUARACI",
+      "cod_ibge": 2606903,
+      "nome_ibge": "Iguaracy"
+    },
+    {
+      "uf": "PE",
+      "nome_senatran": "LAGOA DO ITAENGA",
+      "cod_ibge": 2608503,
+      "nome_ibge": "Lagoa de Itaenga"
+    },
+    {
+      "uf": "PR",
+      "nome_senatran": "BELA VISTA DO CAROBA",
+      "cod_ibge": 4102752,
+      "nome_ibge": "Bela Vista da Caroba"
+    },
+    {
+      "uf": "PR",
+      "nome_senatran": "MUNHOZ DE MELLO",
+      "cod_ibge": 4116307,
+      "nome_ibge": "Munhoz de Melo"
+    },
+    {
+      "uf": "PR",
+      "nome_senatran": "PINHAL DO SAO BENTO",
+      "cod_ibge": 4119251,
+      "nome_ibge": "Pinhal de São Bento"
+    },
+    {
+      "uf": "PR",
+      "nome_senatran": "SANTA CRUZ DO MONTE CASTELO",
+      "cod_ibge": 4123303,
+      "nome_ibge": "Santa Cruz de Monte Castelo"
+    },
+    {
+      "uf": "RJ",
+      "nome_senatran": "ARMACAO DE BUZIOS",
+      "cod_ibge": 3300233,
+      "nome_ibge": "Armação dos Búzios"
+    },
+    {
+      "uf": "RJ",
+      "nome_senatran": "PARATI",
+      "cod_ibge": 3303807,
+      "nome_ibge": "Paraty"
+    },
+    {
+      "uf": "RJ",
+      "nome_senatran": "TRAJANO DE MORAIS",
+      "cod_ibge": 3305901,
+      "nome_ibge": "Trajano de Moraes"
+    },
+    {
+      "uf": "RN",
+      "nome_senatran": "ARES",
+      "cod_ibge": 2401206,
+      "nome_ibge": "Arez"
+    },
+    {
+      "uf": "RN",
+      "nome_senatran": "BOA SAUDE",
+      "cod_ibge": 2405306,
+      "nome_ibge": "Januário Cicco"
+    },
+    {
+      "uf": "RO",
+      "nome_senatran": "NOVA DO MAMORE",
+      "cod_ibge": 1100338,
+      "nome_ibge": "Nova Mamoré"
+    },
+    {
+      "uf": "RR",
+      "nome_senatran": "SAO LUIZ",
+      "cod_ibge": 1400605,
+      "nome_ibge": "São Luiz do Anauá"
+    },
+    {
+      "uf": "SC",
+      "nome_senatran": "BALNEARIO DE PICARRAS",
+      "cod_ibge": 4212809,
+      "nome_ibge": "Balneário Piçarras"
+    },
+    {
+      "uf": "SC",
+      "nome_senatran": "LAGEADO GRANDE",
+      "cod_ibge": 4209458,
+      "nome_ibge": "Lajeado Grande"
+    },
+    {
+      "uf": "SC",
+      "nome_senatran": "PRESIDENTE CASTELO BRANCO",
+      "cod_ibge": 4213906,
+      "nome_ibge": "Presidente Castello Branco"
+    },
+    {
+      "uf": "SC",
+      "nome_senatran": "SAO LOURENCO D'OESTE",
+      "cod_ibge": 4216909,
+      "nome_ibge": "São Lourenço do Oeste"
+    },
+    {
+      "uf": "SC",
+      "nome_senatran": "SAO MIGUEL D'OESTE",
+      "cod_ibge": 4217204,
+      "nome_ibge": "São Miguel do Oeste"
+    },
+    {
+      "uf": "SE",
+      "nome_senatran": "AMPARO DE SAO FRANCISCO",
+      "cod_ibge": 2800100,
+      "nome_ibge": "Amparo do São Francisco"
+    },
+    {
+      "uf": "SP",
+      "nome_senatran": "EMBU",
+      "cod_ibge": 3515004,
+      "nome_ibge": "Embu das Artes"
+    },
+    {
+      "uf": "TO",
+      "nome_senatran": "COUTO DE MAGALHAES",
+      "cod_ibge": 1706001,
+      "nome_ibge": "Couto Magalhães"
+    },
+    {
+      "uf": "TO",
+      "nome_senatran": "FORTALEZA DO TABOCAO",
+      "cod_ibge": 1708254,
+      "nome_ibge": "Tabocão"
+    },
+    {
+      "uf": "TO",
+      "nome_senatran": "SAO VALERIO DA NATIVIDADE",
+      "cod_ibge": 1720499,
+      "nome_ibge": "São Valério"
+    },
+    {
+      "uf": "MT",
+      "nome_senatran": "VILA BELA DA SANTISSIMA TRINDA",
+      "cod_ibge": 5105507,
+      "nome_ibge": "Vila Bela da Santíssima Trindade"
+    },
+    {
+      "uf": "PI",
+      "nome_senatran": "SAO FRANCISCO DE ASSIS DO PIAU",
+      "cod_ibge": 2209658,
+      "nome_ibge": "São Francisco de Assis do Piauí"
+    },
+    {
+      "uf": "SP",
+      "nome_senatran": "IBITIUVA",
+      "cod_ibge": 3539509,
+      "nome_ibge": "Pitangueiras",
+      "observacao": "Distrito de Ibitiúva: um veículo em 2024 na linha própria da Senatran, incorporado ao município de Pitangueiras.",
+      "fonte": "https://geoftp.ibge.gov.br/cartas_e_mapas/mapas_para_fins_de_levantamentos_estatisticos/censo_demografico_2022/mapas_e_descritivos_de_setores_censitarios/SP/3539509/35395091000/MSU/353950910000006/d_353950910000006.pdf"
+    }
+  ]
+}

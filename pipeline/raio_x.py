@@ -110,6 +110,8 @@ def gerar(fontes, destino):
     cats={key:ler(ref['caminho']) for key,ref in origem['catalogos'].items()}
     if 'agropecuaria_todas'in cats and 'gold/agropecuaria/manifesto.json'not in paths:
         raise ValueError('A edição inclui Agropecuária: fixe também seu manifesto, catálogo, índices e séries originais.')
+    if 'mobilidade_todas'in cats and 'gold/mobilidade/manifesto.json'not in paths:
+        raise ValueError('A edição inclui Mobilidade: fixe também suas séries originais.')
     econ=ler('gold/assistencia/referencias_manifesto.json')
     defs=[];indices={};arquivos={};catalogos={}
     for key,cat in cats.items():
@@ -140,12 +142,20 @@ def gerar(fontes, destino):
                 fonte_nome='IBGE · PAM / PPM / PEVS',fontes=[dict(nome='SIDRA '+i['tabela'],url='https://sidra.ibge.gov.br/tabela/'+i['tabela'])],area='agropecuaria',rede='todas',catalogo='agropecuaria_original',indice=j,
                 alerta='Valor nominal do próprio ano, sem desconto da inflação; não é PIB.'if i['medida']=='valor'else'',alerta_en='Nominal current-year value, without inflation adjustment; not GDP.'if i['medida']=='valor'else''))
         defs+=agro_defs
+    mob=None;mob_indices={};mob_paths={};mob_defs=[]
+    if 'gold/mobilidade/manifesto.json'in paths:
+        mm=ler('gold/mobilidade/manifesto.json');mc=json.loads(gzip.decompress(paths[mm['catalogo']['caminho']].read_bytes()))
+        mob=dict(anos=mm['anos'],indices=mm['indices'],indicadores=[i['id']for i in mc['indicadores']],edicao_sha256=prov['gold/mobilidade/manifesto.json']['sha256'])
+        for bucket,ref in mm['indices'].items():mob_indices[bucket]=ler(ref['caminho']);mob_paths[bucket]=paths[mob_indices[bucket]['arquivo']['caminho']]
+        for j,i in enumerate(mc['indicadores']):
+            mob_defs.append(dict(id=i['id'],nome=i['nome'],nome_en=i['nome_en'],descricao=i['descricao'],descricao_en=i['descricao'],tema=i['familia'],tema_en=i['familia'],unidade=i['unidade'],unidade_en=i['unidade'],formato='numero',periodos=i['anos'],frequencia='anual',metodo_referencia='razao',normalizacao='Medida original de registro ou residência. Use taxas e proporções para comparar lugares.',normalizacao_en='Original registration/residence measure. Compare places using rates and shares.',fator=1,ranking=False,fonte_nome=i['fonte_nome'],fontes=[dict(nome=i['fonte_nome'],url=i['fonte_url'])],area='mobilidade',rede='todas',catalogo='mobilidade_original',indice=j,alerta='Senatran: retratos de dezembro. SIM: óbitos de residentes em transporte terrestre; edição definitiva até 2024. Idade da frota é estimada pelo ano de fabricação.',alerta_en='Senatran: December snapshots. SIM: resident land transport deaths, final data through 2024. Fleet age is estimated from manufacturing year.'))
+        defs+=mob_defs
     saida=destino/'gold/raiox';saida.mkdir(parents=True)
     def objeto(nome,body,ext='json'):
         key=f'gold/raiox/{nome}_{sha(body)[:16]}.{ext}';(destino/key).write_bytes(body)
         return dict(caminho=key,bytes=len(body),sha256=sha(body))
     meta=objeto('catalogo',compacto(dict(versao=1,indicadores=defs,catalogos=catalogos,
-         referencias={k:econ[k] for k in ['anos','arquivo','grupos','indices_uf']},**({'agropecuaria':agro}if agro else{}))))
+         referencias={k:econ[k] for k in ['anos','arquivo','grupos','indices_uf']},**({'agropecuaria':agro}if agro else{}),**({'mobilidade':mob}if mob else{}))))
     meta_gzip={**objeto('catalogo',gzip.compress((destino/meta['caminho']).read_bytes(),mtime=0),'json.gz'),'json_sha256':meta['sha256'],'json_bytes':meta['bytes']}
     geo_body=paths[origem['geografia']['caminho']].read_bytes()
     geo_gzip={**objeto('geografia',gzip.compress(geo_body,mtime=0),'json.gz'),'json_sha256':sha(geo_body),'json_bytes':len(geo_body)}
@@ -159,6 +169,7 @@ def gerar(fontes, destino):
         economic=stack.enter_context(paths[econ['arquivo']['caminho']].open('rb'))
         handles={};index={}
         agro_files={b:stack.enter_context(p.open('rb'))for b,p in agro_paths.items()}
+        mob_files={b:stack.enter_context(p.open('rb'))for b,p in mob_paths.items()}
         for grupo in todos:
             ter=geo['territorios'][grupo];bucket=ter['uf'] if ter['nivel']=='M' else 'referencias'
             if bucket not in handles:
@@ -182,6 +193,11 @@ def gerar(fontes, destino):
                     vals=[r[j]for r in ag['valores']];flags=[22 if ter['nivel']!='M'and v is not None else ag['condicoes'][k][j]for k,v in enumerate(vals)]
                     series=dict(v=vals,n=[None]*len(vals),d=[None]*len(vals),r=vals,c=flags,q=[int(v is not None)for v in vals])
                     rows.append(retrato(i,series))
+            if mob:
+                mi=mob_indices[bucket];off,size,h=mi['grupos'][grupo];mf=mob_files[bucket];mf.seek(off);mb=mf.read(size);assert sha(mb)==h;mo=json.loads(mb);assert mo['grupo']==grupo and mo['anos']==mob['anos']
+                for j,i in enumerate(mob_defs):
+                    yy=[mo['anos'].index(y)for y in i['periodos']];vals=[mo['valores'][k][j]for k in yy];flags=[mo['condicoes'][k][j]for k in yy]
+                    series=dict(v=vals,n=[None]*len(vals),d=[None]*len(vals),r=vals,c=flags,q=[int(v is not None)for v in vals]);rows.append(retrato(i,series))
             assert len(rows)==len(defs)
             body=compacto(dict(versao=1,grupo=grupo,linhas=rows,referencias={str(a[0]):[a[10],a[8],a[9]] for a in es['linhas']}))+b'\n';f=handles[bucket]
             index[bucket][grupo]=[f.tell(),len(body),sha(body)];f.write(body)
@@ -199,9 +215,9 @@ def gerar(fontes, destino):
          anos=sorted({p//100 if p>10000 else p for i in defs for p in i['periodos']}),
          fontes={nome:{k:prov[path][k]for k in ['bytes','sha256']}for nome,path in [('comparacoes','gold/comparacoes/manifesto.json'),('referencias','gold/assistencia/referencias_manifesto.json')]},
          territorios=contagem,indicadores=len(defs),max_trecho_bytes=max_trecho)
-    # Clientes anteriores só reconhecem oito áreas. O ponteiro v2 mantém esses
-    # clientes funcionais enquanto novos clientes passam às nove áreas.
-    (saida/('v2_manifesto.json'if agro else'manifesto.json')).write_bytes(compacto(manifesto))
+    # Cada ponteiro preserva clientes com áreas anteriores: legado (oito),
+    # v2 (nove, com Agropecuária) e v3 (dez, com Mobilidade).
+    (saida/('v3_manifesto.json'if mob else'v2_manifesto.json'if agro else'manifesto.json')).write_bytes(compacto(manifesto))
     report=dict(ok=True,territorios=contagem,indicadores=len(defs),observacoes_com_valor=validos,max_trecho_bytes=max_trecho,
                 bytes=sum(p.stat().st_size for p in saida.iterdir()),arquivos=len(list(saida.iterdir())))
     (destino/'auditoria_geracao.json').write_bytes(compacto(report));print(json.dumps(report),flush=True)

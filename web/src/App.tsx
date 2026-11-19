@@ -9,6 +9,8 @@ import { contextoMunic, edicoesCuradas, type Destino } from './munic_painel';
 import { CURADORIA } from './munic_curadoria';
 import { PARAMS_TRABALHO } from './trabalho_comum';
 import { buscaEntreAreas, buscaIaLegada, buscaParaDownloads, type Area } from './navegacao';
+const Mobilidade = pagina(() => import('./pages/Mobilidade').then(m => ({default:m.Mobilidade})));
+const MobilidadeMapa = pagina(() => import('./pages/MapasIndicadores').then(m => ({default:m.MobilidadeMapa})));
 const Agropecuaria = pagina(() => import('./pages/Agropecuaria').then(m => ({default:m.Agropecuaria})));
 const AgropecuariaMapa = pagina(() => import('./pages/MapasIndicadores').then(m => ({default:m.AgropecuariaMapa})));
 const Comparacoes = pagina(() => import('./pages/Comparacoes').then(m => ({ default: m.Comparacoes })));
@@ -155,7 +157,7 @@ const menuEducacao = (): [string, [string, string][]][] => [
   [t('Metodologia', 'Methodology'), [['/educacao/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
 ];
 
-const areaDe = (pathname: string): Area => (pathname.startsWith('/agropecuaria') ? 'agropecuaria' : pathname === '/raio-x' ? 'raiox' : pathname.startsWith('/saneamento') ? 'saneamento' : pathname === '/ia' ? 'ia' : pathname === '/downloads' || pathname.startsWith('/downloads/') ? 'downloads' : pathname.startsWith('/trabalho') ? 'trabalho'
+const areaDe = (pathname: string): Area => (pathname.startsWith('/mobilidade') ? 'mobilidade' : pathname.startsWith('/agropecuaria') ? 'agropecuaria' : pathname === '/raio-x' ? 'raiox' : pathname.startsWith('/saneamento') ? 'saneamento' : pathname === '/ia' ? 'ia' : pathname === '/downloads' || pathname.startsWith('/downloads/') ? 'downloads' : pathname.startsWith('/trabalho') ? 'trabalho'
   : pathname.startsWith('/datasus') ? 'saude' : pathname.startsWith('/educacao') ? 'educacao' : pathname.startsWith('/munic') ? 'munic' : pathname.startsWith('/clima') ? 'clima' : pathname.startsWith('/assistencia') ? 'assistencia' : 'financas');
 
 function lerTema(): string | null {
@@ -268,12 +270,12 @@ export function App() {
   // a aba da IA abre com o tema da área de onde se veio (só ordena os exemplos): território e ano dos filtros do painel não
   // vão junto, porque a pergunta diz o recorte e a IA escolhe as fontes
   const filtrosIa = new URLSearchParams(area === 'ia' ? atuais : undefined);
-  if (area !== 'ia' && area !== 'munic' && area !== 'clima' && area !== 'downloads' && area !== 'raiox' && area !== 'agropecuaria') filtrosIa.set('paineis', area);
+  if (area !== 'ia' && area !== 'munic' && area !== 'clima' && area !== 'downloads' && area !== 'raiox' && area !== 'agropecuaria' && area !== 'mobilidade') filtrosIa.set('paineis', area);
   const buscaIa = `?${filtrosIa}`;
 
-  const gruposMenu = ({ agropecuaria:()=>[[t('Agropecuária','Agriculture and livestock'),[['/agropecuaria',t('Painel de indicadores','Indicator dashboard')],['/agropecuaria/mapa',t('Mapa de indicadores','Indicator map')],['/agropecuaria/rankings',t('Rankings relativos','Relative rankings')]]]] as [string,[string,string][]][], raiox:()=>[] as [string,[string,string][]][], saneamento:()=>[[t('Saneamento','Sanitation'),[['/saneamento',t('Painel de indicadores','Indicator dashboard')],['/saneamento/mapa',t('Mapa de indicadores','Indicator map')],['/saneamento/rankings',t('Comparar municípios','Compare municipalities')],['/saneamento/metodologia',t('Fontes e metodologia','Sources and methodology')]]]] as [string,[string,string][]][], financas: menu, trabalho: menuTrabalho, saude: menuSaude, educacao: menuEducacao, munic: menuMunic, clima: menuClima, assistencia: menuAssistencia, downloads: menuDownloads, ia: menuIa }[area])();
+  const gruposMenu = ({ mobilidade:()=>[[t('Mobilidade e trânsito','Mobility and traffic'),[['/mobilidade',t('Painel de indicadores','Indicator dashboard')],['/mobilidade/mapa',t('Mapa de indicadores','Indicator map')],['/mobilidade/rankings',t('Rankings relativos','Relative rankings')]]]] as [string,[string,string][]][], agropecuaria:()=>[[t('Agropecuária','Agriculture and livestock'),[['/agropecuaria',t('Painel de indicadores','Indicator dashboard')],['/agropecuaria/mapa',t('Mapa de indicadores','Indicator map')],['/agropecuaria/rankings',t('Rankings relativos','Relative rankings')]]]] as [string,[string,string][]][], raiox:()=>[] as [string,[string,string][]][], saneamento:()=>[[t('Saneamento','Sanitation'),[['/saneamento',t('Painel de indicadores','Indicator dashboard')],['/saneamento/mapa',t('Mapa de indicadores','Indicator map')],['/saneamento/rankings',t('Comparar municípios','Compare municipalities')],['/saneamento/metodologia',t('Fontes e metodologia','Sources and methodology')]]]] as [string,[string,string][]][], financas: menu, trabalho: menuTrabalho, saude: menuSaude, educacao: menuEducacao, munic: menuMunic, clima: menuClima, assistencia: menuAssistencia, downloads: menuDownloads, ia: menuIa }[area])();
   if (area !== 'downloads' && area !== 'ia' && area !== 'raiox') {
-    const raizComparacao = ({ financas: '', trabalho: '/trabalho', saude: '/datasus', educacao: '/educacao', munic: '/munic', clima: '/clima', assistencia: '/assistencia', saneamento: '/saneamento', agropecuaria: '/agropecuaria' })[area];
+    const raizComparacao = ({ financas: '', trabalho: '/trabalho', saude: '/datasus', educacao: '/educacao', munic: '/munic', clima: '/clima', assistencia: '/assistencia', saneamento: '/saneamento', agropecuaria: '/agropecuaria', mobilidade: '/mobilidade' })[area];
     gruposMenu.unshift([t('Comparações', 'Comparisons'), [[`${raizComparacao}/comparar`, t('Regiões e evolução', 'Regions and trends')]]]);
   }
   const filtrosSaneamento = new URLSearchParams(buscaEntreAreas(search,'saneamento','saneamento'));
@@ -284,7 +286,7 @@ export function App() {
       if (!p.has('indicador') && p.get('ind') && area !== 'financas') p.set('indicador', p.get('ind')!);
       return { pathname: para, search: '?' + p.toString() };
     }
-    return { pathname: para, search: area === 'agropecuaria' ? buscaEntreAreas(search,'agropecuaria','agropecuaria') : area === 'saneamento' ? '?' + filtrosSaneamento.toString() : area === 'downloads' ? search : area === 'ia' ? buscaIa : area === 'educacao' ? buscaEntreAreas(search, 'educacao', para.includes('/financiamento') || para.includes('/profissionais') ? 'financas' : 'educacao') : area === 'munic' ? contextoMunic(search, DESTINO_MUNIC[para] ?? 'avancado', EDICOES_MUNIC) : area === 'clima' ? buscaClima(search) : area === 'assistencia' ? buscaEntreAreas(search, 'assistencia', 'assistencia') : buscaArea };
+    return { pathname: para, search: (area === 'agropecuaria' || area === 'mobilidade') ? buscaEntreAreas(search,area,area) : area === 'saneamento' ? '?' + filtrosSaneamento.toString() : area === 'downloads' ? search : area === 'ia' ? buscaIa : area === 'educacao' ? buscaEntreAreas(search, 'educacao', para.includes('/financiamento') || para.includes('/profissionais') ? 'financas' : 'educacao') : area === 'munic' ? contextoMunic(search, DESTINO_MUNIC[para] ?? 'avancado', EDICOES_MUNIC) : area === 'clima' ? buscaClima(search) : area === 'assistencia' ? buscaEntreAreas(search, 'assistencia', 'assistencia') : buscaArea };
   };
   const areas: {id: Area; nome: string; caminho: string; busca: string}[] = [
     {id:'raiox',nome:t('Raio X','Territory X-ray'),caminho:'/raio-x',busca:paraArea('raiox')},
@@ -293,6 +295,7 @@ export function App() {
     {id:'trabalho',nome:t('Mercado de trabalho','Labour market'),caminho:'/trabalho',busca:paraArea('trabalho')},
     {id:'saude',nome:t('Saúde','Health'),caminho:'/datasus',busca:paraArea('saude')},
     {id:'educacao',nome:t('Educação','Education'),caminho:'/educacao',busca:paraArea('educacao')},
+    {id:'mobilidade',nome:t('Mobilidade e trânsito','Mobility and traffic'),caminho:'/mobilidade',busca:paraArea('mobilidade')},
     {id:'agropecuaria',nome:t('Agropecuária','Agriculture and livestock'),caminho:'/agropecuaria',busca:paraArea('agropecuaria')},
     {id:'saneamento',nome:t('Saneamento','Sanitation'),caminho:'/saneamento',busca:paraArea('saneamento')},
     {id:'munic',nome:t('Gestão pública','Public management'),caminho:'/munic',busca:paraArea('munic')},
@@ -318,6 +321,7 @@ export function App() {
           trabalho: t('Mercado de trabalho · RAIS e CAGED', 'Labour market · RAIS and CAGED'),
           saude: t('Saúde · DATASUS', 'Health · DATASUS'),
           educacao: t('Educação · Inep e SIOPE', 'Education · Inep and SIOPE'),
+          mobilidade: t('Mobilidade e segurança no trânsito','Mobility and road safety'),
           agropecuaria: t('Agropecuária · PAM, PPM e PEVS','Agriculture and livestock · PAM, PPM and PEVS'),
           saneamento: t('Saneamento · SNIS e SINISA', 'Sanitation · SNIS and SINISA'),
           munic: t('Gestão pública · MUNIC e ESTADIC', 'Public management · MUNIC and ESTADIC'),
@@ -369,7 +373,7 @@ export function App() {
         </nav>}
         {/* a chave refaz as páginas ao trocar o idioma: gráficos e textos memorizados são recalculados */}
         <main key={idioma} id="conteudo" tabIndex={-1}>
-          {!['ia', 'downloads', 'raiox'].includes(area) && /^\/(receitas|despesas|despesas-orcamentarias|socioeconomico|trabalho|datasus|educacao|saneamento|assistencia|munic|clima|rankings)\/?$/.test(pathname) && <aside className="atalho-comparacoes"><Link to={linkPagina(`${({ financas: '', trabalho: '/trabalho', saude: '/datasus', educacao: '/educacao', munic: '/munic', clima: '/clima', assistencia: '/assistencia', saneamento: '/saneamento', agropecuaria: '/agropecuaria', ia: '', downloads: '', raiox: '' })[area]}/comparar`)}>{t('Comparar com regiões e acompanhar no tempo →', 'Compare with regions and track changes over time →')}</Link><span>{t('Taxas, proporções e valores por habitante; totais nas tabelas originais.', 'Rates, shares and values per inhabitant; totals in the original tables.')}</span></aside>}
+          {!['ia', 'downloads', 'raiox'].includes(area) && /^\/(receitas|despesas|despesas-orcamentarias|socioeconomico|trabalho|datasus|educacao|saneamento|assistencia|munic|clima|rankings)\/?$/.test(pathname) && <aside className="atalho-comparacoes"><Link to={linkPagina(`${({ financas: '', trabalho: '/trabalho', saude: '/datasus', educacao: '/educacao', munic: '/munic', clima: '/clima', assistencia: '/assistencia', saneamento: '/saneamento', agropecuaria: '/agropecuaria', mobilidade: '/mobilidade', ia: '', downloads: '', raiox: '' })[area]}/comparar`)}>{t('Comparar com regiões e acompanhar no tempo →', 'Compare with regions and track changes over time →')}</Link><span>{t('Taxas, proporções e valores por habitante; totais nas tabelas originais.', 'Rates, shares and values per inhabitant; totals in the original tables.')}</span></aside>}
           <Suspense fallback={<p className="carregando" role="status">{t('Abrindo o painel…', 'Opening the dashboard…')}</p>}><ProvedorDados>
             <Routes>
               <Route path="/" element={<Navigate to={{ pathname: '/ia', search: buscaIaLegada(search), hash }} replace />} />
@@ -403,6 +407,10 @@ export function App() {
               <Route path="/educacao/rankings" element={<Comparacoes area="educacao" rankings />} />
               <Route path="/educacao/tabela" element={<EducacaoTabela />} />
               <Route path="/educacao/metodologia" element={<EducacaoMetodologia />} />
+              <Route path="/mobilidade" element={<Mobilidade />} />
+              <Route path="/mobilidade/mapa" element={<MobilidadeMapa />} />
+              <Route path="/mobilidade/comparar" element={<Comparacoes area="mobilidade" />} />
+              <Route path="/mobilidade/rankings" element={<Comparacoes area="mobilidade" rankings />} />
               <Route path="/agropecuaria" element={<Agropecuaria />} />
               <Route path="/agropecuaria/mapa" element={<AgropecuariaMapa />} />
               <Route path="/agropecuaria/comparar" element={<Comparacoes area="agropecuaria" />} />
