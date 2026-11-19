@@ -8,6 +8,7 @@ import pandas as pd
 from mobilidade_fontes import ANOS,compacto,sha,norm
 from mobilidade_normalizar import chave
 from mobilidade_sim import GRUPOS
+from mobilidade_perfis import FROTA_PERFIS,SIM_PERFIS,ESPECIES,RACAS,LOCAIS,ESCOLAS
 from agropecuaria import proporcao
 from comparacoes_base import Quadro,Gravador,numeros
 
@@ -27,6 +28,11 @@ TIPOS={
  'tratorrodas':('tratores_rodas','Tratores de rodas'),'triciclo':('triciclos','Triciclos'),'utilitario':('utilitarios','Utilitários')}
 SIM_NOMES={'mob_obitos':'Mortes no transporte terrestre','mob_ob_pedestres':'Mortes de pedestres','mob_ob_ciclistas':'Mortes de ciclistas','mob_ob_motociclistas':'Mortes de motociclistas','mob_ob_automoveis':'Mortes de ocupantes de automóveis','mob_ob_caminhonetes':'Mortes de ocupantes de caminhonetes','mob_ob_carga':'Mortes de ocupantes de veículos de carga','mob_ob_onibus':'Mortes de ocupantes de ônibus','mob_ob_outros':'Mortes nos demais transportes terrestres','mob_ob_homens':'Mortes: homens','mob_ob_mulheres':'Mortes: mulheres','mob_ob_sexo_ign':'Mortes: sexo ignorado','mob_ob_0_14':'Mortes: 0 a 14 anos','mob_ob_15_29':'Mortes: 15 a 29 anos','mob_ob_30_59':'Mortes: 30 a 59 anos','mob_ob_60_mais':'Mortes: 60 anos ou mais','mob_ob_idade_ign':'Mortes: idade ignorada'}
 IDADE_NOMES={'idade_total':'Veículos no cadastro de fabricação','idade_validos':'Veículos com ano de fabricação válido','idade_anos_soma':'Soma ponderada das idades estimadas','idade_0_4':'Veículos com 0 a 4 anos','idade_5_9':'Veículos com 5 a 9 anos','idade_10_19':'Veículos com 10 a 19 anos','idade_20_mais':'Veículos com 20 anos ou mais','idade_sem_ano':'Veículos sem ano de fabricação válido'}
+
+def descricao_ingles(tema,fonte):
+ base='Same-year municipal components. Aggregates use valid component pairs, not means of rates. Source totals may include records with unidentified municipality. '
+ if tema in ['Frota','Combustíveis','Idade da frota','Segurança no transporte']:return base+'Mortality rates are crude, not age-standardised.'
+ return base+('These shares describe recorded deaths, not group-specific mortality risks.'if fonte=='sim'else'Registered vehicle species differ from vehicle type. Axle values are reported, not physically verified; 1–9 is a descriptive subset only.')
 
 def correspondencias(g):
  by={(m[2],chave(m[1])):m[0]for m in g['municipios']};aliases=json.loads(Path(__file__).with_name('mobilidade_municipios.json').read_bytes())
@@ -64,8 +70,13 @@ def gerar(fontes,saida):
  add('mob_eletrificados','Categorias elétricas e híbridas cadastradas','combustiveis',descricao='Soma das categorias de combustível cujo nome contém ELÉTRICO, incluindo combinações híbridas e fonte interna/externa. Não identifica autonomia, tecnologia de recarga ou consumo. A classificação é a do registro, não uma reclassificação por modelo.')
  for col,nome in IDADE_NOMES.items():add('mob_'+col,nome,'idade','veículo-anos'if col=='idade_anos_soma'else'veículos',descricao='Cadastro de fabricação da Senatran. Idade aproximada = ano de referência menos ano de fabricação, sem mês; ano válido entre 1900 e o ano de referência. Ano-modelo não substitui fabricação. Valores ausentes ou futuros ficam separados; médias usam somente registros com ano válido.')
  add('mob_idade_10_mais','Veículos com 10 anos ou mais','idade')
- for id in GRUPOS:add(id,SIM_NOMES[id],'seguranca','óbitos','sim')
+ for id in SIM_NOMES:add(id,SIM_NOMES[id],'seguranca','óbitos','sim')
  add('mob_populacao','População de referência','denominadores','habitantes','populacao')
+ perfis_path=fontes/'normalizados_perfis.json';perfis=json.loads(perfis_path.read_bytes())if perfis_path.exists()else None
+ if perfis:
+  assert perfis['ok']
+  for id,v in FROTA_PERFIS.items():add(id,v['nome'],v['familia'],descricao=v['descricao'])
+ for id,v in SIM_PERFIS.items():add(id,v['nome'],v['familia'],'óbitos','sim',v['descricao']+' Mesma base: óbitos não fetais de moradores, causa básica V01–V89, ano do óbito.')
  idx={i['id']:j for j,i in enumerate(defs)};a=np.full((13,len(grupos),len(defs)),np.nan);c=np.full(a.shape,2,dtype='int8');residuos={}
  def put(y,id,series):
   j=idx[id]
@@ -89,6 +100,14 @@ def gerar(fontes,saida):
   for col in IDADE_NOMES:set_frame(y,'mob_'+col,x,col)
   for kind,col in [('tipo','total'),('combustivel','quantidade'),('idade','idade_total')]:
    x=frames[(y,kind)];residuos[f'{y}:{kind}']={**{u:int(v)for u,v in x[x.cod_ibge.isna()].groupby('uf')[col].sum().items()},'BR':int(x.loc[x.cod_ibge.isna(),col].sum())}
+ if perfis:
+  for ref in perfis['arquivos']:
+   b=(fontes/ref['arquivo']).read_bytes();assert sha(b)==ref['sha256'];x=pd.read_parquet(fontes/ref['arquivo']);x['cod_ibge']=[lookup.get((u,chave(n)))for u,n in zip(x.uf,x.municipio)]
+   bad=x[x.cod_ibge.isna()]
+   for u,n in bad[['uf','municipio']].drop_duplicates().itertuples(index=False,name=None):
+    if chave(n)not in ['municipionaoinformado','naoinformado']:raise ValueError(f'Espécie/eixos sem correspondência: {ref["ano"]} {u} {n}')
+   for id in FROTA_PERFIS:set_frame(ref['ano'],id,x,id)
+   residuos[f'{ref["ano"]}:especie']={**{u:int(v)for u,v in bad.groupby('uf').mob_esp_total.sum().items()},'BR':int(bad.mob_esp_total.sum())}
  sim=pd.read_parquet(fontes/sm['agregado']['arquivo']);assert sha((fontes/sm['agregado']['arquivo']).read_bytes())==sm['agregado']['sha256'];m6={int(m[0])//10:str(m[0])for m in municipios};sim['cod_ibge']=sim.municipio6.map(m6)
  for y in sm['anos']:
   row=ANOS.index(y);valid=[j for j,m in enumerate(municipios)if m[0]!=5101837]
@@ -103,10 +122,10 @@ def gerar(fontes,saida):
  for j,i in enumerate(defs):i['anos']=[y for k,y in enumerate(ANOS)if np.isfinite(a[k,:,j]).any()]
  quadros=[]
  def razao(id,n,d,fator,nome,en,unidade,tema):
-  ni,di=idx[n],idx[d];periodos=sm['anos']if defs[ni]['fonte']=='sim'else ANOS;yy=[ANOS.index(p)for p in periodos];nn=a[yy,:nmun,ni];dd=a[yy,:nmun,di];vv,cc=proporcao(nn,dd,c[yy,:nmun,ni],c[yy,:nmun,di],fator)
+  ni,di=idx[n],idx[d];periodos=sm['anos']if defs[ni]['fonte']=='sim'else sorted(set(defs[ni]['anos'])&set(defs[di]['anos']));yy=[ANOS.index(p)for p in periodos];nn=a[yy,:nmun,ni];dd=a[yy,:nmun,di];vv,cc=proporcao(nn,dd,c[yy,:nmun,ni],c[yy,:nmun,di],fator)
   detalhe='Razão de componentes do mesmo município e ano. Regiões, UF e Brasil somam somente pares municipais válidos, sem média de taxas. Totais da fonte podem conter registros sem município identificado, informados separadamente.'
-  if defs[ni]['fonte']=='sim':detalhe+=' Taxa bruta, sem padronização etária. Pequenas contagens variam muito; zero registrado não garante ausência de risco.'
-  definition=dict(id=id,nome=nome,nome_en=en,descricao=detalhe,descricao_en='Same-year municipal components. Aggregates use valid component pairs, not means of rates. Source totals may include records with unidentified municipality. Mortality rates are crude, not age-standardised.',tema=tema,tema_en={'Frota':'Fleet','Combustíveis':'Fuels','Idade da frota':'Fleet age','Segurança no transporte':'Transport safety'}[tema],unidade=unidade,unidade_en=unidade,formato='percentual'if unidade=='%'else'numero',frequencia='anual',metodo_referencia='razao',normalizacao=nome,normalizacao_en=en,fator=fator,ranking=True,minimo=0,fonte_nome=defs[ni]['fonte_nome'],fontes=[dict(nome=defs[ni]['fonte_nome'],url=defs[ni]['fonte_url'])]+([dict(nome=defs[di]['fonte_nome'],url=defs[di]['fonte_url'])]if defs[ni]['fonte']!=defs[di]['fonte']else[]),alerta='Frota registrada não mede circulação efetiva. Óbitos são de moradores, não necessariamente ocorridos no território. Compare os anos e a cobertura; denominador zero não define percentual.',alerta_en='Registered fleet is not traffic flow. Deaths refer to residents, not necessarily events in the territory. Check years and coverage; a zero denominator does not define a percentage.',variavel_download='mob_'+id,numerador_id=n,denominador_id=d,numerador_nome=defs[ni]['nome']+' ('+defs[ni]['unidade']+')',denominador_nome=defs[di]['nome']+' ('+defs[di]['unidade']+')')
+  if defs[ni]['fonte']=='sim':detalhe+=' Taxa bruta, sem padronização etária. Pequenas contagens variam muito; zero registrado não garante ausência de risco.'if tema=='Segurança no transporte'else' Perfil dos registros, não taxa de risco do grupo. '+defs[ni]['descricao']
+  definition=dict(id=id,nome=nome,nome_en=en,descricao=detalhe,descricao_en=descricao_ingles(tema,defs[ni]['fonte']),tema=tema,tema_en={'Frota':'Fleet','Combustíveis':'Fuels','Idade da frota':'Fleet age','Segurança no transporte':'Transport safety','Espécie e eixos':'Registered species and axles','Raça/cor':'Race/colour','Escolaridade':'Schooling','Local do falecimento':'Place of death','Acidente de trabalho no registro':'Recorded work-related accident'}[tema],unidade=unidade,unidade_en=unidade,formato='percentual'if unidade=='%'else'numero',frequencia='anual',metodo_referencia='razao',normalizacao=nome,normalizacao_en=en,fator=fator,ranking=True,minimo=0,fonte_nome=defs[ni]['fonte_nome'],fontes=[dict(nome=defs[ni]['fonte_nome'],url=defs[ni]['fonte_url'])]+([dict(nome=defs[di]['fonte_nome'],url=defs[di]['fonte_url'])]if defs[ni]['fonte']!=defs[di]['fonte']else[]),alerta='Frota registrada não mede circulação efetiva. Óbitos são de moradores, não necessariamente ocorridos no território. Compare os anos e a cobertura; denominador zero não define percentual.',alerta_en='Registered fleet is not traffic flow. Deaths refer to residents, not necessarily events in the territory. Check years and coverage; a zero denominator does not define a percentage.',variavel_download='mob_'+id,numerador_id=n,denominador_id=d,numerador_nome=defs[ni]['nome']+' ('+defs[ni]['unidade']+')',denominador_nome=defs[di]['nome']+' ('+defs[di]['unidade']+')')
   q=Quadro(definition,periodos,vv,nn,dd,cc);quadros.append(q)
  for id,n,nome,en in [('veiculos_mil','mob_frota','Veículos por 1.000 habitantes','Vehicles per 1,000 residents'),('autos_mil','mob_automoveis','Automóveis por 1.000 habitantes','Cars per 1,000 residents'),('motos_mil','mob_motos','Motos por 1.000 habitantes','Motorcycles per 1,000 residents'),('carga_mil','mob_carga','Veículos de carga por 1.000 habitantes','Trucks per 1,000 residents'),('onibus_mil','mob_onibus_total','Ônibus e micro-ônibus por 1.000 habitantes','Buses per 1,000 residents')]:razao(id,n,'mob_populacao',1000,nome,en,'por 1.000 habitantes','Frota')
  for id,n,nome,en in [('autos_pct','mob_automoveis','Automóveis na frota','Cars in fleet'),('motos_pct','mob_motos','Motos na frota','Motorcycles in fleet'),('carga_pct','mob_carga','Veículos de carga na frota','Trucks in fleet'),('onibus_pct','mob_onibus_total','Ônibus e micro-ônibus na frota','Buses in fleet')]:razao(id,n,'mob_frota',100,nome,en,'%','Frota')
@@ -116,6 +135,17 @@ def gerar(fontes,saida):
  razao('idade_info_pct','mob_idade_validos','mob_idade_total',100,'Ano de fabricação válido no cadastro','Valid manufacturing year in register','%','Idade da frota')
  for id,n,nome,en in [('mortes_100mil','mob_obitos','Mortes no transporte terrestre por 100 mil habitantes','Land transport deaths per 100,000 residents'),('motociclistas_100mil','mob_ob_motociclistas','Mortes de motociclistas por 100 mil habitantes','Motorcyclist deaths per 100,000 residents'),('pedestres_100mil','mob_ob_pedestres','Mortes de pedestres por 100 mil habitantes','Pedestrian deaths per 100,000 residents'),('ciclistas_100mil','mob_ob_ciclistas','Mortes de ciclistas por 100 mil habitantes','Cyclist deaths per 100,000 residents')]:razao(id,n,'mob_populacao',100000,nome,en,'por 100 mil habitantes','Segurança no transporte')
  for id,n,nome,en in [('motociclistas_pct','mob_ob_motociclistas','Motociclistas entre as mortes no transporte','Motorcyclists among transport deaths'),('pedestres_pct','mob_ob_pedestres','Pedestres entre as mortes no transporte','Pedestrians among transport deaths'),('jovens_pct','mob_ob_15_29','Jovens de 15 a 29 anos entre as mortes','Ages 15 to 29 among transport deaths'),('homens_pct','mob_ob_homens','Homens entre as mortes no transporte','Men among transport deaths')]:razao(id,n,'mob_obitos',100,nome,en,'%','Segurança no transporte')
+ if perfis:
+  for id,nome in ESPECIES:razao('esp_'+id+'_pct','mob_esp_'+id,'mob_esp_total',100,'Espécie '+nome.lower()+' na frota','Registered species: '+id+' share','%','Espécie e eixos')
+  razao('eix_info_pct','mob_eix_1_9','mob_esp_total',100,'Cadastros com 1 a 9 eixos informados','Records reporting 1–9 axles','%','Espécie e eixos')
+  razao('cg_eix_3_pct','mob_cg_eix_3_9','mob_cg_eix_1_9',100,'Carga com 3 a 9 eixos, entre registros de 1 a 9','Cargo with 3–9 axles among records with 1–9','%','Espécie e eixos')
+ for id,nome,_ in [*RACAS,('ign','Sem informação','')]:razao('rc_'+id+'_pct','mob_ob_rc_'+id,'mob_obitos',100,'Raça/cor '+nome.lower()+' entre os óbitos','Recorded deaths: race/colour '+id+' share','%','Raça/cor')
+ razao('rc_info_pct','mob_ob_rc_info','mob_obitos',100,'Óbitos com raça/cor informada','Deaths with recorded race/colour','%','Raça/cor')
+ for id,nome,_ in [*LOCAIS,('ign','Local ignorado','')]:razao('loc_'+id+'_pct','mob_ob_loc_'+id,'mob_obitos',100,'Falecimentos em '+nome.lower()+' entre os óbitos','Recorded place of death: '+id+' share','%','Local do falecimento')
+ for id,nome,_ in [*ESCOLAS,('ign','Escolaridade ignorada','')]:razao('esc_'+id+'_pct','mob_ob_esc_'+id,'mob_ob_15_mais',100,nome+' entre óbitos com 15+','Schooling among deaths aged 15+: '+id+' share','%','Escolaridade')
+ razao('esc_info_pct','mob_ob_esc_info','mob_ob_15_mais',100,'Escolaridade informada entre óbitos com 15+','Recorded schooling among deaths aged 15+','%','Escolaridade')
+ razao('trab_info_pct','mob_ob_trab_info','mob_obitos',100,'Acidente de trabalho com resposta sim/não','Deaths with yes/no work-related-accident response','%','Acidente de trabalho no registro')
+ razao('trab_sim_pct','mob_ob_trab_sim','mob_ob_trab_info',100,'Acidente de trabalho: sim, entre respostas conhecidas','Work-related accident: yes among known responses','%','Acidente de trabalho no registro')
  # Os mesmos valores e componentes são usados no painel e nas comparações.
  groups={key:[j for j,m in enumerate(municipios)if key==str(m[0])or key==m[2]or key=='BR'or key=='I:'+m[3]or key=='T:'+m[4]]for key,t in g['territorios'].items()if t['nivel']in ['M','UF','BR','imediata','intermediaria']}
  dv=np.full((13,len(grupos),len(quadros)),np.nan);dc=np.full(dv.shape,2,dtype='int8');dn=dv.copy();dd=dv.copy();dq=np.zeros(dv.shape,dtype='int16')
@@ -137,13 +167,13 @@ def gerar(fontes,saida):
     loc=pos[key];body=compacto(dict(versao=1,grupo=key,anos=ANOS,valores=[numeros(r)for r in a[:,loc]],condicoes=c[:,loc].tolist(),derivados=[numeros(r)for r in dv[:,loc]],condicoes_derivados=dc[:,loc].tolist(),numeradores=[numeros(r)for r in dn[:,loc]],denominadores=[numeros(r)for r in dd[:,loc]],coberturas=dq[:,loc].tolist(),residuos={f'{y}:{kind}':(None if kind=='sim'and y>sm['anos'][-1]else residuos.get(f'{y}:{kind}',{}).get(key,0))for y in ANOS for kind in ['tipo','combustivel','idade','sim']}if len(key)!=7 else{}))+b'\n';entries[key]=[f.tell(),len(body),sha(body)];f.write(body);max_slice=max(max_slice,len(body))
   h=sha(temp.read_bytes());p=dest/f'series_{bucket.lower()}_{h[:16]}.ndjson';temp.rename(p);indices[bucket]=objeto('mobilidade','indice_'+bucket.lower(),dict(versao=1,arquivo=dict(caminho=p.relative_to(saida).as_posix(),bytes=p.stat().st_size,sha256=h),grupos=entries))
  catalogo=objeto('mobilidade','catalogo',dict(versao=1,anos=ANOS,indicadores=defs,derivados=[dict(q.definicao,periodos=q.periodos)for q in quadros],condicoes=CONDICOES),True);geo=objeto('mobilidade','geografia',g,True)
- m=dict(versao=1,gerado_em=datetime.now(timezone.utc).isoformat(),anos=ANOS,catalogo=catalogo,geografia=geo,indices=indices,variaveis=len(defs),calculados=len(quadros),territorios=len(grupos),max_trecho_bytes=max_slice,ultimos={'senatran':2025,'sim':2024},origens={'senatran':sha((fontes/'senatran.json').read_bytes()),'sim':sha((fontes/'sim.json').read_bytes()),'populacao':main['sha256']});(dest/'manifesto.json').write_bytes(compacto(m))
+ m=dict(versao=1,gerado_em=datetime.now(timezone.utc).isoformat(),anos=ANOS,catalogo=catalogo,geografia=geo,indices=indices,variaveis=len(defs),calculados=len(quadros),territorios=len(grupos),max_trecho_bytes=max_slice,ultimos={'senatran':2025,'sim':2024},especie_anos_ausentes=perfis['ausencias_dezembro']if perfis else ANOS,origens={'senatran':sha((fontes/'senatran.json').read_bytes()),'sim':sha((fontes/'sim.json').read_bytes()),'populacao':main['sha256'],**({'senatran_perfis':sha((fontes/'senatran_perfis.json').read_bytes())}if perfis else{})});(dest/'manifesto.json').write_bytes(compacto(m))
  data={'cod_ibge':np.tile([m[0]for m in municipios],13),'ano':np.repeat(ANOS,nmun),'municipio':np.tile([m[1]for m in municipios],13),'uf':np.tile([m[2]for m in municipios],13)}
  for j,i in enumerate(defs):data[i['id']]=a[:,:nmun,j].reshape(-1);data[i['id']+'_cond']=c[:,:nmun,j].reshape(-1)
  for j,q in enumerate(quadros):id=q.definicao['variavel_download'];data[id]=dv[:,:nmun,j].reshape(-1);data[id+'_cond']=dc[:,:nmun,j].reshape(-1)
  work=saida/'trabalho_mobilidade';work.mkdir();pd.DataFrame(data).sort_values(['cod_ibge','ano']).to_parquet(work/'municipios.parquet',index=False,compression='zstd')
  geo_obj=SimpleNamespace(municipios=municipios,territorios=g['territorios'],governos=g['governos'],grupos=groups,buckets={k:t['uf']if t['nivel']=='M'else'referencias'for k,t in g['territorios'].items()})
- root=json.loads((fontes/'gold/comparacoes/manifesto.json').read_bytes());writer=Gravador(saida,geo_obj,fontes,{});writer.georef=root['geografia'];writer.area('mobilidade',quadros,dict(caminho='gold/mobilidade/manifesto.json',sha256=sha((dest/'manifesto.json').read_bytes())));root['catalogos'].update(writer.catalogos);root['origens']['gold/mobilidade/manifesto.json']=dict(bytes=(dest/'manifesto.json').stat().st_size,sha256=sha((dest/'manifesto.json').read_bytes()));(saida/'gold/comparacoes/manifesto.json').write_bytes(compacto(root))
+ root=json.loads((fontes/'gold/comparacoes/manifesto.json').read_bytes());writer=Gravador(saida,geo_obj,fontes,{});writer.georef=root['geografia'];writer.area('mobilidade',quadros,dict(caminho='gold/mobilidade/manifesto.json',sha256=sha((dest/'manifesto.json').read_bytes())));root['catalogos'].update(writer.catalogos);root['origens']['gold/mobilidade/manifesto.json']=dict(bytes=(dest/'manifesto.json').stat().st_size,sha256=sha((dest/'manifesto.json').read_bytes()));root['gerado_em']=m['gerado_em'];(saida/'gold/comparacoes/manifesto.json').write_bytes(compacto(root))
  gerar_mapas(saida,municipios,quadros,m,objeto)
  report=dict(ok=True,indicadores=len(defs),calculados=len(quadros),municipios=nmun,anos=ANOS,max_trecho_bytes=max_slice,sim_totais=sm['totais'],municipios_sem_correspondencia=pend,residuos=residuos);(work/'auditoria_geracao.json').write_bytes(compacto(report));print(json.dumps({k:report[k]for k in ['ok','indicadores','calculados','municipios','max_trecho_bytes']}),flush=True)
 

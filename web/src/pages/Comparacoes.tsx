@@ -6,6 +6,7 @@ import { Estado } from "../components/Kpi";
 import { Grafico, linhas } from "../components/Grafico";
 import { exportar, type Tabela } from "../exportar";
 import { idioma, local, t } from "../idioma";
+import { eixoAnualMob } from '../mobilidade_perfis';
 import { UF_NOMES } from "../ufs";
 import { indicadorCadunicoLocal, linkHistoricoCadunico } from '../cadunico_historico';
 import {
@@ -1103,8 +1104,10 @@ function Serie({
     const eixos: (number | string)[] = [],
       indices: (number | null)[] = [];
     const pontes: { de: number; ate: number; antes: number; depois: number }[] = [];
-    for (const [j, p] of janela.entries()) {
-      const antes = janela[j - 1];
+    const calendario=area==='mobilidade'&&i.frequencia==='anual'?eixoAnualMob(janela):janela;
+    for (const [j, p] of calendario.entries()) {
+      if(!pp.includes(p)){eixos.push(periodoComparacao(p));indices.push(null);continue;}
+      const antes = calendario[j - 1];
       const parcial = linhasSerie.some(
         (l) =>
           l.s.c[pp.indexOf(p)] === 11 ||
@@ -1303,6 +1306,7 @@ function Serie({
           </article>
         ))}
       </div>
+      {area==='mobilidade'&&i.frequencia==='anual'&&janela.some((p,j)=>j>0&&p>janela[j-1]+1)&&<p className="cp-nota">{t('Sem observação na série: ','No observation in the series: ')}{eixoAnualMob(janela).filter(p=>!janela.includes(p)).join(', ')}. {t('O gráfico mantém a lacuna.','The chart preserves the gap.')}</p>}
       {janela.length > 1 &&
         (!i.binario || linhasSerie.some((l) => !l.municipio)) &&
         grafico()}

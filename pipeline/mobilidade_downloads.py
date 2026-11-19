@@ -9,6 +9,7 @@ from pathlib import Path
 import duckdb,pandas as pd,pyarrow.parquet as pq
 from mobilidade import CONDICOES
 from mobilidade_fontes import compacto
+from mobilidade_perfis import NOTA_PERFIS
 from downloads_enxuto import Enxuto,ler
 from downloads_navegacao import previa,referencia,registrar
 from painel_municipal import Painel,KEYS,qi,qs,sha
@@ -83,6 +84,7 @@ def gerar(base,painel,saida,stata,rscript):
  with zipfile.ZipFile(zipped,'w',zipfile.ZIP_DEFLATED)as z:z.write(csv,'dicionario.csv')
  dict_item('dicionario_csv','csv.zip',zipped,'Dicionário — CSV');excel=work/'dicionario.xlsx';flat.to_excel(excel,index=False,engine='openpyxl',freeze_panes=(1,0));dict_item('dicionario_excel','xlsx',excel,'Dicionário — Excel');dict_item('dicionario_rds','rds',rdict,'Dicionário — R')
  m['gerado_em']=stamp;m['notas']=[n for n in m['notas']if not n.startswith('Mobilidade e trânsito:')];m['notas'].append(f'Mobilidade e trânsito: {raw_count} medidas originais, {len(ids)-raw_count} relativas e respectivas condições, desde 2013, em arquivos Brasil/UF. Senatran: retratos de dezembro, 2013–2025, frota registrada e não circulação. SIM: edição definitiva, 2013–2024, óbitos não fetais por residência, causa básica V01–V89, incluindo acidentes terrestres fora da via pública. Idade da frota é estimada pelo ano de fabricação válido (1900 à referência); ano-modelo não substitui fabricação. Categorias de combustível podem mudar. Taxas são brutas, não ajustadas por idade, e usam pares municipais válidos. População: SVS/MS, referência IBGE. Fernando de Noronha não tem denominador nesta edição; suas contagens continuam disponíveis. A seleção principal de 297 indicadores e os outros temas permanecem nos mesmos objetos imutáveis.')
+ if 'mob_esp_total'in ids:m['notas'].append(NOTA_PERFIS)
  m.setdefault('fontes_complementares',{})['mobilidade']=dict(caminho='gold/mobilidade/manifesto.json',sha256=sha(painel/'gold/mobilidade/manifesto.json'),gerado_em=meta['gerado_em'])
  for j,item in enumerate(m['arquivos']):
   if item['tipo']=='metodologia'and item['formato']=='txt':

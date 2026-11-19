@@ -7,7 +7,7 @@ export type IndicadorMob={id:string;nome:string;nome_en:string;familia:string;un
 export type CalculadoMob=DefComparacao&{variavel_download:string;numerador_id:string;denominador_id:string;numerador_nome:string;denominador_nome:string};
 export type CatalogoMob={versao:1;anos:number[];indicadores:IndicadorMob[];derivados:CalculadoMob[];condicoes:Record<string,string>};
 export type GrupoMob={versao:1;grupo:string;anos:number[];valores:(number|null)[][];condicoes:number[][];derivados:(number|null)[][];condicoes_derivados:number[][];numeradores:(number|null)[][];denominadores:(number|null)[][];coberturas:number[][];residuos:Record<string,number|null>};
-export type MetaMob={versao:1;anos:number[];catalogo:Objeto;geografia:Objeto;indices:Record<string,Objeto>;variaveis:number;calculados:number;max_trecho_bytes:number;ultimos:{senatran:number;sim:number};gerado_em:string};
+export type MetaMob={versao:1;anos:number[];catalogo:Objeto;geografia:Objeto;indices:Record<string,Objeto>;variaveis:number;calculados:number;max_trecho_bytes:number;ultimos:{senatran:number;sim:number};especie_anos_ausentes?:number[];gerado_em:string};
 let promessa:Promise<{m:MetaMob;c:CatalogoMob;g:GeografiaComparacao}>|undefined;
 export function validarGrupoMob(x:GrupoMob,grupo:string,c:CatalogoMob){
  if(x.versao!==1||x.grupo!==grupo||JSON.stringify(x.anos)!==JSON.stringify(c.anos))throw new Error('Recorte de outra edição, território ou período.');

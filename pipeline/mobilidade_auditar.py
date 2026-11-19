@@ -4,6 +4,7 @@ from pathlib import Path
 import numpy as np,pandas as pd,requests
 from mobilidade import correspondencias,TIPOS
 from mobilidade_fontes import ANOS,compacto,sha
+from mobilidade_perfis import FROTA_PERFIS,RACAS,LOCAIS,ESCOLAS,MESES
 
 def auditar(fontes,candidato,saida):
  fontes=Path(fontes);root=Path(candidato);m=json.loads((root/'gold/mobilidade/manifesto.json').read_bytes())
@@ -53,6 +54,14 @@ def auditar(fontes,candidato,saida):
  for id in raw:
   if id.startswith('mob_ob'):assert np.isnan(a[-1,:,raw[id]]).all()
  assert np.isnan(a[:-1,pos['5101837'],raw['mob_obitos']]).all();assert np.isnan(a[:,pos['2605459'],raw['mob_populacao']]).all()
+ if 'mob_esp_total'in raw:
+  for y in m['especie_anos_ausentes']:
+   assert np.isnan(a[ANOS.index(y),:,[raw[id]for id in FROTA_PERFIS]]).all()
+  for ids in [[*['mob_ob_rc_'+id for id,_,_ in RACAS],'mob_ob_rc_ign'],[*['mob_ob_loc_'+id for id,_,_ in LOCAIS],'mob_ob_loc_ign'],[*['mob_ob_mes_'+id for id,_ in MESES],'mob_ob_mes_ign'],['mob_ob_trab_sim','mob_ob_trab_nao','mob_ob_trab_ign']]:
+   np.testing.assert_allclose(a[:,:,[raw[id]for id in ids]].sum(axis=2),a[:,:,raw['mob_obitos']],equal_nan=True)
+  np.testing.assert_allclose(a[:,:,[raw['mob_ob_esc_'+id]for id,_,_ in ESCOLAS]+[raw['mob_ob_esc_ign']]].sum(axis=2),a[:,:,raw['mob_ob_15_mais']],equal_nan=True)
+  for j,i in enumerate(cat['derivados']):
+   if i['unidade']=='%':assert np.all(vs[:,:,j][np.isfinite(vs[:,:,j])]<=100+1e-10),i['id']
  report=dict(ok=True,territorios=count,originais=len(raw),relativos=len(cat['derivados']),celulas_originais=a.size,celulas_relativas=vs.size,bytes_recortes=bytes_read,max_trecho=m['max_trecho_bytes'],valores_frota_reconferidos=checked,registros_municipais_sim_cotejados=len(z),sim_publicado_sha256=sha(health.read_bytes()),totais_sim={int(k):int(v)for k,v in totais.items()},exemplos={key:{str(y):{id:(None if not np.isfinite(a[ANOS.index(y),pos[key],raw[id]])else float(a[ANOS.index(y),pos[key],raw[id]]))for id in ['mob_frota','mob_obitos','mob_populacao','mob_eletrificados']}for y in [2013,2024,2025]}for key in cases})
  Path(saida).write_bytes(compacto(report));print(json.dumps({k:report[k]for k in ['ok','territorios','originais','relativos','valores_frota_reconferidos','registros_municipais_sim_cotejados']}),flush=True)
 

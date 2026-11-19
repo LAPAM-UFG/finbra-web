@@ -23,7 +23,7 @@ def ler_planilha(path,work):
   data=subprocess.check_output([str(seven),'e','-so',str(path),name],**flags)if seven.exists()else subprocess.check_output(['tar','-xOf',str(path),name],**flags)
  if zipfile.is_zipfile(io.BytesIO(data)):
   with zipfile.ZipFile(io.BytesIO(data))as z:
-   if'xl/workbook.xml'not in z.namelist():
+   if'xl/workbook.xml'not in z.namelist()and not('mimetype'in z.namelist()and z.read('mimetype').strip()==b'application/vnd.oasis.opendocument.spreadsheet'):
     names=[n for n in z.namelist()if re.search(r'\.(xls|xlsx|mdb|csv)$',n,re.I)]
     if len(names)!=1:raise ValueError('Arquivo compactado ambíguo: '+str(names))
     name=names[0];data=z.read(name)

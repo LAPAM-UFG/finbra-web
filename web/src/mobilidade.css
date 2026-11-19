@@ -5,4 +5,12 @@
 .mob-painel .ag-tabela small { display:block; }
 .mob-painel .ag-nota { line-height:1.55; }
 .mob-painel section[id] { scroll-margin-top:12px; }
+.mob-perfil-kpis { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.8rem; }
+.mob-perfil-kpis .kpi { min-width:0;overflow-wrap:anywhere; }
+.mob-meses { display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:6px;list-style:none;padding:0;margin:1.5rem 0; }
+.mob-meses li { display:flex;flex-direction:column;align-items:center;gap:6px;font-size:.78rem;min-width:0; }
+.mob-meses strong { font-size:.82rem;overflow-wrap:anywhere;text-align:center; }
+.mob-mes-barra { display:flex;align-items:flex-end;height:130px;width:72%;border-bottom:1px solid var(--borda); }
+.mob-mes-barra i { display:block;width:100%;background:var(--serie-1,#087d8b);border-radius:4px 4px 0 0; }
+@media(max-width:600px){.mob-meses { gap:2px; }.mob-meses li { font-size:.64rem; }.mob-meses strong { font-size:.7rem; }.mob-mes-barra { height:90px; }}
 @media(max-width:600px){.mob-painel .ag-filtros { grid-template-columns:1fr; }.mob-painel .ag-acoes .botao { white-space:normal; }}

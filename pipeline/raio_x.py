@@ -215,9 +215,9 @@ def gerar(fontes, destino):
          anos=sorted({p//100 if p>10000 else p for i in defs for p in i['periodos']}),
          fontes={nome:{k:prov[path][k]for k in ['bytes','sha256']}for nome,path in [('comparacoes','gold/comparacoes/manifesto.json'),('referencias','gold/assistencia/referencias_manifesto.json')]},
          territorios=contagem,indicadores=len(defs),max_trecho_bytes=max_trecho)
-    # Cada ponteiro preserva clientes com áreas anteriores: legado (oito),
-    # v2 (nove, com Agropecuária) e v3 (dez, com Mobilidade).
-    (saida/('v3_manifesto.json'if mob else'v2_manifesto.json'if agro else'manifesto.json')).write_bytes(compacto(manifesto))
+    # Mantém as edições anteriores para clientes abertos antes da ampliação.
+    perfis_mob=any(i.get('area')=='mobilidade'and i.get('tema')=='raca'for i in defs)
+    (saida/('v4_manifesto.json'if perfis_mob else'v3_manifesto.json'if mob else'v2_manifesto.json'if agro else'manifesto.json')).write_bytes(compacto(manifesto))
     report=dict(ok=True,territorios=contagem,indicadores=len(defs),observacoes_com_valor=validos,max_trecho_bytes=max_trecho,
                 bytes=sum(p.stat().st_size for p in saida.iterdir()),arquivos=len(list(saida.iterdir())))
     (destino/'auditoria_geracao.json').write_bytes(compacto(report));print(json.dumps(report),flush=True)

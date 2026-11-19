@@ -10,6 +10,7 @@ import { efetivarSerieRaio, formatarRaio, grupoOrigemRaio, linkComparacaoRaio, o
 import { idioma, local, t } from '../idioma';
 import { exportar, type Tabela } from '../exportar';
 import { indicadorHistoricoCadunico, linkHistoricoCadunico } from '../cadunico_historico';
+import { eixoAnualMob } from '../mobilidade_perfis';
 
 export default function DetalheRaioX({c,g,r,i,p,ressalvas,ano}:{c:CatalogoRaio;g:GeografiaComparacao;r:RetratoRaio;i:IndicadorRaio;p:PontoRaio|null;ressalvas:boolean;ano:number|null}) {
   const id=useId();const original=grupoOrigemRaio(g,r.grupo,i)!;
@@ -20,7 +21,7 @@ export default function DetalheRaioX({c,g,r,i,p,ressalvas,ano}:{c:CatalogoRaio;g
     if(resultado[0].status==='rejected')throw resultado[0].reason;
     return resultado.map((v,k)=>v.status==='fulfilled'?{grupo:keys[k],...v.value,serie:efetivarSerieRaio(v.value.serie,ressalvas)}:null);
   });
-  const base=serie.dados?.[0];const pp=base?.periodos??[];
+  const base=serie.dados?.[0];const pp=i.area==='mobilidade'&&i.frequencia==='anual'?eixoAnualMob(base?.periodos??[]):base?.periodos??[];
   const ultima=(gr:NonNullable<typeof base>)=>{const indices=gr.periodos.map((p,k)=>({p,k})).filter(x=>!ano||(x.p>10000?Math.floor(x.p/100):x.p)===ano);return indices.filter(x=>gr.serie.v[x.k]!==null).at(-1)??indices.at(-1);};
   // Referências territoriais usam exatamente a mesma data do recorte em foco.
   const dataFoco=p?.[0]??(base?ultima(base)?.p:undefined);
@@ -48,6 +49,7 @@ export default function DetalheRaioX({c,g,r,i,p,ressalvas,ano}:{c:CatalogoRaio;g
       </div>}
       {serie.dados?.some(x=>x===null)&&<p role="status">{t('Uma referência não carregou. A série do território foi preservada.','One reference did not load. The territory series is still available.')}</p>}
       <h4>{t('Evolução no tempo','Trend over time')}</h4>
+      {base&&pp.length!==base.periodos.length&&<p className="rx-nota">{t('Sem observação na série: ','No observation in the series: ')}{pp.filter(p=>!base.periodos.includes(p)).join(', ')}. {t('O gráfico mantém a lacuna.','The chart preserves the gap.')}</p>}
       <p className="rx-ajuda">{i.catalogo==='mobilidade_original'?t('Série na unidade original. Compare lugares por taxas e proporções na aba Mobilidade.','Series in its original unit. Compare places using rates and shares in Mobility.'):i.catalogo==='agropecuaria_original'?t('Série na unidade original. Compare lugares por produtividade e percentuais na aba Agropecuária.','Series in its original unit. Compare places using yields and shares in the Agriculture tab.'):t('Gráfico na unidade comparável do indicador. Lacunas não são preenchidas.','Chart in the comparable indicator unit. Missing data remain blank.')} {i.area==='trabalho'&&t('Pontilhados na RAIS identificam mudanças de método.','Dotted RAIS segments identify methodology changes.')}</p>
       {pp.length>1?<Grafico nome={`raiox_${r.grupo}_${i.id}`} altura={310} descricao={t('Série histórica do indicador e referências territoriais na mesma unidade.','Historical series and territorial references in the same unit.')} opcao={cores=>{
         const eixos=pp.map(periodoComparacao);const op=linhas(eixos,dados,v=>formatarRaio(i,v),[],true)(cores);const paleta=[...cores.series,...cores.comparacao];
@@ -59,7 +61,7 @@ export default function DetalheRaioX({c,g,r,i,p,ressalvas,ano}:{c:CatalogoRaio;g
           return [{...estilo,data:s.valores,lineStyle:{width:0},emphasis:{lineStyle:{width:0}}},...partes];});
         return {...op,tooltip:{...(op.tooltip as object),confine:true},legend:{type:'scroll',top:0,left:0,right:0,textStyle:{color:cores.tinta2}},grid:{left:8,right:16,top:46,bottom:8,containLabel:true},series};
       }}/>:<p>{t('Retrato único: ainda não há uma série temporal deste indicador.','Single snapshot: no historical series is available for this indicator yet.')}</p>}
-      <details className="rx-tabela-serie"><summary>{t('Ver todos os anos, condições e componentes','See all dates, statuses and components')}</summary><div className="rx-rolagem"><table><thead><tr><th>{t('Referência','Reference')}</th><th>{t('Valor comparável','Comparable value')}</th><th>{t('Condição','Status')}</th></tr></thead><tbody>{pp.map((p,k)=><tr key={p}><td>{periodoComparacao(p)}</td><td>{formatarRaio(i,base.serie.v[k])}</td><td>{condicaoComparacao(base.serie.c[k])}</td></tr>)}</tbody></table></div></details>
+      <details className="rx-tabela-serie"><summary>{t('Ver todos os anos, condições e componentes','See all dates, statuses and components')}</summary><div className="rx-rolagem"><table><thead><tr><th>{t('Referência','Reference')}</th><th>{t('Valor comparável','Comparable value')}</th><th>{t('Condição','Status')}</th></tr></thead><tbody>{pp.map(p=><tr key={p}><td>{periodoComparacao(p)}</td><td>{formatarRaio(i,base.serie.v[base.periodos.indexOf(p)]??null)}</td><td>{condicaoComparacao(base.periodos.includes(p)?base.serie.c[base.periodos.indexOf(p)]:2)}</td></tr>)}</tbody></table></div></details>
       <div className="rx-acoes"><span>{t('Baixar série e referências:','Download series and references:')}</span>{(['csv','xlsx'] as const).map(f=><button type="button" className="botao-leve" key={f} onClick={()=>exportar(`raiox_serie_${r.grupo}_${i.id}`,f,tabela(),idioma()==='en'?'.':',')}>{f==='csv'?'CSV':'Excel'}</button>)}</div>
     </>}
   </div>;
