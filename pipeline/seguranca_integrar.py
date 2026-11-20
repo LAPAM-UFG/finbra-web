@@ -12,7 +12,7 @@ def preparar(anterior,base,painel,downloads,saida,cache_previo=None):
  if saida.exists()and any(saida.iterdir()):raise ValueError('Use fontes novas e vazias')
  old=json.loads((base/'gold/downloads/manifesto.json').read_bytes());fresh=(downloads/'gold/downloads/manifesto.json').read_bytes();new=json.loads(fresh)
  assert old['resumo']==new['resumo']and old['base_sha256']==new['base_sha256']
- assert all(next(x for x in new['arquivos']if x['id']==o['id'])==o for o in old['arquivos']if o['tipo']in['painel','area'])
+ assert all(next(x for x in new['arquivos']if x['id']==o['id'])==o for o in old['arquivos']if o['tipo']in['painel','area']and o.get('area')!='seguranca')
  cp=painel/'gold/comparacoes/manifesto.json';root=json.loads(cp.read_bytes());root['origens']['gold/downloads/manifesto.json']=dict(bytes=len(fresh),sha256=sha(fresh));cp.write_bytes(compacto(root))
  pins=json.loads((anterior/'proveniencia.json').read_bytes())['arquivos'];out={};saida.mkdir(parents=True);cache=saida/'cache';cache.mkdir()
  def resolve(key,expected=None,local=None,public=False):

@@ -2,7 +2,7 @@
 import argparse,gzip,json
 from pathlib import Path
 import numpy as np,pandas as pd
-from seguranca_definicoes import SIM_DEFS,SINESP,CORE,ANOS
+from seguranca_definicoes import SIM_DEFS,SINESP,SINESP_MENSAIS,MESES,CORE,ANOS
 from seguranca_fontes import sha
 
 def auditar(fontes,candidato,saida):
@@ -20,6 +20,16 @@ def auditar(fontes,candidato,saida):
   totals=sn[sn.id==id].groupby(['ano','uf']).valor.sum(min_count=1)
   for(y,uf),v in totals.items():
    if pd.notna(v)and v==0:assert z[(z.index.get_level_values('ano')==y)&(z.uf==uf)].condicao.eq(23).all()
+ monthly=pd.read_parquet(fontes/'sinesp_mensal.parquet');monthly=monthly[monthly.cod_ibge.notna()].copy();monthly.cod_ibge=monthly.cod_ibge.astype(int)
+ for id in SINESP_MENSAIS:
+  colunas=[f'sec_sn_{id}_m_{key}'for key,_,_ in MESES]
+  soma=x[colunas].sum(axis=1,min_count=12);ok=x['sec_sn_'+id+'_cond'].isin([0,1])
+  np.testing.assert_allclose(soma[ok],x.loc[ok,'sec_sn_'+id],equal_nan=True)
+  for mes,(key,_,_)in enumerate(MESES,1):
+   z=monthly[monthly.id.eq(id)&monthly.mes.eq(mes)].set_index(['cod_ibge','ano']);col=f'sec_sn_{id}_m_{key}'
+   assert z.index.is_unique
+   np.testing.assert_allclose(x[col],z.valor.reindex(x.index),equal_nan=True)
+   np.testing.assert_array_equal(x[col+'_cond'],z.condicao.reindex(x.index).fillna(2));original_cells+=len(x)*2
  ids={v['id']:j for j,v in enumerate(cat['indicadores'])};rates=0;tri=0
  for id in CORE:
   base=x['sec_'+id].unstack('ano').reindex(columns=ANOS);actual=x['sec_'+id+'_3a'].unstack('ano').reindex(columns=ANOS)
@@ -43,9 +53,10 @@ def auditar(fontes,candidato,saida):
      np.testing.assert_allclose(np.asarray(row['derivados'],dtype=float),truth[derived].to_numpy(),equal_nan=True)
      np.testing.assert_array_equal(row['condicoes'],truth[[id+'_cond'for id in raw]].to_numpy())
      np.testing.assert_array_equal(row['condicoes_derivados'],truth[[id+'_cond'for id in derived]].to_numpy())
- # Só os dois catálogos existentes recebem novos temas; o resto segue por hash.
- old=json.loads((fontes/'gold/comparacoes/manifesto.json').read_bytes());new=json.loads((candidato/'gold/comparacoes/manifesto.json').read_bytes());assert all(new['catalogos'][k]==v for k,v in old['catalogos'].items())
+ # Só o catálogo de Segurança muda; os demais continuam nos mesmos hashes.
+ old=json.loads((fontes/'gold/comparacoes/manifesto.json').read_bytes());new=json.loads((candidato/'gold/comparacoes/manifesto.json').read_bytes());assert all(new['catalogos'][k]==v for k,v in old['catalogos'].items()if not k.startswith('seguranca_'))
  report=dict(ok=True,territorios=meta['territorios'],originais=meta['variaveis'],relativos=meta['calculados'],contagens_e_condicoes_cotejadas=original_cells,celulas_relativas= rates,celulas_trienio=tri,max_trecho_bytes=meta['max_trecho_bytes'],catalogos_anteriores_preservados=len(old['catalogos']),SIM_2025_indisponivel=bool(x.loc[(slice(None),2025),list(SIM_DEFS)].isna().all().all()),Sinesp_2013_2014_indisponivel=bool(x.loc[(slice(None),[2013,2014]),['sec_sn_'+k for k in SINESP]].isna().all().all()))
+ report['catalogos_anteriores_preservados']=sum(not k.startswith('seguranca_')for k in old['catalogos'])
  assert report['SIM_2025_indisponivel']and report['Sinesp_2013_2014_indisponivel']
  Path(saida).write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8');print(json.dumps(report),flush=True)
 if __name__=='__main__':

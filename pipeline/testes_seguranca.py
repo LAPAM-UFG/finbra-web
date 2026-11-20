@@ -2,11 +2,25 @@ import tempfile,unittest
 from pathlib import Path
 import numpy as np,pandas as pd,duckdb
 from seguranca import taxa,trienio,destino_seguro
-from seguranca_sinesp import anual
+from seguranca_sinesp import anual,valores_evento
 from seguranca_sim import agrupar,validar_particoes
 from comparacoes_base import Quadro
 
 class SegurancaTest(unittest.TestCase):
+ def test_meios_de_agressao_formam_particao_sem_somar_suicidio(self):
+  codes=['X93','X94','X95','X99','Y00','X91','Y04','Y09','X85','Y08','X70','V01']
+  x=pd.DataFrame(dict(cid=codes,cid4=[c+'0'for c in codes],SEXO='1',idade_anos=30,RACACOR='4',ESC='4',LOCOCOR='1',mes_obito=1,ano=2024,municipio6=520890,uf_codigo=52))
+  with duckdb.connect()as c:c.register('ob',x);z=agrupar(c)
+  validar_particoes(z);r=z.iloc[0]
+  for k,v in {'sec_agressoes':10,'sec_ag_armas':3,'sec_ag_meio_cortante':1,'sec_ag_meio_contundente':1,'sec_ag_meio_sufocacao':1,'sec_ag_meio_forca':1,'sec_ag_meio_nao_espec':1,'sec_ag_meio_outros':2}.items():self.assertEqual(r[k],v,k)
+ def test_perfil_suicidio_conserva_ignorados_e_limite_de_idade(self):
+  x=pd.DataFrame(dict(cid=['X84']*3,cid4=['X840']*3,SEXO=['2','1','9'],idade_anos=[14,15,None],RACACOR=['1','4',None],ESC=['4','9','1'],LOCOCOR=['1','3',None],mes_obito=[1,12,None],ano=2024,municipio6=520890,uf_codigo=52))
+  with duckdb.connect()as c:c.register('ob',x);z=agrupar(c)
+  validar_particoes(z);r=z.iloc[0]
+  for k,v in {'sec_suicidios':3,'sec_su_15_mais':1,'sec_su_esc_ign':1,'sec_su_rc_ign':1,'sec_su_loc_domicilio':1,'sec_su_mes_ign':1}.items():self.assertEqual(r[k],v,k)
+ def test_mandados_usam_ocorrencias_e_preservam_nulo(self):
+  x=pd.DataFrame(dict(evento=['Mandado de prisão cumprido','Mandado de prisão cumprido','Homicídio doloso'],total=[7.,None,0.],total_vitima=[0.,0.,3.]))
+  v=valores_evento(x);self.assertEqual(v.iloc[0],7);self.assertTrue(pd.isna(v.iloc[1]));self.assertEqual(v.iloc[2],3)
  def test_fontes_mes_e_universos_distintos(self):
   rows=[('X93','X930','1',20,'4','4','1',1),('X84','X840','2',None,None,'9',None,0),('W32','W320','9',0,'1','1','4',12),('Y35','Y350','1',40,'2','2','4',2),('V01','V010','2',10,'5','1','1',3),('Y10','Y100','9',None,None,None,None,2)]
   x=pd.DataFrame(rows,columns=['cid','cid4','SEXO','idade_anos','RACACOR','ESC','LOCOCOR','mes_obito']);x['ano']=2024;x['municipio6']=520890;x['uf_codigo']=52

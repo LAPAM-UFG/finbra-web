@@ -3,9 +3,13 @@ import argparse,json,unicodedata
 from pathlib import Path
 import pandas as pd
 from seguranca_fontes import sha
-from seguranca_definicoes import SINESP
+from seguranca_definicoes import SINESP,SINESP_CAMPOS
 
 def chave(s):return ''.join(c for c in unicodedata.normalize('NFKD',str(s)).lower()if c.isascii()and c.isalnum())
+def valores_evento(x):
+ campos=x.evento.map({v[2]:SINESP_CAMPOS.get(k,'total_vitima')for k,v in SINESP.items()})
+ assert campos.notna().all(),'Evento sem unidade definida'
+ return x.total_vitima.where(campos.ne('total'),x.total)
 def anual(x):
  """Linhas complementares são somadas; qualquer componente nulo invalida o mês."""
  assert x.data_referencia.notna().all()
@@ -39,6 +43,8 @@ def gerar(fontes):
    x=pd.read_excel(p,engine='calamine',usecols=['uf','municipio','evento','data_referencia','total_vitima','total','abrangencia'])
    x.to_parquet(cache,index=False,compression='zstd');cachemeta.write_text(json.dumps(dict(sha256=ref['sha256'])),encoding='utf-8')
   x=x[x.abrangencia.eq('Estadual')&x.evento.isin(event)].copy();assert set(x.evento)==set(event)
+  # Mandados são ocorrências (total); os demais indicadores contam vítimas.
+  x['total_vitima']=valores_evento(x)
   assert pd.to_datetime(x.data_referencia).dt.year.eq(ref['ano']).all()
   x['id']=x.evento.map(event);a,m=anual(x);a['ano']=ref['ano'];m['ano']=ref['ano']
   for df in [a,m]:df['cod_ibge']=[lookup.get((u,chave(n)))for u,n in zip(df.uf,df.municipio)]
@@ -49,6 +55,10 @@ def gerar(fontes):
   totals=a.groupby(['uf','id']).valor.sum(min_count=1)
   zeradas={(u,id)for(u,id),v in totals.items()if pd.notna(v)and v==0}
   a.loc[[v==0 and(y,id)in zeradas for v,y,id in zip(a.valor,a.uf,a.id)],'condicao']=23
+  m['condicao']=m['valido'].map({True:0,False:11})
+  m.loc[m.valor.isna(),'condicao']=2
+  m.loc[m.valido&m.valor.eq(0),'condicao']=1
+  m.loc[[v==0 and(y,id)in zeradas for v,y,id in zip(m.valor,m.uf,m.id)],'condicao']=23
   parts.append(a);months.append(m);reports.append(dict(ano=ref['ano'],arquivo=ref['arquivo'],sha256=ref['sha256'],linhas_estaduais=len(x),linhas_anuais=len(a),series_zeradas_uf=[dict(uf=u,id=id)for u,id in sorted(zeradas)],linhas_com_menos_12_meses=int((a.meses<12).sum())))
   print(json.dumps(reports[-1],ensure_ascii=True),flush=True)
  if pending:

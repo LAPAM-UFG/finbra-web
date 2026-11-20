@@ -33,15 +33,20 @@ def gerar(fontes,saida):
  fontes,saida=destino_seguro(fontes,saida);g=json.loads((fontes/'geografia.json').read_bytes());municipios=g['municipios'];nmun=len(municipios);assert nmun==5571
  grupos=[str(m[0])for m in municipios]+[u for _,_,u in g['governos']]+['BR'];pos={v:j for j,v in enumerate(grupos)};ufs={u for _,_,u in g['governos']}
  sm=json.loads((fontes/'sim_seguranca.json').read_bytes());sn=json.loads((fontes/'sinesp_normalizado.json').read_bytes());assert sm['ok']and sn['ok']
- for ref in [sm['agregado'],sn['agregado']]:assert arquivo_sha(fontes/ref['arquivo'])==ref['sha256']
+ for ref in [sm['agregado'],sn['agregado'],sn['mensal']]:assert arquivo_sha(fontes/ref['arquivo'])==ref['sha256']
  defs=[]
  def add(id,n,en,familia,fonte='sim',unidade='óbitos',descricao='',helper=False):
   assert len(id+'_cond')<=32 and id not in [v['id']for v in defs]
-  defs.append(dict(id=id,nome=n,nome_en=en,familia=familia,unidade=unidade,unidade_en={'óbitos':'deaths','vítimas':'victims','habitantes':'residents','pessoa-anos':'person-years','meses':'months'}.get(unidade,unidade),fonte=fonte,fonte_nome='Ministério da Saúde · SIM'if fonte=='sim'else'Sinesp VDE · MJSP'if fonte=='sinesp'else'SVS/MS · população de referência (IBGE)',fonte_url=SIM_URL if fonte=='sim'else SINESP_URL if fonte=='sinesp'else'https://datasus.saude.gov.br/populacao-residente/',descricao=descricao or(NOTA_SIM if fonte=='sim'else NOTA_SINESP if fonte=='sinesp'else NOTA_BASE),descricao_en='Final SIM resident deaths; source-specific cause groups and unknown categories are retained. Crude rates are not age-standardised.'if fonte=='sim'else'State-reported police victim records, not SIM deaths. Complete annual rates require 12 valid months. Missing data and state-wide all-zero series are excluded from comparable rates.'if fonte=='sinesp'else'Reference population from SVS/MS (IBGE), consistent with Health. Missing denominators are retained.',anos=[],auxiliar=helper))
- for id,i in SIM_DEFS.items():add(id,i['nome'],i['nome_en'],i['familia'],descricao=i['descricao'],helper=id=='sec_ag_15_mais')
+  defs.append(dict(id=id,nome=n,nome_en=en,familia=familia,unidade=unidade,unidade_en={'óbitos':'deaths','vítimas':'victims','habitantes':'residents','pessoa-anos':'person-years','meses':'months','mandados':'warrants'}.get(unidade,unidade),fonte=fonte,fonte_nome='Ministério da Saúde · SIM'if fonte=='sim'else'Sinesp VDE · MJSP'if fonte=='sinesp'else'SVS/MS · população de referência (IBGE)',fonte_url=SIM_URL if fonte=='sim'else SINESP_URL if fonte=='sinesp'else'https://datasus.saude.gov.br/populacao-residente/',descricao=descricao or(NOTA_SIM if fonte=='sim'else NOTA_SINESP if fonte=='sinesp'else NOTA_BASE),descricao_en='Final SIM resident deaths; source-specific cause groups and unknown categories are retained. Crude rates are not age-standardised.'if fonte=='sim'else'State-reported police victim records, not SIM deaths. Complete annual rates require 12 valid months. Missing data and state-wide all-zero series are excluded from comparable rates.'if fonte=='sinesp'else'Reference population from SVS/MS (IBGE), consistent with Health. Missing denominators are retained.',anos=[],auxiliar=helper))
+  if fonte=='sinesp' and unidade=='mandados':defs[-1]['descricao_en']+=' Executed warrants count recorded acts (total), not unique people or police effectiveness.'
+ for id,i in SIM_DEFS.items():add(id,i['nome'],i['nome_en'],i['familia'],descricao=i['descricao'],helper=id in ['sec_ag_15_mais','sec_su_15_mais'])
  for id,(n,en,_)in SINESP.items():
-  add('sec_sn_'+id,n+' · Sinesp',en+' · Sinesp','sinesp','sinesp','vítimas')
+  add('sec_sn_'+id,n+' · Sinesp',en+' · Sinesp','sinesp','sinesp','mandados'if id=='mandados'else'vítimas',NOTA_SINESP+(' Campo total: quantidade de mandados cumpridos, não pessoas únicas; não mede eficácia policial.'if id=='mandados'else' Não equivale ao recorte de óbitos do SIM.'if id=='transito'else''))
   add('sec_sn_'+id+'_meses','Meses válidos: '+n,'Valid months: '+en,'cobertura','sinesp','meses',NOTA_SINESP,True)
+ for id in SINESP_MENSAIS:
+  n,en,_=SINESP[id]
+  for mes,(key,pt,eng)in enumerate(MESES,1):
+   add(f'sec_sn_{id}_m_{key}',n+': '+pt+' · Sinesp',en+': '+eng+' · Sinesp','sn_'+id+'_mensal','sinesp','vítimas',NOTA_SINESP+' Mês de referência do registro policial; não comparar diretamente com o mês de falecimento do SIM.')
  add('sec_populacao','População de referência','Reference population','denominadores','populacao','habitantes',helper=True)
  add('sec_pop_3a','Soma das populações do triênio','Sum of three-year populations','trienios','populacao','pessoa-anos',helper=True)
  for id,(n,en,_)in CORE.items():add('sec_'+id+'_3a',n+': soma do triênio',en+': three-year total','trienios',helper=True)
@@ -68,6 +73,15 @@ def gerar(fontes,saida):
    v=sub.valor.sum(min_count=1);valid=int(sub.loc[sub.cod_ibge.notna()&sub.valor.notna(),'cod_ibge'].nunique());expected=sum(key=='BR'or m[2]==key for m in municipios)
    flag=23 if pd.notna(v)and v==0 else 11 if(sub.meses<12).any()else 16 if valid<expected else None
    put(y,'sec_sn_'+id,key,v,flag);put(y,'sec_sn_'+id+'_meses',key,sub.meses.min())
+ monthly=pd.read_parquet(fontes/sn['mensal']['arquivo'])
+ for row in monthly[monthly.id.isin(SINESP_MENSAIS)].itertuples(index=False):
+  if pd.notna(row.cod_ibge):put(row.ano,f'sec_sn_{row.id}_m_{MESES[row.mes-1][0]}',int(row.cod_ibge),row.valor,int(row.condicao))
+ for(y,id,mes),z in monthly[monthly.id.isin(SINESP_MENSAIS)].groupby(['ano','id','mes']):
+  for key,sub in [(u,z[z.uf==u])for u in sorted(ufs)]+[('BR',z)]:
+   if sub.empty:continue
+   v=sub.valor.sum(min_count=1);valid=int(sub.loc[sub.cod_ibge.notna()&sub.valido,'cod_ibge'].nunique());expected=sum(key=='BR'or m[2]==key for m in municipios)
+   flag=23 if pd.notna(v)and v==0 and sub.condicao.eq(23).all()else 11 if(~sub.valido).any()else 16 if valid<expected else None
+   put(y,f'sec_sn_{id}_m_{MESES[mes-1][0]}',key,v,flag)
  dm=json.loads((fontes/'gold/downloads/manifesto.json').read_bytes());main=next(v for v in dm['arquivos']if v['id']=='painel_brasil_parquet');assert arquivo_sha(fontes/main['caminho'])==main['sha256']
  pop=pd.read_parquet(fontes/main['caminho'],columns=['cod_ibge','ano','uf','sau_populacao'])
  for y in ANOS:
@@ -81,9 +95,9 @@ def gerar(fontes,saida):
  def razao(id,n,d,nome,en,tema,fator=100,unidade='%',periodos=None):
   ni,di=idx[n],idx[d];pp=periodos or list(range(2015,2026))if defs[ni]['fonte']=='sinesp'else periodos or sm['anos'];yy=[ANOS.index(y)for y in pp]
   nn,dd=a[yy,:nmun,ni],a[yy,:nmun,di];vv,cc=taxa(nn,dd,c[yy,:nmun,ni],c[yy,:nmun,di],fator)
-  descricao=NOTA_BASE+' '+(NOTA_SINESP if defs[ni]['fonte']=='sinesp'else NOTA_SIM)
+  descricao=NOTA_BASE+' '+defs[ni]['descricao']
   if '_3a'in n:descricao+=' Taxa anual média do triênio encerrado no ano selecionado = soma dos óbitos dos três anos / soma das populações dos mesmos anos × 100 mil. Exige os três anos completos.'
-  definition=dict(id=id,nome=nome,nome_en=en,descricao=descricao,descricao_en='Same-year valid municipal pairs; regions use ratios of sums. Source counts may include unidentified municipalities. '+('Annual Sinesp rates require 12 valid months; state-wide all-zero series are flagged and excluded.'if defs[ni]['fonte']=='sinesp'else'These are crude resident mortality rates or shares of recorded deaths, not age-standardised or group-specific risks.')+(' Three-year mean annual rate = sum of deaths / sum of populations × 100,000; requires three complete years.'if '_3a'in n else''),tema=tema,tema_en={'Mortalidade no SIM':'SIM mortality','Triênios':'Three-year rates','Armas de fogo':'Firearms','Registros policiais':'Police records','Raça/cor':'Race/colour','Sexo':'Sex','Idade':'Age','Escolaridade':'Schooling','Local do falecimento':'Place of death'}[tema],unidade=unidade,unidade_en='per 100,000 residents'if fator==100000 else'%',formato='percentual'if unidade=='%'else'numero',frequencia='anual',metodo_referencia='razao',normalizacao=nome,normalizacao_en=en,fator=fator,ranking=True,minimo=0,fonte_nome=defs[ni]['fonte_nome'],fontes=[dict(nome=defs[ni]['fonte_nome'],url=defs[ni]['fonte_url'])],alerta='Taxas brutas. Contagens pequenas oscilam; use também o triênio. SIM registra óbitos de moradores; Sinesp registra vítimas informadas pela polícia. Um não substitui o outro.',alerta_en='Crude rates. Small counts fluctuate; inspect three-year rates too. SIM records resident deaths; Sinesp contains police-reported victims. They are distinct sources.',variavel_download='sec_'+id,numerador_id=n,denominador_id=d,numerador_nome=defs[ni]['nome']+' ('+defs[ni]['unidade']+')',denominador_nome=defs[di]['nome']+' ('+defs[di]['unidade']+')')
+  definition=dict(id=id,nome=nome,nome_en=en,descricao=descricao,descricao_en='Same-year valid municipal pairs; regions use ratios of sums. Source counts may include unidentified municipalities. '+('Annual Sinesp rates require 12 valid months; state-wide all-zero series are flagged and excluded.'if defs[ni]['fonte']=='sinesp'else'These are crude resident mortality rates or shares of recorded deaths, not age-standardised or group-specific risks.')+(' Three-year mean annual rate = sum of deaths / sum of populations × 100,000; requires three complete years.'if '_3a'in n else''),tema=tema,tema_en={'Mortalidade no SIM':'SIM mortality','Triênios':'Three-year rates','Armas de fogo':'Firearms','Meios das agressões':'Means of assault','Registros policiais':'Police records','Raça/cor':'Race/colour','Sexo':'Sex','Idade':'Age','Escolaridade':'Schooling','Local do falecimento':'Place of death'}[tema],unidade=unidade,unidade_en='per 100,000 residents'if fator==100000 else'%',formato='percentual'if unidade=='%'else'numero',frequencia='anual',metodo_referencia='razao',normalizacao=nome,normalizacao_en=en,fator=fator,ranking=True,minimo=0,fonte_nome=defs[ni]['fonte_nome'],fontes=[dict(nome=defs[ni]['fonte_nome'],url=defs[ni]['fonte_url'])],alerta='Taxas brutas. Contagens pequenas oscilam; use também o triênio. SIM registra óbitos de moradores; Sinesp registra vítimas informadas pela polícia. Um não substitui o outro.',alerta_en='Crude rates. Small counts fluctuate; inspect three-year rates too. SIM records resident deaths; Sinesp contains police-reported victims. They are distinct sources.',variavel_download='sec_'+id,numerador_id=n,denominador_id=d,numerador_nome=defs[ni]['nome']+' ('+defs[ni]['unidade']+')',denominador_nome=defs[di]['nome']+' ('+defs[di]['unidade']+')')
   assert len(definition['variavel_download']+'_cond')<=32
   quadros.append(Quadro(definition,pp,vv,nn,dd,cc))
  for id,(n,en,_)in CORE.items():
@@ -96,6 +110,9 @@ def gerar(fontes,saida):
  for tipo,items,den,tema in [('rc',RACAS,'sec_agressoes','Raça/cor'),('esc',ESCOLAS,'sec_ag_15_mais','Escolaridade'),('loc',LOCAIS,'sec_agressoes','Local do falecimento')]:
   for id,n,en,*_ in items:razao(f'ag_{tipo}_{id}_pct',f'sec_ag_{tipo}_{id}',den,'Agressão: '+n+' (%)','Assault: '+en+' (%)',tema)
  for pre,den,n,en in [('ag','sec_agressoes','Arma de fogo entre as agressões','Firearms among assault deaths'),('su','sec_suicidios','Arma de fogo entre os suicídios','Firearms among suicide deaths')]:razao(pre+'_armas_pct','sec_'+pre+'_armas',den,n,en,'Armas de fogo')
+ for id,n,en,_ in MEIOS_AG:razao('ag_meio_'+id+'_pct','sec_ag_meio_'+id,'sec_agressoes','Agressão: '+n+' (%)','Assault: '+en+' (%)','Meios das agressões')
+ for tipo,items,den,tema in [('rc',RACAS,'sec_suicidios','Raça/cor'),('esc',ESCOLAS,'sec_su_15_mais','Escolaridade'),('loc',LOCAIS,'sec_suicidios','Local do falecimento')]:
+  for id,n,en,*_ in items:razao(f'su_{tipo}_{id}_pct',f'sec_su_{tipo}_{id}',den,'Suicídio: '+n+' (%)','Suicide: '+en+' (%)',tema)
  dv=np.full((len(ANOS),len(grupos),len(quadros)),np.nan);dc=np.full(dv.shape,2,dtype='int8');dn=np.full_like(dv,np.nan);dd=np.full_like(dv,np.nan);dq=np.zeros(dv.shape,dtype='int16')
  groups={key:[j for j,m in enumerate(municipios)if key==str(m[0])or key==m[2]or key=='BR'or key=='I:'+m[3]or key=='T:'+m[4]]for key,t in g['territorios'].items()if t['nivel']in ['M','UF','BR','imediata','intermediaria']}
  for j,q in enumerate(quadros):

@@ -29,6 +29,22 @@ distintos. Permanecem identificadas na tela, nas exportações e no dicionário.
 
 ## Regras dos cálculos
 
+A ampliação acrescenta os meios das agressões (arma de fogo, objeto cortante,
+objeto contundente, enforcamento/estrangulamento/sufocação, força corporal,
+meio não especificado e outros meios) em grupos mutuamente exclusivos. Usa a
+causa básica CID-10, com o total de agressões como denominador dos percentuais.
+Suicídios ganham raça/cor, escolaridade entre pessoas de 15+, local do falecimento
+e mês do óbito. Todos incluem as categorias ignoradas pertinentes.
+
+No Sinesp entram mandados de prisão cumpridos (campo `total`, atos, não pessoas
+únicas) e mortes no trânsito ou em decorrência dele, exceto homicídio doloso
+(campo `total_vitima`). Não são medidas de eficácia policial nem equivalem aos
+óbitos de moradores do SIM. Homicídio, feminicídio e suicídio ganham os 12 meses
+de referência, preservando valores e condições originais. Ausência de mês não
+vira zero; componente mensal nulo torna o mês parcial. Séries zeradas na UF/ano
+mantêm a condição 23 também nos meses. Contagens com ressalva ficam na tabela,
+sem barras ou linhas que sugiram completude.
+
 Taxa bruta = numerador / população do mesmo ano × 100 mil, sem padronização
 etária. Os percentuais descrevem a composição dos registros; não são riscos de
 mortalidade por grupo. Ignorados entram nos respectivos denominadores. A
@@ -80,8 +96,8 @@ Stata e RDS são comparados célula a célula com o Parquet.
 
 O integrador de fontes do Raio X fixa também o candidato, todos os catálogos
 de comparações anteriores e as séries originais por suas referências. A
-geração `pipeline/raio_x.py` grava `gold/raiox/v5_manifesto.json`. V4 e anteriores
-permanecem intactos para clientes já abertos. O cliente tenta v5 e depois as
+geração `pipeline/raio_x.py` grava `gold/raiox/v6_manifesto.json`. V5 e anteriores
+permanecem intactos para clientes já abertos. O cliente tenta v6 e depois as
 edições anteriores quando não há v5. Todas as séries anteriores são cotejadas
 antes de publicar. Só agregados saem do disco, nunca microdados pessoais.
 
@@ -96,6 +112,6 @@ xtset cod_ibge ano
 ```
 
 Publicar primeiro os objetos imutáveis, conferidos por tamanho/MD5/SHA, e só
-depois os ponteiros novos de Segurança, mapa e Raio X v5 e os dois ponteiros
-existentes de downloads/comparações. Fazer cópia dos substituídos e comparar
+depois os manifestos de Segurança, mapa e downloads/comparações e a nova edição
+Raio X v6, preservando v5 e anteriores. Fazer cópia dos substituídos e comparar
 com a base remota antes de ativar. Não excluir nem sincronizar o gold inteiro.

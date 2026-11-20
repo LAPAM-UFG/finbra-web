@@ -28,6 +28,18 @@ SINESP={
  'tent_fem':('Tentativa de feminicídio','Attempted femicide','Tentativa de feminicídio'),
  'suicidio':('Suicídio registrado pela polícia','Police-recorded suicide','Suicídio'),
  'esclarecer':('Mortes a esclarecer, sem indício de crime','Deaths to clarify, no sign of crime','Mortes a esclarecer (sem indício de crime)')}
+SINESP.update({
+ 'mandados':('Mandados de prisão cumpridos','Arrest warrants executed','Mandado de prisão cumprido'),
+ 'transito':('Mortes no trânsito · registro policial','Road deaths · police records','Morte no trânsito ou em decorrência dele (exceto homicídio doloso)')})
+SINESP_CAMPOS={'mandados':'total'}
+SINESP_MENSAIS=['homicidio','feminicidio','suicidio']
+MEIOS_AG=[
+ ('cortante','Objeto cortante ou penetrante','Sharp object',"cid='X99'"),
+ ('contundente','Objeto contundente','Blunt object',"cid='Y00'"),
+ ('sufocacao','Enforcamento, estrangulamento e sufocação','Hanging, strangulation and suffocation',"cid='X91'"),
+ ('forca','Força corporal','Bodily force',"cid='Y04'"),
+ ('nao_espec','Meio não especificado','Unspecified means',"cid='Y09'"),
+ ('outros','Outros meios especificados','Other specified means',"cid NOT BETWEEN 'X93' AND 'X95' AND cid NOT IN ('X99','Y00','X91','Y04','Y09')")]
 
 def definicoes_sim():
  out={}
@@ -51,5 +63,20 @@ def definicoes_sim():
   add('ag_loc_'+id,'Agressão: falecimento em '+n,'Assault: place of death '+en,f'({ag})AND({e})','ag_local','LOCOCOR é o local do falecimento, não necessariamente o da agressão.')
  for mes,(id,n,en)in enumerate(MESES,1):add('ag_mes_'+id,'Agressão: óbitos em '+n,'Assault: deaths in '+en,f'({ag})AND mes_obito={mes}','ag_meses','Mês da data do óbito, não necessariamente da agressão.')
  add('ag_mes_ign','Agressão: mês ignorado','Assault: unknown month',f'({ag})AND(mes_obito IS NULL OR mes_obito NOT BETWEEN 1 AND 12)','ag_meses')
+ for id,n,en,e in MEIOS_AG:
+  add('ag_meio_'+id,'Agressão: '+n,'Assault: '+en,f'({ag})AND({e})','ag_meios','Meio informado pela causa básica CID-10; grupos mutuamente exclusivos junto às armas de fogo.')
+ for id,n,en,code in RACAS:
+  e=f"RACACOR='{code}'"if code else"RACACOR IS NULL OR RACACOR NOT IN ('1','2','3','4','5')"
+  add('su_rc_'+id,'Suicídio: raça/cor '+n,'Suicide: race/colour '+en,f'({su})AND({e})','su_raca')
+ add('su_15_mais','Suicídio: óbitos com 15 anos ou mais','Suicide deaths aged 15+',f'({su})AND idade_anos>=15','denominadores')
+ for id,n,en,code in ESCOLAS:
+  e=f"ESC='{code}'"if code else"ESC IS NULL OR ESC NOT IN ('1','2','3','4','5')"
+  add('su_esc_'+id,'Suicídio (15+): '+n,'Suicide (15+): '+en,f'({su})AND idade_anos>=15 AND({e})','su_escolaridade','ESC em anos de estudo; inclui ignorados no denominador de 15+.')
+ for id,n,en,code in LOCAIS:
+  e=f"LOCOCOR='{code}'"if code else"LOCOCOR IS NULL OR LOCOCOR NOT IN ('1','2','3','4','5','6')"
+  add('su_loc_'+id,'Suicídio: falecimento em '+n,'Suicide: place of death '+en,f'({su})AND({e})','su_local','Local do falecimento, não necessariamente o do evento.')
+ for mes,(id,n,en)in enumerate(MESES,1):
+  add('su_mes_'+id,'Suicídio: óbitos em '+n,'Suicide: deaths in '+en,f'({su})AND mes_obito={mes}','su_meses','Mês do falecimento.')
+ add('su_mes_ign','Suicídio: mês ignorado','Suicide: unknown month',f'({su})AND(mes_obito IS NULL OR mes_obito NOT BETWEEN 1 AND 12)','su_meses')
  return out
 SIM_DEFS=definicoes_sim()

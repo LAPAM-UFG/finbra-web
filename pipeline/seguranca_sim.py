@@ -3,7 +3,7 @@ import argparse,json,re
 from pathlib import Path
 import duckdb,pyarrow.parquet as pq
 from seguranca_fontes import sha
-from seguranca_definicoes import SIM_DEFS,CORE,RACAS,SEXOS,IDADES,ESCOLAS,LOCAIS,MESES,SIM_URL
+from seguranca_definicoes import SIM_DEFS,CORE,RACAS,SEXOS,IDADES,ESCOLAS,LOCAIS,MESES,MEIOS_AG,SIM_URL
 
 def agrupar(c):
  cols=','.join(f'count(*)FILTER(WHERE {i["expr"]})AS {id}'for id,i in SIM_DEFS.items())
@@ -13,6 +13,9 @@ def validar_particoes(x):
   for tipo,itens in [('sex',SEXOS),('id',IDADES)]:assert(x[total]==x[[f'sec_{pre}_{tipo}_{a[0]}'for a in itens]].sum(axis=1)).all()
  for tipo,itens,total in [('rc',RACAS,'sec_agressoes'),('esc',ESCOLAS,'sec_ag_15_mais'),('loc',LOCAIS,'sec_agressoes'),('mes',MESES+[('ign','','')],'sec_agressoes')]:assert(x[total]==x[[f'sec_ag_{tipo}_{a[0]}'for a in itens]].sum(axis=1)).all()
  assert(x.sec_armas_fogo==x[['sec_ag_armas','sec_su_armas','sec_in_armas','sec_ac_armas','sec_il_armas']].sum(axis=1)).all()
+ assert(x.sec_agressoes==x[['sec_ag_armas',*['sec_ag_meio_'+i[0]for i in MEIOS_AG]]].sum(axis=1)).all()
+ for tipo,itens,total in [('rc',RACAS,'sec_suicidios'),('esc',ESCOLAS,'sec_su_15_mais'),('loc',LOCAIS,'sec_suicidios'),('mes',MESES+[('ign','','')],'sec_suicidios')]:
+  assert(x[total]==x[[f'sec_su_{tipo}_{a[0]}'for a in itens]].sum(axis=1)).all()
 def gerar(micro,fontes):
  root=Path(fontes).resolve();micro=Path(micro).resolve();g=json.loads((root/'geografia.json').read_bytes());ufs={u:int(c.removeprefix('E:'))for c,_,u in g['governos']}
  edicao=json.loads((root/'gold/manifesto.json').read_bytes())['fontes']['sim'];anos=[y for y in edicao['anos']if y>=2013];assert anos==list(range(2013,2025))
