@@ -14,6 +14,7 @@ export const AREAS_RAIO: { id:AreaComparacao; nome:string; en:string; caminho:st
   {id:'assistencia',nome:'Assistência social',en:'Social assistance',caminho:'/assistencia/comparar'},
   {id:'gestao',nome:'Gestão pública',en:'Public management',caminho:'/munic/comparar'},
   {id:'clima',nome:'Clima',en:'Climate',caminho:'/clima/comparar'},
+  {id:'seguranca',nome:'Segurança pública e violência',en:'Public safety and violence',caminho:'/seguranca/comparar'},
   {id:'mobilidade',nome:'Mobilidade e trânsito',en:'Mobility and traffic',caminho:'/mobilidade/comparar'},
   {id:'agropecuaria',nome:'Agropecuária',en:'Agriculture and livestock',caminho:'/agropecuaria/comparar'},
 ];
@@ -27,18 +28,18 @@ type TrechoRaio = [number,number,string];
 type ObjetoRaio = ObjetoComparacao & {json_sha256?:string;json_bytes?:number};
 type IndiceRaio = {versao:1;arquivo:ObjetoComparacao;grupos:Record<string,TrechoRaio>};
 export type MetaRaio = {versao:1;gerado_em:string;catalogo:ObjetoRaio;catalogo_json?:ObjetoComparacao;geografia:ObjetoRaio;geografia_json?:ObjetoComparacao;indices:Record<string,ObjetoComparacao>;anos:number[];territorios:number;indicadores:number};
-export type CatalogoRaio = {versao:1;mobilidade?:{anos:number[];indices:Record<string,ObjetoComparacao>;indicadores:string[];edicao_sha256:string};agropecuaria?:{anos:number[];indices:Record<string,ObjetoComparacao>;indicadores:string[];edicao_sha256:string};indicadores:IndicadorRaio[];catalogos:Record<string,{area:AreaComparacao;rede:string;ref:ObjetoComparacao}>;referencias:{anos:number[];arquivo:ObjetoComparacao;grupos:Record<string,TrechoRaio>;indices_uf:Record<string,ObjetoComparacao>}};
+export type CatalogoRaio = {versao:1;seguranca?:{anos:number[];indices:Record<string,ObjetoComparacao>;indicadores:string[];edicao_sha256:string};mobilidade?:{anos:number[];indices:Record<string,ObjetoComparacao>;indicadores:string[];edicao_sha256:string};agropecuaria?:{anos:number[];indices:Record<string,ObjetoComparacao>;indicadores:string[];edicao_sha256:string};indicadores:IndicadorRaio[];catalogos:Record<string,{area:AreaComparacao;rede:string;ref:ObjetoComparacao}>;referencias:{anos:number[];arquivo:ObjetoComparacao;grupos:Record<string,TrechoRaio>;indices_uf:Record<string,ObjetoComparacao>}};
 export type SerieRaio = {periodos:number[];serie:SerieComparacao};
 const hashValido=(s:unknown)=>typeof s==='string'&&/^[a-f0-9]{64}$/.test(s);
 const digest=async(b:ArrayBuffer)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',b)),x=>x.toString(16).padStart(2,'0')).join('');
 const finito=(v:unknown)=>v===null||typeof v==='number'&&Number.isFinite(v);
 function validarObjeto(o:ObjetoComparacao) {
-  if(!o||!/^gold\/(raiox|comparacoes|assistencia|agropecuaria|mobilidade)\/[a-z0-9_]+\.(json(?:\.gz)?|ndjson)$/.test(o.caminho)||!hashValido(o.sha256)||!Number.isSafeInteger(o.bytes)||o.bytes<1)throw new Error(t('Referência territorial inválida.','Invalid territory reference.'));
+  if(!o||!/^gold\/(raiox|comparacoes|assistencia|agropecuaria|mobilidade|seguranca)\/[a-z0-9_]+\.(json(?:\.gz)?|ndjson)$/.test(o.caminho)||!hashValido(o.sha256)||!Number.isSafeInteger(o.bytes)||o.bytes<1)throw new Error(t('Referência territorial inválida.','Invalid territory reference.'));
 }
 export function validarPontoRaio(p:PontoRaio|null) {
   if(p===null)return;
-  if(!Array.isArray(p)||![7,8].includes(p.length)||!Number.isInteger(p[0])||p[0]<1900||![p[1],p[2],p[3],p[6]].every(finito)||!Number.isInteger(p[4])||p[4]<0||p[4]>22||!Number.isSafeInteger(p[5])||p[5]<0)throw new Error('Observação territorial inválida.');
-  if(p[7]) {const a=p[7];if(a.length!==6||![a[0],a[1],a[2],a[5]].every(finito)||!Number.isInteger(a[3])||a[3]<0||a[3]>22||!Number.isSafeInteger(a[4])||a[4]<0)throw new Error('Ressalva territorial inválida.');}
+  if(!Array.isArray(p)||![7,8].includes(p.length)||!Number.isInteger(p[0])||p[0]<1900||![p[1],p[2],p[3],p[6]].every(finito)||!Number.isInteger(p[4])||p[4]<0||p[4]>24||!Number.isSafeInteger(p[5])||p[5]<0)throw new Error('Observação territorial inválida.');
+  if(p[7]) {const a=p[7];if(a.length!==6||![a[0],a[1],a[2],a[5]].every(finito)||!Number.isInteger(a[3])||a[3]<0||a[3]>24||!Number.isSafeInteger(a[4])||a[4]<0)throw new Error('Ressalva territorial inválida.');}
 }
 
 /** Leitura limitada ao território solicitado; respostas com o bundle completo são recusadas. */
@@ -66,7 +67,7 @@ export function criarLeitorRaio(buscar:typeof fetch=fetch,base=BASE_DADOS) {
       const s=new TextDecoder('utf-8',{fatal:true}).decode(b);if(!s.endsWith('\n')||s.trimEnd().includes('\n'))throw new Error('Retrato territorial truncado.');return JSON.parse(s) as T;
     });
   }
-  const meta=()=>memo('manifesto',async()=>{let r=await buscar(base+'gold/raiox/v4_manifesto.json',{cache:'no-cache'});if(r.status===404)r=await buscar(base+'gold/raiox/v3_manifesto.json',{cache:'no-cache'});if(r.status===404)r=await buscar(base+'gold/raiox/v2_manifesto.json',{cache:'no-cache'});if(r.status===404)r=await buscar(base+'gold/raiox/manifesto.json',{cache:'no-cache'});if(!r.ok)throw new Error(t('O Raio X está temporariamente indisponível.','X-ray is temporarily unavailable.'));const m=await r.json() as MetaRaio;
+  const meta=()=>memo('manifesto',async()=>{let r=await buscar(base+'gold/raiox/v5_manifesto.json',{cache:'no-cache'});if(r.status===404)r=await buscar(base+'gold/raiox/v4_manifesto.json',{cache:'no-cache'});if(r.status===404)r=await buscar(base+'gold/raiox/v3_manifesto.json',{cache:'no-cache'});if(r.status===404)r=await buscar(base+'gold/raiox/v2_manifesto.json',{cache:'no-cache'});if(r.status===404)r=await buscar(base+'gold/raiox/manifesto.json',{cache:'no-cache'});if(!r.ok)throw new Error(t('O Raio X está temporariamente indisponível.','X-ray is temporarily unavailable.'));const m=await r.json() as MetaRaio;
     if(m.versao!==1||!m.indices?.referencias||!Array.isArray(m.anos)||!Number.isSafeInteger(m.indicadores)||m.indicadores<1)throw new Error('Catálogo territorial incompatível.');for(const o of [m.catalogo,m.geografia,...Object.values(m.indices)])validarObjeto(o);return m;});
   const catalogo=async(m:MetaRaio)=>{const c=await objeto<CatalogoRaio>(typeof DecompressionStream==='undefined'&&m.catalogo_json?m.catalogo_json:m.catalogo);if(c.versao!==1||c.indicadores?.length!==m.indicadores||new Set(c.indicadores.map(chaveRaio)).size!==m.indicadores||!c.catalogos||!c.referencias)throw new Error('Indicadores territoriais incompatíveis.');
     for(const i of c.indicadores)if(!AREAS_RAIO.some(a=>a.id===i.area)||!i.nome||!i.unidade||!Array.isArray(i.periodos)||i.periodos.some((p,k)=>!Number.isInteger(p)||(k>0&&p<=i.periodos[k-1])))throw new Error('Definição territorial inválida.');return c;};
@@ -123,7 +124,7 @@ export function apresentacaoRaio(i:IndicadorRaio,p:PontoRaio|null,grupo:string,r
   // divididos pela população. Valores monetários deflacionados mantêm sua unidade.
   if(original===null&&ponto&&i.fator===1000&&i.normalizacao.startsWith('Valor observado dividido pela população')&&i.unidade_original!=='R$'&&ponto[5]>0)original=ponto[2];
   const percentual=i.formato==='percentual'||i.unidade.includes('%');
-  const originalValido=!!ponto&&[0,1,3,4,6,8,11,12,16,18,21,22].includes(ponto[4]);
+  const originalValido=!!ponto&&[0,1,3,4,6,8,11,12,16,18,21,22,23].includes(ponto[4]);
   const somavel=i.fator===1000&&i.normalizacao.startsWith('Valor observado dividido pela população')&&i.unidade_original!=='R$';
   const usarOriginal=!percentual&&!i.binario&&!!i.nome_original&&!!i.unidade_original&&!/fração|fraction/i.test(i.unidade_original)&&(individual||original!==null||somavel);
   if(!originalValido)original=null;
@@ -153,7 +154,7 @@ export function buscarIndicadorRaio(i:IndicadorRaio,termo:string) {
 export function linkComparacaoRaio(i:IndicadorRaio,grupo:string,g:GeografiaComparacao,p?:number) {
   const ter=g.territorios[grupo];const sp=new URLSearchParams();if(ter.uf)sp.set('uf',ter.uf);if(ter.nivel==='M')sp.set('cod',grupo);
   if(p)sp.set('periodo',String(p));sp.set('indicador',i.id);
-  if(['agropecuaria_original','mobilidade_original'].includes(i.catalogo)){sp.delete('periodo');sp.delete('indicador');sp.set('ind',i.id);if(p)sp.set('ano',String(p));return (i.catalogo==='mobilidade_original'?'/mobilidade?':'/agropecuaria?')+sp;}
+  if(['agropecuaria_original','mobilidade_original','seguranca_original'].includes(i.catalogo)){sp.delete('periodo');sp.delete('indicador');sp.set('ind',i.id);if(p)sp.set('ano',String(p));return (i.catalogo==='seguranca_original'?'/seguranca?':i.catalogo==='mobilidade_original'?'/mobilidade?':'/agropecuaria?')+sp;}
   if(i.area==='educacao')sp.set('rede',i.rede);
   if(i.catalogo==='gestao_estadic')sp.set('pesq','estadic');
   if(i.catalogo==='assistencia_cadunico_historico')sp.set('conjunto','cadunico_historico');
@@ -168,10 +169,10 @@ export function linkComparacaoRaio(i:IndicadorRaio,grupo:string,g:GeografiaCompa
 const seriesCache=new Map<string,Promise<SerieRaio>>();
 export function obterSerieRaio(c:CatalogoRaio,g:GeografiaComparacao,grupo:string,i:IndicadorRaio):Promise<SerieRaio> {
   const original=grupoOrigemRaio(g,grupo,i);if(!original)return Promise.reject(new Error(t('Indicador exclusivo de governos estaduais.','Indicator applies to state governments only.')));
-  const chave=(i.catalogo==='mobilidade_original'?c.mobilidade?.edicao_sha256:i.catalogo==='agropecuaria_original'?c.agropecuaria?.edicao_sha256:i.catalogo==='referencias'?c.referencias.arquivo.sha256:c.catalogos[i.catalogo].ref.sha256)+':'+original+':'+i.indice;
+  const chave=(i.catalogo==='seguranca_original'?c.seguranca?.edicao_sha256:i.catalogo==='mobilidade_original'?c.mobilidade?.edicao_sha256:i.catalogo==='agropecuaria_original'?c.agropecuaria?.edicao_sha256:i.catalogo==='referencias'?c.referencias.arquivo.sha256:c.catalogos[i.catalogo].ref.sha256)+':'+original+':'+i.indice;
   let p=seriesCache.get(chave);if(!p){p=(async()=>{
-    if(['agropecuaria_original','mobilidade_original'].includes(i.catalogo)){
-      const a=i.catalogo==='mobilidade_original'?c.mobilidade:c.agropecuaria;if(!a||a.indicadores[i.indice]!==i.id)throw new Error('Medida original de outra edição.');
+    if(['agropecuaria_original','mobilidade_original','seguranca_original'].includes(i.catalogo)){
+      const a=i.catalogo==='seguranca_original'?c.seguranca:i.catalogo==='mobilidade_original'?c.mobilidade:c.agropecuaria;if(!a||a.indicadores[i.indice]!==i.id)throw new Error('Medida original de outra edição.');
       const ter=g.territorios[grupo];const idx=await leitorRaio.objeto<IndiceRaio>(a.indices[ter.nivel==='M'?ter.uf!:'referencias']);
       const x=await leitorRaio.trecho<{grupo:string;anos:number[];valores:(number|null)[][];condicoes:number[][]}>(idx.arquivo,idx.grupos[grupo]);
       if(x.grupo!==grupo||JSON.stringify(x.anos)!==JSON.stringify(a.anos)||x.valores.length!==a.anos.length||x.condicoes.length!==a.anos.length||x.valores.some(v=>v.length!==a.indicadores.length)||x.condicoes.some(v=>v.length!==a.indicadores.length))throw new Error('Série original incompleta.');

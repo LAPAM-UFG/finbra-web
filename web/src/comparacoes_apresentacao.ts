@@ -52,6 +52,8 @@ export function formatoComparacao(
   );
 }
 const condicoes: Record<number, [string, string]> = {
+  23: ["Zero publicado em toda a UF; cobertura não confirmada", "State-wide all-zero series; reporting completeness unconfirmed"],
+  24: ["Ano sem os 12 meses válidos", "Year without 12 valid months"],
   0: ["Registrado", "Recorded"],
   1: ["Zero registrado", "Recorded zero"],
   2: ["Sem registro", "No record"],

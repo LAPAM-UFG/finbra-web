@@ -50,6 +50,7 @@ export const RAIZES_COMPARACAO: Record<AreaComparacao, string> = {
   financas: "",
   clima: "/clima",
   gestao: "/munic",
+  seguranca: "/seguranca",
   mobilidade: "/mobilidade",
   agropecuaria: "/agropecuaria",
 };
@@ -62,6 +63,7 @@ const titulos: Record<AreaComparacao, [string, string]> = {
   financas: ["Finanças públicas", "Public finances"],
   clima: ["Clima", "Climate"],
   gestao: ["Gestão pública", "Public management"],
+  seguranca: ["Segurança pública e violência", "Public safety and violence"],
   mobilidade: ["Mobilidade e trânsito", "Mobility and traffic"],
   agropecuaria: ["Agropecuária", "Agriculture and livestock"],
 };
@@ -74,6 +76,7 @@ const padroes: Record<AreaComparacao, string> = {
   financas: "fin_receita_liquida",
   clima: "chuva_mm",
   gestao: "m_rh_direta_16",
+  seguranca: "agressoes_3a_100mil",
   mobilidade: "veiculos_mil",
   agropecuaria: "leite_vaca",
 };
@@ -788,7 +791,7 @@ function Conteudo({
       </section>
       <section className="cartao">
         <h3>{nome(i)}</h3>
-        <p>{textoComparacao(i, "descricao")}</p>
+        {area === 'seguranca' ? <details><summary>{t('Entenda o indicador e a cobertura','Understand the indicator and coverage')}</summary><p>{textoComparacao(i, 'descricao')}</p></details> : <p>{textoComparacao(i, "descricao")}</p>}
         <p className="cp-nota">
           <strong>{textoComparacao(i, "unidade")}</strong>
           {i.base_ipca

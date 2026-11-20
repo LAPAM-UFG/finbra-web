@@ -13,6 +13,7 @@ export type AreaComparacao =
   | "clima"
   | "agropecuaria"
   | "mobilidade"
+  | "seguranca"
   | "gestao";
 export type ObjetoComparacao = {
   caminho: string;
@@ -337,6 +338,8 @@ export function obterComparacoes(
     const chaves =
       area === 'assistencia' && rede === 'cadunico_historico'
         ? [] // Catálogo independente, com distribuições Seade e cotejo MDS fixados por hash.
+        : area === "seguranca"
+        ? ["gold/seguranca/manifesto.json"]
         : area === "mobilidade"
         ? ["gold/mobilidade/manifesto.json"]
         : area === "agropecuaria"
@@ -475,7 +478,7 @@ export function validarSerieComparacao(
   if (
     !Array.isArray(s.c) ||
     s.c.length !== tamanho ||
-    s.c.some((c) => !Number.isInteger(c) || c < 0 || c > (agregadoPublicado ? 22 : 21)) ||
+    s.c.some((c) => !Number.isInteger(c) || c < 0 || c > 24 || c === 22 && !agregadoPublicado) ||
     !Array.isArray(s.q) ||
     s.q.length !== tamanho ||
     s.q.some((q) => !Number.isInteger(q) || q < 0 || q > quantidade)
@@ -484,7 +487,7 @@ export function validarSerieComparacao(
   if (
     s.v.some(
       (v, k) =>
-        (s.c[k] === 1 && v !== 0) ||
+        ([23,24].includes(s.c[k]) && v !== null) || (s.c[k] === 1 && v !== 0) ||
         (v === null && [0, 1, 6, 11, 12, 16, 18, 22].includes(s.c[k])) ||
         (s.c[k] === 22 && ((!coberturaMunicipalConhecida && s.q[k] !== 0) || s.n[k] === null || s.d[k] === null || s.d[k]! <= 0)),
     )
@@ -593,7 +596,7 @@ export function obterListaComparacao(
             !Array.isArray(a) || a.length !== n || a.some((v) => !finito(v)),
         ) ||
         x.c.length !== n ||
-        x.c.some((c) => !Number.isInteger(c) || c < 0 || c > 21)
+        x.c.some((c) => !Number.isInteger(c) || c < 0 || c > 24 || c === 22)
       )
         throw new Error("Lista de outro período ou edição.");
       return cidades.map(([cod, nome, estado, im, inter], k) => ({

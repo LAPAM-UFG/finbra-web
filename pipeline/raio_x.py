@@ -112,6 +112,8 @@ def gerar(fontes, destino):
         raise ValueError('A edição inclui Agropecuária: fixe também seu manifesto, catálogo, índices e séries originais.')
     if 'mobilidade_todas'in cats and 'gold/mobilidade/manifesto.json'not in paths:
         raise ValueError('A edição inclui Mobilidade: fixe também suas séries originais.')
+    if 'seguranca_todas'in cats and 'gold/seguranca/manifesto.json'not in paths:
+        raise ValueError('A edição inclui Segurança: fixe também suas séries originais.')
     econ=ler('gold/assistencia/referencias_manifesto.json')
     defs=[];indices={};arquivos={};catalogos={}
     for key,cat in cats.items():
@@ -150,12 +152,22 @@ def gerar(fontes, destino):
         for j,i in enumerate(mc['indicadores']):
             mob_defs.append(dict(id=i['id'],nome=i['nome'],nome_en=i['nome_en'],descricao=i['descricao'],descricao_en=i['descricao'],tema=i['familia'],tema_en=i['familia'],unidade=i['unidade'],unidade_en=i['unidade'],formato='numero',periodos=i['anos'],frequencia='anual',metodo_referencia='razao',normalizacao='Medida original de registro ou residência. Use taxas e proporções para comparar lugares.',normalizacao_en='Original registration/residence measure. Compare places using rates and shares.',fator=1,ranking=False,fonte_nome=i['fonte_nome'],fontes=[dict(nome=i['fonte_nome'],url=i['fonte_url'])],area='mobilidade',rede='todas',catalogo='mobilidade_original',indice=j,alerta='Senatran: retratos de dezembro. SIM: óbitos de residentes em transporte terrestre; edição definitiva até 2024. Idade da frota é estimada pelo ano de fabricação.',alerta_en='Senatran: December snapshots. SIM: resident land transport deaths, final data through 2024. Fleet age is estimated from manufacturing year.'))
         defs+=mob_defs
+    seg=None;seg_indices={};seg_paths={};seg_defs=[]
+    if 'gold/seguranca/manifesto.json'in paths:
+        mm=ler('gold/seguranca/manifesto.json');mc=json.loads(gzip.decompress(paths[mm['catalogo']['caminho']].read_bytes()))
+        seg=dict(anos=mm['anos'],indices=mm['indices'],indicadores=[i['id']for i in mc['indicadores']],edicao_sha256=prov['gold/seguranca/manifesto.json']['sha256'])
+        for bucket,ref in mm['indices'].items():seg_indices[bucket]=ler(ref['caminho']);seg_paths[bucket]=paths[seg_indices[bucket]['arquivo']['caminho']]
+        for j,i in enumerate(mc['indicadores']):
+            seg_defs.append(dict(id=i['id'],nome=i['nome'],nome_en=i['nome_en'],descricao=i['descricao'],descricao_en=i['descricao_en'],tema=i['familia'],tema_en=i['familia'],unidade=i['unidade'],unidade_en=i['unidade_en'],formato='numero',periodos=i['anos'],frequencia='anual',metodo_referencia='razao',normalizacao='Contagem original ou base de cálculo. Compare lugares com taxas e proporções.',normalizacao_en='Original count or calculation base. Compare places using rates and shares.',fator=1,ranking=False,fonte_nome=i['fonte_nome'],fontes=[dict(nome=i['fonte_nome'],url=i['fonte_url'])],area='seguranca',rede='todas',catalogo='seguranca_original',indice=j,alerta='SIM: residentes, definitivo até 2024. Sinesp: vítimas dos registros policiais estaduais, 2015–2025. Taxas exigem 12 meses válidos; séries zeradas na UF ficam identificadas.',alerta_en='SIM: residents, final through 2024. Sinesp: state police-reported victims, 2015–2025. Comparable rates require 12 valid months; state-wide all-zero series are flagged.'))
+        temas_seg={'sim':('Mortalidade no SIM','SIM mortality'),'armas':('Armas de fogo','Firearms'),'ag_sexo':('Agressões: sexo','Assault deaths: sex'),'ag_idade':('Agressões: idade','Assault deaths: age'),'su_sexo':('Suicídios: sexo','Suicide deaths: sex'),'su_idade':('Suicídios: idade','Suicide deaths: age'),'ag_raca':('Agressões: raça/cor','Assault deaths: race/colour'),'ag_escolaridade':('Agressões: escolaridade','Assault deaths: schooling'),'ag_local':('Agressões: local do falecimento','Assault deaths: place of death'),'ag_meses':('Agressões: mês do falecimento','Assault deaths: month of death'),'denominadores':('População e bases de cálculo','Population and calculation bases'),'trienios':('Bases dos triênios','Three-year calculation bases'),'sinesp':('Registros policiais','Police records'),'cobertura':('Cobertura dos registros policiais','Police record coverage')}
+        for i in seg_defs:i['tema'],i['tema_en']=temas_seg[i['tema']]
+        defs+=seg_defs
     saida=destino/'gold/raiox';saida.mkdir(parents=True)
     def objeto(nome,body,ext='json'):
         key=f'gold/raiox/{nome}_{sha(body)[:16]}.{ext}';(destino/key).write_bytes(body)
         return dict(caminho=key,bytes=len(body),sha256=sha(body))
     meta=objeto('catalogo',compacto(dict(versao=1,indicadores=defs,catalogos=catalogos,
-         referencias={k:econ[k] for k in ['anos','arquivo','grupos','indices_uf']},**({'agropecuaria':agro}if agro else{}),**({'mobilidade':mob}if mob else{}))))
+         referencias={k:econ[k] for k in ['anos','arquivo','grupos','indices_uf']},**({'agropecuaria':agro}if agro else{}),**({'mobilidade':mob}if mob else{}),**({'seguranca':seg}if seg else{}))))
     meta_gzip={**objeto('catalogo',gzip.compress((destino/meta['caminho']).read_bytes(),mtime=0),'json.gz'),'json_sha256':meta['sha256'],'json_bytes':meta['bytes']}
     geo_body=paths[origem['geografia']['caminho']].read_bytes()
     geo_gzip={**objeto('geografia',gzip.compress(geo_body,mtime=0),'json.gz'),'json_sha256':sha(geo_body),'json_bytes':len(geo_body)}
@@ -170,6 +182,7 @@ def gerar(fontes, destino):
         handles={};index={}
         agro_files={b:stack.enter_context(p.open('rb'))for b,p in agro_paths.items()}
         mob_files={b:stack.enter_context(p.open('rb'))for b,p in mob_paths.items()}
+        seg_files={b:stack.enter_context(p.open('rb'))for b,p in seg_paths.items()}
         for grupo in todos:
             ter=geo['territorios'][grupo];bucket=ter['uf'] if ter['nivel']=='M' else 'referencias'
             if bucket not in handles:
@@ -198,6 +211,11 @@ def gerar(fontes, destino):
                 for j,i in enumerate(mob_defs):
                     yy=[mo['anos'].index(y)for y in i['periodos']];vals=[mo['valores'][k][j]for k in yy];flags=[mo['condicoes'][k][j]for k in yy]
                     series=dict(v=vals,n=[None]*len(vals),d=[None]*len(vals),r=vals,c=flags,q=[int(v is not None)for v in vals]);rows.append(retrato(i,series))
+            if seg:
+                si=seg_indices[bucket];off,size,h=si['grupos'][grupo];sf=seg_files[bucket];sf.seek(off);sb=sf.read(size);assert sha(sb)==h;se=json.loads(sb);assert se['grupo']==grupo and se['anos']==seg['anos']
+                for j,i in enumerate(seg_defs):
+                    yy=[se['anos'].index(y)for y in i['periodos']];vals=[se['valores'][k][j]for k in yy];flags=[se['condicoes'][k][j]for k in yy]
+                    series=dict(v=vals,n=[None]*len(vals),d=[None]*len(vals),r=vals,c=flags,q=[int(v is not None)for v in vals]);rows.append(retrato(i,series))
             assert len(rows)==len(defs)
             body=compacto(dict(versao=1,grupo=grupo,linhas=rows,referencias={str(a[0]):[a[10],a[8],a[9]] for a in es['linhas']}))+b'\n';f=handles[bucket]
             index[bucket][grupo]=[f.tell(),len(body),sha(body)];f.write(body)
@@ -217,7 +235,7 @@ def gerar(fontes, destino):
          territorios=contagem,indicadores=len(defs),max_trecho_bytes=max_trecho)
     # Mantém as edições anteriores para clientes abertos antes da ampliação.
     perfis_mob=any(i.get('area')=='mobilidade'and i.get('tema')=='raca'for i in defs)
-    (saida/('v4_manifesto.json'if perfis_mob else'v3_manifesto.json'if mob else'v2_manifesto.json'if agro else'manifesto.json')).write_bytes(compacto(manifesto))
+    (saida/('v5_manifesto.json'if seg else'v4_manifesto.json'if perfis_mob else'v3_manifesto.json'if mob else'v2_manifesto.json'if agro else'manifesto.json')).write_bytes(compacto(manifesto))
     report=dict(ok=True,territorios=contagem,indicadores=len(defs),observacoes_com_valor=validos,max_trecho_bytes=max_trecho,
                 bytes=sum(p.stat().st_size for p in saida.iterdir()),arquivos=len(list(saida.iterdir())))
     (destino/'auditoria_geracao.json').write_bytes(compacto(report));print(json.dumps(report),flush=True)
