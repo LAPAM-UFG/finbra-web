@@ -24,13 +24,13 @@ Fontes oficiais: [MMGD](https://dadosabertos.aneel.gov.br/dataset/relacao-de-emp
 
 ## Artefatos e reprodução
 
-90 medidas (59 originais e 31 relativas), com condições separadas e dicionário. Downloads temáticos com seis chaves, 90 valores e 90 condições, em Parquet, CSV, DTA e RDS, para Brasil e 27 UFs. A seleção principal de 297 variáveis e os arquivos das outras áreas permanecem preservados.
+150 medidas (97 medidas do cadastro, incluindo a matriz SIGA calculada, e 53 relativas da MMGD), com condições separadas e dicionário. Downloads temáticos com seis chaves, 150 valores e 150 condições, em Parquet, CSV, DTA e RDS, para Brasil e 27 UFs. A seleção principal de 297 variáveis e os arquivos das outras áreas permanecem preservados.
 
 1. `python pipeline/energia_fontes.py --fontes <fontes-novas> --cache <cache-publicado>` adquire e fixa fontes por SHA-256, prepara geografia, população e normalizações. Pode repetir `--cache`; destinos sobrepostos são recusados antes de escrever.
 2. `python pipeline/energia.py --fontes <fontes> --saida <painel-novo>` prepara séries parciais por território, comparações e mapas.
 3. `python pipeline/energia_downloads.py --base <fontes> --painel <painel> --saida <downloads-novos> --stata <StataBE-64.exe> --rscript <Rscript.exe>` gera e relê todos os arquivos nativos, conferindo cada célula.
 4. `python pipeline/energia_integrar.py --anterior <fontes-raiox-anteriores> --base <fontes> --painel <painel> --downloads <downloads> --saida <fontes-raiox-novas> --cache-previo <cache>` fixa o grafo de dependências.
-5. `python pipeline/raio_x.py --fontes <fontes-raiox> --saida <raiox-novo>` prepara v9, mantendo edições anteriores para clientes já abertos.
+5. `python pipeline/raio_x.py --fontes <fontes-raiox> --saida <raiox-novo>` prepara v10, mantendo edições anteriores para clientes já abertos.
 
 Esses comandos não publicam. Fontes brutas ficam fora do gold e não são exportadas. O navegador recebe apenas o trecho do território, com tamanho e SHA-256 conferidos, sem carregar DuckDB/WASM.
 
@@ -46,3 +46,12 @@ R:
 source("https://finbra-web.luanviniciusbernardelli.workers.dev/api/dados/v1/cliente.R")
 x <- finbra(uf="GO", tema="energia", municipio=5208905)
 ```
+
+
+## Ampliação dos perfis
+
+- Modalidades: geração na própria unidade consumidora, autoconsumo remoto, geração compartilhada, condomínio e categoria residual. Tipo de titular: pessoa física, pessoa jurídica e residual. Contagens e potência dessas partições fecham com o cadastro, inclusive os casos sem informação. Não são titulares únicos nem famílias atendidas.
+- Poder público, serviço público e iluminação pública detalham Outras classes. Seus percentuais têm como base o total da MMGD e não podem ser somados novamente ao perfil geral.
+- SIGA: CGH, PCH e UHE detalham a fonte hídrica. A matriz usa potência fiscalizada de usinas em operação. Renováveis = solar + eólica + hídrica + biomassa; não é produção em MWh.
+- Percentuais SIGA usam numerador e denominador do mesmo recorte e de CEGs distintas. Denominador zero fica sem valor, condição 4. Se o denominador municipal contém usina compartilhada, todas as participações ficam sem valor, condição 2, mesmo quando o numerador é zero. Não há rateio nem média simples de participações municipais. Estas medidas não entram em rankings ou agregações regionais da MMGD.
+- O Raio X v10 preserva v9 e todas as edições anteriores. Séries e valores dos 90 indicadores anteriores permanecem idênticos. Todos os downloads temáticos têm 306 colunas: seis chaves, 150 valores e 150 condições. A seleção principal de 297 variáveis permanece igual.

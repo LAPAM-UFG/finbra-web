@@ -53,10 +53,16 @@ def fixar(root,caches):
     with sessao()as s:r=s.get(SITE+key,headers={'Cache-Control':'no-cache'},timeout=(20,180));r.raise_for_status();p.write_bytes(r.content)
   if ref:assert p.stat().st_size==ref['bytes']and sha(p)==ref['sha256']
   return dict(chave=key,bytes=p.stat().st_size,sha256=sha(p))
- keys=['gold/manifesto.json','gold/downloads/manifesto.json','gold/comparacoes/manifesto.json','gold/raiox/v8_manifesto.json','gold/internet/manifesto.json','gold/mobilidade/manifesto.json','gold/seguranca/manifesto.json']
+ keys=['gold/manifesto.json','gold/downloads/manifesto.json','gold/comparacoes/manifesto.json','gold/raiox/v9_manifesto.json','gold/internet/manifesto.json','gold/mobilidade/manifesto.json','gold/seguranca/manifesto.json','gold/energia/manifesto.json','gold/mapas/energia_manifesto.json']
  with ThreadPoolExecutor(max_workers=3)as e:refs=list(e.map(baixar,keys))
  dm=json.loads((root/keys[1]).read_bytes());cp=json.loads((root/keys[2]).read_bytes());main=next(x for x in dm['arquivos']if x['id']=='painel_brasil_parquet')
  with ThreadPoolExecutor(max_workers=3)as e:refs+=list(e.map(lambda x:baixar(x['caminho'],x),[dm['dicionario'],*dm['recortes_uf'].values(),cp['geografia'],main]))
+ # A ampliação preserva exatamente as séries da edição já publicada quando
+ # as datas dos cadastros são as mesmas, inclusive arredondamentos de somas.
+ em=json.loads((root/'gold/energia/manifesto.json').read_bytes())
+ with ThreadPoolExecutor(max_workers=3)as e:refs+=list(e.map(lambda x:baixar(x['caminho'],x),[em['catalogo'],*em['indices'].values()]))
+ prior_series=[json.loads((root/v['caminho']).read_bytes())['arquivo']for v in em['indices'].values()]
+ with ThreadPoolExecutor(max_workers=3)as e:refs+=list(e.map(lambda x:baixar(x['caminho'],x),prior_series))
  shutil.copy2(root/cp['geografia']['caminho'],root/'geografia.json')
  pop=root/'populacao_2026_sidra.json'
  if not pop.exists():
@@ -98,7 +104,7 @@ def normalizar(root):
  for file in RECURSOS[MMGD][1:]:
   p=root/file;z=db.execute('SELECT CodGeracaoDistribuida,DatConexao FROM '+('read_parquet('+qs(p.as_posix())+')'if file.endswith('parquet')else'read_csv('+qs(p.as_posix())+",delim=';',header=true,all_varchar=true)")).fetchdf();z['tecnologia']='UFV'if'fotovoltaica'in file else'EOL'if'eolica'in file else'HID'if'hidreletrica'in file else'UTE';technical.append(z)
  tech=normalizar_datas(pd.concat(technical,ignore_index=True));db.register('tech',tech)
- db.execute("CREATE VIEW f AS SELECT g.CodEmpreendimento,g.CodMunicipioIbge cod_ibge,g.SigUF uf,g.MdaPotenciaInstaladaKW kw,g.QtdUCRecebeCredito creditos,g.SigTipoGeracao tipo,g.DscClasseConsumo classe,g.DscPorte porte,t.DatConexao conexao FROM gd g LEFT JOIN tech t ON t.CodGeracaoDistribuida=g.CodEmpreendimento AND t.tecnologia=CASE WHEN g.SigTipoGeracao IN ('CGH','PCH','UHE')THEN'HID'ELSE g.SigTipoGeracao END")
+ db.execute("CREATE VIEW f AS SELECT g.CodEmpreendimento,g.CodMunicipioIbge cod_ibge,g.SigUF uf,g.MdaPotenciaInstaladaKW kw,g.QtdUCRecebeCredito creditos,g.SigTipoGeracao tipo,g.DscClasseConsumo classe,g.DscPorte porte,g.DscModalidadeHabilitado modalidade,g.SigTipoConsumidor titular,t.DatConexao conexao FROM gd g LEFT JOIN tech t ON t.CodGeracaoDistribuida=g.CodEmpreendimento AND t.tecnologia=CASE WHEN g.SigTipoGeracao IN ('CGH','PCH','UHE')THEN'HID'ELSE g.SigTipoGeracao END")
  assert db.execute('SELECT count(*)FROM f').fetchone()[0]==db.execute('SELECT count(*)FROM gd').fetchone()[0]
  date=db.execute('SELECT min(DatGeracaoConjuntoDados),max(DatGeracaoConjuntoDados),count(DISTINCT AnmPeriodoReferencia)FROM gd').fetchone();assert date[0]==date[1]and date[2]==1;gd_date=date[0].isoformat();year=date[0].year
  assert db.execute('SELECT count(*)FROM f WHERE conexao>CAST(?AS DATE)',[gd_date]).fetchone()[0]==0
@@ -107,13 +113,20 @@ def normalizar(root):
  fontes={'solar':"tipo='UFV'",'eolica':"tipo='EOL'",'hidrica':"tipo IN ('CGH','PCH','UHE')",'termica':"tipo='UTE'",'outras':"tipo IS NULL OR tipo NOT IN ('UFV','EOL','CGH','PCH','UHE','UTE')"}
  classes={'res':"classe='Residencial'",'com':"classe='Comercial'",'rural':"classe='Rural'",'ind':"classe='Industrial'",'outras':"classe IS NULL OR classe NOT IN ('Residencial','Comercial','Rural','Industrial')"}
  portes={'micro':"porte='Microgeracao'",'mini':"porte='Minigeracao'",'outros':"porte IS NULL OR porte NOT IN ('Microgeracao','Minigeracao')"}
- for fam,vals in [('fonte',fontes),('classe',classes),('porte',portes)]:
+ modalidades={'local':"modalidade='Geracao na propria UC'",'remoto':"modalidade='Auto consumo remoto'",'comp':"modalidade='Compartilhada'",'cond':"modalidade='Condomínio'",'outros':"modalidade IS NULL OR modalidade NOT IN ('Geracao na propria UC','Auto consumo remoto','Compartilhada','Condomínio')"}
+ titulares={'pf':"titular='PF'",'pj':"titular='PJ'",'outros':"titular IS NULL OR titular NOT IN ('PF','PJ')"}
+ publicas={'poder':"classe='Poder Público'",'servico':"classe='Serviço Público'",'ilum':"classe='Iluminação pública'"}
+ for fam,vals in [('fonte',fontes),('classe',classes),('porte',portes),('mod',modalidades),('tit',titulares),('pub',publicas)]:
   for key,expr in vals.items():
    for unit,aggregate in [('n','count(*)'),('kw','sum(kw)')]:items[f'ene_gd_{fam}_{key}_{unit}']=aggregate+' FILTER(WHERE '+expr+')'
  def aggregate(table,by,exprs):return db.execute('SELECT '+by+','+','.join(v+' '+k for k,v in exprs.items())+' FROM '+table+' GROUP BY '+','.join(str(j+1)for j in range(len(by.split(','))))).fetchdf()
  gd=aggregate('f','cod_ibge,uf',items)
  # Somatórios vazios de uma categoria dentro de um cadastro observado são zeros.
  gd[list(items)]=gd[list(items)].fillna(0);gd.to_parquet(root/'mmgd_municipios.parquet',index=False)
+ for fam,categories in [('mod',modalidades),('tit',titulares)]:
+  assert gd[[f'ene_gd_{fam}_{key}_n'for key in categories]].sum(axis=1).eq(gd.ene_gd_n).all(),fam
+  assert (gd[[f'ene_gd_{fam}_{key}_kw'for key in categories]].sum(axis=1)-gd.ene_gd_kw).abs().le(0.001).all(),fam
+ assert gd[[f'ene_gd_pub_{key}_n'for key in publicas]].sum(axis=1).le(gd.ene_gd_classe_outras_n).all()
  totals=aggregate('f','uf',items).fillna(0);br=aggregate('f',"'BR'",items).fillna(0).rename(columns={"'BR'":'uf'});pd.concat([totals,br],ignore_index=True).to_parquet(root/'mmgd_referencias.parquet',index=False)
  cohort={'ene_gd_conexoes':'count(*)'}
  for key,expr in fontes.items():cohort['ene_gd_con_'+key]='count(*)FILTER(WHERE '+expr+')'
@@ -135,7 +148,7 @@ def normalizar(root):
  if unmapped:
   salvar(root/'municipios_siga_nao_resolvidos.json',dict(locais=sorted(set(unmapped))))
   assert set(unmapped)<=set(['Não Informado','Iauretê - AM','Vila Bittencourt - AM','lagoas - MG']),'Novo município não resolvido: revise o cadastro'
- sf=sd[['CodCEG','SigUFPrincipal','DscFaseUsina','DscOrigemCombustivel','kw','outorgada_kw','DatEntradaOperacao']].rename(columns={'SigUFPrincipal':'uf','DscFaseUsina':'fase','DscOrigemCombustivel':'fonte'});sf['inicio']=pd.to_datetime(sf.DatEntradaOperacao,errors='coerce');sf=sf.drop(columns=['DatEntradaOperacao']);sm=pd.DataFrame(mappings);sf.to_parquet(root/'siga_usinas.parquet',index=False);sm.to_parquet(root/'siga_localizacoes.parquet',index=False)
+ sf=sd[['CodCEG','SigUFPrincipal','SigTipoGeracao','DscFaseUsina','DscOrigemCombustivel','kw','outorgada_kw','DatEntradaOperacao']].rename(columns={'SigUFPrincipal':'uf','SigTipoGeracao':'tipo','DscFaseUsina':'fase','DscOrigemCombustivel':'fonte'});sf['inicio']=pd.to_datetime(sf.DatEntradaOperacao,errors='coerce');sf=sf.drop(columns=['DatEntradaOperacao']);sm=pd.DataFrame(mappings);sf.to_parquet(root/'siga_usinas.parquet',index=False);sm.to_parquet(root/'siga_localizacoes.parquet',index=False)
  quality=dict(ok=True,mmgd_data=gd_date,siga_data=siga_date,ano=year,mmgd_empreendimentos=int(db.execute('SELECT count(*)FROM f').fetchone()[0]),mmgd_potencia_kw=float(db.execute('SELECT sum(kw)FROM f').fetchone()[0]),mmgd_com_data=int(db.execute('SELECT count(*)FROM f WHERE conexao IS NOT NULL').fetchone()[0]),mmgd_sem_data=int(db.execute('SELECT count(*)FROM f WHERE conexao IS NULL').fetchone()[0]),mmgd_municipios_nao_resolvidos=[int(c)for c,u in gd[['cod_ibge','uf']].itertuples(index=False,name=None)if valid.get(int(c))!=u],siga_usinas=len(sf),siga_duplicatas_por_outorga=duplicates,siga_multimunicipais=int(sm.groupby('CodCEG').size().gt(1).sum()),siga_sem_municipio=int((~sf.CodCEG.isin(sm.CodCEG)).sum()),siga_locais_nao_resolvidos=sorted(set(unmapped)),arquivos={name:dict(arquivo=name,sha256=sha(root/name),bytes=(root/name).stat().st_size)for name in ['mmgd_municipios.parquet','mmgd_referencias.parquet','mmgd_coortes.parquet','siga_usinas.parquet','siga_localizacoes.parquet']})
  salvar(root/'energia_normalizada.json',quality);db.close();print(json.dumps(quality),flush=True)
 
