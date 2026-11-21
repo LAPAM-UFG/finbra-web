@@ -14,6 +14,7 @@ export type AreaComparacao =
   | "agropecuaria"
   | "mobilidade"
   | "seguranca"
+  | "internet"
   | "gestao";
 export type ObjetoComparacao = {
   caminho: string;
@@ -338,6 +339,8 @@ export function obterComparacoes(
     const chaves =
       area === 'assistencia' && rede === 'cadunico_historico'
         ? [] // Catálogo independente, com distribuições Seade e cotejo MDS fixados por hash.
+        : area === "internet"
+        ? ["gold/internet/manifesto.json"]
         : area === "seguranca"
         ? ["gold/seguranca/manifesto.json"]
         : area === "mobilidade"

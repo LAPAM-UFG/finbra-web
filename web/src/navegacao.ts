@@ -1,6 +1,6 @@
 import { COD_UF } from './munic_painel';
 
-export type Area = 'financas' | 'trabalho' | 'saude' | 'educacao' | 'munic' | 'clima' | 'assistencia' | 'saneamento' | 'agropecuaria' | 'mobilidade' | 'seguranca' | 'downloads' | 'ia' | 'raiox';
+export type Area = 'financas' | 'trabalho' | 'saude' | 'educacao' | 'munic' | 'clima' | 'assistencia' | 'saneamento' | 'agropecuaria' | 'mobilidade' | 'seguranca' | 'internet' | 'downloads' | 'ia' | 'raiox';
 
 const ufPorCodigo = new Map(Object.entries(COD_UF).map(([uf, cod]) => [String(cod), uf]));
 const query = (p: URLSearchParams) => { const s = p.toString(); return s ? `?${s}` : ''; };
@@ -15,12 +15,12 @@ export function buscaEntreAreas(search: string, origem: Area, destino: Exclude<A
   const atual = new URLSearchParams(search);
   const saida = new URLSearchParams();
   if (origem === destino) {
-    const chaves = origem === 'raiox' ? ['uf','cod','ano','tema','rede'] : origem === 'munic' ? ['pesq', 'uf', 'cod', 'ano'] : origem === 'clima' ? ['uf', 'cod', 'ano', 'variavel'] : origem === 'educacao' ? ['uf', 'cod', 'ente', 'ano', 'ind', 'rede'] : ['saneamento','agropecuaria','mobilidade','seguranca'].includes(origem) ? ['uf','cod','ente','ano','ind','ordem'] : origem === 'assistencia' ? ['uf', 'cod', 'mes', 'ano', 'ano_pib', 'medida'] : ['uf', 'ente', 'ano'];
+    const chaves = origem === 'raiox' ? ['uf','cod','ano','tema','rede'] : origem === 'munic' ? ['pesq', 'uf', 'cod', 'ano'] : origem === 'clima' ? ['uf', 'cod', 'ano', 'variavel'] : origem === 'educacao' ? ['uf', 'cod', 'ente', 'ano', 'ind', 'rede'] : ['saneamento','agropecuaria','mobilidade','seguranca','internet'].includes(origem) ? ['uf','cod','ente','ano','ind','ordem'] : origem === 'assistencia' ? ['uf', 'cod', 'mes', 'ano', 'ano_pib', 'medida'] : ['uf', 'ente', 'ano'];
     for (const k of chaves) if (atual.get(k)) saida.set(k, atual.get(k)!);
     if (['financas', 'trabalho', 'saude'].includes(origem) && atual.get('cod') && !saida.has('ente')) saida.set('ente', atual.get('cod') === '5300108' ? '53' : atual.get('cod')!);
     return query(saida);
   }
-  const porCod = origem === 'clima' || origem === 'munic' || origem === 'assistencia' || origem === 'educacao' || origem === 'saneamento' || (origem === 'agropecuaria' || origem === 'mobilidade' || origem === 'seguranca');
+  const porCod = origem === 'clima' || origem === 'munic' || origem === 'assistencia' || origem === 'educacao' || origem === 'saneamento' || (origem === 'agropecuaria' || origem === 'mobilidade' || origem === 'seguranca' || origem === 'internet');
   const codigoPedido = (atual.get('cod') ?? atual.get(porCod ? 'cod' : 'ente') ?? atual.get('ente'))?.trim() ?? '';
   const ufPedida = (atual.get('uf') ?? '').trim().toUpperCase();
   const codigo = codigoPedido || (origem === 'munic' && atual.get('pesq') === 'estadic' && ufPedida in COD_UF ? String(COD_UF[ufPedida]) : '');
@@ -39,7 +39,7 @@ export function buscaEntreAreas(search: string, origem: Area, destino: Exclude<A
     } else if (codigo) saida.set('cod', codigo);
   } else if (destino === 'raiox') {
     if (codigo && !governo) saida.set('cod',codigo);
-  } else if (destino === 'clima' || destino === 'assistencia' || destino === 'educacao' || destino === 'saneamento' || (destino === 'agropecuaria' || destino === 'mobilidade' || destino === 'seguranca')) {
+  } else if (destino === 'clima' || destino === 'assistencia' || destino === 'educacao' || destino === 'saneamento' || (destino === 'agropecuaria' || destino === 'mobilidade' || destino === 'seguranca' || destino === 'internet')) {
     if (df) saida.set('cod', '5300108');
     else if (codigo && !governo) saida.set('cod', codigo);
   } else if (codigo) {
