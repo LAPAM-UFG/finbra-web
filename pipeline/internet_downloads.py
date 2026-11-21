@@ -7,7 +7,7 @@ import argparse,copy,json,subprocess,zipfile
 from datetime import datetime,timezone
 from pathlib import Path
 import duckdb,pandas as pd,pyarrow.parquet as pq
-from internet_definicoes import CONDICOES,NOTA_BASE,NOTA_ANATEL,NOTA_MERCADO
+from internet_definicoes import CONDICOES,NOTA_BASE,NOTA_ANATEL,NOTA_MERCADO,NOTA_SMP
 from comparacoes_base import compacto
 from downloads_enxuto import Enxuto,ler
 from downloads_navegacao import previa,referencia,registrar
@@ -35,7 +35,7 @@ def gerar(base,painel,saida,stata,rscript):
    id=i['id']+('_cond'if cond else'')
    added.append(dict(variavel=id,nome=('Condição: 'if cond else'')+i['nome'],descricao=('Condição do dado de '+i['id']if cond else i['descricao']),area='internet',tabela='painel',
        unidade='código de condição'if cond else i['unidade'],fonte=i['fonte_nome'],tipo='inteiro'if cond else'numero',
-       regra_anual=NOTA_BASE+' '+NOTA_ANATEL+' '+NOTA_MERCADO,observacao='Arquivo temático próprio. Estoques no mês indicado em int_mes_ref; int_mes_jan etc. são retratos de cada mês. Não somar os estoques mensais. Ausência e campo não coletado são distintos.',anos_observados=years_by_id[i['id']],arquivo_principal=False,ano_de=min(years_by_id[i['id']],default=None),ano_ate=max(years_by_id[i['id']],default=None),variavel_original=id,
+       regra_anual=NOTA_BASE+' '+(NOTA_SMP if i['id'].startswith('int_smp_')else NOTA_ANATEL+' '+NOTA_MERCADO),observacao='SMP: dados detalhados preservados, com divergência do resumo nacional em 01/2019, 07/2019 e 06/2022; a variável int_smp_meses_divergentes identifica a ressalva da edição. Arquivo temático próprio. Estoques em int_mes_ref (fixa) e int_smp_mes_ref (móvel); int_mes_jan e int_smp_mes_jan etc. são retratos de cada mês. Não somar os estoques mensais. Ausência e campo não coletado são distintos.',anos_observados=years_by_id[i['id']],arquivo_principal=False,ano_de=min(years_by_id[i['id']],default=None),ano_ate=max(years_by_id[i['id']],default=None),variavel_original=id,
        **({'stata_rotulos':{str(k):v for k,v in CONDICOES.items()}}if cond else{})))
  assert not set(d['variavel']for d in dictionary)&set(d['variavel']for d in added);dictionary+=added
  e=Enxuto.__new__(Enxuto);e.root=saida;e.origem=base;e.base=base;e.work=work;e.dest=dest;e.dictionary=copy.deepcopy(keys+added);e.pending=[]
@@ -75,14 +75,14 @@ def gerar(base,painel,saida,stata,rscript):
  m['arquivos']=[a for a in m['arquivos']if a.get('area')!='internet'and not(a['tipo']=='dicionario'and a.get('escopo')=='principal')];m['arquivos'].extend(a for a in new if not a['uf'])
  for uf,ref in old['recortes_uf'].items():
   catalog=ler(base/ref['caminho']);catalog['arquivos']=[a for a in catalog['arquivos']if a.get('area')!='internet'];catalog['arquivos'].extend(a for a in new if a['uf']==uf);m['recortes_uf'][uf]=referencia(saida,work,'catalogo_'+uf.lower(),catalog)
- m['areas']=[a for a in m['areas']if a['id']!='internet'];m['areas'].append(dict(id='internet',nome='Internet e conectividade',nome_en='Internet and connectivity',descricao=f'{raw_count} medidas originais e {len(ids)-raw_count} relativas, incluindo bases de cálculo e condições. Anatel SCM desde 2013. Retratos de dezembro; último mês disponível em 2026. Meios, faixas de velocidade, titulares, prestadoras e densidade; não são usuários únicos.',descricao_en=f'{raw_count} original and {len(ids)-raw_count} relative measures, including calculation bases and conditions. Anatel SCM since 2013. December snapshots; latest month in 2026. Media, speed bands, subscriber types, providers and density; not unique users.'))
+ m['areas']=[a for a in m['areas']if a['id']!='internet'];m['areas'].append(dict(id='internet',nome='Internet e conectividade',nome_en='Internet and connectivity',descricao=f'{raw_count} medidas originais e {len(ids)-raw_count} relativas, incluindo bases de cálculo e condições. Anatel SCM desde 2013; SMP municipal desde 2019, 5G desde agosto/2021. Retratos de dezembro e último mês em 2026. Meios, tecnologias, velocidades, planos, máquinas/IoT, titulares e densidades; não são pessoas únicas nem cobertura do sinal.',descricao_en=f'{raw_count} original and {len(ids)-raw_count} relative measures, including calculation bases and conditions. Anatel SCM since 2013; municipal SMP since 2019, 5G since August 2021. December snapshots and latest month in 2026. Media, technologies, speeds, plans, M2M/IoT, subscriber types and densities; not unique people or signal coverage.'))
  template=next(a for a in old['arquivos']if a['id']=='dicionario_json')
  def dict_item(id,fmt,path,label):m['arquivos'].append({**template,**registrar(saida,path,id,fmt),'id':id,'formato':fmt,'linhas':len(dictionary),'variaveis':None,'nome':label,'nome_en':label})
  m['dicionario']=dref;m['arquivos'].append({**template,**dref,'id':'dicionario_json','linhas':len(dictionary)})
  flat=pd.DataFrame([{k:json.dumps(v,ensure_ascii=False)if isinstance(v,(dict,list))else v for k,v in row.items()}for row in dictionary]);csv=work/'dicionario.csv';flat.to_csv(csv,index=False,sep=';',encoding='utf-8-sig');zipped=work/'dicionario.csv.zip'
  with zipfile.ZipFile(zipped,'w',zipfile.ZIP_DEFLATED)as z:z.write(csv,'dicionario.csv')
  dict_item('dicionario_csv','csv.zip',zipped,'Dicionário — CSV');excel=work/'dicionario.xlsx';flat.to_excel(excel,index=False,engine='openpyxl',freeze_panes=(1,0));dict_item('dicionario_excel','xlsx',excel,'Dicionário — Excel');dict_item('dicionario_rds','rds',rdict,'Dicionário — R')
- m['gerado_em']=stamp;m['notas']=[n for n in m['notas']if not n.startswith('Internet e conectividade:')];m['notas'].append('Internet e conectividade: '+NOTA_ANATEL+' '+NOTA_MERCADO+' '+NOTA_BASE)
+ m['gerado_em']=stamp;m['notas']=[n for n in m['notas']if not n.startswith('Internet e conectividade:')];m['notas'].append('Internet e conectividade: '+NOTA_ANATEL+' '+NOTA_MERCADO+' '+NOTA_BASE+' '+NOTA_SMP+' O detalhado e o resumo nacional divergem em 01/2019, 07/2019 e 06/2022; mantêm-se os valores detalhados e a variável int_smp_meses_divergentes identifica a ressalva da edição.')
  m.setdefault('fontes_complementares',{})['internet']=dict(caminho='gold/internet/manifesto.json',sha256=sha(painel/'gold/internet/manifesto.json'),gerado_em=meta['gerado_em'])
  for j,item in enumerate(m['arquivos']):
   if item['tipo']=='metodologia'and item['formato']=='txt':

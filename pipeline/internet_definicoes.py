@@ -1,5 +1,8 @@
 """Definições comuns de Internet: estoques mensais do SCM, não usuários únicos."""
 URL='https://informacoes.anatel.gov.br/paineis/acessos/banda-larga-fixa'
+SMP_URL='https://informacoes.anatel.gov.br/paineis/acessos/telefonia-movel'
+NOTA_SMP='Anatel · SMP: assinaturas móveis, não pessoas únicas nem cobertura territorial do sinal. Série municipal desde janeiro de 2019, primeiro ano da nova coleta, informado pela Anatel como sujeito a validação. Uso padrão reúne VOZ, DADOS, VOZ+DADOS e a categoria histórica OCIOSO, conforme o resumo nacional; exclui M2M (máquinas/IoT) e pontos de serviço. 5G tem coleta desde agosto de 2021 e inclui a classificação declarada, não apenas 5G puro/SA. Não somar assinaturas fixas e móveis para estimar pessoas conectadas.'
+NOTA_SMP_EN='Anatel SMP mobile subscriptions, not unique people or signal coverage. Municipal data start in January 2019. Standard-use mobile measures exclude M2M/IoT and service points. Reported 5G collection starts in August 2021 and is not restricted to standalone 5G. Do not add fixed and mobile subscriptions to estimate connected people.'
 POP_URL='https://sidra.ibge.gov.br/tabela/6579'
 NOTA_BASE='Retratos do mês de dezembro em anos encerrados e do último mês nacional disponível no ano corrente. Não são somas anuais. Cada ano usa o mesmo mês em todos os municípios; ausência não vira zero. Regiões usam razões das somas dos componentes municipais válidos.'
 NOTA_ANATEL='Anatel · SCM: acessos de banda larga fixa declarados pelas prestadoras. Um acesso é uma assinatura, não uma pessoa ou domicílio único. O meio de acesso descreve a última milha. Velocidade é contratada, não medida. Tipo de pessoa é o titular da assinatura. Campos inexistentes nas edições antigas permanecem indisponíveis.'
@@ -13,4 +16,12 @@ GRUPOS={
  'porte':[('peq','Prestadoras de pequeno porte','Small providers'),('grande','Prestadoras de grande porte','Large providers'),('ign','Porte não informado','Unspecified size')],
  'pessoa':[('fisica','Pessoa física','Individual subscriber'),('juridica','Pessoa jurídica','Legal-entity subscriber'),('ign','Tipo de titular não informado','Unspecified subscriber type')],
  'vel':[('100','100 Mbps ou mais','100 Mbps or more'),('1000','1 Gbps ou mais','1 Gbps or more'),('ign','Velocidade numérica não informada','Unspecified numeric speed')]
+}
+GRUPOS['vel'] += [('300','300 Mbps ou mais','300 Mbps or more'),('500','500 Mbps ou mais','500 Mbps or more')]
+GRUPOS['tec']=[('ftth','Fibra até a residência (FTTH)','Fibre to the home (FTTH)'),('fttb','Fibra até o prédio (FTTB)','Fibre to the building (FTTB)'),('hfc','Rede de TV a cabo (HFC / cable modem)','Cable TV network (HFC / cable modem)'),('xdsl','Linha telefônica (xDSL)','Telephone copper line (xDSL)'),('ethernet','Ethernet','Ethernet'),('outras','Outras tecnologias ou não informadas','Other or unspecified technologies')]
+GRUPOS_SMP={
+ 'tipo':[('padrao','Celular de uso padrão','Standard-use mobile'),('m2m','Máquinas e dispositivos (M2M/IoT)','Machines and devices (M2M/IoT)'),('ponto','Pontos de serviço','Service points'),('tipo_ign','Tipo de assinatura não informado','Unspecified subscription type')],
+ 'smp_tec':[('2g','2G','2G'),('3g','3G','3G'),('4g','4G','4G'),('5g','5G (inclui DSS)','5G (including DSS)'),('outras','Outras tecnologias ou não informadas','Other or unspecified technologies')],
+ 'smp_cobranca':[('pre','Pré-pago','Prepaid'),('pos','Pós-pago','Postpaid'),('ign','Modalidade não informada','Unspecified payment plan')],
+ 'smp_pessoa':[('fisica','Pessoa física: celular padrão','Individual: standard-use mobile'),('juridica','Pessoa jurídica: celular padrão','Legal entity: standard-use mobile'),('ign','Titular não informado: celular padrão','Unspecified subscriber: standard-use mobile')]
 }

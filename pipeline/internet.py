@@ -38,6 +38,8 @@ class QuadroMercado(Quadro):
 def gerar(fontes,saida):
  fontes,saida=destino_seguro(fontes,saida);g=json.loads((fontes/'geografia.json').read_bytes());municipios=g['municipios'];nmun=len(municipios);assert nmun==5571
  sm=json.loads((fontes/'anatel_normalizado.json').read_bytes());assert sm['ok']
+ sn=json.loads((fontes/'smp_normalizado.json').read_bytes())if(fontes/'smp_normalizado.json').exists()else None
+ if sn:assert sn['ok']and arquivo_sha(fontes/sn['agregado']['arquivo'])==sn['agregado']['sha256']
  for ref in sm['agregados'].values():assert arquivo_sha(fontes/ref['arquivo'])==ref['sha256']
  ANOS=sorted(map(int,sm['referencias']));refs={int(y):p for y,p in sm['referencias'].items()}
  assert all(p%100==12 for y,p in refs.items()if y<max(ANOS))
@@ -47,7 +49,8 @@ def gerar(fontes,saida):
  defs=[]
  def add(id,n,en,fam,un='acessos',helper=False,desc=None,**extra):
   assert len(id+'_cond')<=32
-  defs.append(dict(id=id,nome=n,nome_en=en,familia=fam,unidade=un,unidade_en={'acessos':'subscriptions','habitantes':'residents','CNPJs':'reporting companies','mês':'month'}.get(un,un),fonte='anatel',fonte_nome='Anatel · banda larga fixa (SCM)',fonte_url=URL,descricao=desc or NOTA_ANATEL,descricao_en=NOTA_EN,anos=[],auxiliar=helper,**extra))
+  movel=fam.startswith('smp_')
+  defs.append(dict(id=id,nome=n,nome_en=en,familia=fam,unidade=un,unidade_en={'acessos':'subscriptions','assinaturas':'subscriptions','habitantes':'residents','CNPJs':'reporting companies','mês':'month'}.get(un,un),fonte='smp'if movel else'anatel',fonte_nome='Anatel · telefonia móvel (SMP)'if movel else'Anatel · banda larga fixa (SCM)',fonte_url=SMP_URL if movel else URL,descricao=desc or(NOTA_SMP if movel else NOTA_ANATEL),descricao_en=NOTA_SMP_EN if movel else NOTA_EN,anos=[],auxiliar=helper,**extra))
  add('int_acessos','Acessos de banda larga fixa','Fixed broadband subscriptions','acessos')
  for pre,items in GRUPOS.items():
   for id,pt,en in items:add(f'int_{pre}_{id}',pt,en,pre,desc=NOTA_ANATEL+(' Categorias oficiais da faixa; não inferir 100 Mbps da faixa acima de 34 Mbps.'if pre=='faixa'else' 1 Gbps ou mais é subconjunto de 100 Mbps ou mais; não somar essas duas faixas.'if pre=='vel'else''))
@@ -58,6 +61,13 @@ def gerar(fontes,saida):
  defs[-1].update(fonte_nome='IBGE / SVS · população de referência',fonte_url=POP_URL)
  add('int_mes_ref','Mês do retrato anual','Annual snapshot reference month','bases','mês',True,NOTA_BASE)
  for m,(key,pt,en)in enumerate(MESES,1):add('int_mes_'+key,'Acessos em '+pt,'Subscriptions in '+en,'mensal',mes_fixo=m)
+ if sn:
+  add('int_smp_total','Todas as assinaturas móveis','All mobile subscriptions','smp_tipo','assinaturas',True)
+  for pre,items in GRUPOS_SMP.items():
+   for id,pt,en in items:add('int_smp_'+id if pre=='tipo'else'int_'+pre+'_'+id,pt,en,'smp_tipo'if pre=='tipo'else pre,'assinaturas')
+  add('int_smp_mes_ref','Mês do retrato móvel','Mobile snapshot month','smp_bases','mês',True)
+  add('int_smp_meses_divergentes','Meses da edição com divergência no resumo nacional','Edition months differing from the national summary','smp_bases','meses',True,'Conta meses em que a soma dos CSVs detalhados do Brasil difere do resumo nacional da Anatel. Não é erro confirmado do município. São janeiro e julho de 2019 e junho de 2022. Os valores detalhados são preservados, sem ratear a diferença.')
+  for m,(key,pt,en)in enumerate(MESES,1):add('int_smp_mes_'+key,'Celular padrão em '+pt,'Standard-use mobile in '+en,'smp_mensal','assinaturas',mes_fixo=m)
  idx={i['id']:j for j,i in enumerate(defs)};a=np.full((len(ANOS),len(grupos),len(defs)),np.nan);c=np.full(a.shape,2,dtype='int8');residuos={}
  def put(y,id,key,value,flag=None):
   if str(key)not in pos or pd.isna(value):return
@@ -82,6 +92,30 @@ def gerar(fontes,saida):
    for row in z[z.cod_ibge.notna()].itertuples(index=False):put(y,id,int(row.cod_ibge),row.int_acessos)
    for group,sub in [(u,z[z.uf==u])for u in sorted(ufs)]+[('BR',z)]:put(y,id,group,sub.int_acessos.sum(min_count=1),16 if sub.cod_ibge.nunique()<len(groups[group])or sub.cod_ibge.isna().any()else None)
   for group in grupos:put(y,'int_mes_ref',group,refs[y]%100)
+ if sn:
+  mov=pd.read_parquet(fontes/sn['agregado']['arquivo']);mov.loc[mov.cod_ibge.map(valid_codes).ne(mov.uf),'cod_ibge']=np.nan
+  mids=[id for id in idx if id.startswith('int_smp_')];source=[id for id in mids if id in mov]
+  residuos['smp']={}
+  for y in ANOS:
+   k=ANOS.index(y);rp=sn['referencias'].get(str(y))
+   if rp is None:
+    c[k,:,[idx[id]for id in mids]]=5;continue
+   zz=mov[mov.periodo==rp]
+   for row in zz[zz.cod_ibge.notna()].itertuples(index=False):
+    for id in source:put(y,id,int(row.cod_ibge),getattr(row,id))
+   for key,z in [(u,zz[zz.uf==u])for u in sorted(ufs)]+[('BR',zz)]:
+    count=int(z.cod_ibge.nunique());expected=len(groups[key])
+    for id in source:put(y,id,key,z[id].sum(min_count=1),16 if count<expected or z.cod_ibge.isna().any()else None)
+   residuos['smp'][str(y)]=int(zz.loc[zz.cod_ibge.isna(),'int_smp_total'].sum())
+   if rp<202108:c[k,:,idx['int_smp_tec_5g']]=5
+   for group in grupos:put(y,'int_smp_mes_ref',group,rp%100)
+   for group in grupos:put(y,'int_smp_meses_divergentes',group,sum(int(p)//100==y for p in sn['divergencias_resumo']))
+   for m,(key,_,_)in enumerate(MESES,1):
+    p=y*100+m;id='int_smp_mes_'+key
+    if p not in sn['periodos']:c[k,:,idx[id]]=5;continue
+    z=mov[mov.periodo==p]
+    for row in z[z.cod_ibge.notna()].itertuples(index=False):put(y,id,int(row.cod_ibge),row.int_smp_padrao)
+    for group,sub in [(u,z[z.uf==u])for u in sorted(ufs)]+[('BR',z)]:put(y,id,group,sub.int_smp_padrao.sum(min_count=1),16 if sub.cod_ibge.nunique()<len(groups[group])or sub.cod_ibge.isna().any()else None)
  market=pd.read_parquet(fontes/sm['agregados']['mercado_referencias']['arquivo']);lookup={(int(r.periodo)//100,str(r.grupo)):r for r in market.itertuples(index=False)}
  for row in market.itertuples(index=False):
   for id,val in [('int_prestadoras',row.int_prestadoras),('int_lider',row.lider),('int_quadrados',row.quadrados)]:put(row.periodo//100,id,row.grupo,val,16 if row.sem_cnpj>0 else None)
@@ -107,18 +141,26 @@ def gerar(fontes,saida):
      if row is not None and row.sem_cnpj>0:vv[k,j]=np.nan;cc[k,j]=2
   definition=dict(id=id,nome=pt,nome_en=en,descricao=NOTA_BASE+' '+(NOTA_MERCADO if market_kind else NOTA_ANATEL),descricao_en=NOTA_EN+(' Regional concentration is computed after grouping subscriptions by reporting CNPJ, not averaging local shares or indices.'if market_kind else' Regions use ratios of sums over municipalities with both valid components.'),tema=tema,tema_en=tema,unidade=unidade,unidade_en='per 100 residents'if fator==100 and unidade!='%'else unidade,formato='percentual'if unidade=='%'else'numero',frequencia='anual',metodo_referencia='razao',normalizacao=pt,normalizacao_en=en,fator=fator,ranking=True,minimo=0,fonte_nome='Anatel / IBGE',fontes=[dict(nome='Anatel · SCM',url=URL),dict(nome='IBGE · população',url=POP_URL)],alerta='Acessos não são pessoas ou domicílios únicos; velocidades são contratadas. Compare o mês de referência de cada ano.',alerta_en='Subscriptions are not unique people or households; speeds are contracted. Check each year’s reference month.',variavel_download='int_'+id,numerador_id=n,denominador_id=d,numerador_nome=defs[ni]['nome'],denominador_nome=('Quadrado de: 'if market_kind=='hhi'else'')+defs[di]['nome'],notas_anos=notes)
   if market_kind=='hhi':definition['denominador_potencia']=2
+  if n.startswith('int_smp_'):
+   definition.update(descricao=NOTA_BASE+' '+NOTA_SMP,descricao_en=NOTA_SMP_EN+' Regions use ratios of sums over municipalities with both valid components.',fonte_nome='Anatel · SMP / IBGE',fontes=[dict(nome='Anatel · SMP',url=SMP_URL),dict(nome='IBGE · população',url=POP_URL)],alerta=NOTA_SMP,alerta_en=NOTA_SMP_EN,notas_anos={str(y):[f"Retrato móvel de {sn['referencias'][str(y)]%100:02d}/{y}: assinaturas, não pessoas ou cobertura do sinal.",f"{sn['referencias'][str(y)]%100:02d}/{y} mobile snapshot: subscriptions, not unique people or signal coverage."]for y in pp})
   q=(QuadroMercado if market_kind else Quadro)(definition,pp,vv,nn,dd,cc)
   if market_kind:q.mercado=lookup;q.tipo=market_kind
   quadros.append(q)
  razao('acessos_100hab','int_acessos','int_populacao','Banda larga fixa por 100 habitantes','Fixed broadband per 100 residents','Acesso',100,'por 100 habitantes')
  for pre,items in GRUPOS.items():
-  for id,pt,en in items:razao(f'{pre}_{id}_pct',f'int_{pre}_{id}','int_acessos',pt+' (%)',en+' (%)',{'meio':'Meio de acesso','faixa':'Faixa de velocidade','porte':'Porte da prestadora','pessoa':'Titular da assinatura','vel':'Velocidade contratada'}[pre])
+  for id,pt,en in items:razao(f'{pre}_{id}_pct',f'int_{pre}_{id}','int_acessos',pt+' (%)',en+' (%)',{'meio':'Meio de acesso','faixa':'Faixa de velocidade','porte':'Porte da prestadora','pessoa':'Titular da assinatura','vel':'Velocidade contratada','tec':'Tecnologia da conexão'}[pre])
  razao('lider_pct','int_lider','int_acessos','Participação da maior declarante','Largest reporting company share','Prestadoras',market_kind='lider')
  razao('hhi','int_quadrados','int_acessos','Concentração entre declarantes (HHI)','Concentration among reporting companies (HHI)','Prestadoras',10000,'índice de 0 a 10.000','hhi')
+ if sn:
+  razao('smp_100hab','int_smp_padrao','int_populacao','Celular padrão por 100 habitantes','Standard-use mobile per 100 residents','Telefonia móvel',100,'por 100 habitantes')
+  for pre,items in GRUPOS_SMP.items():
+   for id,pt,en in items:
+    n='int_smp_'+id if pre=='tipo'else'int_'+pre+'_'+id
+    razao(n.removeprefix('int_')+'_pct',n,'int_smp_total'if pre=='tipo'else'int_smp_padrao',pt+' (%)',en+' (%)','Tipos de assinatura móvel'if pre=='tipo'else'Tecnologia móvel'if pre=='smp_tec'else'Plano de celular'if pre=='smp_cobranca'else'Titular da linha móvel')
  # Escrita CAS, mapas e comparações: mesmo contrato das demais áreas.
- gerar_artefatos(fontes,saida,g,municipios,grupos,pos,ufs,groups,ANOS,a,c,defs,quadros,residuos,refs,sm,main)
+ gerar_artefatos(fontes,saida,g,municipios,grupos,pos,ufs,groups,ANOS,a,c,defs,quadros,residuos,refs,sm,main,sn)
 
-def gerar_artefatos(fontes,saida,g,municipios,grupos,pos,ufs,groups,ANOS,a,c,defs,quadros,residuos,refs,sm,main):
+def gerar_artefatos(fontes,saida,g,municipios,grupos,pos,ufs,groups,ANOS,a,c,defs,quadros,residuos,refs,sm,main,sn=None):
  nmun=len(municipios)
  dv=np.full((len(ANOS),len(grupos),len(quadros)),np.nan);dc=np.full(dv.shape,2,dtype='int8');dn=np.full_like(dv,np.nan);dd=np.full_like(dv,np.nan);dq=np.zeros(dv.shape,dtype='int16')
  groups={key:[j for j,m in enumerate(municipios)if key==str(m[0])or key==m[2]or key=='BR'or key=='I:'+m[3]or key=='T:'+m[4]]for key,t in g['territorios'].items()if t['nivel']in ['M','UF','BR','imediata','intermediaria']}
@@ -142,6 +184,10 @@ def gerar_artefatos(fontes,saida,g,municipios,grupos,pos,ufs,groups,ANOS,a,c,def
   h=arquivo_sha(temp);p=dest/f'series_{bucket.lower()}_{h[:16]}.ndjson';temp.rename(p);indices[bucket]=objeto('internet','indice_'+bucket.lower(),dict(versao=1,arquivo=dict(caminho=p.relative_to(saida).as_posix(),bytes=p.stat().st_size,sha256=h),grupos=entries))
  cat=objeto('internet','catalogo',dict(versao=1,anos=ANOS,indicadores=defs,derivados=[dict(q.definicao,periodos=q.periodos)for q in quadros],condicoes=CONDICOES),True);geo=objeto('internet','geografia',g,True)
  m=dict(versao=1,gerado_em=datetime.now(timezone.utc).isoformat(),anos=ANOS,catalogo=cat,geografia=geo,indices=indices,variaveis=len(defs),calculados=len(quadros),territorios=len(grupos),max_trecho_bytes=maxslice,ultimos={'anatel':max(ANOS)},referencias=refs,origens={'anatel':arquivo_sha(fontes/'anatel_normalizado.json'),'populacao':main['sha256'],'populacao_2026':arquivo_sha(fontes/'populacao_2026_sidra.json')},notas=[NOTA_ANATEL,NOTA_BASE,NOTA_MERCADO]);(dest/'manifesto.json').write_bytes(compacto(m))
+ if sn:
+  m['referencias_smp']=sn['referencias'];m['ultimos']['smp']=max(map(int,sn['referencias']));m['origens']['smp']=arquivo_sha(fontes/'smp_normalizado.json');m['notas'].append(NOTA_SMP);(dest/'manifesto.json').write_bytes(compacto(m))
+  milhar=lambda n:format(n,',').replace(',','.')
+  m['ressalvas_smp']={p:[f"{int(p)%100:02d}/{int(p)//100}: o detalhado do Brasil soma {milhar(v['detalhado'])} assinaturas padrão e o resumo nacional informa {milhar(v['resumo'])}. Mantemos o detalhado, sem ratear a diferença pelos municípios.",f"{int(p)%100:02d}/{int(p)//100}: Brazil's detailed files total {v['detalhado']:,} standard-use subscriptions versus {v['resumo']:,} in the national summary. Detailed values are retained without allocating the difference to municipalities."]for p,v in sn['divergencias_resumo'].items()};m['notas'].append('SMP: o detalhado e o resumo nacional divergem em 01/2019, 07/2019 e 06/2022. Os retratos de dezembro conferem. O resumo termina em 08/2026; 09/2026 vem do arquivo longo. As diferenças ficam identificadas no gráfico mensal e na variável auxiliar int_smp_meses_divergentes.');(dest/'manifesto.json').write_bytes(compacto(m))
  data={'cod_ibge':np.tile([m[0]for m in municipios],len(ANOS)),'ano':np.repeat(ANOS,nmun),'municipio':np.tile([m[1]for m in municipios],len(ANOS)),'uf':np.tile([m[2]for m in municipios],len(ANOS))}
  for j,i in enumerate(defs):data[i['id']]=a[:,:nmun,j].reshape(-1);data[i['id']+'_cond']=c[:,:nmun,j].reshape(-1)
  for j,q in enumerate(quadros):id=q.definicao['variavel_download'];data[id]=dv[:,:nmun,j].reshape(-1);data[id+'_cond']=dc[:,:nmun,j].reshape(-1)

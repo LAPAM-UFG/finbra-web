@@ -42,6 +42,6 @@ test('contagem original abre Mobilidade e não uma comparação absoluta',()=>{
 });
 test('Raio X usa edição nova e mantém fallback para clientes de nove áreas',async()=>{
  const ref={caminho:'gold/raiox/catalogo_abc.json',bytes:1,sha256:'a'.repeat(64)};const urls:string[]=[];
- const f=(async(url:string|URL|Request)=>{urls.push(String(url));return /v[34567]_manifesto/.test(String(url))?new Response('',{status:404}):Response.json({versao:1,indices:{referencias:ref},anos:[2024],indicadores:1,catalogo:ref,geografia:ref});})as typeof fetch;
- await criarLeitorRaio(f,'https://example.test/').meta();assert.deepEqual(urls,['https://example.test/gold/raiox/v7_manifesto.json','https://example.test/gold/raiox/v6_manifesto.json','https://example.test/gold/raiox/v5_manifesto.json','https://example.test/gold/raiox/v4_manifesto.json','https://example.test/gold/raiox/v3_manifesto.json','https://example.test/gold/raiox/v2_manifesto.json']);
+ const f=(async(url:string|URL|Request)=>{urls.push(String(url));return /v[345678]_manifesto/.test(String(url))?new Response('',{status:404}):Response.json({versao:1,indices:{referencias:ref},anos:[2024],indicadores:1,catalogo:ref,geografia:ref});})as typeof fetch;
+ await criarLeitorRaio(f,'https://example.test/').meta();assert.deepEqual(urls,['https://example.test/gold/raiox/v8_manifesto.json','https://example.test/gold/raiox/v7_manifesto.json','https://example.test/gold/raiox/v6_manifesto.json','https://example.test/gold/raiox/v5_manifesto.json','https://example.test/gold/raiox/v4_manifesto.json','https://example.test/gold/raiox/v3_manifesto.json','https://example.test/gold/raiox/v2_manifesto.json']);
 });

@@ -7,7 +7,13 @@ export type IndicadorInt={id:string;nome:string;nome_en:string;familia:string;un
 export type CalculadoInt=DefComparacao&{variavel_download:string;numerador_id:string;denominador_id:string;numerador_nome:string;denominador_nome:string};
 export type CatalogoInt={versao:1;anos:number[];indicadores:IndicadorInt[];derivados:CalculadoInt[];condicoes:Record<string,string>};
 export type GrupoInt={versao:1;grupo:string;anos:number[];valores:(number|null)[][];condicoes:number[][];derivados:(number|null)[][];condicoes_derivados:number[][];numeradores:(number|null)[][];denominadores:(number|null)[][];coberturas:number[][];residuos:Record<string,unknown>};
-export type MetaInt={versao:1;anos:number[];catalogo:Objeto;geografia:Objeto;indices:Record<string,Objeto>;variaveis:number;calculados:number;max_trecho_bytes:number;ultimos:Record<string,number>;referencias:Record<string,number>;gerado_em:string;notas:string[]};
+export type MetaInt={versao:1;anos:number[];catalogo:Objeto;geografia:Objeto;indices:Record<string,Objeto>;variaveis:number;calculados:number;max_trecho_bytes:number;ultimos:Record<string,number>;referencias:Record<string,number>;referencias_smp?:Record<string,number>;ressalvas_smp?:Record<string,[string,string]>;gerado_em:string;notas:string[]};
+export function mesReferenciaInt(m:Pick<MetaInt,'referencias'|'referencias_smp'>,ano:number,movel=false,mesFixo?:number):number|null{
+ const p=(movel?m.referencias_smp:m.referencias)?.[String(ano)];return mesFixo??(p?p%100:null);
+}
+export function referenciaInt(m:Pick<MetaInt,'referencias'|'referencias_smp'>,ano:number,movel=false,mesFixo?:number){
+ const mes=mesReferenciaInt(m,ano,movel,mesFixo);return mes===null?String(ano):String(mes).padStart(2,'0')+'/'+ano;
+}
 let promessa:Promise<{m:MetaInt;c:CatalogoInt;g:GeografiaComparacao}>|undefined;
 export function validarGrupoInt(x:GrupoInt,grupo:string,c:CatalogoInt){
  if(x.versao!==1||x.grupo!==grupo||JSON.stringify(x.anos)!==JSON.stringify(c.anos))throw new Error('Recorte de outra edição, território ou período.');

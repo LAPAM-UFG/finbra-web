@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {validarGrupoInt,alturaMesesInt,type CatalogoInt,type GrupoInt} from '../src/internet_dados';
+import {validarGrupoInt,alturaMesesInt,mesReferenciaInt,referenciaInt,type CatalogoInt,type GrupoInt} from '../src/internet_dados';
 import {buscaEntreAreas,buscaParaDownloads} from '../src/navegacao';
 import {criarLeitorRaio,linkComparacaoRaio,type IndicadorRaio} from '../src/raio_x';
 import type {GeografiaComparacao} from '../src/comparacoes_dados';
@@ -13,6 +13,12 @@ test('campo inexistente no passado não vira zero ou percentual',()=>{
  assert.throws(()=>validarGrupoInt({...g,anos:[2013,2025]},'5208905',cat));
 });
 test('meses não publicados continuam distintos de zero',()=>assert.deepEqual(alturaMesesInt([0,null,2,1]),[0,null,100,50]));
+test('edições fixa e móvel têm meses próprios e um período sem coleta não recebe mês inventado',()=>{
+ const m={referencias:{'2013':201312,'2026':202609},referencias_smp:{'2026':202610}};
+ assert.equal(referenciaInt(m,2026), '09/2026');assert.equal(referenciaInt(m,2026,true),'10/2026');
+ assert.equal(mesReferenciaInt(m,2013,true),null);assert.equal(referenciaInt(m,2013,true),'2013');
+ assert.equal(referenciaInt(m,2026,true,2),'02/2026');
+});
 test('município, ano e DF acompanham Internet e downloads',()=>{
  assert.equal(buscaEntreAreas('?ente=53&ano=2026','saude','internet'),'?uf=DF&cod=5300108&ano=2026');
  assert.equal(buscaEntreAreas('?cod=5208905&uf=GO&ano=2013','internet','educacao'),'?uf=GO&cod=5208905&ano=2013');

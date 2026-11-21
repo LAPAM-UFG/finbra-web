@@ -171,11 +171,13 @@ def gerar(fontes, destino):
         mm=ler('gold/internet/manifesto.json');mc=json.loads(gzip.decompress(paths[mm['catalogo']['caminho']].read_bytes()))
         net=dict(anos=mm['anos'],indices=mm['indices'],indicadores=[i['id']for i in mc['indicadores']],edicao_sha256=prov['gold/internet/manifesto.json']['sha256'])
         for bucket,ref in mm['indices'].items():net_indices[bucket]=ler(ref['caminho']);net_paths[bucket]=paths[net_indices[bucket]['arquivo']['caminho']]
-        temas={'acessos':('Banda larga fixa','Fixed broadband'),'meio':('Meio de acesso','Access medium'),'faixa':('Faixas históricas de velocidade','Historical speed bands'),'vel':('Velocidade contratada','Contracted speed'),'pessoa':('Titular da assinatura','Subscriber type'),'porte':('Porte da prestadora','Provider size'),'mercado':('Prestadoras declarantes','Reporting providers'),'bases':('Bases de cálculo','Calculation bases'),'mensal':('Estoques mensais de acessos','Monthly subscription stocks')}
+        temas={'acessos':('Banda larga fixa','Fixed broadband'),'meio':('Meio de acesso','Access medium'),'faixa':('Faixas históricas de velocidade','Historical speed bands'),'vel':('Velocidade contratada','Contracted speed'),'pessoa':('Titular da assinatura','Subscriber type'),'porte':('Porte da prestadora','Provider size'),'mercado':('Prestadoras declarantes','Reporting providers'),'bases':('Bases de cálculo','Calculation bases'),'mensal':('Estoques mensais de acessos','Monthly subscription stocks'),'tec':('Tecnologia da banda larga fixa','Fixed broadband technology'),'smp_tipo':('Tipos de assinatura móvel','Mobile subscription types'),'smp_tec':('Tecnologia móvel','Mobile technology'),'smp_cobranca':('Plano de celular','Mobile payment plans'),'smp_pessoa':('Titular da linha móvel','Mobile subscriber type'),'smp_bases':('Bases de cálculo móvel','Mobile calculation bases'),'smp_mensal':('Celular mês a mês','Monthly mobile stocks')}
         for j,i in enumerate(mc['indicadores']):
-            notas={str(y):[f"{i.get('mes_fixo',int(mm['referencias'][str(y)])%100):02d}/{y}: estoque mensal, não soma anual.",f"{i.get('mes_fixo',int(mm['referencias'][str(y)])%100):02d}/{y}: monthly stock, not an annual sum."]for y in i['anos']}
+            notas={str(y):[f"{i.get('mes_fixo',int((mm.get('referencias_smp',{})if i['fonte']=='smp'else mm['referencias'])[str(y)])%100):02d}/{y}: estoque mensal, não soma anual.",f"{i.get('mes_fixo',int((mm.get('referencias_smp',{})if i['fonte']=='smp'else mm['referencias'])[str(y)])%100):02d}/{y}: monthly stock, not an annual sum."]for y in i['anos']}
             pt,en=temas[i['familia']]
             net_defs.append(dict(id=i['id'],nome=i['nome'],nome_en=i['nome_en'],descricao=i['descricao'],descricao_en=i['descricao_en'],tema=pt,tema_en=en,unidade=i['unidade'],unidade_en=i['unidade_en'],formato='numero',periodos=i['anos'],frequencia='anual',metodo_referencia='razao',normalizacao='Estoque mensal no mês de referência; não somar meses. Compare lugares por densidades e proporções.',normalizacao_en='Monthly stock at the reference month; do not add months. Compare places using densities and shares.',fator=1,ranking=False,fonte_nome=i['fonte_nome'],fontes=[dict(nome=i['fonte_nome'],url=i['fonte_url'])],area='internet',rede='todas',catalogo='internet_original',indice=j,notas_anos=notas))
+        for item in net_defs:
+            if item['id']=='int_smp_meses_divergentes':item.update(notas_anos={},normalizacao='Metadado da edição nacional, não erro confirmado do município. Consulte os meses identificados no painel.',normalizacao_en='National edition metadata, not a confirmed municipal error. Inspect the flagged months in the dashboard.')
         defs+=net_defs
     saida=destino/'gold/raiox';saida.mkdir(parents=True)
     def objeto(nome,body,ext='json'):
@@ -256,7 +258,7 @@ def gerar(fontes, destino):
          territorios=contagem,indicadores=len(defs),max_trecho_bytes=max_trecho)
     # Mantém as edições anteriores para clientes abertos antes da ampliação.
     perfis_mob=any(i.get('area')=='mobilidade'and i.get('tema')=='raca'for i in defs)
-    (saida/('v7_manifesto.json'if net else'v6_manifesto.json'if seg else'v4_manifesto.json'if perfis_mob else'v3_manifesto.json'if mob else'v2_manifesto.json'if agro else'manifesto.json')).write_bytes(compacto(manifesto))
+    (saida/('v8_manifesto.json'if net and 'referencias_smp'in mm else'v7_manifesto.json'if net else'v6_manifesto.json'if seg else'v4_manifesto.json'if perfis_mob else'v3_manifesto.json'if mob else'v2_manifesto.json'if agro else'manifesto.json')).write_bytes(compacto(manifesto))
     report=dict(ok=True,territorios=contagem,indicadores=len(defs),observacoes_com_valor=validos,max_trecho_bytes=max_trecho,
                 bytes=sum(p.stat().st_size for p in saida.iterdir()),arquivos=len(list(saida.iterdir())))
     (destino/'auditoria_geracao.json').write_bytes(compacto(report));print(json.dumps(report),flush=True)
