@@ -292,6 +292,13 @@ export function App() {
     if (para.endsWith('/comparar')) {
       const p = new URLSearchParams(search); if (!p.has('cod') && p.get('ente')) p.set('cod', p.get('ente') === '53' ? '5300108' : p.get('ente')!);
       if (!p.has('indicador') && p.get('ind') && area !== 'financas') p.set('indicador', p.get('ind')!);
+      if (p.has('ano') && !p.has('periodo') && !p.has('mes')) p.set('ano_origem', p.get('ano')!);
+      return { pathname: para, search: '?' + p.toString() };
+    }
+    if (para.endsWith('/mapa') && area !== 'ia' && area !== 'downloads') {
+      const p = new URLSearchParams(buscaEntreAreas(search, area, area));
+      if (atuais.get('ind')) p.set('ind', atuais.get('ind')!);
+      if (p.has('ano')) p.set('ano_origem', p.get('ano')!);
       return { pathname: para, search: '?' + p.toString() };
     }
     return { pathname: para, search: (area === 'agropecuaria' || area === 'mobilidade' || area === 'seguranca' || area === 'internet' || (area === 'energia' || area === 'comex')) ? buscaEntreAreas(search,area,area) : area === 'saneamento' ? '?' + filtrosSaneamento.toString() : area === 'downloads' ? search : area === 'ia' ? buscaIa : area === 'educacao' ? buscaEntreAreas(search, 'educacao', para.includes('/financiamento') || para.includes('/profissionais') ? 'financas' : 'educacao') : area === 'munic' ? contextoMunic(search, DESTINO_MUNIC[para] ?? 'avancado', EDICOES_MUNIC) : area === 'clima' ? buscaClima(search) : area === 'assistencia' ? buscaEntreAreas(search, 'assistencia', 'assistencia') : buscaArea };
@@ -392,7 +399,7 @@ export function App() {
           {!['ia', 'downloads', 'raiox'].includes(area) && /^\/(receitas|despesas|despesas-orcamentarias|socioeconomico|trabalho|datasus|educacao|saneamento|assistencia|munic|clima|rankings)\/?$/.test(pathname) && <aside className="atalho-comparacoes"><Link to={linkPagina(`${({ financas: '', trabalho: '/trabalho', saude: '/datasus', educacao: '/educacao', munic: '/munic', clima: '/clima', assistencia: '/assistencia', saneamento: '/saneamento', agropecuaria: '/agropecuaria', comex: '/comex', energia: '/energia', internet: '/internet', seguranca: '/seguranca', mobilidade: '/mobilidade', ia: '', downloads: '', raiox: '' })[area]}/comparar`)}>{t('Comparar com regiões e acompanhar no tempo →', 'Compare with regions and track changes over time →')}</Link><span>{t('Taxas, proporções e valores por habitante; totais nas tabelas originais.', 'Rates, shares and values per inhabitant; totals in the original tables.')}</span></aside>}
           <Suspense fallback={<p className="carregando" role="status">{t('Abrindo o painel…', 'Opening the dashboard…')}</p>}><ProvedorDados>
             <Routes>
-              <Route path="/" element={<Navigate to={{ pathname: '/ia', search: buscaIaLegada(search), hash }} replace />} />
+              <Route path="/" element={<Navigate to={{ pathname: search ? '/ia' : '/raio-x', search: buscaIaLegada(search), hash }} replace />} />
               <Route path="/raio-x" element={<RaioX />} />
               <Route path="/receitas" element={<ReceitasVisaoGeral />} />
               <Route path="/receitas/evolucao" element={<ReceitasEvolucao />} />

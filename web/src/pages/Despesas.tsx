@@ -21,7 +21,6 @@ export const textoIntra = () =>
 export function DespesasVisaoGeral() {
   const f = useFiltros();
   const { coluna, setColuna, opcoes } = useColuna('I-E', f.ano, 'Despesas Empenhadas');
-  const arvore = useApi<Arvore>(coluna ? 'arvore' : null, { anexo: 'I-E', ano: f.ano, coluna, ...f.escopo });
   const kpi = useApi<Linha[]>('agregado', {
     por: 'exercicio',
     campos: 'despesa_empenhada_sem_intra,despesa_liquidada_sem_intra,despesa_paga_sem_intra,despesa_intra,despesa_empenhada',
@@ -29,6 +28,8 @@ export function DespesasVisaoGeral() {
     ano: f.ano, ...f.escopo,
   });
   const k = kpi.dados?.[0];
+  // O resumo preparado aparece antes de iniciar o motor da árvore detalhada.
+  const arvore = useApi<Arvore>(coluna && kpi.dados ? 'arvore' : null, { anexo: 'I-E', ano: f.ano, coluna, ...f.escopo });
   const funcoes = useMemo(
     () => (arvore.dados?.nos ?? []).filter((n) => n.tipo === 'conta' && n.nivel === 1 && n.valor)
       .sort((a, b) => (b.valor ?? 0) - (a.valor ?? 0)).slice(0, 12),

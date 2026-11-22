@@ -297,7 +297,7 @@ def teste_fonte_perfis():
 
 def tabela2(saida: Path, ano=2024):
     con = duckdb.connect()
-    return con, f"read_parquet('{(saida / 'gold' / 'trabalho' / 'perfis_v2' / f'ano={ano}.parquet').as_posix()}')"
+    return con, f"read_parquet('{(saida / 'gold' / 'trabalho' / 'perfis_v2_validos' / f'ano={ano}.parquet').as_posix()}')"
 
 
 def ajustar_gold(base: Path, sql: str):
@@ -326,7 +326,7 @@ def teste_v2_geracao_e_regras_de_remuneracao():
         saida = t / "candidato"
         r = m.executar(micro, base, saida, [2024], threads=1, memoria="1GB", log=lambda *_: None)  # padrão: versão 2
         con, src = tabela2(saida)
-        confere("v2 em perfis_v2", (saida / "gold/trabalho/perfis_v2/ano=2024.parquet").exists() and not (saida / "gold/trabalho/perfis").exists())
+        confere("v2 em perfis_v2_validos", (saida / "gold/trabalho/perfis_v2_validos/ano=2024.parquet").exists() and not (saida / "gold/trabalho/perfis").exists())
         cols = {x[0]: x[1] for x in con.execute(f"DESCRIBE SELECT * FROM {src}").fetchall()}
         confere("colunas v2", cols == {"ano": "INTEGER", "escopo": "VARCHAR", "variavel": "VARCHAR", "codigo": "VARCHAR", "vinculos": "BIGINT",
                                        "total": "BIGINT", "massa_dez_centavos": "BIGINT", "n_rem_dez": "BIGINT", "remuneracao_media_dez": "DOUBLE"}, str(cols))
@@ -334,8 +334,8 @@ def teste_v2_geracao_e_regras_de_remuneracao():
         confere("v2 ordenado", linhas == sorted(linhas))
         # total/total: centavos exatos, n e média (R$) com TODOS os vínculos no denominador
         goiania = linha2(con, src, "5208707", "total", "total")
-        confere("Goiânia total", goiania[:4] == (6, 6, 330075, 3) and perto(goiania[4], 3300.75 / 6), str(goiania))
-        confere("Goiânia: média usa os 6 vínculos, não os 3 com valor", not perto(goiania[4], 3300.75 / 3))
+        confere("Goiânia total", goiania[:4] == (6, 6, 330075, 3) and perto(goiania[4], 3300.75 / 3), str(goiania))
+        confere("Goiânia: média usa os 3 valores válidos; os 6 vínculos são preservados", not perto(goiania[4], 3300.75 / 6))
         ap = linha2(con, src, "5201108", "total", "total")
         confere("grupo todo sem remuneração: massa e média NULL (não R$ 0,00), n=0", ap == (1, 1, None, 0, None), str(ap))
         for z in ("3304557", "1100015"):
@@ -346,14 +346,14 @@ def teste_v2_geracao_e_regras_de_remuneracao():
         confere("BR: massa e n só do universo", linha2(con, src, "BR", "total", "total")[:4] == (10, 10, 910085, 6))
         # UF/BR: numeradores e denominadores somados, média recalculada (nunca média de médias)
         go = linha2(con, src, "GO", "total", "total")
-        confere("GO ponderada", go[:4] == (7, 7, 330075, 3) and perto(go[4], 3300.75 / 7), str(go))
+        confere("GO ponderada", go[:4] == (7, 7, 330075, 3) and perto(go[4], 3300.75 / 3), str(go))
         br = linha2(con, src, "BR", "total", "total")
-        confere("BR ponderada", perto(br[4], 9100.85 / 10), str(br))
+        confere("BR ponderada", perto(br[4], 9100.85 / 6), str(br))
         # categoria: grupos de tamanhos diferentes; vínculo sem remuneração fica no denominador
         r1 = linha2(con, src, "GO", "raca_cor", "1")  # Goiânia (1000,50) + Aparecida (sem valor)
-        confere("GO raça 1: 2 vínculos, 1 valor, média 500,25 (e não 1000,50)", r1[:4] == (2, 7, 100050, 1) and perto(r1[4], 500.25), str(r1))
+        confere("GO raça 1: 2 vínculos, 1 valor, média 1000,50 entre valores informados", r1[:4] == (2, 7, 100050, 1) and perto(r1[4], 1000.50), str(r1))
         r1b = linha2(con, src, "BR", "raca_cor", "1")  # + SP (5000,00 e 100,10)
-        confere("BR raça 1 ponderada", r1b[:4] == (4, 10, 610060, 3) and perto(r1b[4], 6100.60 / 4), str(r1b))
+        confere("BR raça 1 ponderada", r1b[:4] == (4, 10, 610060, 3) and perto(r1b[4], 6100.60 / 3), str(r1b))
         medias = [linha2(con, src, e, "raca_cor", "1")[4] for e in ("5208707", "5201108", "3550308")]
         confere("a média de BR não é a média das médias", not perto(r1b[4], sum(x for x in medias if x is not None) / 2), str(medias))
         # zero, negativo, vazio: vínculo conta, valor não; categorias sem nenhum valor positivo ficam NULL
@@ -365,7 +365,7 @@ def teste_v2_geracao_e_regras_de_remuneracao():
         # vinculo_mte: 96 em estatutários (rem 0), aprendiz (55, negativo) em outros
         mte = {c: linha2(con, src, "BR", "vinculo_mte", c) for c in ("1", "2", "3")}
         confere("MTE BR celetistas", mte["1"][:4] == (5, 10, 710085, 5), str(mte["1"]))
-        confere("MTE BR estatutários: 3 vínculos, 1 valor", mte["2"][:4] == (3, 10, 200000, 1) and perto(mte["2"][4], 2000.0 / 3), str(mte["2"]))
+        confere("MTE BR estatutários: 3 vínculos, 1 valor", mte["2"][:4] == (3, 10, 200000, 1) and perto(mte["2"][4], 2000.0 / 1), str(mte["2"]))
         confere("MTE BR outros sem valor: NULL", mte["3"] == (1, 10, None, 0, None), str(mte["3"]))
         # categorias não observadas não existem (sem média inventada)
         confere("categoria não observada sem linha", linha2(con, src, "5208707", "raca_cor", "6") is None)
@@ -377,22 +377,22 @@ def teste_v2_geracao_e_regras_de_remuneracao():
         confere("n_rem <= vínculos e nulidade coerente", con.execute(
             f"SELECT count(*) FROM {src} WHERE n_rem_dez > vinculos OR (massa_dez_centavos IS NULL) <> (n_rem_dez = 0)").fetchone()[0] == 0)
         # índice V2
-        ind = json.loads((saida / "gold/trabalho/perfis_v2/indice.json").read_text(encoding="utf-8"))
+        ind = json.loads((saida / "gold/trabalho/perfis_v2_validos/indice.json").read_text(encoding="utf-8"))
         reg = ind["arquivos"]["2024"]
         confere("índice v2", ind["versao"] == 2 and ind["anos"] == [2024] and "remuneracao" in ind and "massa_dez_centavos" in ind["colunas"])
         confere("índice: conciliação de massa e n_rem", reg["conciliacao"]["massa_dez"]["maior_desvio_centavos"] == 0
                 and reg["conciliacao"]["n_rem_dez"]["divergencias"] == 0 and reg["massa_br_centavos"] == 910085 and reg["n_rem_dez_br"] == 6)
-        confere("índice: fórmula documentada", "TODOS os vínculos" in ind["remuneracao"]["formula"] and "BRL" in ind["remuneracao"]["referencia"])
+        confere("índice: fórmula documentada", "n_rem_dez" in ind["remuneracao"]["formula"] and "BRL" in ind["remuneracao"]["referencia"])
         # manifesto candidato com a fonte V2 (e sem fallback quando a base não tinha V1)
         man = json.loads((saida / "gold/manifesto.json").read_text(encoding="utf-8"))
         f = man["fontes"]["rais_perfis"]
-        confere("manifesto v2", f["versao"] == 2 and f["arquivos"] == "gold/trabalho/perfis_v2/ano={ano}.parquet" and f["anos"] == [2024]
-                and f["indice"] == "gold/trabalho/perfis_v2/indice.json" and "fallback_v1" not in f and "remuneracao" in f)
+        confere("manifesto v2", f["versao"] == 2 and f["arquivos"] == "gold/trabalho/perfis_v2_validos/ano={ano}.parquet" and f["anos"] == [2024]
+                and f["indice"] == "gold/trabalho/perfis_v2_validos/indice.json" and "fallback_v1" not in f and "remuneracao" in f)
         confere("manifesto preserva as demais fontes", man["fontes"]["rais"] == {"anos": [2024]} and man["fontes"]["siconfi"] == {"x": 1})
         confere("manifesto de origem intacto", (base / "gold" / "manifesto.json").read_bytes() == manif_antes)
         confere("retorno v2", r["anos"] == [2024])
         # retomada: mantém o ano validado; arquivo adulterado é regerado
-        arq = saida / "gold/trabalho/perfis_v2/ano=2024.parquet"
+        arq = saida / "gold/trabalho/perfis_v2_validos/ano=2024.parquet"
         mt = arq.stat().st_mtime_ns
         msgs = []
         m.executar(micro, base, saida, [2024], threads=1, log=msgs.append)
@@ -412,7 +412,7 @@ def teste_v2_tolerancia_e_divergencias_do_gold():
         ajustar_gold(base, "UPDATE g SET massa_dez = 3300.76 WHERE cod_ibge = 5208707 AND ano = 2024")
         saida = t / "c"
         m.executar(micro, base, saida, [2024], threads=1, log=lambda *_: None)
-        ind = json.loads((saida / "gold/trabalho/perfis_v2/indice.json").read_text(encoding="utf-8"))
+        ind = json.loads((saida / "gold/trabalho/perfis_v2_validos/indice.json").read_text(encoding="utf-8"))
         confere("desvio de 1 centavo registrado", ind["arquivos"]["2024"]["conciliacao"]["massa_dez"]["maior_desvio_centavos"] == 1
                 and ind["maior_desvio_centavos"] == 1 and ind["arquivos"]["2024"]["conciliacao"]["massa_dez"]["municipios_com_desvio"] == 1)
         con, src = tabela2(saida)
@@ -421,8 +421,8 @@ def teste_v2_tolerancia_e_divergencias_do_gold():
         ajustar_gold(base, "UPDATE g SET massa_dez = 3300.80 WHERE cod_ibge = 5208707 AND ano = 2024")
         levanta("massa do gold alterada (5 centavos) recusa na retomada", m.ErroConciliacao,
                 lambda: m.executar(micro, base, saida, [2024], threads=1, log=lambda *_: None))
-        confere("ano recusado não é anunciado", json.loads((saida / "gold/trabalho/perfis_v2/indice.json").read_text(encoding="utf-8"))["anos"] == [])
-        confere("fonte_perfis não anuncia o ano", m.fonte_perfis(saida / "gold/trabalho/perfis_v2", versao=2) == {})
+        confere("ano recusado não é anunciado", json.loads((saida / "gold/trabalho/perfis_v2_validos/indice.json").read_text(encoding="utf-8"))["anos"] == [])
+        confere("fonte_perfis não anuncia o ano", m.fonte_perfis(saida / "gold/trabalho/perfis_v2_validos", versao=2) == {})
     with tempfile.TemporaryDirectory() as t:
         t = Path(t)
         micro, base = montar_origens(t)
@@ -433,7 +433,7 @@ def teste_v2_tolerancia_e_divergencias_do_gold():
         micro, base = montar_origens(t)
         ajustar_gold(base, "UPDATE g SET n_rem_dez = 4 WHERE cod_ibge = 5208707 AND ano = 2024")
         levanta("n_rem_dez do gold diferente recusa", m.ErroConciliacao, lambda: m.executar(micro, base, t / "c", [2024], threads=1, log=lambda *_: None))
-        confere("sem arquivo final", not (t / "c/gold/trabalho/perfis_v2/ano=2024.parquet").exists())
+        confere("sem arquivo final", not (t / "c/gold/trabalho/perfis_v2_validos/ano=2024.parquet").exists())
     with tempfile.TemporaryDirectory() as t:
         t = Path(t)
         micro, base = montar_origens(t)
@@ -469,7 +469,7 @@ def teste_v2_validacao_detecta_arquivo_ruim():
         micro, base = montar_origens(t)
         saida = t / "c"
         m.executar(micro, base, saida, [2024], threads=1, log=lambda *_: None)
-        arq = saida / "gold/trabalho/perfis_v2/ano=2024.parquet"
+        arq = saida / "gold/trabalho/perfis_v2_validos/ano=2024.parquet"
         gold = base / "gold/trabalho/municipios.parquet"
         con = duckdb.connect()
 
@@ -511,14 +511,14 @@ def teste_v2_fallback_v1_e_versoes_separadas():
         m.executar(micro, base, saida, [2024], threads=1, log=lambda *_: None)  # V2 na mesma pasta de saída
         confere("V1 intacta depois de gerar a V2", m._sha256(v1) == v1_hash and (saida / "gold/trabalho/perfis/indice.json").read_bytes() == v1_indice)
         comb = m.fonte_perfis_trabalho(trabalho)["rais_perfis"]
-        confere("prefere a V2 e leva a V1 como fallback", comb["versao"] == 2 and comb["arquivos"].endswith("perfis_v2/ano={ano}.parquet")
+        confere("prefere a V2 e leva a V1 como fallback", comb["versao"] == 2 and comb["arquivos"].endswith("perfis_v2_validos/ano={ano}.parquet")
                 and comb["fallback_v1"] == {"anos": [2024], "arquivos": "gold/trabalho/perfis/ano={ano}.parquet", "indice": "gold/trabalho/perfis/indice.json"}, str(comb)[:300])
         # a V2 não é anunciada se o arquivo some: volta para a V1
-        os.remove(saida / "gold/trabalho/perfis_v2/ano=2024.parquet")
+        os.remove(saida / "gold/trabalho/perfis_v2_validos/ano=2024.parquet")
         volta = m.fonte_perfis_trabalho(trabalho)["rais_perfis"]
         confere("sem arquivo V2 validado, volta à V1", volta["versao"] == 1 and "fallback_v1" not in volta)
         # um índice não vale como o da outra versão
-        confere("índice V2 não é lido como V1", m.ler_indice(saida / "gold/trabalho/perfis_v2", 1)["arquivos"] == {}
+        confere("índice V2 não é lido como V1", m.ler_indice(saida / "gold/trabalho/perfis_v2_validos", 1)["arquivos"] == {}
                 and m.ler_indice(saida / "gold/trabalho/perfis", 2)["arquivos"] == {})
         # V2 nunca reaproveita um arquivo da V1: apagando só o V2, o índice V2 não aceita o V1 no lugar
         msgs = []
@@ -553,13 +553,13 @@ def teste_v2_limites_das_origens():
             levanta(f"V2 destino recusado: {nome}", m.ErroDestino, lambda alvo=alvo: m.executar(micro, base, alvo, [2024], threads=1, log=lambda *_: None))
         depois = sorted((p.relative_to(t), p.stat().st_size) for p in t.rglob("*") if p.is_file())
         confere("V2: nenhuma escrita nas origens", depois == antes)
-        confere("V2: nenhum diretório criado nas origens", not (base / "gold" / "novo").exists() and not (base / "gold/trabalho/perfis_v2").exists()
+        confere("V2: nenhum diretório criado nas origens", not (base / "gold" / "novo").exists() and not (base / "gold/trabalho/perfis_v2_validos").exists()
                 and not (micro / "silver" / "x").exists())
         m.executar(micro, base, t / "ok", [2024], threads=1, log=lambda *_: None)
-        confere("V2: destino irmão aceito", (t / "ok/gold/trabalho/perfis_v2/ano=2024.parquet").exists())
+        confere("V2: destino irmão aceito", (t / "ok/gold/trabalho/perfis_v2_validos/ano=2024.parquet").exists())
         # a CLI usa a V2 por padrão
         rc = m.main(["--micro", str(micro), "--base", str(base), "--saida", str(t / "cli"), "--anos", "2024"])
-        confere("CLI gera perfis_v2 por padrão", rc == 0 and (t / "cli/gold/trabalho/perfis_v2/ano=2024.parquet").exists() and not (t / "cli/gold/trabalho/perfis").exists())
+        confere("CLI gera perfis_v2_validos por padrão", rc == 0 and (t / "cli/gold/trabalho/perfis_v2_validos/ano=2024.parquet").exists() and not (t / "cli/gold/trabalho/perfis").exists())
         confere("CLI recusa destino nas origens", m.main(["--micro", str(micro), "--base", str(base), "--saida", str(base / "gold" / "z"), "--anos", "2024"]) == 1)
 
 

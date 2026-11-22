@@ -15,8 +15,10 @@ import { MUNIC, contextoMunic } from './sistema_munic.js';
 import { SAUDE, contextoSaude } from './sistema_saude.js';
 import { TRABALHO, contextoTrabalho } from './sistema_trabalho.js';
 import { ASSISTENCIA, contextoAssistencia } from './sistema_assistencia.js';
+import { NOVOS_PAINEIS, secaoPainel, contextoPainel } from './sistema_paineis.js';
 
 export const PAINEIS = {
+  ...Object.fromEntries(Object.entries(NOVOS_PAINEIS).map(([p,x])=>[p,{nome:x.nome,secao:secaoPainel(p)}])),
   saneamento:{nome:'saneamento (SNIS/SINISA)',secao:SANEAMENTO},
   educacao: {nome:'educação (Inep)',secao:EDUCACAO},
   financas: { nome: 'finanças públicas', secao: FINANCAS },
@@ -122,7 +124,7 @@ const COMO_RESPONDER = `# Como responder
 - Média de um conjunto = soma dos valores ÷ soma dos denominadores correspondentes, nunca a média das médias. Variação de uma região = pelos totais da região (soma dos municípios no início e no fim), não pela média das variações.
 - Variação percentual ((final ÷ inicial − 1) × 100) e diferença em pontos percentuais são medidas diferentes: não chame uma de outra. Variação percentual com valor inicial zero ou ausente é não calculável: diga isso (não 0, não infinito). Zero observado, dado ausente e indicador indefinido (denominador zero) são casos diferentes.
 - Soma de estoques anuais (ex.: vínculos ativos em 31/12 de vários anos) não é número de empregos nem de pessoas: são registros somados ao longo dos anos; diga isso se somar anos.
-- Remuneração: mostre o numerador e o denominador adotados. Soma das remunerações positivas ÷ todos os vínculos ativos do grupo é diferente de ÷ só os vínculos com remuneração positiva; adote a primeira (regra do PDET) e, se a pergunta pedir a média de quem recebe, apresente também a segunda, com as duas contagens. Se a tabela agregada não separa zero, nulo e outros valores não positivos, diga que essa distinção não é possível nela.
+- Remuneração média: soma das remunerações positivas ÷ número de vínculos com remuneração positiva informada, no mesmo grupo e referência. Mostre também o total de vínculos e a cobertura salarial. Ausente, zero e negativo ficam fora da média, nunca como salário zero. Se uma tabela não separa essas condições, informe essa limitação; não mude o denominador para todos os vínculos.
 - Valores reais: informe o índice (IPCA, tabela ipca), a fonte, o mês de referência dos preços e o ano-base; diferencie a correção pelo índice de dezembro (dezembro a dezembro) da correção pelo índice médio anual, use a que a pergunta pede e diga qual. Converta DECIMAL em DOUBLE (::DOUBLE) antes de multiplicar por fatores.
 - CNAE: liste cada código usado com o nome oficial e o alcance. Uma subclasse (7 dígitos) já está dentro da sua classe (5 dígitos): não some as duas nem filtre com as duas no mesmo OR. Filtros vêm da pergunta e da definição do indicador, nunca de números de outro estudo. Tema, território e período do texto, dos títulos e das conclusões têm de ser os dos filtros executados: não cite uma cadeia produtiva, município ou ano que o SQL não filtrou.
 
@@ -173,9 +175,9 @@ export function paineisDoPedido(v) {
 }
 
 /** Blocos de sistema: o fixo (com marcador de cache) e um bloco de dados por painel. */
-export function instrucoes(paineis, { manifesto, educacao, saneamento, contextoTrabalho: ctxTrabalho }) {
+export function instrucoes(paineis, { manifesto, educacao, saneamento, contextoTrabalho: ctxTrabalho, temasPreparados = {} }) {
   const nomes = paineis.map((p) => PAINEIS[p].nome).join(', ').replace(/, ([^,]*)$/, ' e $1');
   const fixo = [introducao(nomes), ...paineis.map((p) => PAINEIS[p].secao), ...(paineis.length > 1 ? [cruzamento(paineis)] : []), COMO_RESPONDER].join('\n\n');
-  const dados = paineis.map((p) => (p === 'saneamento' ? contextoSaneamento(saneamento) : p === 'educacao' ? contextoEducacao(educacao) : p === 'financas' ? contextoDosDados(manifesto) : p === 'saude' ? contextoSaude(manifesto) : p === 'munic' ? contextoMunic(manifesto) : p === 'clima' ? contextoClima(manifesto) : p === 'assistencia' ? contextoAssistencia(manifesto) : contextoTrabalho(ctxTrabalho)));
+  const dados = paineis.map((p) => (NOVOS_PAINEIS[p] ? contextoPainel(p,temasPreparados[p]) : p === 'saneamento' ? contextoSaneamento(saneamento) : p === 'educacao' ? contextoEducacao(educacao) : p === 'financas' ? contextoDosDados(manifesto) : p === 'saude' ? contextoSaude(manifesto) : p === 'munic' ? contextoMunic(manifesto) : p === 'clima' ? contextoClima(manifesto) : p === 'assistencia' ? contextoAssistencia(manifesto) : contextoTrabalho(ctxTrabalho)));
   return [{ type: 'text', text: fixo, cache_control: { type: 'ephemeral' } }, ...dados.map((text) => ({ type: 'text', text }))];
 }

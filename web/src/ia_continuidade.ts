@@ -1,3 +1,4 @@
+import { entradaConsultaPainel } from './ia_paineis';
 /**
  * Continuidade das conversas da IA: consultas partidas por ano (com cache e cobertura parcial), resultados
  * já apurados que as perguntas seguintes reaproveitam (tabelas res_C1…) e compactação do histórico enviado
@@ -137,12 +138,12 @@ export function resultadosReaproveitaveis(hist: Mensagem[], resultados: Record<s
   for (const m of hist) {
     if (m.role !== 'assistant' || !Array.isArray(m.content)) continue;
     for (const b of m.content) {
-      if (b.type !== 'tool_use' || b.name !== 'consultar' || !b.id) continue;
+      if (b.type !== 'tool_use' || !['consultar','consultar_painel'].includes(b.name??'') || !b.id) continue;
       const res = resultados[b.id];
       const rotulo = rotulos.get(b.id);
       if (!res || !rotulo || 'erro' in res || res.parcial || res.linhas.length < res.total) continue;
       if (versao && res.dados && res.dados !== versao) continue;
-      const e = (b.input ?? {}) as { sql?: unknown; objetivo?: unknown; definicao?: unknown; regressao?: unknown };
+      const e = (b.name === 'consultar_painel' ? entradaConsultaPainel(b.input) : b.input ?? {}) as { sql?: unknown; objetivo?: unknown; definicao?: unknown; regressao?: unknown };
       if (e.regressao && typeof e.regressao === 'object' && (e.regressao as { y?: unknown }).y) continue;
       r.set(rotulo, { rotulo, id: b.id, sql: String(e.sql ?? ''), objetivo: String(e.objetivo ?? ''), definicao: String(e.definicao ?? ''), res });
     }
@@ -221,7 +222,7 @@ export function resumoDoHistorico(antigas: Mensagem[], resultados: Record<string
     if (ehPergunta(m)) { n++; continue; }
     if (m.role !== 'assistant' || !Array.isArray(m.content)) continue;
     for (const b of m.content) {
-      if (b.type !== 'tool_use' || b.name !== 'consultar' || !b.id) continue;
+      if (b.type !== 'tool_use' || !['consultar','consultar_painel'].includes(b.name??'') || !b.id) continue;
       const e = (b.input ?? {}) as { objetivo?: unknown; definicao?: unknown };
       const ok = resultados[b.id] && !('erro' in resultados[b.id]);
       (consultas.get(String(n)) ?? consultas.set(String(n), []).get(String(n))!).push(

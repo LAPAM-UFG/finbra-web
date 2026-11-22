@@ -218,7 +218,7 @@ export function totalDosGrupos(linhas: Record<string, unknown>[]) {
   if (!(ativos > 0)) return null;
   const nRem = linhas.reduce((s, r) => s + n(r.n_rem_dez), 0);
   const soma = nRem > 0 && linhas.some((r) => typeof r.rem_dez_soma === 'number') ? linhas.reduce((s, r) => s + n(r.rem_dez_soma), 0) : null;
-  return { vinculos: ativos, ativos, n_rem_dez: nRem, rem_dez_soma: soma, rem_dez_media: soma === null ? null : soma / ativos };
+  return { vinculos: ativos, ativos, n_rem_dez: nRem, rem_dez_soma: soma, rem_dez_media: soma === null || nRem === 0 ? null : soma / nRem };
 }
 
 export type Concentracao = { top3: { nome: string; parte: number }[]; parteTop3: number; hhi: number; efetivo: number; n: number; total: number };

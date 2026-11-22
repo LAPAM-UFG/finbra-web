@@ -40,8 +40,7 @@ total/total), a remuneração de DEZEMBRO nominal em R$ (BRL, rem_dezembro_nom) 
 
     massa_dez_centavos     BIGINT nullable  soma EXATA, em centavos inteiros, de rem_dezembro_nom > 0 dos vínculos ativos do grupo
     n_rem_dez              BIGINT           quantos vínculos ativos têm rem_dezembro_nom > 0 (0 e negativo não contam)
-    remuneracao_media_dez  DOUBLE nullable  massa_dez_centavos / 100 / vinculos: todos os vínculos ativos do GRUPO no denominador,
-                                            inclusive quem não tem remuneração válida
+    remuneracao_media_dez  DOUBLE nullable  massa_dez_centavos / 100 / n_rem_dez: vínculos ativos do GRUPO com remuneração positiva
 
 Sem nenhum valor positivo: massa e média são NULL (nunca R$ 0,00) e n_rem_dez = 0; grupo sem vínculos: média NULL. UF e
 Brasil somam numeradores e denominadores dos municípios, nunca médias. Cada município é conciliado com o gold:
@@ -122,7 +121,7 @@ def validar_destino(alvo, origens) -> Path:
 
 
 def _pasta(versao: int) -> str:
-    return "perfis_v2" if versao == VERSAO_2 else "perfis"
+    return "perfis_v2_validos" if versao == VERSAO_2 else "perfis"
 
 
 def caminhos_saida(saida, versao: int = 1) -> dict:
@@ -289,7 +288,7 @@ def _montar(con, ano: int, versao: int = 1) -> None:
     """Tabela `saida_ano` com municípios, UFs e Brasil, a partir de `base` e `gm` (UF e BR somam os municípios).
 
     Versão 2: massa e n_rem_dez somam como os vínculos (numeradores e denominadores, nunca médias); a média é calculada
-    por linha como massa ÷ 100 ÷ vínculos do grupo (NULL sem massa ou sem vínculos)."""
+    por linha como massa ÷ 100 ÷ vínculos com remuneração válida (NULL sem massa ou sem remuneração válida)."""
     con.execute("""CREATE OR REPLACE TEMP TABLE bg AS
                    SELECT g.cod7, g.uf, b.raca_cor, b.escolaridade, b.tipo_vinculo, b.n, b.massa, b.n_rem
                    FROM base b JOIN gm g ON g.mun6 = b.mun6""")
@@ -308,7 +307,7 @@ def _montar(con, ano: int, versao: int = 1) -> None:
         con.execute(f"""CREATE OR REPLACE TEMP TABLE saida_ano AS
             SELECT {int(ano)}::INTEGER AS ano, l.escopo, l.variavel, l.codigo, l.vinculos::BIGINT AS vinculos, t.vinculos::BIGINT AS total,
                    l.massa::BIGINT AS massa_dez_centavos, l.n_rem::BIGINT AS n_rem_dez,
-                   CASE WHEN l.massa IS NOT NULL AND l.vinculos > 0 THEN l.massa::DOUBLE / 100.0 / l.vinculos END AS remuneracao_media_dez
+                   CASE WHEN l.massa IS NOT NULL AND l.n_rem > 0 THEN l.massa::DOUBLE / 100.0 / l.n_rem END AS remuneracao_media_dez
             FROM longo l JOIN (SELECT escopo, vinculos FROM longo WHERE variavel = 'total') t USING (escopo)""")
     else:
         con.execute(f"""CREATE OR REPLACE TEMP TABLE saida_ano AS
@@ -401,8 +400,8 @@ def _validar_remuneracao(con, q, problemas: list) -> dict:
     if q("SELECT count(*) FROM arq WHERE massa_dez_centavos < n_rem_dez OR massa_dez_centavos < 0"):
         problemas.append("massa menor que 1 centavo por valor informado")
     # média = massa ÷ 100 ÷ todos os vínculos do grupo; NULL sem massa ou sem vínculos (nunca R$ 0,00)
-    if q("""SELECT count(*) FROM arq WHERE (remuneracao_media_dez IS NULL) <> (massa_dez_centavos IS NULL OR vinculos = 0)
-              OR abs(remuneracao_media_dez - massa_dez_centavos / 100.0 / vinculos) > 1e-9 * greatest(1, abs(remuneracao_media_dez))"""):
+    if q("""SELECT count(*) FROM arq WHERE (remuneracao_media_dez IS NULL) <> (massa_dez_centavos IS NULL OR n_rem_dez = 0)
+              OR abs(remuneracao_media_dez - massa_dez_centavos / 100.0 / n_rem_dez) > 1e-9 * greatest(1, abs(remuneracao_media_dez))"""):
         problemas.append("média diferente de massa ÷ vínculos do grupo")
     # massas e n_rem_dez de TODAS as categorias somam ao total de cada variável
     if q(f"""SELECT count(*) FROM (SELECT escopo, variavel, sum(coalesce(massa_dez_centavos, 0)) AS sm, sum(n_rem_dez) AS sn FROM arq
@@ -512,11 +511,10 @@ def remuneracao_doc() -> dict:
         "campos": {
             "massa_dez_centavos": "BIGINT nullable: soma exata, em centavos inteiros, das remunerações de dezembro maiores que zero; NULL se ninguém tem valor positivo (nunca R$ 0,00)",
             "n_rem_dez": "BIGINT: vínculos ativos com remuneração de dezembro maior que zero",
-            "remuneracao_media_dez": "DOUBLE nullable, em R$: massa_dez_centavos / 100 / vinculos; NULL sem massa ou sem vínculos",
+            "remuneracao_media_dez": "DOUBLE nullable, em R$: massa_dez_centavos / 100 / n_rem_dez; NULL sem remuneração válida",
         },
-        "formula": "remuneracao_media_dez = (massa_dez_centavos / 100) / vinculos, com TODOS os vínculos ativos do grupo no denominador, "
-                   "inclusive quem não tem remuneração válida (regra do painel, trabalho.py; a média fica abaixo do salário de quem tem o valor)",
-        "positivos": "só rem_dezembro_nom > 0 entra em massa_dez_centavos e n_rem_dez; zero e negativo não são valor informado, mas o vínculo permanece no denominador",
+        "formula": "remuneracao_media_dez = (massa_dez_centavos / 100) / n_rem_dez; denominador restrito aos vínculos ativos com remuneração positiva informada",
+        "positivos": "só rem_dezembro_nom > 0 entra na massa e no denominador da média; vazio, zero e negativo ficam na contagem de cobertura, nunca como salário zero",
         "ausentes": "valor vazio, zero ou negativo conta como sem remuneração válida: n_rem_dez menor que vinculos mede quantos",
         "agregacao": "UF e Brasil somam vínculos, massa e n_rem_dez dos municípios e a média é recalculada; nunca média de médias",
         "categorias": "só as observadas no escopo têm linha; categoria não observada não tem média (nem 0)",
@@ -583,7 +581,7 @@ def fonte_perfis(perfis, verificar_hash: bool = True, versao: int = 1) -> dict:
     if not ok:
         return {}
     anos = sorted(ok)
-    pasta = _pasta(versao)
+    pasta = perfis.name
     entrada = {
         "versao": versao,
         "anos": anos,
@@ -619,7 +617,7 @@ def fonte_perfis_trabalho(pasta_trabalho) -> dict:
     a leva como fallback_v1 (anos que só a V1 tem); sem V2 válida, preserva a V1 como estava."""
     pasta = Path(pasta_trabalho)
     v1 = fonte_perfis(pasta / "perfis", versao=VERSAO)
-    v2 = fonte_perfis(pasta / "perfis_v2", versao=VERSAO_2)
+    v2 = fonte_perfis(pasta / "perfis_v2_validos", versao=VERSAO_2) or fonte_perfis(pasta / "perfis_v2", versao=VERSAO_2)
     if not v2:
         return v1
     fb = _fallback_v1(v1.get("rais_perfis")) if v1 else None

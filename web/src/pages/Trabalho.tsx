@@ -426,7 +426,7 @@ type Col = { campo: string; titulo: string; tipo: string; formato: (v: unknown) 
 /** Unidade de cada coluna do ranking (texto da evolução das posições e das exportações). */
 const UNIDADES_RANKING = (): Record<string, string> => ({
   empregos: t('vínculos ativos em 31/12', 'active jobs on Dec 31'), empregos_por_mil: t('vínculos por mil habitantes', 'jobs per 1,000 inhabitants'),
-  remuneracao_media: t('R$ por vínculo ativo (dezembro, regra do PDET)', 'R$ per active job (December, PDET rule)'),
+  remuneracao_media: t('R$ por vínculo com remuneração válida (dezembro)', 'R$ per job with valid pay (December)'),
   n_rem_dez: t('vínculos ativos com remuneração informada', 'active jobs with pay reported'),
   var_empregos: t('variação dos vínculos sobre o ano anterior', 'change in jobs on the previous year'),
   saldo_caged: t('admissões − desligamentos (CAGED)', 'hirings − separations (CAGED)'),
@@ -571,7 +571,7 @@ export function TrabalhoRankings() {
           </div>
         </div>
         <div className="cabeca-cartao">
-          <p className="desc">{t(`Universo: ${numero(universo.length)} municípios${recorte.min ? ` com pelo menos ${numero(recorte.min)} vínculos ativos` : ''}; ${numero(classificados)} com posição em ${colOrd?.titulo.toLowerCase() ?? ordem.campo} (sem o valor, sem posição; empates com a mesma posição: 1, 2, 2, 4). As taxas, médias e proporções permitem ordenar; os totais permanecem como contexto; a remuneração traz ao lado quantos ativos têm o valor (os demais contam como zero).`,
+          <p className="desc">{t(`Universo: ${numero(universo.length)} municípios${recorte.min ? ` com pelo menos ${numero(recorte.min)} vínculos ativos` : ''}; ${numero(classificados)} com posição em ${colOrd?.titulo.toLowerCase() ?? ordem.campo} (sem o valor, sem posição; empates com a mesma posição: 1, 2, 2, 4). As taxas, médias e proporções permitem ordenar; os totais permanecem como contexto; a remuneração traz ao lado quantos ativos têm o valor (os demais ficam fora da média).`,
             `Universe: ${numero(universo.length)} municipalities${recorte.min ? ` with at least ${numero(recorte.min)} active jobs` : ''}; ${numero(classificados)} ranked on ${colOrd?.titulo.toLowerCase() ?? ordem.campo} (no value, no rank; ties share a position: 1, 2, 2, 4). Rates, means and shares can be sorted; totals remain as context; pay comes with how many active jobs have the value (the rest count as zero).`)}{' '}
             <Dica rotulo={t('Vínculos por mil habitantes', 'Jobs per thousand inhabitants')}>{notaPorMil(anoRais)}</Dica></p>
           <BotoesExportar nome={`trabalho_ranking_${anoRais}`} obter={() => ({

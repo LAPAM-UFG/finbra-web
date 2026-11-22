@@ -1669,12 +1669,12 @@ describe('consulta personalizada (microdados da RAIS)', () => {
     assert.equal(ufs.linhas.reduce((t0, x) => t0 + (x.vinculos as number), 0), r.linhas[0].vinculos);
   });
 
-  test('remuneração média como a do PDET: Médico Neurocirurgião, Brasil, dezembro de 2024 = R$ 15.117,03', { skip: !existsSync(`${DATA}/gold/trabalho/cubo_uf/ano=2024.parquet`) }, async () => {
-    // PDET/MTE (RAIS Vínculo Id), média do Vl Remun Dezembro Nom, vínculo ativo em 31/12, CBO 225260: 15.117,03
+  test('remuneração informada: Médico Neurocirurgião, Brasil, dezembro de 2024; 590 salários entre 667 ativos', { skip: !existsSync(`${DATA}/gold/trabalho/cubo_uf/ano=2024.parquet`) }, async () => {
     const r = (await rota<R>('trab_consulta', { ano: 2024, agrupar: 'total', cbo: '225260' })).linhas[0];
-    assert.equal(Math.round((r.rem_dez_media as number) * 100) / 100, 15117.03);
+    assert.equal(Math.round((r.rem_dez_media as number) * 100) / 100, 17089.93);
+    quase(r.rem_dez_media as number, (r.rem_dez_soma as number) / 590);
     assert.equal(r.ativos, 667);
-    assert.equal(r.n_rem_dez, 590); // 77 ativos sem valor de dezembro entram como zero
+    assert.equal(r.n_rem_dez, 590); // 77 ativos sem valor permanecem no estoque, fora do divisor salarial.
   });
 
   test('combinar CNAEs: 4711 + 4712 = soma das duas consultas separadas', { skip: semCubo }, async () => {
@@ -1725,8 +1725,8 @@ describe('consulta personalizada (microdados da RAIS)', () => {
       const t0 = await total({ ...base, cbo: '2512' });
       // todo vínculo ativo está em exatamente uma situação da remuneração de dezembro
       assert.equal((t0.n_rem_dez as number) + (t0.rem_dez_ausente as number) + (t0.rem_dez_zero as number) + (t0.rem_dez_negativa as number), t0.ativos);
-      // média como a do PDET/MTE: massa ÷ todos os ativos (sem valor = zero)
-      quase(t0.rem_dez_media as number, (t0.rem_dez_soma as number) / (t0.ativos as number));
+      // O denominador salarial é distinto do estoque de ativos.
+      quase(t0.rem_dez_media as number, (t0.rem_dez_soma as number) / (t0.n_rem_dez as number));
       const p = ['rem_dez_p10', 'rem_dez_p25', 'rem_dez_mediana', 'rem_dez_p75', 'rem_dez_p90'].map((k) => t0[k] as number);
       assert.deepEqual([...p].sort((a, b) => a - b), p, 'percentis em ordem');
       // família + ocupação contida nela: nenhum vínculo conta duas vezes
@@ -1838,13 +1838,13 @@ describe('RAIS: atalhos, concentração e remuneração por grupo', () => {
   });
 
   test('totalDosGrupos: pesos diferentes, todos sem salário e sem vínculos (ausência não vira zero)', () => {
-    // média = soma ÷ ativos (nunca média das médias): 100 e 300 de soma, 1 e 3 ativos pesos diferentes
+    // 400 de massa, três remunerações válidas entre quatro vínculos: nunca média das médias.
     const t1 = totalDosGrupos([{ ativos: 1, n_rem_dez: 1, rem_dez_soma: 100, rem_dez_media: 100 }, { ativos: 3, n_rem_dez: 2, rem_dez_soma: 300, rem_dez_media: 100 }])!;
     assert.equal(t1.ativos, 4);
-    assert.equal(t1.rem_dez_media, 100);
+    assert.equal(t1.rem_dez_media, 400 / 3);
     assert.equal(t1.n_rem_dez, 3);
     const t2 = totalDosGrupos([{ ativos: 1, n_rem_dez: 1, rem_dez_soma: 1000, rem_dez_media: 1000 }, { ativos: 9, n_rem_dez: 9, rem_dez_soma: 9000, rem_dez_media: 1000 }, { ativos: 10, n_rem_dez: 0, rem_dez_soma: null, rem_dez_media: null }])!;
-    quase(t2.rem_dez_media as number, 10000 / 20); // a média das médias daria 1000
+    quase(t2.rem_dez_media as number, 10000 / 10); // dez ativos sem salário não reduzem a média.
     // todos os grupos com ativos e sem remuneração informada: média e soma ausentes, não zero
     const t3 = totalDosGrupos([{ ativos: 5, n_rem_dez: 0, rem_dez_soma: null, rem_dez_media: null }, { ativos: 2, n_rem_dez: 0, rem_dez_soma: null, rem_dez_media: null }])!;
     assert.equal(t3.ativos, 7);
@@ -1883,8 +1883,8 @@ describe('RAIS: atalhos, concentração e remuneração por grupo', () => {
     const tot = (await rota<R>('trab_consulta', { ano: ANO, agrupar: 'total', situacao: 'ativos' })).linhas[0];
     assert.equal(g.fonte, 'cubo_uf');
     assert.equal(g.linhas.reduce((s, r) => s + (r.ativos as number), 0), tot.ativos);
-    const massa = g.linhas.reduce((s, r) => s + (r.rem_dez_media as number) * (r.ativos as number), 0);
-    quase(massa / (tot.ativos as number), tot.rem_dez_media as number, 1e-9);
+    const massa = g.linhas.reduce((s, r) => s + (r.rem_dez_media as number) * (r.n_rem_dez as number), 0);
+    quase(massa / (tot.n_rem_dez as number), tot.rem_dez_media as number, 1e-9);
     assert.ok(g.linhas.every((r) => r.rem_dez_mediana === undefined || r.rem_dez_mediana === null));
   });
 
@@ -1895,8 +1895,8 @@ describe('RAIS: atalhos, concentração e remuneração por grupo', () => {
       const tot = (await rota<R>('trab_consulta', { ano: ANO, uf: 'GO', agrupar: 'total', situacao: 'ativos' })).linhas[0];
       assert.equal(g.fonte, 'micro');
       assert.equal(g.linhas.reduce((s, r) => s + (r.ativos as number), 0), tot.ativos);
-      const massa = g.linhas.reduce((s, r) => s + (r.rem_dez_media as number) * (r.ativos as number), 0);
-      quase(massa / (tot.ativos as number), tot.rem_dez_media as number, 1e-9);
+      const massa = g.linhas.reduce((s, r) => s + (r.rem_dez_media as number) * (r.n_rem_dez as number), 0);
+      quase(massa / (tot.n_rem_dez as number), tot.rem_dez_media as number, 1e-9);
       for (const r of g.linhas.filter((x) => (x.n_rem_dez as number) > 30)) {
         assert.ok((r.rem_dez_p10 as number) <= (r.rem_dez_mediana as number) && (r.rem_dez_mediana as number) <= (r.rem_dez_p90 as number));
       }

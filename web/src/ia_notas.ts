@@ -6,6 +6,7 @@
  */
 import { local, t } from './idioma';
 import { ehCompetencia, rotuloCompetencia, sqlSemTextos, type Periodo } from './ia_formato';
+import { pedidoDaConsultaPainel, fonteDaConsultaPainel } from './ia_paineis';
 
 export type NotaMetodologica = {
   id: string;
@@ -211,6 +212,12 @@ export function versaoDasBases(sqls: string[], fontes: Record<string, Record<str
     const quando = data(caged.processado_em);
     r.push(t(`Novo CAGED ${mesAno(caged.de)}–${mesAno(caged.ate)} (microdados do MTE/PDET)${quando ? `, processado em ${quando}` : ''}`,
       `New CAGED ${mesAno(caged.de)}–${mesAno(caged.ate)} (MTE/PDET microdata)${quando ? `, processed on ${quando}` : ''}`));
+  }
+  for(const tema of new Set(sqls.map(pedidoDaConsultaPainel).filter(p=>p!==null).map(p=>p.tema))){
+    const meta=fontes?.[tema];if(!meta)continue;
+    const anos=Array.isArray(meta.anos)?meta.anos as number[]:[];const quando=data(meta.processado_em??meta.gerado_em);
+    const consulta=sqls.find(s=>pedidoDaConsultaPainel(s)?.tema===tema)!;
+    r.push(`${fonteDaConsultaPainel(consulta)} · ${anos[0]??''}–${anos.at(-1)??''}${quando?t(`, edição de ${quando}`,`, edition dated ${quando}`):''}`);
   }
   return r;
 }

@@ -62,7 +62,7 @@ class Gerador:
      obs={(x[0],x[1]):x[2:]for x in itens}
      for j,cat in categorias:
       count,pct,media,massa,nrem=obs.get((cat['variavel'],cat['codigo']),[0,0 if total>0 else None,None,None,0]);medida=cat['medida']
-      vv=count if medida=='n'else pct if medida=='pct'else media;nn=massa if medida=='rem'else count;dd=count if medida=='rem'else total
+      vv=count if medida=='n'else pct if medida=='pct'else media;nn=massa if medida=='rem'else count;dd=nrem if medida=='rem'else total
       cc=(14 if count==0 else 15 if nrem is None else 13)if medida=='rem'and vv is None else 4 if medida=='pct'and total==0 else 1 if vv==0 else 0
       v[k,p,j]=np.nan if vv is None else vv;n[k,p,j]=np.nan if nn is None else nn;d[k,p,j]=dd;c[k,p,j]=cc;val[k,p,j]=np.nan if nrem is None else nrem
   for i in defs:

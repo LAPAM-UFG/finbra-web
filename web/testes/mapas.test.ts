@@ -50,7 +50,7 @@ test('Indicadores de Trabalho mantêm as contas do painel, quebra, ausência e a
   const celula = (id: string) => a[defs.findIndex(i => i.id === id)];
   assert.deepEqual(celula('variacao').slice(0, 1), [-10]); assert.equal(celula('variacao_pct')[0], -.5);
   assert.equal(celula('por_mil')[0], 10); assert.equal(celula('vinculos_por_estab')[0], 5);
-  assert.equal(celula('rem_media')[0], 100); assert.equal(celula('rem_media_real')[0], 120);
+  assert.equal(celula('rem_media')[0], 125); assert.equal(celula('rem_media_real')[0], 150);
   assert.equal(celula('mulheres')[0], .4); assert.equal(celula('sem_rem')[0], 2);
   const b = celulasPrincipaisTrabalho([{ ano: 2022, empregos: 20 }, { ano: 2023, empregos: 10 }], [], 2023, 202001, 202608);
   assert.equal(b[defs.findIndex(i => i.id === 'variacao')][3], 12);

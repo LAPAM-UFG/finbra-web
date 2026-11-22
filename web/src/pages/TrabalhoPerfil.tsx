@@ -265,7 +265,7 @@ export function TrabalhoPerfil() {
                   )}>
                   <Grafico opcao={opcaoSerie} nome={`perfil_${recorte.cbo}_serie`} descricao={t('Vínculos ativos por ano; anos de quebra marcados com linha tracejada. Valores na opção Tabela.', 'Active jobs by year; break years marked with a dashed line. Values in the Table option.')} />
                 </CartaoGrafico>
-                <CartaoGrafico titulo={t('2. Remuneração ao longo do tempo', '2. Pay over time')} desc={t('Dezembro: média nominal e real (regra do PDET) e mediana; ativos com valor e sem valor', 'December: nominal and real average (PDET rule) and median; active jobs with and without a value')}
+                <CartaoGrafico titulo={t('2. Remuneração ao longo do tempo', '2. Pay over time')} desc={t('Dezembro: média nominal e real entre valores válidos e mediana; ativos com valor e sem valor', 'December: nominal and real average among valid values and median; active jobs with and without a value')}
                   acoes={<Dica rotulo={t('Definições', 'Definitions')}>{notaDefinicoes()}</Dica>}
                   tabela={(
                     <>

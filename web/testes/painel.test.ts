@@ -36,6 +36,15 @@ test('indicadores da RAIS: por mil só com população válida, variação, esta
   assert.equal(r.setores.adm_publica.pct, 0.1);
 });
 
+test('remuneração não transforma vínculo sem valor em salário zero, inclusive em pacotes legados', () => {
+  const r=calcularRais({empregos:3954,n_rem_dez:3600,massa_dez:12873065,massa_dez_real:13422022.040615352,remuneracao_media:3255.706879109763},undefined,2024)!;
+  assert.equal(r.remMedia,12873065/3600);
+  assert.equal(r.semRem,354);
+  assert.equal(r.empregos,3954);
+  assert.equal(r.massa,12873065);
+  assert.equal(calcularRais({empregos:10,n_rem_dez:0,massa_dez:null},undefined,2024)!.remMedia,null);
+});
+
 test('sem ano anterior ou com denominadores zero, nada vira zero', () => {
   const r = calcularRais({ ...linha, estabelecimentos: 0, populacao: 0, homens: null }, undefined, 2010)!;
   assert.equal(r.variacaoAbs, null);

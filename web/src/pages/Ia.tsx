@@ -32,10 +32,12 @@ import { pedidoConferencia } from '../ia_conferencia';
 import { abertas, enfileirar, lerFila, limparConcluidas, marcar as marcarItem, proxima, remover as removerItem, serializar, tentarDeNovo, type ItemFila } from '../ia_fila';
 import { linhasDaVerificacao } from '../ia_verificacao';
 import { cadastro as carregarCadastro, type Cadastro } from '../ia_territorio';
+import { TEMAS_PREPARADOS, metadadosTemasIa } from '../ia_paineis';
 
 const LINHAS_INICIAIS = 25;
 
 const NOMES_PAINEIS = (): Record<Painel, string> => ({
+  agropecuaria:t('Agropecuária','Agriculture'),mobilidade:t('Mobilidade e trânsito','Mobility and road safety'),seguranca:t('Segurança pública','Public safety'),internet:t('Internet e conectividade','Internet and connectivity'),energia:t('Energia','Energy'),comex:t('Comércio exterior','Foreign trade'),
   saneamento:t('Saneamento','Sanitation'),
   educacao:t('Educação','Education'),
   financas: t('Finanças públicas', 'Public finances'),
@@ -138,6 +140,7 @@ function coberturaDe(meta: Meta, microdados: boolean): Cobertura {
     rais: anos(f.rais?.anos), caged: caged?.de && caged?.ate ? { de: caged.de, ate: caged.ate } : null, microdados, dca: meta.anos,
     pib: pib && { ...pib, setorial_ate: Number(f.ibge_pib?.setorial_ate) || undefined },
     educacao:anos(f.educacao_inep?.anos),saeb:anos(f.educacao_inep?.edicoes),
+    novos:Object.fromEntries(TEMAS_PREPARADOS.map(t=>[t,anos(f[t]?.anos)])),
     siope: anos(f.siope?.anos), siopeRemuneracao: anos(f.siope?.remuneracao), siops: anos(f.siops?.anos),
     lrf: par(f.siconfi_lrf?.anos) && { ...par(f.siconfi_lrf?.anos)!, parciais: anos(f.siconfi_lrf?.parciais) }, bolsa: bolsa && { ...bolsa, mes: Number(f.bolsa_familia?.ultimo_mes) || bolsa.ate * 100 + 12 },
     inss: anos(f.inss?.exercicios),
@@ -163,6 +166,7 @@ const recorteEfetivo = (p?: RespostaPronta | null) => (p
 
 /** Temas dos painéis marcados, no subtítulo ("finanças, emprego e saúde"). */
 const TEMAS = (): Record<Painel, string> => ({
+  agropecuaria:t('Agropecuária','Agriculture'),mobilidade:t('Mobilidade e trânsito','Mobility and road safety'),seguranca:t('Segurança pública','Public safety'),internet:t('Internet e conectividade','Internet and connectivity'),energia:t('Energia','Energy'),comex:t('Comércio exterior','Foreign trade'),
   saneamento:t('saneamento','sanitation'),
   educacao:t('educação','education'),
   financas: t('finanças', 'public finances'), trabalho: t('emprego', 'employment'), saude: t('saúde', 'health'), munic: t('gestão pública', 'public management'), clima: t('clima', 'climate'), assistencia: t('assistência social', 'social assistance'),
@@ -172,7 +176,9 @@ const subtitulo = (p: Painel[]) => {
   return t(`Explore dados públicos de ${temas}.`, `Explore public data on ${temas}.`);
 };
 
-const descricao = (p: Painel[]) => (p.length > 1
+const descricao = (p: Painel[]) => (p.length === 1 && ['agropecuaria','mobilidade','seguranca','internet','energia','comex'].includes(p[0])
+  ? t(`Pergunte sobre ${NOMES_PAINEIS()[p[0]]}. A IA usa os mesmos números preparados do painel, com fonte, período, unidade e condição dos dados.`, `Ask about ${NOMES_PAINEIS()[p[0]]}. The AI uses the dashboard’s prepared figures, with source, period, unit and data status.`)
+  : p.length > 1
   ? t('Pergunte em linguagem natural, inclusive cruzando os painéis. A IA consulta as bases aqui no seu navegador, faz os cálculos com SQL e explica o resultado, com as consultas à vista para conferência.',
     'Ask in plain language, including across dashboards. The AI queries the datasets here in your browser, does the calculations in SQL and explains the result, with the queries in view for checking.')
   : p[0] === 'trabalho'
@@ -196,6 +202,7 @@ const descricao = (p: Painel[]) => (p.length > 1
         'Ask in plain language about revenue, expenditure, transfers and fiscal indicators of municipalities, states and DF. The AI queries the SICONFI filings here in your browser, does the calculations in SQL and explains the result, with the queries in view for checking.'));
 
 const FONTES = (): Record<Painel, string> => ({
+  agropecuaria:'IBGE · PAM, PPM e PEVS',mobilidade:'Senatran e SIM',seguranca:'SIM e Sinesp',internet:'Anatel',energia:'ANEEL',comex:'MDIC/Secex · Comex Stat',
   saneamento:t('saneamento (SNIS/SINISA, Ministério das Cidades)','sanitation (SNIS/SINISA, Ministry of Cities)'),
   educacao:t('Educação (Inep: Censo Escolar, Ideb e Saeb)','Education (Inep: School Census, Ideb and Saeb)'),
   financas: t('finanças públicas (SICONFI/Tesouro Nacional, IBGE, Banco Central, Portal da Transparência, Previdência)', 'public finances (SICONFI/National Treasury, IBGE, Central Bank, Transparency Portal, Social Security)'),
@@ -1783,9 +1790,15 @@ function Turno({ i, turno, pronta, meta, resultados, ativo, progresso, ultimo, p
 export function Ia() {
   const { meta:metaBase, entes } = useDados();
   const catalogoEducacao=useEducacao('ia-educacao',()=>obterMetaEducacao());
+  const catalogosPreparados=useEducacao('ia-paineis-preparados',metadadosTemasIa);
   const edu=catalogoEducacao.dados;
-  const meta=useMemo(()=>edu?{...metaBase,geradoEm:Date.parse(edu.gerado_em)>Date.parse(metaBase.geradoEm)?edu.gerado_em:metaBase.geradoEm,
-    fontes:{...metaBase.fontes,educacao_inep:{anos:edu.anos,edicoes:edu.edicoes_avaliacao??[],processado_em:edu.gerado_em,consulta_sha256:edu.consulta?.sha256}}}:metaBase,[metaBase,edu]);
+  const meta=useMemo(()=>{
+    const novos=catalogosPreparados.dados??{};
+    const datas=[metaBase.geradoEm,...(edu?[edu.gerado_em]:[]),String(metaBase.fontes.rais_perfis?.processado_em??''),...Object.values(novos).map(m=>m?.gerado_em??'')].filter(d=>Number.isFinite(Date.parse(d))).sort((a,b)=>Date.parse(a)-Date.parse(b));
+    return{...metaBase,geradoEm:datas.at(-1)??metaBase.geradoEm,fontes:{...metaBase.fontes,
+      ...(edu?{educacao_inep:{anos:edu.anos,edicoes:edu.edicoes_avaliacao??[],processado_em:edu.gerado_em,consulta_sha256:edu.consulta?.sha256}}:{}),
+      ...Object.fromEntries(Object.entries(novos).map(([t,m])=>[t,{anos:m?.anos??[],processado_em:m?.gerado_em,consulta_sha256:m?.catalogo?.sha256,datas:m?.datas}]))}};
+  },[metaBase,edu,catalogosPreparados.dados]);
   const [busca, setBusca] = useSearchParams();
   const pedidos = (busca.get('paineis') ?? '').split(',');
   const marcados = PAINEIS.filter((p) => pedidos.includes(p));

@@ -13,7 +13,7 @@
     "test:educacao": "vite build --ssr testes/educacao.test.ts --outDir testes/.saida/educacao --emptyOutDir --logLevel warn && node --test testes/.saida/educacao/educacao.test.js",
     "catalogo:downloads": "vite build --ssr scripts/catalogos_downloads.ts --outDir testes/.saida/catalogos_downloads --emptyOutDir --logLevel warn",
     "test:saneamento": "vite build --ssr testes/saneamento.test.ts --outDir testes/.saida/saneamento --emptyOutDir --logLevel warn && node --test testes/.saida/saneamento/saneamento.test.js",
-    "test": "vite build --ssr testes/consultas.test.ts --outDir testes/.saida --emptyOutDir --logLevel warn && node --test testes/.saida/consultas.test.js && npm run test:saneamento && npm run test:assistencia-rankings && npm run test:assistencia-mapa && npm run test:mapas && npm run test:comparacoes && npm run test:cadunico-historico && npm run test:assistencia-referencias && npm run test:raio-x && npm run test:agropecuaria && npm run test:mobilidade && npm run test:seguranca && npm run test:internet && npm run test:energia && npm run test:comex",
+    "test": "vite build --ssr testes/consultas.test.ts --outDir testes/.saida --emptyOutDir --logLevel warn && node --test testes/.saida/consultas.test.js && npm run test:saneamento && npm run test:assistencia-rankings && npm run test:assistencia-mapa && npm run test:mapas && npm run test:comparacoes && npm run test:cadunico-historico && npm run test:assistencia-referencias && npm run test:raio-x && npm run test:agropecuaria && npm run test:mobilidade && npm run test:seguranca && npm run test:internet && npm run test:energia && npm run test:comex && npm run test:ia-paineis",
     "test:assistencia-mapa": "vite build --ssr testes/assistencia_mapa.test.ts --outDir testes/.saida/assistencia_mapa --emptyOutDir --logLevel warn && node --test testes/.saida/assistencia_mapa/assistencia_mapa.test.js",
     "test:mapas": "vite build --ssr testes/mapas.test.ts --outDir testes/.saida/mapas --emptyOutDir --logLevel warn && node --test testes/.saida/mapas/mapas.test.js",
     "test:comparacoes": "vite build --ssr testes/comparacoes.test.ts --outDir testes/.saida/comparacoes --emptyOutDir --logLevel warn && node --test testes/.saida/comparacoes/comparacoes.test.js",
@@ -25,7 +25,8 @@
     "test:seguranca": "vite build --ssr testes/seguranca.test.ts --outDir testes/.saida/seguranca --emptyOutDir --logLevel warn && node --test testes/.saida/seguranca/seguranca.test.js",
     "test:internet": "vite build --ssr testes/internet.test.ts --outDir testes/.saida/internet --emptyOutDir --logLevel warn && node --test testes/.saida/internet/internet.test.js",
     "test:energia": "vite build --ssr testes/energia.test.ts --outDir testes/.saida/energia --emptyOutDir --logLevel warn && node --test testes/.saida/energia/energia.test.js",
-    "test:comex": "vite build --ssr testes/comex.test.ts --outDir testes/.saida/comex --emptyOutDir --logLevel warn && node --test testes/.saida/comex/comex.test.js"
+    "test:comex": "vite build --ssr testes/comex.test.ts --outDir testes/.saida/comex --emptyOutDir --logLevel warn && node --test testes/.saida/comex/comex.test.js",
+    "test:ia-paineis": "vite build --ssr testes/ia_paineis.test.ts --outDir testes/.saida/ia_paineis --emptyOutDir --logLevel warn && node --test testes/.saida/ia_paineis/ia_paineis.test.js"
   },
   "dependencies": {
     "@duckdb/duckdb-wasm": "1.32.0",

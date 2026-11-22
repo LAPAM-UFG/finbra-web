@@ -24,6 +24,7 @@ import {
   unidadeLimpa, type Formato, type Periodo,
 } from './ia_formato';
 import { atendeConceito, COLUNAS, conceitosPedidos } from './ia_catalogo';
+import { entradaConsultaPainel, executarPainelPreparado, fonteDaConsultaPainel, TEMAS_PREPARADOS, type TemaPreparado } from './ia_paineis';
 import { mqo, tabelaRegressao, type ErroPadrao } from './ia_estatistica';
 import {
   juntaFontes, lerVerificacao, problemasDaVerificacao, tabelasDeFato, verificar, type PedidoVerificacao, type VerificacaoFeita,
@@ -123,8 +124,9 @@ export async function estadoIa(): Promise<EstadoIa | null> {
 }
 
 /** Painéis que a IA pode consultar (aba "Pergunte aos dados"); cada um tem tabelas e instruções próprias. */
-export type Painel = 'financas' | 'trabalho' | 'saude' | 'munic' | 'clima' | 'assistencia' | 'educacao' | 'saneamento';
-export const PAINEIS: Painel[] = ['financas', 'trabalho', 'saude', 'munic', 'clima', 'assistencia', 'educacao', 'saneamento'];
+export type Painel = 'financas' | 'trabalho' | 'saude' | 'munic' | 'clima' | 'assistencia' | 'educacao' | 'saneamento' | 'agropecuaria' | 'mobilidade' | 'seguranca' | 'internet' | 'energia' | 'comex';
+const NOMES_PREPARADOS:Record<TemaPreparado,string>={agropecuaria:'Agropecuária · IBGE',mobilidade:'Mobilidade · Senatran/SIM',seguranca:'Segurança pública · SIM/Sinesp',internet:'Internet · Anatel',energia:'Energia · ANEEL',comex:'Comércio exterior · MDIC'};
+export const PAINEIS: Painel[] = ['financas', 'trabalho', 'saude', 'munic', 'clima', 'assistencia', 'educacao', 'saneamento','agropecuaria','mobilidade','seguranca','internet','energia','comex'];
 
 export async function chamarIa(mensagens: Mensagem[], idioma: string, paineis: Painel[] = PAINEIS, sinal?: AbortSignal, modelo: EscolhaModelo = MODELO_PADRAO): Promise<RespostaIa> {
   const contexto = paineis.includes('trabalho') ? await contextoTrabalhoIa() : undefined;
@@ -201,6 +203,7 @@ export function disponibilidadeNoAno(ano: number, paineis: Painel[], c: Cobertur
   const tem: string[] = [];
   const nao: string[] = [];
   const marcar = (nome: string, ok: boolean, detalhe = '') => (ok ? tem : nao).push(`${nome}${detalhe}`);
+  for(const tema of TEMAS_PREPARADOS)if(paineis.includes(tema)&&c.novos?.[tema]?.length)marcar(NOMES_PREPARADOS[tema],c.novos[tema]!.includes(ano),' (cobertura varia por indicador)');
   if(paineis.includes('educacao')&&c.educacao?.length)marcar('Censo Escolar',c.educacao.includes(ano));
   if(paineis.includes('educacao')&&c.saeb?.length)marcar('Ideb/Saeb',c.saeb.includes(ano),' (edições oficiais; publicação varia por rede/etapa)');
   if (paineis.includes('assistencia')) for (const [nome, meses] of Object.entries(c.assistencia ?? {})) {
@@ -288,6 +291,7 @@ export function contextoParaModelo(c: ContextoIa, cobertura?: Cobertura | null):
  */
 export type Cobertura = {
   educacao?:number[];saeb?:number[];
+  novos?:Partial<Record<TemaPreparado,number[]>>;
   assistencia?: Record<string, number[]>;
   rais: number[]; caged: { de: number; ate: number } | null; microdados: boolean; dca: number[];
   pib?: { de: number; ate: number; setorial_ate?: number } | null; siope?: number[]; siopeRemuneracao?: number[]; siops?: number[];
@@ -489,6 +493,15 @@ export function sugestoes(paineis: Painel[], tr: Territorio, c: Cobertura, ano: 
         : t(`Como evoluíram juntos a despesa com pessoal e os empregos formais na administração pública ${f.em} até ${a}?`, `How did personnel spending and formal public-administration jobs ${f.em} evolve together up to ${a}?`);
     cruzadas.push({ titulo: t('Gasto com pessoal e emprego público', 'Staff spending and public-sector jobs'), tema: tema.cruzamento, texto, paineis: ['financas', 'trabalho'], nota });
   }
+  const exemplosNovos:Record<TemaPreparado,[string,string,string,string]>={
+    agropecuaria:['Produção e produtividade no campo','Production and yields',`Mostre as principais lavouras ${f.em}, com produção, área colhida e produtividade desde 2013. Informe unidades e anos disponíveis.`,`Show the main crops ${f.em}, with output, harvested area and yields since 2013. Report units and available years.`],
+    mobilidade:['Frota e mortes no trânsito','Vehicles and road deaths',`Compare a evolução de veículos por mil habitantes e mortes no trânsito ${f.em}. Informe o ano de cada fonte e mantenha frota e óbitos separados.`,`Compare trends in vehicles per thousand residents and road deaths ${f.em}. Report each source year and keep vehicle stocks and deaths separate.`],
+    seguranca:['Violência ao longo do tempo','Violence over time',`Mostre a evolução da taxa de mortes por agressões ${f.em}, com números de óbitos, denominadores e ressalvas. Diferencie SIM e registros policiais.`,`Show trends in the assault death rate ${f.em}, with death counts, denominators and caveats. Distinguish SIM and police records.`],
+    internet:['Acesso à Internet e fibra','Internet access and fibre',`Como evoluíram os acessos de banda larga fixa e a participação da fibra ${f.em}? Mostre os anos e meses de referência; acessos não são pessoas.`,`How have fixed broadband subscriptions and the fibre share changed ${f.em}? Show reference years and months; subscriptions are not people.`],
+    energia:['Energia solar e geração distribuída','Solar power and distributed generation',`Mostre a geração distribuída ${f.em}: instalações, potência e participação solar. Separe o retrato atual das conexões por ano do cadastro.`,`Show distributed generation ${f.em}: installations, capacity and solar share. Separate the current snapshot from connection-year cohorts in the register.`],
+    comex:['Exportações e importações','Exports and imports',`Mostre exportações, importações e saldo ${f.em} desde 2013, em US$ FOB. Use os mesmos meses ao comparar anos parciais e informe os períodos.`,`Show exports, imports and the balance ${f.em} since 2013, in US dollars FOB. Use matching months when comparing partial years and report the periods.`],
+  };
+  for(const painel of TEMAS_PREPARADOS)if(paineis.includes(painel)&&c.novos?.[painel]?.length){const[pt,en,texto,textoEn]=exemplosNovos[painel];grupos.push([{titulo:t(pt,en),tema:NOMES_PREPARADOS[painel],texto:t(texto,textoEn),paineis:[painel]}]);}
   // uma de cada painel, depois as entre painéis (com dois painéis, a cruzada é a terceira à vista), e o resto alternado
   const lista: Sugestao[] = [];
   for (let i = 0; grupos.some((g) => g.length > i); i++) {
@@ -559,6 +572,7 @@ export function coberturaPorAno(c: Cobertura, paineis: Painel[]): Map<number, { 
     if (meses.length) mensal(nome, meses[0], meses.at(-1)!);
   }
   if (paineis.includes('saude')) fechadas([...(c.sim ?? []), ...(c.sinasc ?? []), ...(c.sih ?? []), ...(c.icsap ?? []), ...(c.sia ?? []), ...(c.aps ?? []), ...(c.cnes ?? []), ...(c.sinan ?? []), ...(c.siscan ?? []), ...(c.oncologia ?? []), ...(c.resp ?? []), ...(c.vacinacao ?? []), ...(c.popSvs ?? []), ...(c.fns ?? [])]);
+  for(const tema of TEMAS_PREPARADOS)if(paineis.includes(tema))for(const referencia of c.novos?.[tema]??[]){const a=ano(referencia);if(referencia<new Date().getFullYear())a.fechado=true;else if(!a.parciais.includes(NOMES_PREPARADOS[tema]))a.parciais.push(NOMES_PREPARADOS[tema]+' · referência do indicador');}
   return anos;
 }
 
@@ -687,6 +701,7 @@ export function descreverCobertura(paineis: Painel[], c: Cobertura): string[] {
   if (paineis.includes('munic') && c.estadic?.length) {
     linhas.push(t(`ESTADIC ${anosLista(c.estadic)}: o mesmo para os 27 governos estaduais`, `ESTADIC ${anosLista(c.estadic)}: the same for the 27 state governments`));
   }
+  for(const tema of TEMAS_PREPARADOS)if(paineis.includes(tema)&&c.novos?.[tema]?.length)linhas.push(t(`${NOMES_PREPARADOS[tema]}: ${anosLista(c.novos[tema]!)}. Números preparados, séries, regiões e rankings relativos; datas, unidades e cobertura variam por medida.`,`${NOMES_PREPARADOS[tema]}: ${anosLista(c.novos[tema]!)}. Prepared figures, series, regions and relative rankings; dates, units and coverage vary by measure.`));
   return linhas;
 }
 
@@ -733,18 +748,21 @@ export function semUltimaPergunta(hist: Mensagem[]): Mensagem[] {
 }
 
 /** Identificadores das consultas da conversa (C1, C2…), na ordem em que o modelo as pediu. */
+const ferramentaNumerica = (nome: string | undefined) => nome === 'consultar' || nome === 'consultar_painel';
+const entradaNumerica = (b: Bloco): Record<string, unknown> => b.name === 'consultar_painel'
+  ? entradaConsultaPainel(b.input) : (b.input ?? {}) as Record<string, unknown>;
 export function rotulosConsultas(mensagens: Mensagem[]): Map<string, string> {
   const r = new Map<string, string>();
   for (const m of mensagens) {
     if (m.role !== 'assistant' || !Array.isArray(m.content)) continue;
-    for (const b of m.content) if (b.type === 'tool_use' && b.name === 'consultar' && b.id && !r.has(b.id)) r.set(b.id, `C${r.size + 1}`);
+    for (const b of m.content) if (b.type === 'tool_use' && ferramentaNumerica(b.name) && b.id && !r.has(b.id)) r.set(b.id, `C${r.size + 1}`);
   }
   return r;
 }
 
 /** Uma consulta da conversa: identificador, SQL, objetivo, a que ela refaz (se refaz) e o resultado. */
 export type ConsultaFeita = {
-  id: string; rotulo: string; sql: string; objetivo: string; substitui: string; resultado?: Resultado; regressao?: PedidoRegressao; verificacao?: PedidoVerificacao; particao?: unknown;
+  id: string; rotulo: string; sql: string; objetivo: string; substitui: string; resultado?: Resultado; regressao?: PedidoRegressao; verificacao?: PedidoVerificacao; particao?: unknown; preparado?: unknown;
 };
 
 /** Consultas da conversa pelo identificador (C1…), com os resultados que a página guardou. */
@@ -754,14 +772,15 @@ export function consultasDaConversa(mensagens: Mensagem[], resultados: Record<st
   for (const m of mensagens) {
     if (m.role !== 'assistant' || !Array.isArray(m.content)) continue;
     for (const b of m.content) {
-      if (b.type !== 'tool_use' || b.name !== 'consultar' || !b.id) continue;
-      const e = (b.input ?? {}) as { sql?: unknown; objetivo?: unknown; substitui?: unknown; colunas?: unknown; regressao?: unknown; verificacao?: unknown; particao?: unknown };
+      if (b.type !== 'tool_use' || !ferramentaNumerica(b.name) || !b.id) continue;
+      const e = entradaNumerica(b);
       registrarColunas(String(e.sql ?? ''), e.colunas);
       const rotulo = rotulos.get(b.id)!;
       const reg = lerRegressao(e.regressao);
       const ver = lerVerificacao(e.verificacao);
       r.set(rotulo, {
         id: b.id, rotulo, sql: String(e.sql ?? ''), objetivo: String(e.objetivo ?? ''), substitui: consultaSubstituida(e.substitui), resultado: resultados[b.id],
+        ...(e.preparado !== undefined ? { preparado:e.preparado } : {}),
         ...(reg && typeof reg === 'object' ? { regressao: reg } : {}), ...(ver && typeof ver === 'object' ? { verificacao: ver } : {}), ...(e.particao ? { particao: e.particao } : {}),
       });
     }
@@ -972,7 +991,7 @@ const FONTES_TABELAS: [RegExp | ((sql: string) => boolean), () => string][] = [
 /** Fontes das tabelas que as consultas (as que deram certo) leram de fato; textos entre aspas não contam. */
 export function fontesConsultadas(sqls: string[]): string[] {
   const limpas = sqls.map((s) => s.replace(/'(?:[^']|'')*'/g, "''").toLowerCase());
-  return FONTES_TABELAS.filter(([re]) => limpas.some((s) => (typeof re === 'function' ? re(s) : re.test(s)))).map(([, nome]) => nome());
+  return [...new Set([...FONTES_TABELAS.filter(([re]) => limpas.some((s) => (typeof re === 'function' ? re(s) : re.test(s)))).map(([, nome]) => nome()), ...sqls.map(fonteDaConsultaPainel).filter((s):s is string=>s!==null)])];
 }
 
 // ---------------- gráficos ----------------
@@ -1110,7 +1129,7 @@ const CLASSIFICACOES: Record<string, string> = {
   cnae_divisao: 'CNAE (divisão)', divisao: 'CNAE (divisão)', cnae_secao: 'CNAE (seção)', secao: 'CNAE (seção)',
 };
 
-const EXATOS = ' exatos';
+const EXATOS = '\0exatos';
 
 /**
  * Filtros de CBO e CNAE das consultas, lidos do SQL: prefixos (starts_with, LIKE '…%'), listas (IN, =) e
@@ -1683,8 +1702,8 @@ export function turnos(mensagens: Mensagem[]): TurnoIa[] {
     ultima = m.content;
     for (const b of m.content) {
       if (b.type === 'text' && b.text?.trim()) turno.itens.push({ tipo: 'nota', texto: b.text.trim() });
-      else if (b.type === 'tool_use' && b.id && b.name === 'consultar') {
-        const e = (b.input ?? {}) as { sql?: string; objetivo?: string; substitui?: string; colunas?: unknown; regressao?: unknown };
+      else if (b.type === 'tool_use' && b.id && ferramentaNumerica(b.name)) {
+        const e = entradaNumerica(b);
         const reg = lerRegressao(e.regressao);
         registrarColunas(String(e.sql ?? ''), e.colunas);
         turno.itens.push({ tipo: 'consulta', id: b.id, rotulo: rotulos.get(b.id) ?? '', sql: String(e.sql ?? ''), objetivo: String(e.objetivo ?? ''), substitui: consultaSubstituida(e.substitui), ...(reg && typeof reg === 'object' ? { regressao: reg } : {}) });
@@ -1773,7 +1792,7 @@ async function conduzir(o: ParametrosPergunta, registro: RegistroModelo): Promis
     if (r.parada === 'max_tokens') return { mensagens: hist, desfecho: 'longa', etapas };
     const usos = r.conteudo.filter((b): b is Bloco & { id: string } => b.type === 'tool_use' && !!b.id);
     if (r.parada !== 'tool_use' || !usos.length) return { mensagens: hist, desfecho: 'texto', etapas };
-    const pedidos = usos.filter((u) => u.name === 'consultar' || u.name === 'localizar');
+    const pedidos = usos.filter((u) => ferramentaNumerica(u.name) || u.name === 'localizar');
     const final = usos.find((u) => u.name === 'responder');
     let problemas: string[] = [];
     const resposta = final && !pedidos.length ? lerResposta(final.input) : null;
@@ -1799,17 +1818,17 @@ async function conduzir(o: ParametrosPergunta, registro: RegistroModelo): Promis
     const devolver: Bloco[] = [];
     for (const u of usos) {
       if (o.sinal.aborted) throw cancelado();
-      if (u.name === 'consultar') {
+      if (ferramentaNumerica(u.name)) {
         const rotulo = rotulos.get(u.id) ?? '';
         o.aoProgresso?.({ fase: 'consulta', rotulo, objetivo: String((u.input as { objetivo?: unknown } | undefined)?.objetivo ?? '') });
         // consulta idêntica (mesmo SQL e mesma regressão) que já deu certo nesta conversa: reaproveita o resultado
-        const entradaU = (u.input ?? {}) as { sql?: unknown; regressao?: unknown; verificacao?: unknown; particao?: unknown };
+        const entradaU = entradaNumerica(u);
         const igual = [...consultasDaConversa(hist, resultados).values()].find((c) => c.id !== u.id && c.resultado && !('erro' in c.resultado) && !c.resultado.parcial
           && (!c.resultado.dados || !o.versaoDados || c.resultado.dados === o.versaoDados)
           && chaveConsulta(c.sql, c.regressao, c.verificacao, c.particao) === chaveConsulta(String(entradaU.sql ?? ''), lerRegressao(entradaU.regressao),
             lerVerificacao(entradaU.verificacao), entradaU.particao));
         const t0 = Date.now();
-        const feita = igual ? igual.resultado! : await executarConsulta(u.input, o.paineis, o.sinal, LINHAS_TELA, {
+        const feita = igual ? igual.resultado! : await executarConsulta(entradaU, o.paineis, o.sinal, LINHAS_TELA, {
           versao: o.versaoDados, anteriores: resultadosReaproveitaveis(hist, resultados, o.versaoDados),
           aoParte: (feitas, total) => o.aoProgresso?.({ fase: 'consulta', rotulo, objetivo: String((u.input as { objetivo?: unknown } | undefined)?.objetivo ?? ''), parte: { feitas, total } }),
         });
@@ -1968,6 +1987,9 @@ const LIMITE_CONSULTA_MS = 4 * 60_000;
 class ConsultaLenta extends Error {}
 
 async function consultaSemLimite(entrada: unknown, paineis: Painel[], sinal: AbortSignal | undefined, limite: number, extra: ExtraConsulta = {}): Promise<Resultado> {
+  if (entrada && typeof entrada === 'object' && 'preparado' in entrada) {
+    return executarPainelPreparado((entrada as {preparado:unknown}).preparado,paineis,sinal,limite);
+  }
   const e = entrada as { sql?: unknown };
   if (!e || typeof e.sql !== 'string') return { erro: 'entrada inválida: falta o campo sql', bloqueada: true };
   const motivo = validarSql(e.sql);

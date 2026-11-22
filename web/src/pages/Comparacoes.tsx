@@ -257,8 +257,10 @@ export function Comparacoes({
   const [sp, setSp] = useSearchParams();
   const [busca, setBusca] = useState("");
   const raiz = RAIZES_COMPARACAO[area];
+  const emRanking = sp.has('vista') ? sp.get('vista') === 'ranking' : rankings;
   const rede =
-    area === 'assistencia' && sp.get('conjunto') === 'cadunico_historico'
+    area === 'assistencia' && (sp.get('conjunto') === 'cadunico_historico'
+      || (!emRanking && !sp.has('conjunto') && !sp.has('indicador') && !sp.has('ind')))
       ? 'cadunico_historico'
       : area === "educacao"
       ? (sp.get("rede") ?? "todas")
@@ -280,6 +282,7 @@ export function Comparacoes({
         )
           p.delete("coorte");
         if ("indicador" in campos && !("minimo" in campos)) p.delete("minimo");
+        if (['indicador','periodo','inicio','ano','mes','conjunto'].some(k => k in campos)) p.delete('ano_origem');
         for (const [k, v] of Object.entries(campos))
           if (v === null || (v === "" && k !== "comparar")) p.delete(k);
           else p.set(k, v);
@@ -287,9 +290,7 @@ export function Comparacoes({
       },
       { replace: true },
     );
-  const vistaRanking = sp.get("vista")
-    ? sp.get("vista") === "ranking"
-    : rankings;
+  const vistaRanking = emRanking;
   const retorno = new URLSearchParams(
     Object.fromEntries(
       [...sp].filter(([k]) =>
@@ -450,7 +451,9 @@ function Conteudo({
     periodoRaw > 0 && i.frequencia === "mensal" && periodoRaw < 10000
       ? periodoRaw * 100 + 12
       : periodoRaw;
-  const fim = pedido > 0 ? pedido : (pp.at(-1) ?? 0);
+  const anoHerdado = sp.get('ano_origem') === sp.get('ano') && sp.has('ano_origem') && !sp.has('periodo') && !sp.has('mes');
+  const ajustarAno = anoHerdado && pedido > 0 && !pp.includes(pedido);
+  const fim = pedido > 0 && !ajustarAno ? pedido : (pp.at(-1) ?? 0);
   const inicioPedido = Number(sp.get("inicio")),
     inicio = inicioPedido > 0 ? inicioPedido : anterior(pp, fim);
   const ressalvas = sp.get("ressalvas") === "1";
@@ -516,7 +519,7 @@ function Conteudo({
           <label htmlFor="cp-conjunto">{t('Conjunto de dados', 'Dataset')}</label>
           <select id="cp-conjunto" value={historicoCadunico ? 'cadunico_historico' : 'todas'} onChange={e => {
             setBusca('');
-            mudar({ conjunto: e.target.value === 'todas' ? null : e.target.value, indicador: null, ind: null, inicio: null, periodo: null, ano: null, mes: null, minimo: null, coorte: null, comparar: null });
+            mudar({ conjunto: e.target.value, indicador: null, ind: null, inicio: null, periodo: null, ano: null, mes: null, minimo: null, coorte: null, comparar: null });
           }}>
             <option value="todas">{t('Todos os indicadores: retrato atual e pagamentos', 'All indicators: current snapshot and payments')}</option>
             <option value="cadunico_historico">{t('CadÚnico: históricos oficiais', 'Cadastro Único: official history')}</option>
@@ -532,6 +535,7 @@ function Conteudo({
             {t(i.ufs_agregados_historico?.includes(estado) ? 'Este município ou região ainda não tem série mensal recuperada; os totais do estado e do Brasil estão disponíveis nas referências.' : 'O indicador escolhido não cobre este estado.', i.ufs_agregados_historico?.includes(estado) ? 'This municipality or region has no recovered monthly series yet; state and Brazil totals are available as references.' : 'The chosen measure does not cover this state.')} {' '}
             {['PA', 'MG', 'SP', 'AL'].includes(estado) && i.id !== indicadorCadunicoLocal(estado) && <button className="botao-leve" onClick={() => mudar({indicador: indicadorCadunicoLocal(estado), inicio: null, periodo: null, ano: null, mes: null})}>{t('Ver histórico disponível neste estado', 'View available history for this state')}</button>}
           </p>}
+          {codValido && estado !== 'BR' && <button type="button" className="botao-leve" onClick={() => mudar({cod:null,ente:null,uf:estado,indicador:null,ind:null,conjunto:'cadunico_historico',inicio:null,periodo:null,ano:null,mes:null})}>{t('Ver histórico do estado', 'View state history')}</button>}
         </aside>}
         <div className="cp-filtros">
           <div>
@@ -773,6 +777,9 @@ function Conteudo({
             </select>
           </div>
         </div>
+        {ajustarAno && <p className="cp-aviso" role="status">{t(
+          `O ano ${sp.get('ano_origem')} veio do painel anterior e não está na cobertura deste indicador. Mostramos ${periodoComparacao(fim)}, a última referência disponível; escolha outro período acima.`,
+          `Year ${sp.get('ano_origem')} came from the previous dashboard and is outside this indicator’s coverage. Showing ${periodoComparacao(fim)}, the latest available reference; choose another period above.`)}</p>}
         {refs.length > 0 && (
           <fieldset>
             <legend>{t("Comparar com", "Compare with")}</legend>

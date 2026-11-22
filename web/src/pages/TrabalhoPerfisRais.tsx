@@ -27,8 +27,8 @@ const GRUPO_CURTO = (): Record<string, string> => ({ '1': t('celetistas', 'CLT')
 function NotaRemuneracaoPerfil({ perfil }: { perfil: Ok }) {
   return <p className="nota-base dist-metodo">{perfil.remuneracoes === null
     ? t('A remuneração por categoria ainda não foi publicada nesta versão dos dados.', 'Pay by category has not been published in this data version yet.')
-    : t('Remuneração média de dezembro, em R$ do próprio ano: soma dos valores positivos ÷ todos os vínculos ativos da categoria, inclusive os sem valor válido. “Com valor” mostra a cobertura da remuneração; se nenhum vínculo tem valor válido, a média fica indisponível. As barras representam a participação nos vínculos. Não é salário contratual nem média anual, e os grupos podem reunir ocupações e jornadas diferentes.',
-      'Average December pay in current-year R$: sum of positive values ÷ all active jobs in the category, including those without a valid value. “With December pay” shows pay coverage; if no job has a valid value, the average is unavailable. Bars show the share of jobs. It is neither contractual salary nor an annual average, and groups may include different occupations and working hours.')}</p>;
+    : t('Remuneração média de dezembro, em R$ do próprio ano: soma dos valores positivos ÷ vínculos ativos da categoria com remuneração válida. “Com valor” mostra a cobertura da remuneração; se nenhum vínculo tem valor válido, a média fica indisponível. As barras representam a participação nos vínculos. Não é salário contratual nem média anual, e os grupos podem reunir ocupações e jornadas diferentes.',
+      'Average December pay in current-year R$: sum of positive values ÷ active jobs in the category with valid pay. “With December pay” shows pay coverage; if no job has a valid value, the average is unavailable. Bars show the share of jobs. It is neither contractual salary nor an annual average, and groups may include different occupations and working hours.')}</p>;
 }
 
 /**
@@ -106,8 +106,8 @@ export function PerfisRais({ anoRais, escopo, rotulo, meta, explorar }: { anoRai
       [t('Fonte', 'Source'), fonteRais()],
       [t('Remuneração', 'Pay'), p.remuneracoes === null
         ? t('não publicada nesta versão dos dados: as colunas de remuneração ficam vazias', 'not published in this data version: the pay columns are empty')
-        : t('dezembro, R$ correntes do ano (valores em reais, não em centavos); soma dos valores positivos ÷ todos os vínculos ativos da categoria; sem nenhum valor válido, média indisponível; não é salário contratual nem média anual',
-          'December, current-year R$ (values in reais, not cents); sum of positive values ÷ all active jobs in the category; if none has a valid value, average unavailable; not contractual salary or an annual average')],
+        : t('dezembro, R$ correntes do ano (valores em reais, não em centavos); soma dos valores positivos ÷ vínculos ativos da categoria com remuneração válida; sem nenhum valor válido, média indisponível; não é salário contratual nem média anual',
+          'December, current-year R$ (values in reais, not cents); sum of positive values ÷ active jobs in the category with valid pay; if none has a valid value, average unavailable; not contractual salary or an annual average')],
       [t('Perfis pré-calculados em', 'Profiles computed on'), processado || meta.geradoEm], [t('Versão da base', 'Data version'), meta.geradoEm],
     ],
   });

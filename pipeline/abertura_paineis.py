@@ -31,6 +31,7 @@ FISCAIS = ['receita_bruta','deducoes','receita_liquida','receita_corrente',
            'despesa_paga_sem_intra','despesa_intra','despesa_empenhada',
            'despesa_liquidada','despesa_paga']
 SETOR = ['agropecuaria','industria','construcao','comercio','servicos','adm_publica']
+PARES_FISCAIS = [('despesa_saude','despesa_empenhada_sem_intra'),('despesa_educacao','despesa_empenhada_sem_intra')]
 
 
 def serializar(value):
@@ -121,10 +122,10 @@ def trabalho(con,m,e):
         sum(m.ate24) AS ate24,sum(m.de50mais) AS de50mais,{setores},
         sum(m.massa_dez) AS massa_dez,sum(m.n_rem_dez) AS n_rem_dez,
         sum(m.massa_dez)*b.indice/i.indice AS massa_dez_real,
-        sum(m.massa_dez)/nullif(sum(m.empregos),0) AS remuneracao_media,
-        sum(m.massa_dez)/nullif(sum(m.empregos),0)*b.indice/i.indice AS remuneracao_media_real,
-        sum(m.massa_dez_mulheres)/nullif(sum(m.mulheres),0) AS remuneracao_mulheres,
-        sum(m.massa_dez_homens)/nullif(sum(m.homens),0) AS remuneracao_homens,
+         sum(m.massa_dez)/nullif(sum(m.n_rem_dez),0) AS remuneracao_media,
+         sum(m.massa_dez)/nullif(sum(m.n_rem_dez),0)*b.indice/i.indice AS remuneracao_media_real,
+         sum(m.massa_dez_mulheres)/nullif(sum(m.n_rem_dez_mulheres),0) AS remuneracao_mulheres,
+         sum(m.massa_dez_homens)/nullif(sum(m.n_rem_dez_homens),0) AS remuneracao_homens,
         sum(m.estabelecimentos) AS estabelecimentos
         FROM trab_municipios m LEFT JOIN ipca i ON i.exercicio=m.ano
         CROSS JOIN (SELECT indice FROM ipca WHERE exercicio={int(m['base_ipca'])}) b
@@ -217,6 +218,11 @@ def fiscal(con,m,e):
                     f'sum(i.{campo}*b.indice/ip.indice) FILTER ({ok}) AS {campo}_real',
                     f'sum(i.populacao) FILTER ({ok} AND i.populacao>0)::DOUBLE AS populacao_{campo}',
                     f'count(*) FILTER ({ok})::INTEGER AS entes_{campo}']
+        for a,b in PARES_FISCAIS:
+            ok=f'i.{a} IS NOT NULL AND i.{b} IS NOT NULL'
+            if not individual:
+                ok+=" AND i.despesa_empenhada>0 AND NOT EXISTS (SELECT 1 FROM alertas a WHERE a.exclui AND a.exercicio=i.exercicio AND a.cod_ibge=i.cod_ibge AND a.dominio='despesa')"
+            col.extend([f'sum(i.{a}) FILTER ({ok}) AS {a}__{b}_num',f'sum(i.{b}) FILTER ({ok}) AS {a}__{b}_den',f'count(*) FILTER ({ok})::INTEGER AS {a}__{b}_entes'])
         chave="'ente:'||i.cod_ibge::VARCHAR" if individual else "i.esfera||':'||CASE WHEN grouping(i.uf)=0 THEN i.uf ELSE 'BR' END"
         group='i.cod_ibge,i.exercicio' if individual else 'GROUPING SETS ((i.esfera,i.uf,i.exercicio),(i.esfera,i.exercicio))'
         sql=f"SELECT {chave} AS chave,i.exercicio,{','.join(col)},sum(i.populacao)::DOUBLE AS populacao,count(*)::INTEGER AS entes FROM indicadores i LEFT JOIN ipca ip USING(exercicio) CROSS JOIN (SELECT indice FROM ipca WHERE exercicio={int(m['base_ipca'])}) b GROUP BY {group} ORDER BY chave,i.exercicio"
@@ -231,7 +237,7 @@ def fiscal(con,m,e):
     alertas=dict(grupos(con,"SELECT 'ente:'||cod_ibge::VARCHAR AS chave,exercicio,categoria,indicador,dominio,valor,valor_real,mediana_real,razao,n_obs,regra,exclui FROM alertas ORDER BY chave,exercicio"))
     for g,d in dados:
         d['cobertura']=alertas.get(g,tabela(['exercicio','categoria','indicador','dominio','valor','valor_real','mediana_real','razao','n_obs','regra','exclui'],[])) if g.startswith('ente:') else cobertura.get(g,{})
-    return {'compatibilidade':compatibilidade(m,['siconfi','populacao_declarada'],True),'campos':FISCAIS,'pacotes':e.partes('fiscal_resumo',dados)}
+    return {'compatibilidade':compatibilidade(m,['siconfi','populacao_declarada'],True),'campos':FISCAIS,'pares':['/'.join(p)for p in PARES_FISCAIS],'pacotes':e.partes('fiscal_resumo',dados)}
 
 
 def gerar(base,saida,curadoria=CURADORIA):
@@ -248,6 +254,8 @@ def gerar(base,saida,curadoria=CURADORIA):
     cx=Conexao()
     views={'entes':'silver/entes.parquet','indicadores':'gold/indicadores.parquet','ipca':'gold/ipca.parquet','alertas':'gold/alertas.parquet','escopos':'gold/escopos.parquet'}
     views.update({f'trab_{n}':'gold/trabalho/'+n+'.parquet' for n in ['municipios','setores','setores_uf','cnae','caged','caged_uf']})
+    for n in ['setores','setores_uf']:
+        views['trab_'+n]=m['fontes'].get('rais',{}).get(n,views['trab_'+n])
     views.update({'munic_territorio':'gold/munic/territorio.parquet','munic_respostas':'gold/munic/painel_respostas.parquet','munic_agregados':'gold/munic/painel_agregados.parquet'})
     for name,path in views.items():
         caminho=(base/path).resolve()

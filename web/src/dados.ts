@@ -915,10 +915,15 @@ const TABELAS_TRABALHO: Record<string, string> = {
   trab_cnae: 'gold/trabalho/cnae.parquet',
 };
 let trabalhoCarregado: Promise<void> | null = null;
+function arquivoSetores(m: ManifestoBruto, uf = false) {
+  const chave = uf ? 'setores_uf' : 'setores';
+  return m.fontes?.rais?.[chave] === `gold/trabalho/${chave}_validos.parquet`
+    ? `gold/trabalho/${chave}_validos.parquet` : `gold/trabalho/${chave}.parquet`;
+}
 export function tabelasTrabalho() {
   trabalhoCarregado ??= (async () => {
-    const { con } = await iniciar();
-    const arquivos = await Promise.all(Object.entries(TABELAS_TRABALHO).map(async ([n, c]) => [n, await baixar(c)] as const));
+    const { con, manifesto } = await iniciar();
+    const arquivos = await Promise.all(Object.entries(TABELAS_TRABALHO).map(async ([n, c]) => [n, await baixar(n === 'trab_setores_uf' ? arquivoSetores(manifesto, true) : c)] as const));
     for (const [nome, dados] of arquivos) {
       await db.registerFileBuffer(`${nome}.parquet`, dados);
       await con.query(`CREATE TABLE ${nome} AS SELECT * FROM read_parquet('${nome}.parquet')`);
@@ -964,8 +969,8 @@ function escopoTrabalho(q: Params, p: Record<string, Valor>, a = 'm') {
 
 const rotasTrabalho: Record<string, (q: Params) => Promise<unknown>> = {
   /**
-   * Série anual da RAIS para o escopo: somas e médias como as do PDET/MTE (massa ÷ todos os vínculos ativos,
-   * quem não tem valor de dezembro conta como zero), remuneração também em R$ reais do ano-base do IPCA.
+   * Série anual da RAIS: remuneração média entre vínculos ativos com valor positivo informado.
+   * A cobertura salarial fica separada do total de empregos; ausência nunca entra como salário zero.
    */
   async trab_serie(q) {
     const { manifesto } = await iniciar();
@@ -982,10 +987,10 @@ const rotasTrabalho: Record<string, (q: Params) => Promise<unknown>> = {
               ${setores},
               sum(m.massa_dez) AS massa_dez, sum(m.n_rem_dez) AS n_rem_dez,
               sum(m.massa_dez) * b.indice / i.indice AS massa_dez_real,
-              sum(m.massa_dez) / nullif(sum(m.empregos), 0) AS remuneracao_media,
-              sum(m.massa_dez) / nullif(sum(m.empregos), 0) * b.indice / i.indice AS remuneracao_media_real,
-              sum(m.massa_dez_mulheres) / nullif(sum(m.mulheres), 0) AS remuneracao_mulheres,
-              sum(m.massa_dez_homens) / nullif(sum(m.homens), 0) AS remuneracao_homens,
+              sum(m.massa_dez) / nullif(sum(m.n_rem_dez), 0) AS remuneracao_media,
+              sum(m.massa_dez) / nullif(sum(m.n_rem_dez), 0) * b.indice / i.indice AS remuneracao_media_real,
+              sum(m.massa_dez_mulheres) / nullif(sum(m.n_rem_dez_mulheres), 0) AS remuneracao_mulheres,
+              sum(m.massa_dez_homens) / nullif(sum(m.n_rem_dez_homens), 0) AS remuneracao_homens,
               sum(m.estabelecimentos) AS estabelecimentos
        FROM trab_municipios m
        LEFT JOIN ipca i ON i.exercicio = m.ano
@@ -998,11 +1003,12 @@ const rotasTrabalho: Record<string, (q: Params) => Promise<unknown>> = {
 
   /** Empregos e remuneração por divisão da CNAE num ano (município: lido por Range; UF/Brasil: tabela pronta). */
   async trab_setores(q) {
+    const { manifesto } = await iniciar();
     await tabelasTrabalho();
     const p: Record<string, Valor> = { ano: inteiro(q.ano) };
     const e = escopoTrabalho(q, p, 's');
     const [origem, filtro] = e.tipo === 'ente'
-      ? [`read_parquet(${arq('gold/trabalho/setores.parquet')})`, e.onde]
+      ? [`read_parquet(${arq(arquivoSetores(manifesto))})`, e.onde]
       : ['trab_setores_uf', `s.escopo = '${e.escopo}'`];
     return consultar(
       `SELECT s.divisao, c.divisao_nome, c.secao, c.secao_nome, s.empregos, s.remuneracao_media_dez AS remuneracao_media
@@ -1109,7 +1115,7 @@ function sqlTrabMunicipios(onde: string) {
   return `SELECT m.ano, m.cod_ibge, m.nome, m.uf, m.populacao, m.empregos, a.empregos AS empregos_ano_anterior,
               (m.empregos - a.empregos) / nullif(a.empregos, 0) AS var_empregos,
               1000 * m.empregos / nullif(m.populacao, 0) AS empregos_por_mil,
-              m.massa_dez / nullif(m.empregos, 0) AS remuneracao_media, m.n_rem_dez,
+              m.massa_dez / nullif(m.n_rem_dez, 0) AS remuneracao_media, m.n_rem_dez,
               m.mulheres / nullif(m.empregos, 0) AS pct_mulheres, m.superior / nullif(m.empregos, 0) AS pct_superior,
               m.empregos_adm_publica / nullif(m.empregos, 0) AS pct_adm_publica, m.estabelecimentos,
               c.saldo AS saldo_caged, c.meses AS meses_caged, c.saldo - c0.saldo AS saldo_caged_dif,
@@ -2126,9 +2132,9 @@ const FAIXA_TEMPO = `CASE WHEN tempo_emprego IS NULL OR tempo_emprego < 0 THEN '
   WHEN tempo_emprego < 24 THEN '3' WHEN tempo_emprego < 60 THEN '4' WHEN tempo_emprego < 120 THEN '5' ELSE '6' END`;
 /**
  * Remuneração de dezembro informada: vínculo ativo em 31/12 com valor maior que zero. Até a RAIS 2022 a falta
- * de valor vem como 0 no arquivo; desde 2023, em branco (ausente). As médias seguem o PDET/MTE: soma ÷ todos os
- * vínculos ativos do grupo, com quem não tem valor contado como zero (contados à parte); medianas, percentis e o
- * valor por hora usam só os valores informados.
+ * de valor vem como 0 no arquivo; desde 2023, em branco (ausente). Médias, medianas, percentis e valor por hora
+ * usam somente remunerações positivas informadas. Vínculos sem remuneração válida são contados à parte e
+ * permanecem no estoque de empregos, sem serem tratados como salário zero.
  */
 const REM_VALIDA = 'ativo_31_12 = 1 AND rem_dezembro_nom > 0';
 /** Mês ÷ semana: 52 semanas ÷ 12 meses. Valor por hora contratada (não por hora trabalhada). */
@@ -2286,7 +2292,7 @@ const MEDIDAS_MICRO = `
   count(*) FILTER (ativo_31_12 = 1 AND rem_dezembro_nom IS NULL) AS rem_dez_ausente,
   count(*) FILTER (ativo_31_12 = 1 AND rem_dezembro_nom = 0) AS rem_dez_zero,
   count(*) FILTER (ativo_31_12 = 1 AND rem_dezembro_nom < 0) AS rem_dez_negativa,
-  sum(rem_dezembro_nom) FILTER (${REM_VALIDA})::DOUBLE / nullif(count(*) FILTER (ativo_31_12 = 1), 0) AS rem_dez_media,
+  sum(rem_dezembro_nom) FILTER (${REM_VALIDA})::DOUBLE / nullif(count(*) FILTER (${REM_VALIDA}), 0) AS rem_dez_media,
   quantile_cont(rem_dezembro_nom::DOUBLE, 0.1) FILTER (${REM_VALIDA}) AS rem_dez_p10,
   quantile_cont(rem_dezembro_nom::DOUBLE, 0.25) FILTER (${REM_VALIDA}) AS rem_dez_p25,
   quantile_cont(rem_dezembro_nom::DOUBLE, 0.5) FILTER (${REM_VALIDA}) AS rem_dez_mediana,
@@ -2296,14 +2302,14 @@ const MEDIDAS_MICRO = `
     / nullif(sum(horas_contratadas * ${SEMANAS_MES}) FILTER (${REM_VALIDA} AND ${HORAS_VALIDAS}), 0) AS rem_hora_media,
   median(rem_dezembro_nom::DOUBLE / (horas_contratadas * ${SEMANAS_MES})) FILTER (${REM_VALIDA} AND ${HORAS_VALIDAS}) AS rem_hora_mediana,
   count(*) FILTER (${REM_VALIDA} AND ${HORAS_VALIDAS}) AS n_rem_hora,
-  sum(rem_media_nom) FILTER (rem_media_nom > 0)::DOUBLE / nullif(count(*), 0) AS rem_media_media,
+  sum(rem_media_nom) FILTER (rem_media_nom > 0)::DOUBLE / nullif(count(*) FILTER (rem_media_nom > 0), 0) AS rem_media_media,
   median(rem_media_nom::DOUBLE) FILTER (rem_media_nom > 0) AS rem_media_mediana,
   count(*) FILTER (rem_media_nom > 0) AS n_rem_media,
   avg(horas_contratadas) FILTER (horas_contratadas > 0) AS horas_media,
   avg(idade) AS idade_media`;
 
-// o cubo guarda somas e contagens: médias saem como soma ÷ contagem (as de remuneração, ÷ todos os vínculos do
-// grupo, como o PDET); medianas e percentis não são somáveis
+// O cubo guarda somas e contagens válidas: a cobertura salarial é distinta do estoque de vínculos.
+// Medianas e percentis não são somáveis.
 const MEDIDAS_CUBO = `
   coalesce(sum(vinculos), 0)::DOUBLE AS vinculos,
   coalesce(sum(vinculos) FILTER (situacao = 1), 0)::DOUBLE AS ativos,
@@ -2315,10 +2321,10 @@ const MEDIDAS_CUBO = `
   sum(rem_dez_soma) AS rem_dez_soma,
   coalesce(sum(rem_dez_n), 0)::DOUBLE AS n_rem_dez,
   NULL::DOUBLE AS rem_dez_ausente, NULL::DOUBLE AS rem_dez_zero, NULL::DOUBLE AS rem_dez_negativa,
-  sum(rem_dez_soma) / nullif(sum(vinculos) FILTER (situacao = 1), 0) AS rem_dez_media,
+  sum(rem_dez_soma) / nullif(sum(rem_dez_n), 0) AS rem_dez_media,
   NULL::DOUBLE AS rem_dez_p10, NULL::DOUBLE AS rem_dez_p25, NULL::DOUBLE AS rem_dez_mediana, NULL::DOUBLE AS rem_dez_p75, NULL::DOUBLE AS rem_dez_p90,
   NULL::DOUBLE AS rem_hora_media, NULL::DOUBLE AS rem_hora_mediana, NULL::DOUBLE AS n_rem_hora,
-  sum(rem_media_soma) / nullif(sum(vinculos), 0) AS rem_media_media,
+  sum(rem_media_soma) / nullif(sum(rem_media_n), 0) AS rem_media_media,
   NULL::DOUBLE AS rem_media_mediana,
   coalesce(sum(rem_media_n), 0)::DOUBLE AS n_rem_media,
   sum(horas_soma) / nullif(sum(horas_n), 0) AS horas_media,
@@ -2866,7 +2872,7 @@ export function tabelasIaTrabalho(comMicro = true): Promise<ContextoTrabalho> {
     await dicionarioTrabalho().catch(() => undefined);
     const f = (manifesto.fontes ?? {}) as Record<string, Record<string, unknown>>;
     const lista = (caminhos: string[]) => `[${caminhos.map((c) => arq(c)).join(', ')}]`;
-    await con.query(`CREATE OR REPLACE VIEW trab_setores AS SELECT * FROM read_parquet(${arq('gold/trabalho/setores.parquet')})`);
+    await con.query(`CREATE OR REPLACE VIEW trab_setores AS SELECT * FROM read_parquet(${arq(arquivoSetores(manifesto))})`);
     await con.query(`CREATE OR REPLACE VIEW trab_caged AS SELECT * FROM read_parquet(${arq('gold/trabalho/caged.parquet')})`);
     // os seis grandes setores de trab_municipios em linhas (setor, vínculos): distribuição sem uma coluna por setor
     await con.query(`CREATE OR REPLACE VIEW trab_grandes_setores AS

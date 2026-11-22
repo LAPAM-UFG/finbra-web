@@ -66,18 +66,20 @@ describe('ferramentas', () => {
     }
   }
 
-  test('só responder é estrita; esquemas válidos e sem enum (gramática dentro do limite da API)', () => {
-    assert.deepEqual(FERRAMENTAS.map((f) => f.name), ['consultar', 'localizar', 'responder']);
+  test('só responder usa gramática estrita; consultas preparadas validam os limites no cliente', () => {
+    assert.deepEqual(FERRAMENTAS.map((f) => f.name), ['consultar_painel', 'consultar', 'localizar', 'responder']);
     // com as três estritas, ou com enum, a API recusou o pedido: "The compiled grammar is too large"
-    assert.deepEqual(FERRAMENTAS.map((f) => f.strict), [false, false, true]);
+    assert.deepEqual(FERRAMENTAS.map((f) => f.strict), [false, false, false, true]);
     for (const f of FERRAMENTAS) {
-      conferirEstrito(f.input_schema, f.name);
-      assert.doesNotMatch(JSON.stringify(f.input_schema), /"enum"/, `${f.name}: enum`);
+      if (f.strict) {
+        conferirEstrito(f.input_schema, f.name);
+        assert.doesNotMatch(JSON.stringify(f.input_schema), /"enum"/, `${f.name}: enum`);
+      }
     }
   });
 
   test('gramática grande demais: repete com as mesmas ferramentas, sem modo estrito', () => {
-    assert.deepEqual(SEM_ESTRITO.map((f) => f.strict), [false, false, false]);
+    assert.deepEqual(SEM_ESTRITO.map((f) => f.strict), [false, false, false, false]);
     assert.deepEqual(SEM_ESTRITO.map((f) => f.input_schema), FERRAMENTAS.map((f) => f.input_schema));
     const recusa = (texto) => new Anthropic.BadRequestError(400, { type: 'error', error: { type: 'invalid_request_error', message: texto } }, texto, new Headers());
     assert.ok(gramaticaGrande(recusa('The compiled grammar is too large, which would cause performance issues.')));
@@ -174,8 +176,9 @@ describe('instruções', () => {
 
   test('painéis desconhecidos são ignorados; nenhum válido = todos', () => {
     assert.deepEqual(paineisDoPedido(['trabalho', 'x']), ['trabalho']);
-    assert.deepEqual(paineisDoPedido([]), ['saneamento', 'educacao', 'financas', 'trabalho', 'saude', 'munic', 'clima', 'assistencia']);
-    assert.deepEqual(paineisDoPedido('trabalho'), ['saneamento', 'educacao', 'financas', 'trabalho', 'saude', 'munic', 'clima', 'assistencia']);
+    const todos = ['agropecuaria', 'mobilidade', 'seguranca', 'internet', 'energia', 'comex', 'saneamento', 'educacao', 'financas', 'trabalho', 'saude', 'munic', 'clima', 'assistencia'];
+    assert.deepEqual(paineisDoPedido([]), todos);
+    assert.deepEqual(paineisDoPedido('trabalho'), todos);
     assert.deepEqual(paineisDoPedido(['saude', 'financas']), ['financas', 'saude']);
   });
 

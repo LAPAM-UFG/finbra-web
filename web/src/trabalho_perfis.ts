@@ -125,7 +125,13 @@ export const perfisComRemuneracao = (fonte: unknown, ano?: number): boolean => {
   // remuneração só onde o arquivo V2 do ANO existe; sem a lista de anos ou sem o ano, nada é presumido
   return ano !== undefined && Array.isArray(anos) && anos.includes(ano);
 };
-export const caminhoPerfis = (ano: number, fonte?: unknown) => `gold/trabalho/${perfisComRemuneracao(fonte, ano) ? 'perfis_v2' : 'perfis'}/ano=${ano}.parquet`;
+export const caminhoPerfis = (ano: number, fonte?: unknown) => {
+  const arquivo = fonte && typeof fonte === 'object' ? (fonte as { arquivos?: unknown }).arquivos : null;
+  if (perfisComRemuneracao(fonte, ano) && typeof arquivo === 'string' && /^gold\/trabalho\/perfis_v2(?:_validos)?\/ano=\{ano\}\.parquet$/.test(arquivo)) {
+    return arquivo.replace('{ano}', String(ano));
+  }
+  return `gold/trabalho/${perfisComRemuneracao(fonte, ano) ? 'perfis_v2' : 'perfis'}/ano=${ano}.parquet`;
+};
 
 // ---------------- leitura das linhas ----------------
 
@@ -160,10 +166,12 @@ export function lerPerfil(linhas: Linha[] | undefined, ano: number): PerfilLido 
       if (m !== null || media !== null) { problemas.push('remuneração sem valor válido'); return null; }
       return { massaCentavos: null, nRem: 0, media: null };
     }
-    // média = massa ÷ 100 ÷ vínculos, a mesma conta do gerador (IEEE idêntico): só algumas ULPs de folga; cada valor positivo vale ao menos 1 centavo
+    // O V2 anterior gravava massa/todos os vínculos. Lemos ambas as edições, mas recalculamos
+    // sempre pelos valores positivos informados. Cada remuneração válida tem ao menos um centavo.
     if (typeof m !== 'number' || !Number.isSafeInteger(m) || m < k || typeof media !== 'number' || !Number.isFinite(media)
-      || media <= 0 || Math.abs(media - m / 100 / r.vinculos) > Math.abs(media) * Number.EPSILON * 4) { problemas.push('massa ou média de remuneração'); return null; }
-    return { massaCentavos: m, nRem: k, media };
+      || media <= 0 || (Math.abs(media - m / 100 / k) > Math.abs(media) * Number.EPSILON * 4
+        && Math.abs(media - m / 100 / r.vinculos) > Math.abs(media) * Number.EPSILON * 4)) { problemas.push('massa ou média de remuneração'); return null; }
+    return { massaCentavos: m, nRem: k, media: m / 100 / k };
   };
   const remuneracaoTotal = temRem && totais.length === 1 ? lerRem(totais[0]) : null;
   const vistas = new Set<string>();

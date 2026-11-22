@@ -45,7 +45,7 @@ for (const uf of [...new Set(cadastro.map(r => r[2]))].sort()) {
      const x = dims?.[i.categoria.variavel]?.get(i.categoria.codigo);
      esperado = !dims ? null : i.categoria.medida === 'n' ? x?.vinculos ?? 0 : i.categoria.medida === 'pct' ? x?.pct ?? (p.estado === 'ok' && p.total > 0 ? 0 : null) : x?.media ?? null;
      if (dims) {
-      assert.equal(l.denominador, i.categoria.medida === 'rem' ? x?.vinculos ?? 0 : p.estado === 'ok' ? p.total : null);
+      assert.equal(l.denominador, i.categoria.medida === 'rem' ? x?.nRem ?? 0 : p.estado === 'ok' ? p.total : null);
       assert.equal(l.numerador, i.categoria.medida === 'rem' ? x?.massaCentavos != null ? x.massaCentavos / 100 : null : x?.vinculos ?? 0);
       if (i.categoria.medida === 'rem') assert.equal(l.rem_validas, x?.nRem ?? 0);
      }

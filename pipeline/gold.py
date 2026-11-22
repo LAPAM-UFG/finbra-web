@@ -489,6 +489,9 @@ def fonte_trabalho(con):
             f"SELECT DISTINCT ano FROM '{(pasta / 'municipios.parquet').as_posix()}' ORDER BY 1").fetchall()]
         saida["rais"] = {"anos": anos, "processado_em": _quando(pasta / "municipios.parquet"),
                          "url": "ftp://ftp.mtps.gov.br/pdet/microdados/RAIS/"}
+        if all((pasta / (n+'_validos.parquet')).exists() for n in ['setores','setores_uf']):
+            saida['rais'].update({n:f'gold/trabalho/{n}_validos.parquet' for n in ['setores','setores_uf']})
+            saida['rais']['remuneracao']={'denominador':'vínculos ativos com remuneração positiva informada','ausentes':'fora da média; preservados no estoque e na cobertura'}
     if (pasta / "caged_uf.parquet").exists():
         de, ate = con.execute(f"SELECT min(competencia), max(competencia) FROM '{(pasta / 'caged_uf.parquet').as_posix()}'").fetchone()
         saida["caged"] = {"de": de, "ate": ate, "processado_em": _quando(pasta / "caged_uf.parquet"),

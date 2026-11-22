@@ -80,8 +80,8 @@ export function TrabalhoRemuneracao() {
     ? { media: div(num(mulheres.rem_dez_media), num(homens.rem_dez_media)), mediana: micro ? div(num(mulheres.rem_dez_mediana), num(homens.rem_dez_mediana)) : null } : null;
 
   const metodo = t(
-    'Média de dezembro como no PDET/MTE: massa ÷ todos os vínculos ativos em 31/12 do grupo (quem está sem valor conta como zero e é mostrado na coluna "sem valor"). Mediana, P10 e P90: só dos valores informados (maiores que zero), só nos microdados. Os grupos são vínculos, não pessoas. As diferenças entre grupos são descritivas e não ajustadas por ocupação, atividade, idade, escolaridade, jornada ou tempo de emprego; não provam discriminação nem efeito causal.',
-    'December average as in PDET/MTE: payroll ÷ all active jobs on Dec 31 in the group (jobs without a value count as zero and are shown in the "without pay" column). Median, P10 and P90: reported values only (above zero), microdata only. Groups are jobs, not people. Differences between groups are descriptive and not adjusted for occupation, activity, age, education, hours or tenure; they do not prove discrimination or a causal effect.',
+    'Média de dezembro: massa ÷ vínculos ativos em 31/12 do grupo com remuneração positiva informada (os demais são mostrados na coluna "sem valor" e ficam fora da média). Mediana, P10 e P90: só dos valores informados (maiores que zero), só nos microdados. Os grupos são vínculos, não pessoas. As diferenças entre grupos são descritivas e não ajustadas por ocupação, atividade, idade, escolaridade, jornada ou tempo de emprego; não provam discriminação nem efeito causal.',
+    'December average: payroll ÷ jobs active on Dec 31 in the group with positive reported pay (the others are excluded from the average and shown under "without pay"). Median, P10 and P90: reported values only (above zero), microdata only. Groups are jobs, not people. Differences between groups are descriptive and not adjusted for occupation, activity, age, education, hours or tenure; they do not prove discrimination or a causal effect.',
   );
   const tabela = (): Tabela => {
     const cols = colunas;
@@ -159,8 +159,8 @@ export function TrabalhoRemuneracao() {
               <div className="kpis kpis-4">
                 <Kpi rotulo={t('Vínculos ativos (31/12)', 'Active jobs (Dec 31)')} valor={numero(total.ativos)} nota={t('vínculos, não pessoas', 'jobs, not people')} />
                 <Kpi rotulo={t('Remuneração média de dezembro', 'Average December pay')} valor={reaisExato(mediaTotal)}
-                  nota={t(`${numero(total.n_rem_dez)} de ${numero(total.ativos)} com valor (${pct(div(total.ativos - total.n_rem_dez, total.ativos))} sem valor, contam como zero) · regra do PDET`,
-                    `${numero(total.n_rem_dez)} of ${numero(total.ativos)} with a value (${pct(div(total.ativos - total.n_rem_dez, total.ativos))} without, counted as zero) · PDET rule`)}
+                  nota={t(`${numero(total.n_rem_dez)} de ${numero(total.ativos)} com valor (${pct(div(total.ativos - total.n_rem_dez, total.ativos))} sem valor, fora da média)`,
+                    `${numero(total.n_rem_dez)} of ${numero(total.ativos)} with a value (${pct(div(total.ativos - total.n_rem_dez, total.ativos))} without, excluded from the average)`)}
                   dica={<Dica rotulo={t('Método', 'Method')}>{metodo}</Dica>} />
                 {dimEscolhida?.id === 'sexo' && (
                   <Kpi rotulo={t('Mulheres ÷ homens (média)', 'Women ÷ men (average)')} valor={razaoSexo?.media != null ? pct(razaoSexo.media, 0) : '–'}
@@ -209,7 +209,7 @@ export function TrabalhoRemuneracao() {
                   </table>
                 </div>
                 <p className="legenda-tabela">
-                  ‡ {t(`N com remuneração informada abaixo de ${recorte.nmin} (passe o mouse para ver): leia com cautela. Esse N são os valores positivos usados nas medianas e percentis; a média do PDET divide por todos os ativos, e a cobertura salarial aparece em “sem valor”.`, `N with pay reported below ${recorte.nmin} (hover to see it): read with caution. This N is the positive values used in medians and percentiles; the PDET average divides by all active jobs, and pay coverage appears under “without pay”.`)}{' '}
+                  ‡ {t(`N com remuneração informada abaixo de ${recorte.nmin} (passe o mouse para ver): leia com cautela. Esse N conta os valores positivos usados na média, mediana e percentis; a cobertura salarial aparece em “sem valor”.`, `N with pay reported below ${recorte.nmin} (hover to see it): read with caution. This N counts positive values used in the average, median and percentiles; pay coverage appears under “without pay”.`)}{' '}
                   {t('Valores ausentes aparecem como "–", nunca como zero.', 'Missing values show as "–", never as zero.')}{' '}
                   {metodo}
                 </p>

@@ -1,0 +1,26 @@
+/** Os temas novos usam os mesmos recortes preparados das telas, sem SQL sobre microdados. */
+export const NOVOS_PAINEIS={
+ agropecuaria:{nome:'agropecuária (IBGE: PAM, PPM e PEVS)',nota:'Produção, área e rendimento são medidas diferentes; preserve a unidade de cada produto. Valores monetários são correntes. Não some quantidades de produtos com unidades diferentes.'},
+ mobilidade:{nome:'mobilidade e segurança no trânsito (Senatran e SIM)',nota:'Frota é estoque de veículos no registro, não pessoas, viagens ou veículos circulando. Óbitos SIM são por residência e têm outra cobertura temporal; use taxas por habitante e preserve anos de cada fonte.'},
+ seguranca:{nome:'segurança pública e violência (SIM e Sinesp)',nota:'SIM e registros policiais Sinesp são fontes distintas. Não some nem trate como equivalentes. Certos indicadores Sinesp são apenas estaduais: não distribua por município. Anos incompletos e séries estaduais zeradas têm ressalvas e não entram em rankings de taxas.'},
+ internet:{nome:'Internet e conectividade (Anatel)',nota:'Acessos não são pessoas nem domicílios únicos. SCM e SMP são serviços diferentes; preserve referência mensal, tecnologia e velocidade. Não interprete acessos por habitante como percentual da população conectada.'},
+ energia:{nome:'energia elétrica e geração (ANEEL)',nota:'Potência instalada é capacidade, não energia gerada ou consumida. Estoques do cadastro atual têm só o ano da fotografia. Conexões por ano são coortes observadas no cadastro atual e não reconstituem estoques históricos. Use as datas e as notas devolvidas pela consulta.'},
+ comex:{nome:'comércio exterior (MDIC/Secex)',nota:'Exportação/importação de bens por domicílio fiscal; não é local da produção. Valores em US$ FOB correntes. Compare os mesmos meses dos anos parciais usando indicadores comparáveis. Concentração e contagens de mercados/produtos não são somáveis nem médias municipais.'},
+};
+export const FERRAMENTA_PAINEL={
+ name:'consultar_painel',strict:false,
+ description:'Consulta rápida dos números preparados de Agropecuária, Mobilidade, Segurança pública, Internet, Energia e Comércio exterior. Mesmos dados e condições das telas. Primeiro use catalogo com busca por assunto para obter IDs exatos; depois serie para municípios/UF/Brasil/regiões ou ranking relativo. territorios localiza nomes/códigos de regiões. Retorna C1/C2… citáveis em responder; os resultados também podem ser consultados como res_Cn para cruzamentos com outras fontes. Não calcula SQL nem lê microdados.',
+ input_schema:{type:'object',properties:{
+  tema:{type:'string',enum:Object.keys(NOVOS_PAINEIS)},operacao:{type:'string',enum:['catalogo','territorios','serie','ranking']},
+  busca:{type:'string',description:'Palavra do indicador, produto, território ou código, apenas em catalogo/territorios. Ex.: soja, fibra, solar, homicídios.'},
+  indicadores:{type:'array',items:{type:'string'},maxItems:12,description:'IDs exatos obtidos em catalogo. Obrigatório em serie/ranking; um único ID relativo em ranking.'},
+  territorios:{type:'array',items:{type:'string'},maxItems:8,description:'Códigos de 7 dígitos (município), siglas UF ou BR; regiões I:.../T:... retornadas em territorios. Serie: até oito por pedido. Regiões usam indicadores relativos.'},
+  anos:{type:'array',items:{type:'integer'},maxItems:40,description:'Anos pedidos. Em serie, array vazio/omitido usa a última referência de cada medida. Ano fora da cobertura fica sem valor; nunca troque o período em silêncio.'},
+  uf:{type:'string',description:'BR ou sigla de UF para limitar o ranking ou a busca de territórios.'},
+  nivel:{type:'string',enum:['M','UF','imediata','intermediaria'],description:'Nível do ranking/busca territorial; M por padrão.'},
+  ordem:{type:'string',enum:['asc','desc']},limite:{type:'integer',minimum:1,maximum:200000},offset:{type:'integer',minimum:0,maximum:200000},
+  objetivo:{type:'string',description:'O que está sendo consultado, no idioma da resposta.'},substitui:{type:'string',description:'C1/C2... se este pedido corrige uma consulta anterior, ou vazio.'},
+ },required:['tema','operacao'],additionalProperties:false},
+};
+export function secaoPainel(p){const x=NOVOS_PAINEIS[p];return `## ${x.nome}\nUse consultar_painel (tema=${p}) em vez de inventar tabelas SQL. Faça catalogo/busca para descobrir IDs, depois serie com indicadores, territorios e anos. A operação catalogo informa unidade, fonte, anos e se a medida é comparável. ranking aceita só medidas relativas, não totais absolutos. Use localizar para nomes municipais; territorios para regiões. Valores e condições são os mesmos do painel; NULL nunca é zero. Numeradores e denominadores, quando presentes, pertencem ao mesmo recorte. Não trate dado parcial ou cobertura incompleta como completo. ${x.nota}\nCite os identificadores Cn dos resultados em responder; para relacionar fontes, obtenha cada lado e junte res_Cn pelo município/ano, conferindo unidades e período. Não some linhas de indicadores distintos nem agregados com seus municípios. Cada estatística adicional deve vir de consultar SQL sobre res_Cn, não de conta mental.`;}
+export function contextoPainel(p,m){return `${NOVOS_PAINEIS[p].nome}: ${m?JSON.stringify({anos:m.anos,edicao:m.gerado_em,datas:m.datas,ultimos:m.ultimos,periodos:m.periodos}):'Consulte o catálogo preparado para confirmar a edição e os anos.'}`;}

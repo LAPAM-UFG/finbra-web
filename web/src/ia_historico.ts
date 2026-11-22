@@ -1,3 +1,4 @@
+import { entradaConsultaPainel } from './ia_paineis';
 /**
  * Histórico das conversas da IA. Cada conversa é guardada inteira — mensagens trocadas com o modelo (com os
  * resultados das ferramentas, que ele relê nas perguntas seguintes), resultados das consultas, contexto e versão
@@ -197,9 +198,10 @@ export async function novaVersaoComDadosAtuais(c: Conversa, o: {
     if (ehPergunta(m)) turno += 1;
     if (m.role !== 'assistant' || !Array.isArray(m.content)) continue;
     for (const b of m.content) {
-      if (b.type !== 'tool_use' || b.name !== 'consultar' || !b.id) continue;
-      const sql = String((b.input as { sql?: unknown } | undefined)?.sql ?? '');
-      const r = await o.executar(sql, c.metas[turno]?.contexto.paineis ?? ['financas', 'trabalho'], b.input);
+      if (b.type !== 'tool_use' || !['consultar','consultar_painel'].includes(b.name??'') || !b.id) continue;
+      const entrada = b.name === 'consultar_painel' ? entradaConsultaPainel(b.input) : b.input;
+      const sql = String((entrada as { sql?: unknown } | undefined)?.sql ?? '');
+      const r = await o.executar(sql, c.metas[turno]?.contexto.paineis ?? ['financas', 'trabalho'], entrada);
       resultados[b.id] = r;
       novos.set(b.id, r);
       if ('erro' in r) falhas.set(turno, (falhas.get(turno) ?? 0) + 1);

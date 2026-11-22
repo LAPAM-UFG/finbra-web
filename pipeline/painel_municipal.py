@@ -239,13 +239,13 @@ class Painel:
    if c in ['cod_ibge','ano','nome','uf','regiao']:continue
    k='rais_'+c;select.append(f'm.{qi(c)} {qi(k)}');cols[k]=campo(c.replace('_',' ').capitalize(),fonte='MTE/RAIS',unidade='R$ nominais de dezembro' if c.startswith('massa_') else 'número',regra='Vínculos ativos em 31/12, não pessoas; massa de dezembro, não anual.')
   for c,sql,label,u in [
-   ('remuneracao_media','m.massa_dez/nullif(m.empregos,0)','Remuneração média de dezembro','R$ nominais'),
-   ('remuneracao_media_real','m.massa_dez/nullif(m.empregos,0)*ip.fator_real','Remuneração média de dezembro (IPCA)',f'R$ de {self.manifest["base_ipca"]}'),
+   ('remuneracao_media','m.massa_dez/nullif(m.n_rem_dez,0)','Remuneração média de dezembro','R$ nominais'),
+   ('remuneracao_media_real','m.massa_dez/nullif(m.n_rem_dez,0)*ip.fator_real','Remuneração média de dezembro (IPCA)',f'R$ de {self.manifest["base_ipca"]}'),
    ('empregos_por_mil','1000.0*m.empregos/nullif(m.populacao,0)','Vínculos por mil habitantes','por mil habitantes'),
    ('vinculos_por_estabelecimento','m.empregos/nullif(m.estabelecimentos,0)','Vínculos por estabelecimento','vínculos/estabelecimento')]:
-   cols['rais_'+c]=campo(label,unidade=u,fonte='MTE/RAIS',obs='Média salarial usa todos os vínculos ativos no denominador.');select.append(f'{sql} {qi("rais_"+c)}')
+   cols['rais_'+c]=campo(label,unidade=u,fonte='MTE/RAIS',obs='Médias salariais usam apenas vínculos ativos com remuneração positiva informada; cobertura salarial separada do estoque.');select.append(f'{sql} {qi("rais_"+c)}')
   ipca=self.fonte('gold/ipca.parquet');self.tabela('rais','trabalho','SELECT '+','.join(select)+f' FROM {src} m LEFT JOIN {ipca} ip ON ip.exercicio=m.ano',cols)
-  src=self.fonte('gold/trabalho/perfis_v2/ano=*.parquet');self.db.execute(f'CREATE OR REPLACE VIEW perfis AS SELECT * FROM {src} WHERE regexp_full_match(escopo,\'[0-9]{{7}}\')')
+  src=self.fonte(self.manifest['fontes']['rais_perfis']['arquivos'].replace('{ano}','*'));self.db.execute(f'CREATE OR REPLACE VIEW perfis AS SELECT * FROM {src} WHERE regexp_full_match(escopo,\'[0-9]{{7}}\')')
   totals='(SELECT ano,escopo,vinculos FROM perfis WHERE variavel=\'total\')';cols={};select=['t.escopo cod_ibge','t.ano::INTEGER ano']
   pairs=self.rows("SELECT DISTINCT variavel,codigo FROM perfis WHERE variavel!='total' ORDER BY 1,2")
   for p in pairs:
@@ -257,7 +257,7 @@ class Painel:
       ('remuneracao_media',f'first(p.remuneracao_media_dez) FILTER(WHERE {pred})','R$ nominais de dezembro')]:
     k=base+'_'+metric;cols[k]=campo(f'{var.replace("_"," ").capitalize()}: {entry} — {metric.replace("_"," ")}',unidade=u,fonte='MTE/RAIS — perfis',obs='Grupo ausente em território coberto tem zero vínculos; salário sem valor positivo permanece ausente. Não representa pessoas únicas.');select.append(f'{sql} {qi(k)}')
   self.tabela('perfis_rais','trabalho','SELECT '+','.join(select)+f' FROM {totals} t LEFT JOIN perfis p ON p.escopo=t.escopo AND p.ano=t.ano GROUP BY t.escopo,t.ano,t.vinculos',cols)
-  src=self.fonte('gold/trabalho/setores.parquet');rows=self.rows(f'SELECT DISTINCT divisao FROM {src} ORDER BY 1');cols={};select=['cast(cod_ibge as VARCHAR) cod_ibge','ano::INTEGER ano']
+  src=self.fonte(self.manifest['fontes']['rais'].get('setores','gold/trabalho/setores.parquet'));rows=self.rows(f'SELECT DISTINCT divisao FROM {src} ORDER BY 1');cols={};select=['cast(cod_ibge as VARCHAR) cod_ibge','ano::INTEGER ano']
   for r in rows:
    for c in ['empregos','remuneracao_media_dez']:
     k='cnae_'+slug(r['divisao'])+'_'+c;select.append(f'first({qi(c)}) FILTER(WHERE divisao={qs(r["divisao"])}) {qi(k)}');cols[k]=campo(f'Divisão CNAE {r["divisao"]}: {c.replace("_"," ")}',unidade='vínculos' if c=='empregos' else 'R$ nominais de dezembro',fonte='MTE/RAIS — atividade do estabelecimento')

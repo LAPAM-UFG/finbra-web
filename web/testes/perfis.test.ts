@@ -30,7 +30,7 @@ const GOIANIA = linhasDe(2024, 728780, {
   tipo_vinculo: { '10': 465346, '15': 3669, '20': 890, '25': 411, '30': 129193, '31': 234, '35': 23297, '40': 554, '50': 199, '55': 15660, '60': 35239, '65': 136, '70': 14, '75': 14, '80': 508, '90': 426, '95': 1238, '96': 42005, '97': 9747 },
 });
 
-// Duas categorias, com tamanhos e cobertura diferentes: massa em centavos, média sobre TODOS os ativos.
+// Edição V2 legada: duas categorias com tamanhos e cobertura diferentes, inclusive remuneração ausente.
 function comRemuneracao(semValor = false): Linha[] {
   const grupos: Record<string, string[]> = { raca_cor: ['2', '77'], escolaridade: ['7', '9'], tipo_vinculo: ['10', '30'], vinculo_mte: ['1', '2'] };
   const m1 = semValor ? null : 300000;
@@ -45,13 +45,13 @@ function comRemuneracao(semValor = false): Linha[] {
   ];
 }
 
-test('remuneração: média usa todos os vínculos da categoria; total é ponderado pela massa', () => {
+test('remuneração: legado é recalculado pelos vínculos com valor; total usa massa e cobertura', () => {
   const p = ok(comRemuneracao());
-  assert.equal(p.remuneracaoTotal?.media, 1900);
+  assert.equal(p.remuneracaoTotal?.media, 19000 / 9);
   const d = distribuicao(p, 'raca_cor', 'pt');
   const a = d.itens.find((i) => i.codigo === '2')!;
   const b = d.itens.find((i) => i.codigo === '77')!;
-  assert.equal(a.media, 1500); // 3000 ÷ 2 ativos; apenas um tem o valor, não dividir por 1
+  assert.equal(a.media, 3000); // Um valor de R$ 3000 e um vínculo sem salário não são dois salários de R$ 1500.
   assert.equal(a.nRem, 1);
   assert.equal(a.semRem, 1);
   assert.equal(b.media, 2000);
@@ -70,7 +70,7 @@ test('remuneração: grupo sem valor e categoria sem vínculos têm média indis
   assert.equal(semValor.condicaoRem, 'sem_valor');
   assert.equal(semVinculos.media, null);
   assert.equal(semVinculos.condicaoRem, 'sem_vinculos');
-  assert.equal(p.remuneracaoTotal?.media, 1600);
+  assert.equal(p.remuneracaoTotal?.media, 2000);
 });
 
 test('remuneração V1: contagens preservadas, salários não publicados nunca viram zero', () => {
@@ -89,7 +89,7 @@ test('remuneração V1: contagens preservadas, salários não publicados nunca v
 });
 
 test('remuneração: massa, cobertura e média incoerentes ou campos parciais recusam os dados', () => {
-  for (const [field, value] of [['massa_dez_centavos', 300001], ['n_rem_dez', 3], ['n_rem_dez', 0], ['remuneracao_media_dez', 3000]]) {
+  for (const [field, value] of [['massa_dez_centavos', 300001], ['n_rem_dez', 3], ['n_rem_dez', 0], ['remuneracao_media_dez', 3001]]) {
     const linhas = comRemuneracao().map((r) => ({ ...r }));
     linhas[1][field as string] = value;
     assert.equal(lerPerfil(linhas, 2024).estado, 'inconsistente', String(field));
@@ -103,7 +103,7 @@ test('exportação de remuneração: reais numéricos, cobertura, condição e m
   const cols = colunasExportacao('pt');
   const rows = linhasExportacao(ok(comRemuneracao()), ['raca_cor'], 'pt');
   const a = rows.find((r) => r[1] === '2')!;
-  assert.equal(a[cols.indexOf('Remuneração média de dezembro')], 1500);
+  assert.equal(a[cols.indexOf('Remuneração média de dezembro')], 3000);
   assert.equal(a[cols.indexOf('Massa de dezembro')], 3000);
   assert.equal(a[cols.indexOf('Vínculos com remuneração válida')], 1);
   assert.equal(a[cols.indexOf('Vínculos sem remuneração válida')], 1);

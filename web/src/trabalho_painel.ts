@@ -3,8 +3,8 @@
  * ano; trab_caged: uma linha por competência). Nada aqui consulta dados nem formata texto de tela: numerador,
  * denominador e condição do dado saem junto de cada valor, para a tela, a nota do cartão e a exportação usarem o mesmo número.
  *
- * Regras: divisão por zero ou por ausente dá null (nunca zero falso); remuneração média = massa de dezembro ÷ TODOS os
- * vínculos ativos (quem não tem valor conta como zero no denominador); a massa de dezembro não é massa anual.
+ * Regras: divisão por zero ou por ausente dá null (nunca zero falso); remuneração média = massa de dezembro ÷
+ * vínculos ativos com remuneração positiva informada; a massa de dezembro não é massa anual.
  */
 
 export type Linha = Record<string, unknown>;
@@ -81,8 +81,8 @@ export function calcularRais(a: Linha | undefined, ant: Linha | undefined, ano: 
     nRem,
     semRem,
     pctSemRem: razao(semRem, empregos),
-    remMedia: n(a.remuneracao_media),
-    remMediaReal: n(a.remuneracao_media_real),
+    remMedia: razao(n(a.massa_dez), nRem),
+    remMediaReal: razao(n(a.massa_dez_real), nRem),
     massa: n(a.massa_dez),
     massaReal: n(a.massa_dez_real),
     remMulheres: n(a.remuneracao_mulheres),

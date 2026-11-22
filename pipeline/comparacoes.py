@@ -362,8 +362,8 @@ class Comparacoes:
                 qout.elegiveis = eleg
                 qout.validacao_extra = validas
                 i["aceita_denominador_zero_agregado"] = True
-                c[eleg & (validas == 0) & (d > 0)] = 13
-                c[eleg & (d == 0)] = 14
+                c[eleg & (validas == 0) & (quadros['empregos']['v'] > 0)] = 13
+                c[eleg & (quadros['empregos']['v'] == 0)] = 14
             if area == "trabalho" and i.get("categoria", {}).get("medida") == "rem":
                 eleg = np.isin(c, [0, 1, 13, 14]) & np.isfinite(d)
                 n = n.copy()

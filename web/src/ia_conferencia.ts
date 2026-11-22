@@ -1,3 +1,4 @@
+import { entradaConsultaPainel } from './ia_paineis';
 /**
  * Pedido de conferência de uma resposta da IA pelo especialista RAIS (formato "conferencia-rais/1"; etapa 1).
  *
@@ -126,13 +127,13 @@ export function pedidoConferencia(e: {
   e.mensagens.forEach((m, i) => {
     if (m.role !== 'assistant' || !Array.isArray(m.content)) return;
     for (const b of m.content) {
-      if (b.type !== 'tool_use' || b.name !== 'consultar' || !b.id) continue;
+      if (b.type !== 'tool_use' || !['consultar','consultar_painel'].includes(b.name??'') || !b.id) continue;
       const rotulo = rotulos.get(b.id) ?? '';
       const doTurno = i >= de && i < ate;
       if (!doTurno && !cita.has(rotulo)) continue;
       const r = lerDevolvido(devolvidos.get(b.id));
       if (!r) continue;
-      const x = (b.input ?? {}) as { sql?: unknown; objetivo?: unknown; substitui?: unknown };
+      const x = (b.name === 'consultar_painel' ? entradaConsultaPainel(b.input) : b.input ?? {}) as { sql?: unknown; objetivo?: unknown; substitui?: unknown };
       candidatas.push({
         id: rotulo, objetivo: String(x.objetivo ?? ''), sql: String(x.sql ?? ''), colunas: r.colunas, linhas: r.linhas, total_linhas: r.total,
         n: Number(rotulo.slice(1)), citada: cita.has(rotulo), doTurno, substitui: String(x.substitui ?? '').trim(),

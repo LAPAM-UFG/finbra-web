@@ -60,8 +60,8 @@ export function AjudaTrabalho({ foco = 'geral' }: { foco?: 'geral' | 'remuneraca
         'The average adds everything and divides by the number of jobs; very high values pull it up. The median is the middle value: half earn less, half earn more. P10 and P90 are the values below which 10% and 90% of jobs fall: they show the low and high ends. Median and percentiles need microdata (state or municipality).',
       )] as [string, string],
       [t('Remuneração ausente', 'Missing pay'), t(
-        'Alguns vínculos ativos não têm remuneração de dezembro informada. Na média (regra do PDET/MTE) eles contam como zero e aparecem à parte; mediana e percentis usam só os valores informados.',
-        'Some active jobs have no December pay reported. In the average (PDET/MTE rule) they count as zero and are shown separately; the median and percentiles use reported values only.',
+        'Alguns vínculos ativos não têm remuneração de dezembro informada. Eles ficam fora da média, mediana e percentis e aparecem à parte na cobertura salarial; o estoque de empregos é preservado.',
+        'Some active jobs have no December pay reported. They are excluded from the average, median and percentiles and shown separately in pay coverage; the total job count is preserved.',
       )] as [string, string],
     ]),
     [t('“N”', '“N”'), t(

@@ -374,10 +374,10 @@ function Detalhe({ m, escolha, escopo, r, periodo, geradoEm, definir }: {
   );
 }
 
-/** Séries grandes só entram quando o usuário chega ao histórico ou pede uma medida/ano pelo endereço. */
+/** Séries grandes só entram ao chegar ao histórico ou pedir uma medida; um ano herdado não antecipa essa carga. */
 function DetalheSobDemanda({ forcar, ...props }: Parameters<typeof Detalhe>[0] & { forcar: boolean }) {
   const alvo = useRef<HTMLDivElement>(null);
-  const pedido = forcar || props.escolha.variavel !== null || props.escolha.ano !== null;
+  const pedido = forcar || props.escolha.variavel !== null;
   const [visivel, setVisivel] = useState(pedido);
   useEffect(() => {
     if (pedido) setVisivel(true);

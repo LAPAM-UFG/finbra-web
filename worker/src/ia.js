@@ -29,6 +29,7 @@ import { acesso, destinoSeguro } from './acesso.js';
 import { podeConferir } from './conferencia.js';
 import { rotaConversas } from './conversas.js';
 import { instrucoes, paineisDoPedido } from './sistema_geral.js';
+import { FERRAMENTA_PAINEL, NOVOS_PAINEIS } from './sistema_paineis.js';
 
 // Modelo do site: só "haiku" (o mais barato: US$ 0,10 / 0,50 por milhão de tokens de entrada / saída). O Sonnet
 // (cerca de 20 vezes mais caro) foi retirado do site por custo; corpo.modelo ainda é aceito, mas só com "haiku". O ID
@@ -56,6 +57,7 @@ const MAX_RESUMO = 8000;
 const FORMATO = '"inteiro", "decimal", "reais" ou "percentual" (0–100).';
 
 export const FERRAMENTAS = [
+  FERRAMENTA_PAINEL,
   {
     name: 'consultar',
     description:
@@ -374,6 +376,15 @@ async function lerManifesto(env) {
 }
 
 const saneamentoCache={valor:null,ate:0};
+const preparadosCache=new Map();
+async function lerPreparados(env,paineis){
+  return Object.fromEntries(await Promise.all(paineis.filter(p=>NOVOS_PAINEIS[p]).map(async p=>{
+    const cache=preparadosCache.get(p);
+    if(cache&&cache.ate>Date.now())return[p,cache.valor];
+    const obj=await env.DADOS.get(`gold/${p}/manifesto.json`);const valor=obj?await obj.json():null;
+    preparadosCache.set(p,{valor,ate:Date.now()+60000});return[p,valor];
+  })));
+}
 async function lerSaneamento(env){
   if(Date.now()>saneamentoCache.ate){
     const obj=await env.DADOS.get('gold/saneamento/manifesto.json');
@@ -479,6 +490,7 @@ export async function rotaIa(request, env, url) {
     cache_control: { type: 'ephemeral' },
     system: [
       ...instrucoes(paineis, {
+        temasPreparados:await lerPreparados(env,paineis),
         educacao:paineis.includes('educacao')?await lerEducacao(env):null,
         saneamento:paineis.includes('saneamento')?await lerSaneamento(env):null,
         // no desenvolvimento local (wrangler dev) o R2 simulado não tem o manifesto: vale o do navegador

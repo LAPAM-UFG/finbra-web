@@ -15,7 +15,7 @@ type Bloco={compatibilidade:unknown};
 type Raiz={versao:1;catalogo:Bloco&{arquivo:Ref};
  trabalho:Bloco&{historico:Indices;anos:Record<string,Indices>};
  gestao:Bloco&{curadoria_sha256:string;territorios:Ref;respostas:Indices;agregados:Indices};
- fiscal:Bloco&{campos:string[];pacotes:Indices}};
+ fiscal:Bloco&{campos:string[];pares?:string[];pacotes:Indices}};
 type Dep={manifesto:()=>Promise<ManifestoBruto>;base:string;buscar:typeof fetch};
 const ROTAS=new Set(['entes','trab_serie','trab_caged','trab_setores','trab_perfis','munic_territorios','munic_painel','agregado','cobertura']);
 const UFS=new Set(Object.keys(COD_UF));
@@ -106,7 +106,9 @@ export function criarAberturaPaineis(dep:Dep){
     const p=await parte(indices,g);return p===null?[]:p[c]?linhas(p[c]):USAR_MOTOR;
    }
    const a=r.fiscal;if(!igual(a?.compatibilidade,compat(m,['siconfi','populacao_declarada'],true))||q.tratamento==='declarado')return USAR_MOTOR;
-   if(Object.keys(q).some(k=>!['ente','uf','ano','esfera','tratamento','por','campos','dominio'].includes(k)))return USAR_MOTOR;
+    if(Object.keys(q).some(k=>!['ente','uf','ano','esfera','tratamento','por','campos','dominio','pares'].includes(k)))return USAR_MOTOR;
+    const pares=String(q.pares??'').split(',').filter(Boolean);
+    if(pares.some(p=>!a.pares?.includes(p)))return USAR_MOTOR;
    const g=await fiscalScope(r,m,q),p=await parte(a.pacotes,g);if(!p)return USAR_MOTOR;
    const ano=int(q.ano);
    if(c==='cobertura'){
@@ -116,7 +118,7 @@ export function criarAberturaPaineis(dep:Dep){
    }
    if(String(q.por??'exercicio')!=='exercicio')return USAR_MOTOR;
    const campos=String(q.campos??'').split(',').filter(Boolean);if(!campos.length||campos.some(c=>!a.campos.includes(c)))return USAR_MOTOR;
-   const nomes=['exercicio',...campos.flatMap(c=>[c,c+'_real','populacao_'+c,'entes_'+c]),'populacao','entes'];
+    const nomes=['exercicio',...campos.flatMap(c=>[c,c+'_real','populacao_'+c,'entes_'+c]),...pares.flatMap(p=>{const[a,b]=p.split('/');return['num','den','entes'].map(s=>`${a}__${b}_${s}`)}),'populacao','entes'];
    return linhas(p.agregado).filter(x=>!ano||Number(x.exercicio)===ano).map(x=>Object.fromEntries(nomes.map(n=>{if(!(n in x))throw new Error('Coluna ausente');return [n,x[n]];})));
   } catch {return USAR_MOTOR;}
  }
