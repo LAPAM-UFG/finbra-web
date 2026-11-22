@@ -3,6 +3,7 @@ import test from 'node:test';
 import {executarPainelPreparado,lerPedidoPainel,entradaConsultaPainel,TEMAS_PREPARADOS,type DependenciasPainel} from '../src/ia_paineis';
 import {rotulosConsultas,consultasDaConversa,type Mensagem} from '../src/ia';
 import {resultadosReaproveitaveis} from '../src/ia_continuidade';
+import {registrarColunas,tiposDoResultado} from '../src/ia_formato';
 const dep:DependenciasPainel={pacote:async()=>({
  m:{gerado_em:'2026-11-21'},
  c:{anos:[2013,2024],indicadores:[{id:'contagem',nome:'Quantidade observada',unidade:'registros',anos:[2013,2024]},{id:'pop',nome:'População',unidade:'habitantes',anos:[2013,2024]}],derivados:[{id:'taxa',nome:'Por cem habitantes',unidade:'por 100 habitantes',anos:[2013,2024],numerador_id:'contagem',denominador_id:'pop'}],condicoes:{0:'Registrado',1:'Zero registrado',2:'Sem registro',5:'Fora da cobertura'}},
@@ -30,6 +31,11 @@ test('consulta de painel mantém identificadores, histórico e tabelas reaprovei
  assert.equal(rotulosConsultas(h).get('p1'),'C1');assert.equal(rotulosConsultas(h).get('p2'),'C2');const resultados={p1:{colunas:['cod_ibge','ano','valor'],linhas:[[5208905,2024,30]],total:1}};const c=consultasDaConversa(h,resultados).get('C1')!;assert.deepEqual(c.preparado,pedido);assert.equal(c.sql,entradaConsultaPainel(pedido).sql);assert.equal(resultadosReaproveitaveis(h,resultados).get('C1')?.res.linhas[0][2],30);
 });
 test('cancelamento não entrega dados de uma consulta abandonada',async()=>{const c=new AbortController();c.abort();await assert.rejects(()=>executarPainelPreparado({tema:'energia',operacao:'catalogo'},['energia'],c.signal,2000,dep),{name:'AbortError'});});
+
+test('unidade da linha não é sobrescrita por reais no cabeçalho genérico',()=>{
+ const c=entradaConsultaPainel({tema:'internet',operacao:'serie',indicadores:['acessos_100hab'],territorios:['GO'],anos:[2024]});registrarColunas(c.sql,c.colunas);
+ assert.deepEqual(tiposDoResultado({colunas:['valor','numerador','denominador'],linhas:[[22.28,1637698,7350483]],total:1},c.sql),['numero','numero','numero']);
+});
 
 test('cobertura própria da medida prevalece sobre o calendário geral do tema',async()=>{
  const d:DependenciasPainel={pacote:async tema=>{const x=await dep.pacote(tema);return{...x,c:{...x.c,derivados:[{...x.c.derivados![0],anos:[2024]}]}};}};

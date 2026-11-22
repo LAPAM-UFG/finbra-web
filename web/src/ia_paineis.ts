@@ -3,6 +3,7 @@ import { BASE_DADOS } from './manifesto';
 import type { Resultado } from './ia';
 import type { GeografiaComparacao } from './comparacoes_dados';
 import { condicaoComparacao, ranquearComparacao } from './comparacoes_apresentacao';
+import { t } from './idioma';
 
 export const TEMAS_PREPARADOS = ['agropecuaria','mobilidade','seguranca','internet','energia','comex'] as const;
 export type TemaPreparado = typeof TEMAS_PREPARADOS[number];
@@ -40,7 +41,9 @@ export function entradaConsultaPainel(entrada:unknown) {
   let p:Record<string,unknown>;
   try{p=lerPedidoPainel(entrada)as unknown as Record<string,unknown>;}catch{p={pedido_invalido:entrada};}
   const chave=JSON.stringify(Object.fromEntries(Object.entries(p).filter(([k])=>!['objetivo','substitui'].includes(k)).sort(([a],[b])=>a.localeCompare(b))));
-  return {sql:`-- Painel preparado: ${chave}`,preparado:entrada,objetivo:String(p.objetivo??'Consultar os dados preparados do painel'),substitui:String(p.substitui??'')};
+  // A unidade pertence a cada linha. O nome genérico "valor" não implica reais.
+  const colunas=[['valor',t('Valor','Value')],['numerador',t('Numerador','Numerator')],['denominador',t('Denominador','Denominator')]].map(([nome,rotulo])=>({nome,rotulo,unidade:'numero'}));
+  return {sql:`-- Painel preparado: ${chave}`,preparado:entrada,colunas,objetivo:String(p.objetivo??'Consultar os dados preparados do painel'),substitui:String(p.substitui??'')};
 }
 
 async function pacote(tema:TemaPreparado):Promise<Pacote> {

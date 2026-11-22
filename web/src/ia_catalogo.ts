@@ -352,7 +352,7 @@ export function fichaDaColuna(nome: string, cob?: Cobertura | null, sql?: string
 export const UNIDADES: Record<string, TipoColuna> = {
   reais: 'reais', reais_por_habitante: 'reais', contagem: 'contagem', habitantes: 'contagem', percentual: 'percentual',
   pontos_percentuais: 'percentual', razao: 'razao', estatistica: 'estatistica', indice: 'indice', codigo: 'codigo',
-  ano: 'ano', competencia: 'competencia', texto: 'texto',
+  ano: 'ano', competencia: 'competencia', texto: 'texto', numero: 'numero',
 };
 
 /** Tipo pelo nome de estatística (correlação, R², t, p): nunca R$, mesmo com fpm ou despesa no nome. */
