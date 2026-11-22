@@ -29,7 +29,6 @@ jobs:
       CDSAPI_URL: ${{ secrets.CDSAPI_URL }}
       CDSAPI_KEY: ${{ secrets.CDSAPI_KEY }}
       PYTHONIOENCODING: utf-8
-      ATUALIZACAO_RAIZ: ${{ runner.temp }}/finbra-atualizacao
     steps:
       - uses: actions/checkout@v7
       - name: Reservar espaço para as bases e os formatos de download
@@ -37,6 +36,7 @@ jobs:
           # SDKs sem uso neste job, em uma máquina descartável do GitHub.
           sudo rm -rf -- /usr/share/dotnet /usr/local/lib/android /usr/share/swift /opt/ghc
           df -h "$RUNNER_TEMP"
+          echo "ATUALIZACAO_RAIZ=$RUNNER_TEMP/finbra-atualizacao" >> "$GITHUB_ENV"
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
