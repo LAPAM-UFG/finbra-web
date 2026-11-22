@@ -1,6 +1,6 @@
 import unittest
 import numpy as np,pandas as pd
-from comex import calcular_razao,correspondencia_municipal
+from comex import calcular_razao,correspondencia_municipal,QuadroComex
 from comex_definicoes import definicoes
 
 class ComexTest(unittest.TestCase):
@@ -25,5 +25,8 @@ class ComexTest(unittest.TestCase):
   d=definicoes(dict(ano=2026,mes=10,periodos={str(y):10 if y==2026 else 12 for y in range(2013,2027)}));self.assertEqual(len(d),63)
   self.assertEqual({x['id']for x in d if x['com_sinal']},{'cex_saldo_fob','cex_saldo_fob_c','cex_exp_var_pct','cex_imp_var_pct'})
   x={x['id']:x for x in d};self.assertIn('dezembro',x['cex_exp_fob']['notas_anos']['2025'][0]);self.assertIn('outubro',x['cex_exp_fob_c']['notas_anos']['2025'][0]);self.assertNotIn(2013,x['cex_exp_var_pct']['anos']);self.assertTrue(all(len(v+'_cond')<=32 for v in x))
+ def test_referencia_identifica_cobertura_municipal_incompleta(self):
+  q=QuadroComex.__new__(QuadroComex);q.periodos=[2026];q.base=pd.DataFrame({'valor':[50.],'cex_populacao':[20.]},index=pd.MultiIndex.from_tuples([('BR',2026)]));q.ncol='valor';q.dcol='cex_populacao';q.power=1;q.pop=np.array([[10.,10.]]);q.cobertos=np.array([True,False]);q.definicao={'fator':1}
+  r=q.grupo_territorio('BR',[0,1]);self.assertEqual(r['v'],[2.5]);self.assertEqual(r['q'],[1]);self.assertEqual(r['c'],[16])
 
 if __name__=='__main__':unittest.main()

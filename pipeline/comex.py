@@ -29,9 +29,9 @@ class QuadroComex(Quadro):
   df=self.base.loc[(key,self.periodos),:];n=df[self.ncol].to_numpy();d=df[self.dcol].to_numpy();v,c,dd=calcular_razao(n,d,self.definicao['fator'],self.power)
   # Zero de comércio é um componente conhecido. Agregações de concentração
   # usam os produtos/mercados reunidos, inclusive municípios sem comércio.
-  valid=np.isfinite(v);q=np.where(valid,len(pos),0)
+  valid=np.isfinite(v);q=np.where(valid,int(self.cobertos[pos].sum()),0);c[valid&(q<len(pos))]=16
   if self.dcol=='cex_populacao':
-   q=np.array([np.isfinite(self.pop[k,pos]).sum()if valid[j]else 0 for j,k in enumerate(range(len(self.periodos)))]);c[valid&(q<len(pos))]=16
+   q=np.array([(np.isfinite(self.pop[k,pos])&self.cobertos[pos]).sum()if valid[j]else 0 for j,k in enumerate(range(len(self.periodos)))]);c[valid&(q<len(pos))]=16
   return dict(v=numeros(v),n=numeros(n),d=numeros(dd),c=c.astype(int).tolist(),q=q.astype(int).tolist(),r=numeros(v))
 
 def grupos_geograficos(g):
@@ -75,7 +75,7 @@ def gerar(fontes,saida):
   print(json.dumps(dict(etapa='arquivo_conferido',arquivo=name,linhas=v[3],FOB=v[5])),flush=True)
  assert db.execute('SELECT count(*)FROM fatos WHERE kg IS NULL OR fob IS NULL OR kg<0 OR NOT regexp_full_match(sh4,\'[0-9]{4}\')').fetchone()[0]==0
  negativos=db.execute('SELECT count(*),coalesce(sum(fob),0)FROM fatos WHERE fob<0').fetchone()
- knownufs={m[2]for m in mun};mapping=[];unresolved=[];crosswalk,audit=correspondencia_municipal(aux(fontes/'UF_MUN.csv'),mun);pd.DataFrame(audit).to_csv(work/'correspondencia_municipios.csv',index=False,encoding='utf-8')
+ knownufs={m[2]for m in mun};mapping=[];unresolved=[];crosswalk,audit=correspondencia_municipal(aux(fontes/'UF_MUN.csv'),mun);pd.DataFrame(audit).to_csv(work/'correspondencia_municipios.csv',index=False,encoding='utf-8');covered=set(crosswalk.values());smissing=[m[:3]for m in mun if m[0]not in covered];meta['municipios_sem_tabela']=smissing
  for cod,uf in db.execute('SELECT DISTINCT cod_ibge,uf FROM fatos').fetchall():
   keys=['BR']+([uf]if uf in knownufs else[]);m=geo.get(crosswalk.get((cod,uf)))
   if m:keys +=[str(m[0]),'I:'+str(m[3]),'T:'+str(m[4])]
@@ -116,6 +116,10 @@ def gerar(fontes,saida):
   for suffix,*_ in RAZOES:flags.loc[df[f'cex_{flow}_fob'].eq(0),f'cex_{flow}_{suffix}']=4
   flags.loc[df[f'cex_{flow}_ant_eq'].eq(0),f'cex_{flow}_var_pct']=4
   for id in [f'cex_{flow}_ant_eq',f'cex_{flow}_var_pct']:flags.loc[pd.IndexSlice[:,2013],id]=5
+ # Ausência da classificação municipal não comprova zero comercializado.
+ # Mantém população e meses nacionais como bases; não inventa operações.
+ sem_tabela=[str(m[0])for m in smissing];sem_dados=[i for i in ids if i not in ['cex_populacao','cex_meses_ano','cex_meses_comuns']]
+ df.loc[pd.IndexSlice[sem_tabela,:],sem_dados]=np.nan;flags.loc[pd.IndexSlice[sem_tabela,:],sem_dados]=2
  df.to_parquet(work/'agregados.parquet',compression='zstd');flags.add_suffix('_cond').to_parquet(work/'condicoes_agregados.parquet',compression='zstd')
  municipios=[str(m[0])for m in mun];grupos=municipios+sorted(knownufs)+['BR'];pos={k:j for j,k in enumerate(grupos)};ix=pd.MultiIndex.from_product([grupos,years],names=index.names)
  a=df.reindex(ix).to_numpy().reshape(len(grupos),len(years),len(ids)).transpose(1,0,2);c=flags.reindex(ix).to_numpy().reshape(len(grupos),len(years),len(ids)).transpose(1,0,2)
@@ -123,7 +127,7 @@ def gerar(fontes,saida):
  def razao(id,n,d,pt,en,factor=100,unit='%',power=1):
   nmat=a[:,:len(mun),ids.index(n)].copy();dmat=a[:,:len(mun),ids.index(d)].copy();v,cc,dd=calcular_razao(nmat,dmat,factor,power);notes={str(y):[f'Janeiro a {MESES[cut-1]} de {y}: os mesmos meses em todos os anos.',f'January to {MONTHS[cut-1]} {y}: the same months in every year.']for y in years};description='Recorte comparável: janeiro a '+MESES[cut-1]+' em todos os anos. Concentração recalculada sobre o conjunto de produtos ou mercados do território, sem média de indicadores municipais. '+NOTA;description_en='Comparable window: January to '+MONTHS[cut-1]+' in every year. Concentration is recomputed from pooled products or markets, not averaged across municipalities. '+NOTA_EN
   di=dict(id=id,nome=pt,nome_en=en,descricao=description,descricao_en=description_en,tema='Valores por habitante'if d=='cex_populacao'else'Concentração de produtos e mercados',tema_en='Per-resident values'if d=='cex_populacao'else'Product and market concentration',unidade=unit,unidade_en='US$ FOB per resident'if unit=='US$ FOB por habitante'else'0–10,000 index'if factor==10000 else unit,formato='percentual'if unit=='%'else'numero',frequencia='anual',metodo_referencia='razao',normalizacao=pt,normalizacao_en=en,fator=factor,ranking=True,minimo=0,fonte_nome='MDIC/Secex · Comex Stat / IBGE',fontes=[dict(nome='MDIC/Secex · Comex Stat',url=FONTE),dict(nome='IBGE · população',url='https://sidra.ibge.gov.br/tabela/6579')],alerta=description,alerta_en=description_en,variavel_download='cex_'+id+('_c'if d!='cex_populacao'else''),numerador_id=n,denominador_id=d,numerador_nome=next(x['nome']for x in defs if x['id']==n),denominador_nome=('Quadrado de 'if power==2 else'')+next(x['nome']for x in defs if x['id']==d),denominador_potencia=power,tipo_periodo='anual',notas_anos=notes)
-  q=QuadroComex(di,years,v,nmat,dd,cc);q.base=df;q.ncol=n;q.dcol=d;q.power=power;q.pop=pop;quadros.append(q)
+  q=QuadroComex(di,years,v,nmat,dd,cc);q.base=df;q.ncol=n;q.dcol=d;q.power=power;q.pop=pop;q.cobertos=np.array([m[0]in covered for m in mun]);quadros.append(q)
  for id,pt,en in [('exp','Exportações','Exports'),('imp','Importações','Imports'),('corrente','Corrente de comércio','Total trade')]:razao(id+'_hab','cex_'+id+'_fob_c','cex_populacao',pt+' por habitante · mesmos meses',en+' per resident · same months',1,'US$ FOB por habitante')
  for flow,pt,en in [('exp','Exportações','Exports'),('imp','Importações','Imports')]:
   for suffix,n,pt2,en2,factor,unit in RAZOES:razao(flow+'_'+suffix,f'cex_{flow}_{n}_c',f'cex_{flow}_fob_c',pt+' · '+pt2+' · mesmos meses',en+' · '+en2+' · same months',factor,unit,2 if suffix.startswith('hhi')else 1)
@@ -131,7 +135,7 @@ def gerar(fontes,saida):
  countries=aux(fontes/'PAIS.csv');products=aux(fontes/'NCM_SH.csv');classes=dict(paises={str(int(r.CO_PAIS)):[r.NO_PAIS,r.NO_PAIS_ING]for r in countries.itertuples(index=False)},produtos={str(int(r.CO_SH4)).zfill(4):[r.NO_SH4_POR,r.NO_SH4_ING]for r in products.drop_duplicates('CO_SH4').itertuples(index=False)})
  unresolved_df=pd.DataFrame(unresolved,columns=['cod_ibge','uf']);db.register('sem_local',unresolved_df)
  residual=db.execute('SELECT t.grupo,t.ano,t.fluxo,sum(t.fob)::BIGINT fob,sum(t.kg)::BIGINT kg,count(*)registros FROM territorial t JOIN sem_local s USING(cod_ibge,uf)GROUP BY ALL').fetchdf();residual.to_parquet(work/'sem_municipio.parquet',index=False)
- quality=dict(linhas=db.execute('SELECT count(*)FROM fatos').fetchone()[0],codigos_sem_municipio=unresolved,registros_sem_municipio=int(residual.loc[residual.grupo.eq('BR'),'registros'].sum()),registros_fob_negativo=int(negativos[0]),fob_negativo_preservado=int(negativos[1]),totais_oficiais_conferidos=True)
+ quality=dict(linhas=db.execute('SELECT count(*)FROM fatos').fetchone()[0],codigos_sem_municipio=unresolved,municipios_sem_tabela=smissing,registros_sem_municipio=int(residual.loc[residual.grupo.eq('BR'),'registros'].sum()),registros_fob_negativo=int(negativos[0]),fob_negativo_preservado=int(negativos[1]),totais_oficiais_conferidos=True)
  from comex_artefatos import gerar_artefatos
  gerar_artefatos(fontes,saida,g,mun,grupos,pos,knownufs,groups,years,a,c,defs,quadros,{},meta,main,db,classes,quality)
  db.close()

@@ -21,16 +21,19 @@ def gerar_extras(fontes,saida,db,g,grupos,ufs,anos,meta,classes,objeto):
   for key,y,m,flow,fob,kg in db.execute('SELECT grupo,ano,mes,fluxo,fob,kg FROM mensal JOIN lote_extra USING(grupo)').fetchall():
    j,k=pos[key],pidx[y*100+m];z=0 if flow=='exp'else 1;values[j,k,z]=fob;values[j,k,z+3]=kg
   values[:,:,2]=values[:,:,0]-values[:,:,1];assert (values[:,:,[0,1,3,4]]>=0).all()
+  for cod,*_ in meta.get('municipios_sem_tabela',[]):
+   if str(cod)in pos:values[pos[str(cod)]]=np.nan
+  conditions=np.where(np.isnan(values),2,np.where(values==0,1,0)).astype('int8')
   temp=dest/('tmp_mensal_'+bucket+'.ndjson');entries={}
   with temp.open('wb')as f:
    for key,j in pos.items():
-    body=compacto(dict(versao=1,grupo=key,periodos=periodos,colunas=MENSAL,valores=values[j].tolist(),condicoes=np.where(values[j]==0,1,0).tolist()))+b'\n';entries[key]=[f.tell(),len(body),hashlib.sha256(body).hexdigest()];max_mensal=max(max_mensal,len(body));f.write(body)
+    body=compacto(dict(versao=1,grupo=key,periodos=periodos,colunas=MENSAL,valores=[numeros(row)for row in values[j]],condicoes=conditions[j].tolist()))+b'\n';entries[key]=[f.tell(),len(body),hashlib.sha256(body).hexdigest()];max_mensal=max(max_mensal,len(body));f.write(body)
   _,ref=fechar(temp,'mensal_'+bucket.lower());series_indices[bucket]=objeto('comex','mensal_indice_'+bucket.lower(),dict(versao=1,arquivo=ref,grupos=entries))
   if bucket!='referencias':
    codes=[int(k)for k in keys];n=len(periodos);data={'cod_ibge':np.repeat(codes,n),'ano':np.tile(np.array(periodos)//100,len(codes)),'mes':np.tile(np.array(periodos)%100,len(codes)),'periodo':np.tile(periodos,len(codes))}
    for col in KEYS:
     if col not in data:data[col]=np.repeat(ident.reindex(codes)[col].to_numpy(),n)
-   for j,id in enumerate(MENSAL):data[id]=values[:,:,j].reshape(-1);data[id+'_cond']=np.where(data[id]==0,1,0)
+   for j,id in enumerate(MENSAL):data[id]=values[:,:,j].reshape(-1);data[id+'_cond']=conditions[:,:,j].reshape(-1)
    frame=pd.DataFrame(data)[[*KEYS,'mes','periodo',*[c for id in MENSAL for c in [id,id+'_cond']]]];p=dest/('tmp_mensal_'+bucket+'.csv');frame.to_csv(p,index=False,sep=';',encoding='utf-8');p,ref=fechar(p,'mensal_'+bucket.lower());csvpaths[bucket]=p;csvrefs[bucket]={**ref,'linhas':len(frame),'variaveis':len(frame.columns),'formato':'csv','tipo':'mensal','uf':bucket,'area':'comex'}
   records={}
   for table,field,label in [('produtos','sh4','produtos'),('paises','pais','paises')]:

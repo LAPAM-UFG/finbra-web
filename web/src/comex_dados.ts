@@ -8,10 +8,10 @@ export type IndicadorComex={id:string;nome:string;nome_en:string;familia:string;
 export type CalculadoComex=DefComparacao&{variavel_download:string;numerador_id:string;denominador_id:string;numerador_nome:string;denominador_nome:string;denominador_potencia?:number};
 export type CatalogoComex={versao:1;anos:number[];indicadores:IndicadorComex[];derivados:CalculadoComex[];condicoes:Record<string,string>};
 export type GrupoComex={versao:1;grupo:string;anos:number[];valores:(number|null)[][];condicoes:number[][];derivados:(number|null)[][];condicoes_derivados:number[][];numeradores:(number|null)[][];denominadores:(number|null)[][];coberturas:number[][];residuos:Record<string,Record<string,number>>};
-export type MensalComex={versao:1;grupo:string;periodos:number[];colunas:string[];valores:number[][];condicoes:number[][]};
+export type MensalComex={versao:1;grupo:string;periodos:number[];colunas:string[];valores:(number|null)[][];condicoes:number[][]};
 export type PerfilComex={versao:1;grupo:string;ano:number;mes_ate:number;fluxos:Record<'exp'|'imp',{produtos:[string,number,number][];paises:[number,number,number][]}>};
 export type ClassesComex={versao:1;produtos:Record<string,[string,string]>;paises:Record<string,[string,string]>};
-type MetaComex={versao:1;catalogo:Objeto;geografia:Objeto;indices:Record<string,Objeto>;anos:number[];variaveis:number;calculados:number;max_trecho_bytes:number;datas:{comex:string};periodos:Record<string,number>;mes_comum:number;qualidade:{registros_sem_municipio:number;registros_fob_negativo:number;fob_negativo_preservado:number};mensais:{indices:Record<string,Objeto>;periodos:number[]};perfis:Objeto;classificacoes:Objeto;notas:string[]};
+type MetaComex={versao:1;catalogo:Objeto;geografia:Objeto;indices:Record<string,Objeto>;anos:number[];variaveis:number;calculados:number;max_trecho_bytes:number;datas:{comex:string};periodos:Record<string,number>;mes_comum:number;qualidade:{registros_sem_municipio:number;registros_fob_negativo:number;fob_negativo_preservado:number;municipios_sem_tabela?:[number,string,string][]};mensais:{indices:Record<string,Objeto>;periodos:number[]};perfis:Objeto;classificacoes:Objeto;notas:string[]};
 type Indice={versao:1;arquivo:Objeto;grupos:Record<string,[number,number,string]>};
 let promise:Promise<{m:MetaComex;c:CatalogoComex;g:GeografiaComparacao}>|undefined;
 export function validarGrupoComex(x:GrupoComex,grupo:string,c:CatalogoComex){
@@ -34,8 +34,10 @@ export function obterMetaComex(){
 }
 async function recorte(grupo:string){const b=await obterMetaComex(),ter=b.g.territorios[grupo];if(!ter||!['M','UF','BR'].includes(ter.nivel))throw new Error('Escolha um município, estado ou Brasil.');return{...b,bucket:ter.nivel==='M'?ter.uf!:'referencias'};}
 export async function obterGrupoComex(grupo:string){const{m,c,bucket}=await recorte(grupo),i=await leitorRaio.objeto<Indice>(m.indices[bucket]),d=await leitorRaio.trecho<GrupoComex>(i.arquivo,i.grupos[grupo]);validarGrupoComex(d,grupo,c);return d;}
-export async function obterMensalComex(grupo:string){const{m,bucket}=await recorte(grupo),i=await leitorRaio.objeto<Indice>(m.mensais.indices[bucket]),d=await leitorRaio.trecho<MensalComex>(i.arquivo,i.grupos[grupo]);
- if(d.versao!==1||d.grupo!==grupo||JSON.stringify(d.periodos)!==JSON.stringify(m.mensais.periodos)||d.colunas.length!==5||d.valores.length!==d.periodos.length||d.condicoes.length!==d.periodos.length||d.valores.some((row,k)=>row.length!==5||d.condicoes[k].length!==5||row.some((v,j)=>!Number.isFinite(v)||j!==2&&v<0||d.condicoes[k][j]!== (v===0?1:0))))throw new Error('Série mensal inválida.');return d;
+export function validarMensalComex(d:MensalComex,grupo:string,periodos:number[]){
+ if(d.versao!==1||d.grupo!==grupo||JSON.stringify(d.periodos)!==JSON.stringify(periodos)||d.colunas.length!==5||d.valores.length!==d.periodos.length||d.condicoes.length!==d.periodos.length||d.valores.some((row,k)=>row.length!==5||d.condicoes[k].length!==5||row.some((v,j)=>v===null?d.condicoes[k][j]!==2:!Number.isFinite(v)||j!==2&&v<0||d.condicoes[k][j]!== (v===0?1:0))))throw new Error('Série mensal inválida.');
+}
+export async function obterMensalComex(grupo:string){const{m,bucket}=await recorte(grupo),i=await leitorRaio.objeto<Indice>(m.mensais.indices[bucket]),d=await leitorRaio.trecho<MensalComex>(i.arquivo,i.grupos[grupo]);validarMensalComex(d,grupo,m.mensais.periodos);return d;
 }
 export async function obterPerfilComex(grupo:string,ano:number){const{m,bucket}=await recorte(grupo);if(!m.anos.includes(ano))throw new Error('Ano fora da cobertura.');const[p,classes]=await Promise.all([leitorRaio.objeto<{indices:Record<string,Objeto>}>(m.perfis),leitorRaio.objeto<ClassesComex>(m.classificacoes)]),i=await leitorRaio.objeto<Indice>(p.indices[`${bucket}:${ano}`]),d=await leitorRaio.trecho<PerfilComex>(i.arquivo,i.grupos[grupo]);
  if(d.versao!==1||d.grupo!==grupo||d.ano!==ano||d.mes_ate!==m.periodos[String(ano)]||!d.fluxos.exp||!d.fluxos.imp)throw new Error('Perfil de outra edição.');
