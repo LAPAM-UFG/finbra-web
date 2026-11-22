@@ -43,7 +43,7 @@ class Snapshot:
         if ref:
             expected=ref['sha256'];size=ref['bytes'];etag=None
         else:
-            h=requests.head(self.url+chave,timeout=(20,90));h.raise_for_status();size=int(h.headers['Content-Length']);etag=h.headers.get('ETag');expected=None
+            h=requests.head(self.url+chave,headers={'Accept-Encoding':'identity'},timeout=(20,90));h.raise_for_status();size=int(h.headers['Content-Length']);etag=h.headers.get('ETag');expected=None
         def valida(p):
             if not p.is_file() or p.stat().st_size!=size:return False
             if expected:return sha(p)==expected
@@ -58,7 +58,9 @@ class Snapshot:
         else:
             if target.exists():raise ValueError('snapshot mudou; use pasta nova: '+chave)
             target.parent.mkdir(parents=True,exist_ok=True);tmp=target.with_name(target.name+'.parte')
-            with requests.get(self.url+chave,stream=True,timeout=(20,180)) as r:
+            # A compressão HTTP torna o ETag fraco no Cloudflare. Pedir os bytes
+            # originais mantém HEAD, GET, tamanho e hash na mesma representação.
+            with requests.get(self.url+chave,headers={'Accept-Encoding':'identity'},stream=True,timeout=(20,180)) as r:
                 r.raise_for_status()
                 if etag and r.headers.get('ETag')!=etag:raise ValueError('origem mudou durante captura: '+chave)
                 with tmp.open('wb') as f:

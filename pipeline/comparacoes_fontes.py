@@ -88,7 +88,7 @@ class Fontes:
             return p
         # Esses arquivos antigos não têm nomes por conteúdo. GET fixa a edição e
         # HEAD posterior garante que o objeto não mudou durante a aquisição.
-        head = requests.head(URL + key, timeout=60)
+        head = requests.head(URL + key, headers={"Accept-Encoding": "identity"}, timeout=60)
         head.raise_for_status()
         etag = head.headers.get("ETag")
         size = int(head.headers.get("Content-Length", 0))
@@ -103,13 +103,13 @@ class Fontes:
                 p = pp
                 break
         if p is None:
-            r = requests.get(URL + key, timeout=180)
+            r = requests.get(URL + key, headers={"Accept-Encoding": "identity"}, timeout=180)
             r.raise_for_status()
             assert r.headers.get("ETag") == etag and len(r.content) == size
             p = self.rev / "fontes" / key
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_bytes(r.content)
-        h = requests.head(URL + key, timeout=60)
+        h = requests.head(URL + key, headers={"Accept-Encoding": "identity"}, timeout=60)
         h.raise_for_status()
         assert h.headers.get("ETag") == etag
         ref = dict(

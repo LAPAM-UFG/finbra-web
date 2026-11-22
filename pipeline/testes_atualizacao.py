@@ -40,6 +40,22 @@ class R2:
 
 
 class Atualizacao(unittest.TestCase):
+    def test_snapshot_http_confere_bytes_originais_e_recusa_mudanca_real(self):
+        from requests import Response
+        raw=b'{}';tag='"'+hashlib.md5(raw).hexdigest()+'"'
+        def resposta(etag):
+            r=Response();r.status_code=200;r._content=raw;r._content_consumed=True
+            r.headers.update({'Content-Length':str(len(raw)),'ETag':etag});return r
+        with tempfile.TemporaryDirectory() as t:
+            root=Path(t)
+            with patch('atualizacao_artefatos.requests.head',return_value=resposta(tag)) as head,patch('atualizacao_artefatos.requests.get',return_value=resposta(tag)) as get:
+                result=Snapshot(root/'ok').obter('gold/a.json');self.assertEqual(result.read_bytes(),raw)
+                self.assertEqual(head.call_args.kwargs['headers'],{'Accept-Encoding':'identity'})
+                self.assertEqual(get.call_args.kwargs['headers'],{'Accept-Encoding':'identity'})
+            with patch('atualizacao_artefatos.requests.head',return_value=resposta(tag)),patch('atualizacao_artefatos.requests.get',return_value=resposta('"outra-versao"')):
+                with self.assertRaisesRegex(ValueError,'origem mudou'):Snapshot(root/'mudou').obter('gold/a.json')
+                self.assertFalse((root/'mudou/gold/a.json').exists())
+
     def test_comparacoes_guardam_etag_do_parquet_candidato(self):
         with tempfile.TemporaryDirectory() as t:
             root=Path(t);p=root/'base/gold/munic/painel_respostas.parquet';p.parent.mkdir(parents=True);p.write_bytes(b'candidato')

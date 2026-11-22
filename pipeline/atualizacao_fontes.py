@@ -18,7 +18,7 @@ from assistencia_utils import destino_isolado
 
 def baixar(url,path):
     path=Path(path);path.parent.mkdir(parents=True,exist_ok=True);tmp=path.with_name(path.name+'.parte')
-    with requests.get(url,stream=True,timeout=(20,180)) as r:
+    with requests.get(url,headers={'Accept-Encoding':'identity'},stream=True,timeout=(20,180)) as r:
         r.raise_for_status()
         with tmp.open('wb') as f:
             for chunk in r.iter_content(1024*1024):f.write(chunk)
