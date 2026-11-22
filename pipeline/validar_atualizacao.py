@@ -31,6 +31,7 @@ def gerar(base,publicado,trabalho,caches=()):
     cmp=json.loads((base/'gold/comparacoes/manifesto.json').read_bytes());cmp_old=json.loads((publicado/'gold/comparacoes/manifesto.json').read_bytes())
     if not set(cmp_old['catalogos'])<=set(cmp['catalogos']):raise ValueError('catálogo de comparações perdido')
     if cmp['compatibilidade_global']!=compatibilidade_global(m):raise ValueError('comparações de outra edição')
+    catalogos={ref['caminho'] for ref in cmp['catalogos'].values()}
     rx=json.loads((base/'gold/raiox/v13_manifesto.json').read_bytes())
     previous='gold/raiox/v13_manifesto.json' if (publicado/'gold/raiox/v13_manifesto.json').is_file() else 'gold/raiox/v12_manifesto.json'
     rxold=json.loads((publicado/previous).read_bytes())
@@ -58,6 +59,7 @@ def gerar(base,publicado,trabalho,caches=()):
         if len(checked)%100==0:print(f'Integridade: {len(checked)} arquivos conferidos',flush=True)
         if key.endswith(('.json','.json.gz')):
             raw=path.read_bytes();obj=json.loads(gzip.decompress(raw) if key.endswith('.gz') else raw)
+            if key in catalogos and obj['geografia']!=cmp['geografia']:raise ValueError('catálogo com geografia divergente: '+key)
             pending.extend(referencias(obj))
     con=duckdb.connect()
     try:

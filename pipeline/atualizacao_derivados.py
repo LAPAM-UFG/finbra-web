@@ -2,6 +2,7 @@
 import gzip
 import hashlib
 import json
+import copy
 import shutil
 import subprocess
 from datetime import datetime, timezone
@@ -9,6 +10,34 @@ from pathlib import Path
 
 from atualizacao_artefatos import Snapshot, instalar_overlay, sha, referencias
 from assistencia_utils import destino_isolado
+
+
+def geografia_sem_rotulos(meta):
+    """Associações e ordem das posições; apenas nomes podem mudar sem recalcular."""
+    out=copy.deepcopy(meta)
+    for row in out['municipios']:row[1]=None
+    for row in out['governos']:row[1]=None
+    for territorio in out['territorios'].values():territorio['nome']=None
+    return out
+
+
+def reconciliar_geografia(novo,anterior,writer,resolver):
+    if novo['geografia']==anterior['geografia']:return dict(rotulos=[],catalogos=[])
+    def ler(ref):return json.loads(resolver.obter(ref['caminho'],ref).read_bytes())
+    before,after=ler(anterior['geografia']),ler(novo['geografia'])
+    if geografia_sem_rotulos(before)!=geografia_sem_rotulos(after):
+        raise ValueError('geografia mudou: reprocessar todas as comparações antes de publicar')
+    # Uma renomeação oficial não altera agrupamentos ou valores. Regrava só os
+    # catálogos preservados para que todos apontem para a mesma geografia nova.
+    rebound=[]
+    for name,ref in anterior['catalogos'].items():
+        if name in novo['catalogos']:continue
+        catalog=ler(ref)
+        if catalog['geografia']!=anterior['geografia']:raise ValueError('catálogo de outra geografia: '+name)
+        catalog['geografia']=novo['geografia']
+        novo['catalogos'][name]=writer.objeto(name+'_catalogo',catalog);rebound.append(name)
+    renamed=[k for k in before['territorios'] if before['territorios'][k]['nome']!=after['territorios'][k]['nome']]
+    return dict(rotulos=renamed,catalogos=rebound)
 
 
 def assistencia_anuais(base,trabalho,snap):
@@ -108,8 +137,10 @@ def comparacoes(publicado,base,trabalho,saida,caches=()):
     for area in ['trabalho','saude']:writer.mapa(area)
     for area in ['financas','assistencia','clima','gestao']:getattr(writer,area)()
     novo=writer.writer.concluir();old=json.loads((publicado/'gold/comparacoes/manifesto.json').read_bytes())
-    if novo['geografia']!=old['geografia']:raise ValueError('geografia mudou: reprocessar todas as comparações antes de publicar')
+    atualizados=list(novo['catalogos']);preservados=sorted(set(old['catalogos'])-set(atualizados))
+    resolver=Snapshot(trabalho/'geografia',[saida,publicado,base,*caches],copiar_cache=False)
+    geografia=reconciliar_geografia(novo,old,writer.writer,resolver)
     merged={**old,**novo,'catalogos':{**old['catalogos'],**novo['catalogos']},'origens':{**old['origens'],**novo['origens']}}
     (saida/'gold/comparacoes/manifesto.json').write_bytes(compacto(merged))
-    audit=dict(ok=True,catalogos_atualizados=list(novo['catalogos']),catalogos_preservados=sorted(set(old['catalogos'])-set(novo['catalogos'])))
+    audit=dict(ok=True,catalogos_atualizados=atualizados,catalogos_preservados=preservados,geografia=geografia)
     (saida/'auditoria_comparacoes.json').write_bytes(compacto(audit));return audit

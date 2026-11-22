@@ -40,6 +40,35 @@ class R2:
 
 
 class Atualizacao(unittest.TestCase):
+    def test_renomeacao_oficial_preserva_valores_e_rejeita_novas_associacoes(self):
+        import copy
+        from atualizacao_derivados import reconciliar_geografia
+        geo=dict(municipios=[[1,'Antigo','GO','11','10']],governos=[['E:52','Goiás','GO']],territorios={'1':dict(nome='Antigo',uf='GO',imediata='I:11',intermediaria='T:10')},ano_divisao=2017)
+        changed=copy.deepcopy(geo);changed['municipios'][0][1]='Novo';changed['territorios']['1']['nome']='Novo'
+        with tempfile.TemporaryDirectory() as t:
+            root=Path(t)
+            def gravar(name,value):
+                raw=json.dumps(value).encode();key='gold/'+name+'.json';path=root/key;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(raw)
+                return dict(caminho=key,bytes=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+            oldref,newref=gravar('antiga',geo),gravar('nova',changed)
+            original=dict(geografia=oldref,indices={'GO':dict(arquivo='valores-imutaveis')},indicadores=[dict(id='teste',periodos=[2013,2025])])
+            anterior=dict(geografia=oldref,catalogos={'mantido':gravar('cat',original)})
+            novo=dict(geografia=newref,catalogos={})
+            class Writer:
+                def objeto(self,name,value):return gravar(name,value)
+            resolver=Snapshot(root)
+            result=reconciliar_geografia(novo,anterior,Writer(),resolver)
+            after=json.loads((root/novo['catalogos']['mantido']['caminho']).read_bytes())
+            self.assertEqual(result,dict(rotulos=['1'],catalogos=['mantido']))
+            self.assertEqual(after,{**original,'geografia':newref})
+            for field,value in [('uf','SP'),('imediata','I:12'),('intermediaria','T:20')]:
+                bad=copy.deepcopy(changed);bad['territorios']['1'][field]=value
+                with self.assertRaisesRegex(ValueError,'geografia mudou'):
+                    reconciliar_geografia(dict(geografia=gravar('outra',bad),catalogos={}),anterior,Writer(),resolver)
+            bad=copy.deepcopy(changed);bad['municipios'].append([2,'Outro','GO','11','10'])
+            with self.assertRaisesRegex(ValueError,'geografia mudou'):
+                reconciliar_geografia(dict(geografia=gravar('outra',bad),catalogos={}),anterior,Writer(),resolver)
+
     def test_snapshot_http_confere_bytes_originais_e_recusa_mudanca_real(self):
         from requests import Response
         raw=b'{}';tag='"'+hashlib.md5(raw).hexdigest()+'"'
