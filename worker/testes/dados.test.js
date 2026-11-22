@@ -7,6 +7,27 @@ const origin='https://painel.example';
 const api='/api/dados/v1';
 const hash='a'.repeat(64);
 
+function comexFixture(){
+ const f=fixture(),body='cod_ibge;ano;mes;periodo;cex_exp_fob\n5208707;2026;10;202610;1234\n';
+ const ref={caminho:'gold/comex/mensal_go_abc.csv',bytes:Buffer.byteLength(body),sha256:hash,formato:'csv',tipo:'mensal',uf:'GO',area:'comex',variaveis:18};
+ const dict={caminho:'gold/comex/dicionario_mensal_abc.csv',bytes:3,sha256:hash,formato:'csv'};
+ const root={versao:1,gerado_em:'2026-11-21',downloads_mensais:{GO:ref},dicionario_mensal:dict};
+ const atualizar=()=>f.store.set('gold/comex/manifesto.json',Buffer.from(JSON.stringify(root)));atualizar();f.store.set(ref.caminho,Buffer.from(body));f.store.set(dict.caminho,Buffer.from('abc'));
+ return{...f,root,atualizar,body};
+}
+
+test('Comex mensal: CSV completo, HEAD, Range, ETag e CORS sem depender do catálogo anual',async()=>{
+ const f=comexFixture();f.store.delete('gold/downloads/manifesto.json');const path=api+'/comex/mensal/GO.csv';const r=await f.fetch(path);
+ assert.equal(r.status,200);assert.equal(await r.text(),f.body);assert.equal(r.headers.get('Access-Control-Allow-Origin'),'*');assert.match(r.headers.get('Content-Disposition'),/comex_mensal_GO.csv/);
+ assert.equal((await f.fetch(path,{method:'HEAD'})).status,200);const part=await f.fetch(path,{headers:{Range:'bytes=0-8'}});assert.equal(part.status,206);assert.equal(await part.text(),f.body.slice(0,9));
+ assert.equal((await f.fetch(path,{headers:{'If-None-Match':r.headers.get('ETag')}})).status,304);assert.equal(await(await f.fetch(api+'/comex/dicionario-mensal.csv')).text(),'abc');
+});
+
+test('Comex mensal: recusa UF, parâmetros e referências de fora do tema ou inconsistentes',async()=>{
+ const f=comexFixture(),path=api+'/comex/mensal/GO.csv';assert.equal((await f.fetch(api+'/comex/mensal/XX.csv')).status,400);assert.equal((await f.fetch(path+'?ano=2026')).status,400);
+ for(const change of[{caminho:'gold/downloads/outro.csv'},{caminho:'gold/comex/../outro.csv'},{uf:'SP'},{variaveis:17},{sha256:'inválido'}]){const orig={...f.root.downloads_mensais.GO};Object.assign(f.root.downloads_mensais.GO,change);f.atualizar();assert.equal((await f.fetch(path)).status,503);f.root.downloads_mensais.GO=orig;}
+});
+
 function fixture() {
   const store=new Map(); const calls=[];
   const add=(key,body)=>{store.set(key,Buffer.from(body));return {caminho:key,bytes:Buffer.byteLength(body),sha256:hash};};

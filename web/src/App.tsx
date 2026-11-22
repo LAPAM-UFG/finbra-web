@@ -9,6 +9,8 @@ import { contextoMunic, edicoesCuradas, type Destino } from './munic_painel';
 import { CURADORIA } from './munic_curadoria';
 import { PARAMS_TRABALHO } from './trabalho_comum';
 import { buscaEntreAreas, buscaIaLegada, buscaParaDownloads, type Area } from './navegacao';
+const Comex = pagina(() => import('./pages/Comex').then(m => ({default:m.Comex})));
+const ComexMapa = pagina(() => import('./pages/MapasIndicadores').then(m => ({default:m.ComexMapa})));
 const Energia = pagina(() => import('./pages/Energia').then(m => ({default:m.Energia})));
 const EnergiaMapa = pagina(() => import('./pages/MapasIndicadores').then(m => ({default:m.EnergiaMapa})));
 const Internet = pagina(() => import('./pages/Internet').then(m => ({default:m.Internet})));
@@ -163,7 +165,7 @@ const menuEducacao = (): [string, [string, string][]][] => [
   [t('Metodologia', 'Methodology'), [['/educacao/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
 ];
 
-const areaDe = (pathname: string): Area => (pathname.startsWith('/energia') ? 'energia' : pathname.startsWith('/internet') ? 'internet' : pathname.startsWith('/seguranca') ? 'seguranca' : pathname.startsWith('/mobilidade') ? 'mobilidade' : pathname.startsWith('/agropecuaria') ? 'agropecuaria' : pathname === '/raio-x' ? 'raiox' : pathname.startsWith('/saneamento') ? 'saneamento' : pathname === '/ia' ? 'ia' : pathname === '/downloads' || pathname.startsWith('/downloads/') ? 'downloads' : pathname.startsWith('/trabalho') ? 'trabalho'
+const areaDe = (pathname: string): Area => (pathname.startsWith('/comex') ? 'comex' : pathname.startsWith('/energia') ? 'energia' : pathname.startsWith('/internet') ? 'internet' : pathname.startsWith('/seguranca') ? 'seguranca' : pathname.startsWith('/mobilidade') ? 'mobilidade' : pathname.startsWith('/agropecuaria') ? 'agropecuaria' : pathname === '/raio-x' ? 'raiox' : pathname.startsWith('/saneamento') ? 'saneamento' : pathname === '/ia' ? 'ia' : pathname === '/downloads' || pathname.startsWith('/downloads/') ? 'downloads' : pathname.startsWith('/trabalho') ? 'trabalho'
   : pathname.startsWith('/datasus') ? 'saude' : pathname.startsWith('/educacao') ? 'educacao' : pathname.startsWith('/munic') ? 'munic' : pathname.startsWith('/clima') ? 'clima' : pathname.startsWith('/assistencia') ? 'assistencia' : 'financas');
 
 function lerTema(): string | null {
@@ -276,12 +278,12 @@ export function App() {
   // a aba da IA abre com o tema da área de onde se veio (só ordena os exemplos): território e ano dos filtros do painel não
   // vão junto, porque a pergunta diz o recorte e a IA escolhe as fontes
   const filtrosIa = new URLSearchParams(area === 'ia' ? atuais : undefined);
-  if (area !== 'ia' && area !== 'munic' && area !== 'clima' && area !== 'downloads' && area !== 'raiox' && area !== 'agropecuaria' && area !== 'mobilidade' && area !== 'seguranca' && area !== 'internet' && area !== 'energia') filtrosIa.set('paineis', area);
+  if (area !== 'ia' && area !== 'munic' && area !== 'clima' && area !== 'downloads' && area !== 'raiox' && area !== 'agropecuaria' && area !== 'mobilidade' && area !== 'seguranca' && area !== 'internet' && area !== 'energia' && area !== 'comex') filtrosIa.set('paineis', area);
   const buscaIa = `?${filtrosIa}`;
 
-  const gruposMenu = ({ energia:()=>[[t('Energia elétrica e geração','Electricity and generation'),[['/energia',t('Painel de indicadores','Indicator dashboard')],['/energia/mapa',t('Mapa de indicadores','Indicator map')],['/energia/rankings',t('Rankings relativos','Relative rankings')]]]] as [string,[string,string][]][], internet:()=>[[t('Internet e conectividade','Internet and connectivity'),[['/internet',t('Painel de indicadores','Indicator dashboard')],['/internet/mapa',t('Mapa de indicadores','Indicator map')],['/internet/rankings',t('Rankings relativos','Relative rankings')]]]] as [string,[string,string][]][], seguranca:()=>[[t('Segurança pública','Public safety'),[['/seguranca',t('Painel de indicadores','Indicator dashboard')],['/seguranca/mapa',t('Mapa de indicadores','Indicator map')],['/seguranca/rankings',t('Rankings relativos','Relative rankings')]]]] as [string,[string,string][]][], mobilidade:()=>[[t('Mobilidade e trânsito','Mobility and traffic'),[['/mobilidade',t('Painel de indicadores','Indicator dashboard')],['/mobilidade/mapa',t('Mapa de indicadores','Indicator map')],['/mobilidade/rankings',t('Rankings relativos','Relative rankings')]]]] as [string,[string,string][]][], agropecuaria:()=>[[t('Agropecuária','Agriculture and livestock'),[['/agropecuaria',t('Painel de indicadores','Indicator dashboard')],['/agropecuaria/mapa',t('Mapa de indicadores','Indicator map')],['/agropecuaria/rankings',t('Rankings relativos','Relative rankings')]]]] as [string,[string,string][]][], raiox:()=>[] as [string,[string,string][]][], saneamento:()=>[[t('Saneamento','Sanitation'),[['/saneamento',t('Painel de indicadores','Indicator dashboard')],['/saneamento/mapa',t('Mapa de indicadores','Indicator map')],['/saneamento/rankings',t('Comparar municípios','Compare municipalities')],['/saneamento/metodologia',t('Fontes e metodologia','Sources and methodology')]]]] as [string,[string,string][]][], financas: menu, trabalho: menuTrabalho, saude: menuSaude, educacao: menuEducacao, munic: menuMunic, clima: menuClima, assistencia: menuAssistencia, downloads: menuDownloads, ia: menuIa }[area])();
+  const gruposMenu = ({ comex:()=>[[t('Comércio exterior','Foreign trade'),[['/comex',t('Painel de indicadores','Indicator dashboard')],['/comex/mapa',t('Mapa de indicadores','Indicator map')],['/comex/rankings',t('Rankings relativos','Relative rankings')]]]] as [string,[string,string][]][], energia:()=>[[t('Energia elétrica e geração','Electricity and generation'),[['/energia',t('Painel de indicadores','Indicator dashboard')],['/energia/mapa',t('Mapa de indicadores','Indicator map')],['/energia/rankings',t('Rankings relativos','Relative rankings')]]]] as [string,[string,string][]][], internet:()=>[[t('Internet e conectividade','Internet and connectivity'),[['/internet',t('Painel de indicadores','Indicator dashboard')],['/internet/mapa',t('Mapa de indicadores','Indicator map')],['/internet/rankings',t('Rankings relativos','Relative rankings')]]]] as [string,[string,string][]][], seguranca:()=>[[t('Segurança pública','Public safety'),[['/seguranca',t('Painel de indicadores','Indicator dashboard')],['/seguranca/mapa',t('Mapa de indicadores','Indicator map')],['/seguranca/rankings',t('Rankings relativos','Relative rankings')]]]] as [string,[string,string][]][], mobilidade:()=>[[t('Mobilidade e trânsito','Mobility and traffic'),[['/mobilidade',t('Painel de indicadores','Indicator dashboard')],['/mobilidade/mapa',t('Mapa de indicadores','Indicator map')],['/mobilidade/rankings',t('Rankings relativos','Relative rankings')]]]] as [string,[string,string][]][], agropecuaria:()=>[[t('Agropecuária','Agriculture and livestock'),[['/agropecuaria',t('Painel de indicadores','Indicator dashboard')],['/agropecuaria/mapa',t('Mapa de indicadores','Indicator map')],['/agropecuaria/rankings',t('Rankings relativos','Relative rankings')]]]] as [string,[string,string][]][], raiox:()=>[] as [string,[string,string][]][], saneamento:()=>[[t('Saneamento','Sanitation'),[['/saneamento',t('Painel de indicadores','Indicator dashboard')],['/saneamento/mapa',t('Mapa de indicadores','Indicator map')],['/saneamento/rankings',t('Comparar municípios','Compare municipalities')],['/saneamento/metodologia',t('Fontes e metodologia','Sources and methodology')]]]] as [string,[string,string][]][], financas: menu, trabalho: menuTrabalho, saude: menuSaude, educacao: menuEducacao, munic: menuMunic, clima: menuClima, assistencia: menuAssistencia, downloads: menuDownloads, ia: menuIa }[area])();
   if (area !== 'downloads' && area !== 'ia' && area !== 'raiox') {
-    const raizComparacao = ({ financas: '', trabalho: '/trabalho', saude: '/datasus', educacao: '/educacao', munic: '/munic', clima: '/clima', assistencia: '/assistencia', saneamento: '/saneamento', agropecuaria: '/agropecuaria', energia: '/energia', internet: '/internet', seguranca: '/seguranca', mobilidade: '/mobilidade' })[area];
+    const raizComparacao = ({ financas: '', trabalho: '/trabalho', saude: '/datasus', educacao: '/educacao', munic: '/munic', clima: '/clima', assistencia: '/assistencia', saneamento: '/saneamento', agropecuaria: '/agropecuaria', comex: '/comex', energia: '/energia', internet: '/internet', seguranca: '/seguranca', mobilidade: '/mobilidade' })[area];
     gruposMenu.unshift([t('Comparações', 'Comparisons'), [[`${raizComparacao}/comparar`, t('Regiões e evolução', 'Regions and trends')]]]);
   }
   const filtrosSaneamento = new URLSearchParams(buscaEntreAreas(search,'saneamento','saneamento'));
@@ -292,7 +294,7 @@ export function App() {
       if (!p.has('indicador') && p.get('ind') && area !== 'financas') p.set('indicador', p.get('ind')!);
       return { pathname: para, search: '?' + p.toString() };
     }
-    return { pathname: para, search: (area === 'agropecuaria' || area === 'mobilidade' || area === 'seguranca' || area === 'internet' || area === 'energia') ? buscaEntreAreas(search,area,area) : area === 'saneamento' ? '?' + filtrosSaneamento.toString() : area === 'downloads' ? search : area === 'ia' ? buscaIa : area === 'educacao' ? buscaEntreAreas(search, 'educacao', para.includes('/financiamento') || para.includes('/profissionais') ? 'financas' : 'educacao') : area === 'munic' ? contextoMunic(search, DESTINO_MUNIC[para] ?? 'avancado', EDICOES_MUNIC) : area === 'clima' ? buscaClima(search) : area === 'assistencia' ? buscaEntreAreas(search, 'assistencia', 'assistencia') : buscaArea };
+    return { pathname: para, search: (area === 'agropecuaria' || area === 'mobilidade' || area === 'seguranca' || area === 'internet' || (area === 'energia' || area === 'comex')) ? buscaEntreAreas(search,area,area) : area === 'saneamento' ? '?' + filtrosSaneamento.toString() : area === 'downloads' ? search : area === 'ia' ? buscaIa : area === 'educacao' ? buscaEntreAreas(search, 'educacao', para.includes('/financiamento') || para.includes('/profissionais') ? 'financas' : 'educacao') : area === 'munic' ? contextoMunic(search, DESTINO_MUNIC[para] ?? 'avancado', EDICOES_MUNIC) : area === 'clima' ? buscaClima(search) : area === 'assistencia' ? buscaEntreAreas(search, 'assistencia', 'assistencia') : buscaArea };
   };
   const areas: {id: Area; nome: string; caminho: string; busca: string}[] = [
     {id:'raiox',nome:t('Raio X','Territory X-ray'),caminho:'/raio-x',busca:paraArea('raiox')},
@@ -301,6 +303,7 @@ export function App() {
     {id:'trabalho',nome:t('Mercado de trabalho','Labour market'),caminho:'/trabalho',busca:paraArea('trabalho')},
     {id:'saude',nome:t('Saúde','Health'),caminho:'/datasus',busca:paraArea('saude')},
     {id:'educacao',nome:t('Educação','Education'),caminho:'/educacao',busca:paraArea('educacao')},
+    {id:'comex',nome:t('Comércio exterior','Foreign trade'),caminho:'/comex',busca:paraArea('comex')},
     {id:'energia',nome:t('Energia','Energy'),caminho:'/energia',busca:paraArea('energia')},
     {id:'internet',nome:t('Internet','Internet'),caminho:'/internet',busca:paraArea('internet')},
     {id:'seguranca',nome:t('Segurança pública','Public safety'),caminho:'/seguranca',busca:paraArea('seguranca')},
@@ -330,6 +333,7 @@ export function App() {
           trabalho: t('Mercado de trabalho · RAIS e CAGED', 'Labour market · RAIS and CAGED'),
           saude: t('Saúde · DATASUS', 'Health · DATASUS'),
           educacao: t('Educação · Inep e SIOPE', 'Education · Inep and SIOPE'),
+          comex: t('Comércio exterior','Foreign trade'),
           energia: t('Energia elétrica e geração','Electricity and generation'),
           internet: t('Internet e conectividade','Internet and connectivity'),
           seguranca: t('Segurança pública e violência','Public safety and violence'),
@@ -385,7 +389,7 @@ export function App() {
         </nav>}
         {/* a chave refaz as páginas ao trocar o idioma: gráficos e textos memorizados são recalculados */}
         <main key={idioma} id="conteudo" tabIndex={-1}>
-          {!['ia', 'downloads', 'raiox'].includes(area) && /^\/(receitas|despesas|despesas-orcamentarias|socioeconomico|trabalho|datasus|educacao|saneamento|assistencia|munic|clima|rankings)\/?$/.test(pathname) && <aside className="atalho-comparacoes"><Link to={linkPagina(`${({ financas: '', trabalho: '/trabalho', saude: '/datasus', educacao: '/educacao', munic: '/munic', clima: '/clima', assistencia: '/assistencia', saneamento: '/saneamento', agropecuaria: '/agropecuaria', energia: '/energia', internet: '/internet', seguranca: '/seguranca', mobilidade: '/mobilidade', ia: '', downloads: '', raiox: '' })[area]}/comparar`)}>{t('Comparar com regiões e acompanhar no tempo →', 'Compare with regions and track changes over time →')}</Link><span>{t('Taxas, proporções e valores por habitante; totais nas tabelas originais.', 'Rates, shares and values per inhabitant; totals in the original tables.')}</span></aside>}
+          {!['ia', 'downloads', 'raiox'].includes(area) && /^\/(receitas|despesas|despesas-orcamentarias|socioeconomico|trabalho|datasus|educacao|saneamento|assistencia|munic|clima|rankings)\/?$/.test(pathname) && <aside className="atalho-comparacoes"><Link to={linkPagina(`${({ financas: '', trabalho: '/trabalho', saude: '/datasus', educacao: '/educacao', munic: '/munic', clima: '/clima', assistencia: '/assistencia', saneamento: '/saneamento', agropecuaria: '/agropecuaria', comex: '/comex', energia: '/energia', internet: '/internet', seguranca: '/seguranca', mobilidade: '/mobilidade', ia: '', downloads: '', raiox: '' })[area]}/comparar`)}>{t('Comparar com regiões e acompanhar no tempo →', 'Compare with regions and track changes over time →')}</Link><span>{t('Taxas, proporções e valores por habitante; totais nas tabelas originais.', 'Rates, shares and values per inhabitant; totals in the original tables.')}</span></aside>}
           <Suspense fallback={<p className="carregando" role="status">{t('Abrindo o painel…', 'Opening the dashboard…')}</p>}><ProvedorDados>
             <Routes>
               <Route path="/" element={<Navigate to={{ pathname: '/ia', search: buscaIaLegada(search), hash }} replace />} />
@@ -419,6 +423,10 @@ export function App() {
               <Route path="/educacao/rankings" element={<Comparacoes area="educacao" rankings />} />
               <Route path="/educacao/tabela" element={<EducacaoTabela />} />
               <Route path="/educacao/metodologia" element={<EducacaoMetodologia />} />
+              <Route path="/comex" element={<Comex />} />
+              <Route path="/comex/mapa" element={<ComexMapa />} />
+              <Route path="/comex/comparar" element={<Comparacoes area="comex" />} />
+              <Route path="/comex/rankings" element={<Comparacoes area="comex" rankings />} />
               <Route path="/energia" element={<Energia />} />
               <Route path="/energia/mapa" element={<EnergiaMapa />} />
               <Route path="/energia/comparar" element={<Comparacoes area="energia" />} />

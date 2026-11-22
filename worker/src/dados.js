@@ -69,7 +69,8 @@ function infoArquivo(a, origin) {
 }
 
 async function servirArquivo(request,env,url,a,m,servirDados) {
-  if (!caminhoSeguro(a.caminho)) throw new Falha(503,'arquivo_invalido','Arquivo indisponível.');
+  const mensal=['mensal','dicionario_mensal'].includes(a.tipo) && /^gold\/comex\/[a-z0-9_]+\.csv$/.test(a.caminho);
+  if (!caminhoSeguro(a.caminho) && !mensal) throw new Falha(503,'arquivo_invalido','Arquivo indisponível.');
   const dataUrl=new URL('/dados/'+a.caminho,url.origin);
   const response=await servirDados(request,env,dataUrl);
   if(response.status===404) throw new Falha(503,'arquivo_indisponivel','O arquivo está temporariamente indisponível.');
@@ -80,7 +81,7 @@ async function servirArquivo(request,env,url,a,m,servirDados) {
   headers.set('Cache-Control','no-cache');
   headers.set('X-Finbra-SHA256',a.sha256);
   headers.set('X-Finbra-Edicao',m.gerado_em);
-  const name=a.tipo==='dicionario' ? 'finbra_dicionario' : `finbra_${a.area ?? 'todos'}_${a.uf ?? 'BR'}${a.rede && a.rede!=='todas'?'_'+a.rede:''}`;
+  const name=a.tipo==='dicionario_mensal' ? 'finbra_comex_dicionario_mensal' : a.tipo==='mensal' ? `finbra_comex_mensal_${a.uf}` : a.tipo==='dicionario' ? 'finbra_dicionario' : `finbra_${a.area ?? 'todos'}_${a.uf ?? 'BR'}${a.rede && a.rede!=='todas'?'_'+a.rede:''}`;
   headers.set('Content-Disposition',`attachment; filename="${name}.${a.formato}"`);
   if (request.method==='HEAD') headers.delete('Content-Range');
   const status=request.method==='HEAD' && response.status===206 ? 200 : response.status;
@@ -92,6 +93,18 @@ export async function rotaDados(request,env,url,servirDados) {
     if (request.method==='OPTIONS') return new Response(null,{status:204,headers:{...CORS,'Access-Control-Max-Age':'86400'}});
     if (!['GET','HEAD'].includes(request.method)) return json(request,{erro:{codigo:'metodo_nao_permitido',mensagem:'Use GET ou HEAD.'}},405,{Allow:'GET, HEAD, OPTIONS'});
     const path=url.pathname;
+    const mensal=path.match(new RegExp('^'+ROOT+'/comex/mensal/([A-Za-z]{2})\\.csv$'));
+    if(mensal || path===ROOT+'/comex/dicionario-mensal.csv') {
+      parametros(url,[]);
+      const uf=mensal?.[1].toUpperCase();
+      if(uf && uf!=='BR' && !UF.has(uf)) throw new Falha(400,'uf_invalida','Use BR ou uma sigla de UF, como GO.');
+      const obj=await env.DADOS.get('gold/comex/manifesto.json');
+      if(!obj || !('body' in obj))throw new Falha(503,'catalogo_indisponivel','O catálogo mensal está temporariamente indisponível.');
+      const m=await new Response(obj.body).json();
+      const a=mensal ? m.downloads_mensais?.[uf] : m.dicionario_mensal;
+      if(m.versao!==1 || typeof m.gerado_em!=='string' || !a || !/^gold\/comex\/[a-z0-9_]+\.csv$/.test(a.caminho) || !/^[a-f0-9]{64}$/.test(a.sha256) || !Number.isSafeInteger(a.bytes) || a.bytes<1 || a.formato!=='csv' || mensal && (a.uf!==uf || a.tipo!=='mensal' || a.area!=='comex' || a.variaveis!==18))throw new Falha(503,'catalogo_invalido','O catálogo mensal não passou na conferência.');
+      return await servirArquivo(request,env,url,{...a,tipo:mensal?'mensal':'dicionario_mensal'},m,servirDados);
+    }
     if (path===ROOT+'/cliente.R') {
       parametros(url,[]);
       const source=await env.ASSETS.fetch(new Request(new URL('/finbra.R',url.origin),{headers:{'Accept-Encoding':'identity'}}));
@@ -116,6 +129,7 @@ export async function rotaDados(request,env,url,servirDados) {
         resumo:m.resumo,temas:[{id:'todos',nome:'Todos os temas'},...m.areas.map(({id,nome,nome_en})=>({id,nome,nome_en}))],ufs:['BR',...UF].sort(),
         selecao:{uf:uf||'BR',tema:area||'todos',...(url.searchParams.has('rede')?{rede}:{})},
         ...(area==='educacao'?{redes_educacao:[...new Set(files.filter(a=>a.area==='educacao').map(a=>a.rede??'todas'))]}:{}),
+        ...(area==='comex'?{mensal_csv:`${url.origin}${ROOT}/comex/mensal/${uf||'BR'}.csv`,dicionario_mensal:`${url.origin}${ROOT}/comex/dicionario-mensal.csv`}:{}),
         arquivos:FORMATOS.map(f=>arquivoDoRecorte(files,area,uf,f,rede)).filter(Boolean).map(a=>infoArquivo(a,url.origin)),
         dicionario:`${url.origin}${ROOT}/dicionario.json`,cliente_r:`${url.origin}${ROOT}/cliente.R`,
         notas:['Base municipal desde 2013; cobertura varia por variável.','UF e tema selecionam arquivos prontos. Filtros de ano, município e coluna são aplicados no cliente.','URL estável entrega a edição atual; url_imutavel e sha256 identificam o arquivo exato.','Não se substituem ausências por zero; confira unidades e condições no dicionário.'],

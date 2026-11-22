@@ -2,7 +2,7 @@
 import { BASE_DADOS } from './manifesto';
 import { UF_NOMES } from './ufs';
 
-export type AreaMapa = 'saude' | 'educacao' | 'trabalho' | 'saneamento' | 'agropecuaria' | 'mobilidade' | 'seguranca' | 'internet' | 'energia';
+export type AreaMapa = 'saude' | 'educacao' | 'trabalho' | 'saneamento' | 'agropecuaria' | 'mobilidade' | 'seguranca' | 'internet' | 'energia' | 'comex';
 export type ObjetoMapa = { caminho: string; bytes: number; sha256: string };
 type Trecho = [number, number, string];
 export type IndicadorMapa = {
@@ -61,7 +61,7 @@ async function verificarOrigem(m: CatalogoMapa) {
     const r = await fetch(`${BASE_DADOS}${caminho}`, { cache: 'no-cache' });
     if (!r.ok) throw new Error('Não foi possível conferir a edição dos dados.');
     const b = await r.arrayBuffer();
-    if (m.area === 'educacao' || m.area === 'saneamento' || (m.area === 'agropecuaria' || m.area === 'mobilidade' || m.area === 'seguranca' || m.area === 'internet' || m.area === 'energia')) {
+    if (m.area === 'educacao' || m.area === 'saneamento' || (m.area === 'agropecuaria' || m.area === 'mobilidade' || m.area === 'seguranca' || m.area === 'internet' || (m.area === 'energia' || m.area === 'comex'))) {
       if (await hash(b) !== m.origem.sha256) throw new Error('Os dados foram atualizados. O mapa precisa ser preparado para a nova edição.');
     } else {
       const a = JSON.parse(new TextDecoder().decode(b)).aberturas?.saude;
@@ -72,7 +72,7 @@ async function verificarOrigem(m: CatalogoMapa) {
 }
 export function obterCatalogoMapa(area: AreaMapa, rede = 'todas'): Promise<CatalogoMapa> {
   return memo(`catalogo:${area}:${rede}`, async () => {
-    if (!['saude', 'educacao', 'trabalho', 'saneamento', 'agropecuaria', 'mobilidade', 'seguranca', 'internet', 'energia'].includes(area)) throw new Error('Painel do mapa inválido.');
+    if (!['saude', 'educacao', 'trabalho', 'saneamento', 'agropecuaria', 'mobilidade', 'seguranca', 'internet', 'energia', 'comex'].includes(area)) throw new Error('Painel do mapa inválido.');
     if (rede !== 'todas') {
       const base = await obterCatalogoMapa(area); const ref = base.redes?.[rede];
       if (!ref) throw new Error('Rede de ensino indisponível para o mapa.');
@@ -105,8 +105,8 @@ export function validarCargaMapa(c: Carga, m: CatalogoMapa, i: IndicadorMapa, an
   for (const v of [c.numeradores, c.denominadores, c.marcadores]) if (v && (v.length !== n || v.some(x => !finito(x)))) throw new Error('Campos incompletos no mapa.');
   if ((m.area === 'saude' || m.area === 'educacao') && [c.numeradores, c.denominadores, c.marcadores].some(a => a?.some(x => x !== null && x < 0))) throw new Error('Componente negativo inesperado no mapa.');
   if (m.area === 'saude' && (!c.numeradores || !c.denominadores || !c.condicoes || c.condicoes.length !== n || c.condicoes.some(x => ![0, 1, 2, 3, 4, 6].includes(x)))) throw new Error('Condições de saúde incompletas no mapa.');
-  if (m.area === 'trabalho' || m.area === 'saneamento' || (m.area === 'agropecuaria' || m.area === 'mobilidade' || m.area === 'seguranca' || m.area === 'internet' || m.area === 'energia')) {
-    const permitidas = m.area === 'internet' || m.area === 'energia' ? [0,1,2,3,4,5,16] : m.area === 'seguranca' ? [0,1,2,3,4,5,23,24] : m.area === 'mobilidade' ? [0,1,2,3,4,5] : m.area === 'agropecuaria' ? [0,1,2,3,4,5,20] : m.area === 'trabalho' ? [0, 1, 2, 3, 4, 5, 11, 12, 13, 14, 15] : [0, 1, 2, 3, 4, 5, 9, 10];
+  if (m.area === 'trabalho' || m.area === 'saneamento' || (m.area === 'agropecuaria' || m.area === 'mobilidade' || m.area === 'seguranca' || m.area === 'internet' || (m.area === 'energia' || m.area === 'comex'))) {
+    const permitidas = m.area === 'internet' || (m.area === 'energia' || m.area === 'comex') ? [0,1,2,3,4,5,16] : m.area === 'seguranca' ? [0,1,2,3,4,5,23,24] : m.area === 'mobilidade' ? [0,1,2,3,4,5] : m.area === 'agropecuaria' ? [0,1,2,3,4,5,20] : m.area === 'trabalho' ? [0, 1, 2, 3, 4, 5, 11, 12, 13, 14, 15] : [0, 1, 2, 3, 4, 5, 9, 10];
     if (!c.numeradores || !c.denominadores || !c.condicoes || c.condicoes.length !== n || c.condicoes.some(x => !permitidas.includes(x))) throw new Error('Condições do indicador incompletas no mapa.');
     if (m.area === 'saneamento' && (!c.condicoes_originais || c.condicoes_originais.length !== n || c.condicoes_originais.some(x => !Number.isInteger(x) || x < 0 || x > 6))) throw new Error('Condições originais do saneamento incompletas.');
     if (c.rem_validas && (c.rem_validas.length !== n || c.rem_validas.some(x => x !== null && (!Number.isInteger(x) || x < 0)))) throw new Error('Quantidades de remuneração inválidas.');

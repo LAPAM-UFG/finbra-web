@@ -189,12 +189,20 @@ def gerar(fontes, destino):
         for j,i in enumerate(ec['indicadores']):
             ene_defs.append(dict(id=i['id'],nome=i['nome'],nome_en=i['nome_en'],descricao=i['descricao'],descricao_en=i['descricao_en'],tema={'gd_mod':'Modalidade de geração','gd_tit':'Tipo de titular','gd_pub':'Classes públicas','siga_hidro':'Tipos de hidrelétricas','siga_matriz':'Matriz das usinas em operação','gd_resumo':'Geração distribuída','gd_fonte':'Fontes da geração distribuída','gd_classe':'Classe da instalação','gd_porte':'Porte da instalação','gd_bases':'Bases da geração distribuída','gd_coorte':'Coortes de conexão','siga_fases':'Usinas e projetos','siga_fontes':'Fontes das usinas','siga_bases':'Bases do SIGA','bases':'Bases de cálculo'}[i['familia']],tema_en={'gd_mod':'Generation arrangement','gd_tit':'Holder type','gd_pub':'Public classes','siga_hidro':'Hydropower plant types','siga_matriz':'Operating plant capacity mix','gd_resumo':'Distributed generation','gd_fonte':'Distributed generation sources','gd_classe':'Installation class','gd_porte':'Installation size','gd_bases':'Distributed generation bases','gd_coorte':'Connection cohorts','siga_fases':'Plants and projects','siga_fontes':'Plant sources','siga_bases':'SIGA calculation bases','bases':'Calculation bases'}[i['familia']],unidade=i['unidade'],unidade_en=i['unidade_en'],formato='percentual'if i['unidade']=='%'else'numero',periodos=i['anos'],frequencia='anual',metodo_referencia='razao',normalizacao='Retrato atual ou coorte retrospectiva dos cadastros atuais; confira a definição. Contagens municipais do SIGA não são somáveis.',normalizacao_en='Current snapshot or retrospective cohort of current registries; inspect the definition. Municipal SIGA counts are not additive.',fator=1,ranking=False,fonte_nome=i['fonte_nome'],fontes=[dict(nome=i['fonte_nome'],url=i['fonte_url'])],area='energia',rede='todas',catalogo='energia_original',indice=j,notas_anos=i.get('notas_anos',{})))
         defs+=ene_defs
+    cx=None;cx_indices={};cx_paths={};cx_defs=[]
+    if 'gold/comex/manifesto.json'in paths:
+        em=ler('gold/comex/manifesto.json');ec=json.loads(gzip.decompress(paths[em['catalogo']['caminho']].read_bytes()))
+        cx=dict(anos=em['anos'],indices=em['indices'],indicadores=[i['id']for i in ec['indicadores']],edicao_sha256=prov['gold/comex/manifesto.json']['sha256'])
+        for bucket,ref in em['indices'].items():cx_indices[bucket]=ler(ref['caminho']);cx_paths[bucket]=paths[cx_indices[bucket]['arquivo']['caminho']]
+        for j,i in enumerate(ec['indicadores']):
+            cx_defs.append(dict(id=i['id'],nome=i['nome'],nome_en=i['nome_en'],descricao=i['descricao'],descricao_en=i['descricao_en'],tema={'resumo':'Balança comercial','exp':'Exportações','imp':'Importações','comparavel':'Mesmos meses','bases':'Bases de cálculo','diversidade':'Produtos e mercados','variacao':'Variações comparáveis'}[i['familia']],tema_en={'resumo':'Trade balance','exp':'Exports','imp':'Imports','comparavel':'Same months','bases':'Calculation bases','diversidade':'Products and markets','variacao':'Comparable changes'}[i['familia']],unidade=i['unidade'],unidade_en=i['unidade_en'],formato='percentual'if i['unidade']=='%'else'numero',periodos=i['anos'],frequencia='anual',metodo_referencia='razao',normalizacao='Bens por domicílio fiscal; confira os meses disponíveis. Concentração deve ser recalculada nos registros reunidos, sem média municipal.',normalizacao_en='Goods by fiscal domicile; inspect available months. Concentration must be recomputed from pooled records, not averaged across municipalities.',fator=1,ranking=False,fonte_nome=i['fonte_nome'],fontes=[dict(nome=i['fonte_nome'],url=i['fonte_url'])],area='comex',rede='todas',catalogo='comex_original',indice=j,notas_anos=i.get('notas_anos',{})))
+        defs+=cx_defs
     saida=destino/'gold/raiox';saida.mkdir(parents=True)
     def objeto(nome,body,ext='json'):
         key=f'gold/raiox/{nome}_{sha(body)[:16]}.{ext}';(destino/key).write_bytes(body)
         return dict(caminho=key,bytes=len(body),sha256=sha(body))
     meta=objeto('catalogo',compacto(dict(versao=1,indicadores=defs,catalogos=catalogos,
-         referencias={k:econ[k] for k in ['anos','arquivo','grupos','indices_uf']},**({'agropecuaria':agro}if agro else{}),**({'mobilidade':mob}if mob else{}),**({'seguranca':seg}if seg else{}),**({'internet':net}if net else{}),**({'energia':ene}if ene else{}))))
+         referencias={k:econ[k] for k in ['anos','arquivo','grupos','indices_uf']},**({'agropecuaria':agro}if agro else{}),**({'mobilidade':mob}if mob else{}),**({'seguranca':seg}if seg else{}),**({'internet':net}if net else{}),**({'comex':cx}if cx else{}),**({'energia':ene}if ene else{}))))
     meta_gzip={**objeto('catalogo',gzip.compress((destino/meta['caminho']).read_bytes(),mtime=0),'json.gz'),'json_sha256':meta['sha256'],'json_bytes':meta['bytes']}
     geo_body=paths[origem['geografia']['caminho']].read_bytes()
     geo_gzip={**objeto('geografia',gzip.compress(geo_body,mtime=0),'json.gz'),'json_sha256':sha(geo_body),'json_bytes':len(geo_body)}
@@ -210,6 +218,7 @@ def gerar(fontes, destino):
         agro_files={b:stack.enter_context(p.open('rb'))for b,p in agro_paths.items()}
         mob_files={b:stack.enter_context(p.open('rb'))for b,p in mob_paths.items()}
         ene_files={b:stack.enter_context(p.open('rb'))for b,p in ene_paths.items()}
+        cx_files={b:stack.enter_context(p.open('rb'))for b,p in cx_paths.items()}
         net_files={b:stack.enter_context(p.open('rb'))for b,p in net_paths.items()}
         seg_files={b:stack.enter_context(p.open('rb'))for b,p in seg_paths.items()}
         for grupo in todos:
@@ -255,6 +264,11 @@ def gerar(fontes, destino):
                 for j,i in enumerate(ene_defs):
                     yy=[ne['anos'].index(y)for y in i['periodos']];vals=[ne['valores'][k][j]for k in yy];flags=[ne['condicoes'][k][j]for k in yy]
                     series=dict(v=vals,n=[None]*len(vals),d=[None]*len(vals),r=vals,c=flags,q=[int(v is not None)for v in vals]);rows.append(retrato(i,series))
+            if cx:
+                ni=cx_indices[bucket];off,size,h=ni['grupos'][grupo];nf=cx_files[bucket];nf.seek(off);nb=nf.read(size);assert sha(nb)==h;ne=json.loads(nb);assert ne['grupo']==grupo and ne['anos']==cx['anos']
+                for j,i in enumerate(cx_defs):
+                    yy=[ne['anos'].index(y)for y in i['periodos']];vals=[ne['valores'][k][j]for k in yy];flags=[ne['condicoes'][k][j]for k in yy]
+                    series=dict(v=vals,n=[None]*len(vals),d=[None]*len(vals),r=vals,c=flags,q=[int(v is not None)for v in vals]);rows.append(retrato(i,series))
             assert len(rows)==len(defs)
             body=compacto(dict(versao=1,grupo=grupo,linhas=rows,referencias={str(a[0]):[a[10],a[8],a[9]] for a in es['linhas']}))+b'\n';f=handles[bucket]
             index[bucket][grupo]=[f.tell(),len(body),sha(body)];f.write(body)
@@ -274,7 +288,7 @@ def gerar(fontes, destino):
          territorios=contagem,indicadores=len(defs),max_trecho_bytes=max_trecho)
     # Mantém as edições anteriores para clientes abertos antes da ampliação.
     perfis_mob=any(i.get('area')=='mobilidade'and i.get('tema')=='raca'for i in defs)
-    (saida/('v10_manifesto.json'if ene and any(i['familia']=='gd_mod'for i in ec['indicadores'])else'v9_manifesto.json'if ene else'v8_manifesto.json'if net and 'referencias_smp'in mm else'v7_manifesto.json'if net else'v6_manifesto.json'if seg else'v4_manifesto.json'if perfis_mob else'v3_manifesto.json'if mob else'v2_manifesto.json'if agro else'manifesto.json')).write_bytes(compacto(manifesto))
+    (saida/('v11_manifesto.json'if cx else'v10_manifesto.json'if ene and any(i['familia']=='gd_mod'for i in ec['indicadores'])else'v9_manifesto.json'if ene else'v8_manifesto.json'if net and 'referencias_smp'in mm else'v7_manifesto.json'if net else'v6_manifesto.json'if seg else'v4_manifesto.json'if perfis_mob else'v3_manifesto.json'if mob else'v2_manifesto.json'if agro else'manifesto.json')).write_bytes(compacto(manifesto))
     report=dict(ok=True,territorios=contagem,indicadores=len(defs),observacoes_com_valor=validos,max_trecho_bytes=max_trecho,
                 bytes=sum(p.stat().st_size for p in saida.iterdir()),arquivos=len(list(saida.iterdir())))
     (destino/'auditoria_geracao.json').write_bytes(compacto(report));print(json.dumps(report),flush=True)

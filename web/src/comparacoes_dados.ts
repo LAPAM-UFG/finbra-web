@@ -14,6 +14,7 @@ export type AreaComparacao =
   | "agropecuaria"
   | "mobilidade"
   | "seguranca"
+  | "comex"
   | "energia"
   | "internet"
   | "gestao";
@@ -340,6 +341,8 @@ export function obterComparacoes(
     const chaves =
       area === 'assistencia' && rede === 'cadunico_historico'
         ? [] // Catálogo independente, com distribuições Seade e cotejo MDS fixados por hash.
+        : area === "comex"
+        ? ["gold/comex/manifesto.json"]
         : area === "energia"
         ? ["gold/energia/manifesto.json"]
         : area === "internet"
