@@ -13,7 +13,7 @@ finbra_url <- function(uf = NULL, tema = NULL, formato = "rds", base_url = .finb
   if (!uf %in% c("BR", unname(.finbra_ufs))) stop("UF inv\u00e1lida.")
   if (!is.character(tema) || length(tema) != 1L || is.na(tema)) stop("tema deve ser um nome de tema.")
   tema <- tolower(iconv(trimws(tema), to = "ASCII//TRANSLIT"))
-  if (is.na(tema) || !tema %in% c("todos","financas","saude","educacao","saneamento","trabalho","gestao","clima","assistencia","agropecuaria","mobilidade","seguranca","internet","energia")) stop("Tema inv\u00e1lido.")
+  if (is.na(tema) || !tema %in% c("todos","financas","saude","educacao","saneamento","trabalho","gestao","clima","assistencia","agropecuaria","mobilidade","seguranca","internet","energia","comex")) stop("Tema inv\u00e1lido.")
   if (!is.character(formato) || length(formato) != 1L || !formato %in% c("rds","dta","parquet","csv.zip")) stop("Formato inv\u00e1lido.")
   if (!is.character(base_url) || length(base_url) != 1L || is.na(base_url) || !grepl("^https?://",base_url)) stop("base_url deve ser um endere\u00e7o HTTP(S).")
   if (!is.character(rede) || length(rede)!=1L || is.na(rede) || !rede %in% c("todas","publica","municipal","estadual","federal","privada") || (rede!="todas" && tema!="educacao")) stop("Rede de ensino invalida para este tema.")
