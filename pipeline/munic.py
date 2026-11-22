@@ -17,6 +17,7 @@ município que não respondeu fica sem valor (NULL), nunca zero. "Não informou"
 marcados em valida = false para não entrarem nos percentuais.
 """
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -36,7 +37,36 @@ from leitor_planilha import Planilha
 GOLD_M = GOLD / "munic"
 BRUTOS = Path(os.environ.get("MUNIC_BRUTOS", "E:/finbra/brutos"))
 
-ABAS_FORA = re.compile(r"dicion|notas|vari[aá]veis? externas?|prefeit|estrutura pol", re.I)
+ABAS_FORA = re.compile(r"dicion|notas|vari[aá]veis? externas?|prefeit|estrutura pol|perfil do gestor", re.I)
+
+
+def grupos_comparaveis(catalogo,curadoria=()):
+    """Mesmo enunciado só sugere continuidade dentro da mesma aba e do tema."""
+    def normalizar(s):
+        return re.sub(r'\s+',' ',sem_acento(s).casefold()).strip()
+    groups={};rows=[];assigned=set();lookup={(x['pesquisa'],x['ano'],x['var']):x for x in catalogo}
+    # A curadoria conferida liga também perguntas cujo bloco foi renomeado.
+    # Cada par entra em apenas um grupo, evitando multiplicação em junções.
+    for indicator in curadoria:
+        sources=[f for f in indicator['fontes'] if (indicator['pesquisa'],f['ano'],f['var']) in lookup]
+        if len(sources)<2:continue
+        for source in sources:
+            key=(indicator['pesquisa'],source['ano'],source['var']);item=lookup.get(key)
+            if item is None or any(item[k]!=source[k] for k in ['aba','tema','rotulo']):raise ValueError('par curado ausente ou diferente: '+str(key))
+            if key in assigned:raise ValueError('par em mais de um grupo curado')
+            assigned.add(key);rows.append(dict(grupo='curado-'+indicator['id'],**{k:item[k] for k in ['pesquisa','ano','var','tipo']},rotulo=sources[0]['rotulo']))
+    for item in catalogo:
+        if (item['pesquisa'],item['ano'],item['var']) in assigned:continue
+        key=tuple(normalizar(item[k]) for k in ['pesquisa','aba','tema','tipo','rotulo'])
+        if key[-1]:groups.setdefault(key,[]).append(item)
+    for key,items in groups.items():
+        years={x['ano'] for x in items}
+        if len(years)<2 or len(years)!=len(items):continue
+        # Identificador estável com namespace distinto dos antigos grupos numéricos.
+        group=key[0]+'-c'+hashlib.sha256(json.dumps(key,ensure_ascii=False).encode()).hexdigest()[:16]
+        for item in items:
+            rows.append(dict(grupo=group,**{k:item[k] for k in ['pesquisa','ano','var','tipo']},rotulo=items[0]['rotulo']))
+    return rows
 ROTULO_PESSOAL = re.compile(r"\bnome\b|e-?mail|telefone|\bfax\b|endere[cç]o|\bcpf\b|\bcnpj\b|\bsite\b|\bhome ?page\b", re.I)
 # colunas de identificação do território que vêm antes das perguntas nas edições recentes
 COLUNAS_TERRITORIO = {"codmun", "uf", "cod uf", "coduf", "mun", "popmun", "popuf", "faixa_pop", "faixa_populacao", "regiao", "região",
@@ -252,23 +282,39 @@ def faixa(pop) -> str | None:
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--so", choices=["munic", "estadic"], help="processar só esta pesquisa")
+    p.add_argument("--anos", nargs="+", type=int, help="edições a processar")
+    p.add_argument("--incremental", action="store_true", help="substituir apenas as edições selecionadas, preservando as demais")
     a = p.parse_args()
+    if a.incremental and not a.anos:
+        p.error("--incremental exige --anos para delimitar as edições substituídas")
+    selecionadas = [ed for ed in edicoes() if (not a.so or ed['pesquisa'] == a.so) and (not a.anos or ed['ano'] in a.anos)]
+    if not selecionadas:
+        raise ValueError("nenhuma edição de origem encontrada")
+    pares = sorted({(ed['pesquisa'], ed['ano']) for ed in selecionadas})
+    substituir = ' OR '.join(f"(pesquisa='{pesq}' AND ano={ano})" for pesq, ano in pares)
     GOLD_M.mkdir(parents=True, exist_ok=True)
     con = duckdb.connect()
     con.execute("SET preserve_insertion_order = false")
+    con.execute("SET threads=2; SET memory_limit='3GB'")
+    anteriores = []
+    if a.incremental:
+        for nome in ['respostas', 'agregados', 'territorio', 'catalogo']:
+            arquivo = GOLD_M / (nome + '.parquet')
+            if not arquivo.is_file():
+                raise ValueError(f"base incremental incompleta: {arquivo}")
+            con.execute(f"CREATE TABLE anterior_{nome} AS SELECT * FROM read_parquet(?) WHERE NOT ({substituir})", [str(arquivo)])
+        anteriores = con.sql('SELECT * FROM anterior_catalogo').to_arrow_table().to_pylist()
     mun6a7, nomes = dimensao_municipios(con)
     arq_pop = (GOLD / "saude" / "municipios.parquet").as_posix()
     pop_svs = {(ano, c): pop for ano, c, pop in con.execute(
         f"SELECT ano, cod_ibge, populacao FROM '{arq_pop}' WHERE populacao IS NOT NULL AND cod_ibge IS NOT NULL").fetchall()}
     anos_pop = sorted({k[0] for k in pop_svs})
-    catalogo: list[dict] = []
+    catalogo: list[dict] = anteriores
     extra: dict[tuple, dict] = {}
     with tempfile.TemporaryDirectory() as t:
         tmp = Path(t)
         partes = []
-        for ed in edicoes():
-            if a.so and ed["pesquisa"] != a.so:
-                continue
+        for ed in selecionadas:
             cat, resp, terr = processar_edicao(ed, tmp, mun6a7)
             n = len(resp["cod"])
             print(f"{ed['pesquisa']} {ed['ano']}{ed['modulo']}: {len(cat)} perguntas, {n} respostas, {len(terr)} territórios com metadados", flush=True)
@@ -286,13 +332,14 @@ def main():
         if not partes:
             raise SystemExit("nenhuma edição lida")
         lista = ", ".join(f"'{x.as_posix()}'" for x in partes)
-        con.execute(f"CREATE TABLE respostas AS SELECT * FROM read_parquet([{lista}])")
+        con.execute(f"CREATE TABLE respostas_novas AS SELECT * FROM read_parquet([{lista}])")
+        con.execute('CREATE TABLE respostas AS SELECT * FROM respostas_novas' + (' UNION ALL SELECT * FROM anterior_respostas' if a.incremental else ''))
     con.register("cat_py", pa.Table.from_pylist(catalogo))
     con.execute("CREATE TABLE catalogo AS SELECT * FROM cat_py ORDER BY pesquisa, ano, aba, var")
 
     # território: nome, UF e porte (população da edição, quando a planilha traz; senão a da SVS do ano mais próximo)
-    rows = []
-    for pesq, ano, cod in con.execute("SELECT DISTINCT pesquisa, ano, cod FROM respostas").fetchall():
+    rows = con.sql('SELECT * FROM anterior_territorio').to_arrow_table().to_pylist() if a.incremental else []
+    for pesq, ano, cod in con.execute("SELECT DISTINCT pesquisa, ano, cod FROM respostas_novas").fetchall():
         e = extra.get((pesq, ano, cod), {})
         if pesq == "munic":
             nome, uf = nomes.get(cod) or SEM_CADASTRO.get(cod, (None, UF_POR_CODIGO.get(cod // 100000)))
@@ -315,26 +362,19 @@ def main():
     # agregados por Brasil, UF e faixa de porte: a base do painel
     con.execute("""CREATE TABLE agregados AS
         WITH r AS (SELECT r.pesquisa, r.ano, r.var, r.valor_txt, r.valor_num, r.valida, t.uf, t.faixa
-                   FROM respostas r JOIN territorio t USING (pesquisa, ano, cod))
+                   FROM respostas_novas r JOIN territorio t USING (pesquisa, ano, cod))
         SELECT pesquisa, ano, var, 'brasil' AS corte, 'BR' AS grupo, valor_txt, valida, count(*) AS n, sum(valor_num) AS soma, avg(valor_num) AS media
         FROM r GROUP BY ALL
         UNION ALL
         SELECT pesquisa, ano, var, 'uf', uf, valor_txt, valida, count(*), sum(valor_num), avg(valor_num) FROM r WHERE uf IS NOT NULL GROUP BY ALL
         UNION ALL
         SELECT pesquisa, ano, var, 'faixa', faixa, valor_txt, valida, count(*), sum(valor_num), avg(valor_num) FROM r WHERE faixa IS NOT NULL GROUP BY ALL""")
+    if a.incremental:
+        con.execute('INSERT INTO agregados SELECT * FROM anterior_agregados')
     con.execute(f"COPY (SELECT * FROM agregados ORDER BY pesquisa, ano, var, corte, grupo) TO '{destino('agregados.parquet')}' (FORMAT parquet, COMPRESSION zstd)")
 
-    def chave(s):
-        s = re.sub(r"\(.*?\)", " ", sem_acento(s).lower())
-        return re.sub(r"\s+", " ", re.sub(r"[^a-z ]+", " ", s)).strip()
-    grupos: dict[tuple, list] = {}
-    for c in catalogo:
-        grupos.setdefault((c["pesquisa"], chave(c["rotulo"])), []).append(c)
-    comp = []
-    for i, itens in enumerate(g for k, g in grupos.items() if k[1] and len({x["ano"] for x in g}) >= 2):
-        for x in itens:
-            comp.append({"grupo": f"{x['pesquisa']}-{i + 1}", "pesquisa": x["pesquisa"], "ano": x["ano"], "var": x["var"],
-                         "rotulo": itens[0]["rotulo"], "tipo": x["tipo"]})
+    from munic_painel_dados import ler_curadoria
+    comp = grupos_comparaveis(catalogo,ler_curadoria(Path(__file__).resolve().parent.parent/'web/src/munic_curadoria.ts'))
     con.register("comp_py", pa.Table.from_pylist(comp))
     con.execute(f"COPY (SELECT * FROM comp_py ORDER BY grupo, ano) TO '{destino('comparaveis.parquet')}' (FORMAT parquet, COMPRESSION zstd)")
     print("catálogo:", con.sql("SELECT pesquisa, count(DISTINCT ano), count(*) FROM catalogo GROUP BY 1").fetchall())

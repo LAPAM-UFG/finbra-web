@@ -97,7 +97,8 @@ def extras_series(linhas):
     return out
 
 
-def gerar(fontes, destino):
+def gerar(fontes, destino, edicao=None):
+    if edicao is not None and (not isinstance(edicao,int) or edicao<1):raise ValueError('edição inválida')
     fontes = Path(fontes).resolve()
     prov = json.loads((fontes/'proveniencia.json').read_bytes())['arquivos']
     paths = {k: Path(v.get('local', fontes/k)).resolve() for k,v in prov.items()}
@@ -288,7 +289,7 @@ def gerar(fontes, destino):
          territorios=contagem,indicadores=len(defs),max_trecho_bytes=max_trecho)
     # Mantém as edições anteriores para clientes abertos antes da ampliação.
     perfis_mob=any(i.get('area')=='mobilidade'and i.get('tema')=='raca'for i in defs)
-    (saida/('v11_manifesto.json'if cx else'v10_manifesto.json'if ene and any(i['familia']=='gd_mod'for i in ec['indicadores'])else'v9_manifesto.json'if ene else'v8_manifesto.json'if net and 'referencias_smp'in mm else'v7_manifesto.json'if net else'v6_manifesto.json'if seg else'v4_manifesto.json'if perfis_mob else'v3_manifesto.json'if mob else'v2_manifesto.json'if agro else'manifesto.json')).write_bytes(compacto(manifesto))
+    (saida/(f'v{edicao}_manifesto.json' if edicao is not None else 'v11_manifesto.json'if cx else'v10_manifesto.json'if ene and any(i['familia']=='gd_mod'for i in ec['indicadores'])else'v9_manifesto.json'if ene else'v8_manifesto.json'if net and 'referencias_smp'in mm else'v7_manifesto.json'if net else'v6_manifesto.json'if seg else'v4_manifesto.json'if perfis_mob else'v3_manifesto.json'if mob else'v2_manifesto.json'if agro else'manifesto.json')).write_bytes(compacto(manifesto))
     report=dict(ok=True,territorios=contagem,indicadores=len(defs),observacoes_com_valor=validos,max_trecho_bytes=max_trecho,
                 bytes=sum(p.stat().st_size for p in saida.iterdir()),arquivos=len(list(saida.iterdir())))
     (destino/'auditoria_geracao.json').write_bytes(compacto(report));print(json.dumps(report),flush=True)
@@ -296,4 +297,5 @@ def gerar(fontes, destino):
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('--fontes',required=True);parser.add_argument('--saida',required=True)
-    args=parser.parse_args();gerar(args.fontes,args.saida)
+    parser.add_argument('--edicao',type=int)
+    args=parser.parse_args();gerar(args.fontes,args.saida,args.edicao)

@@ -81,17 +81,19 @@ class Comparacoes:
                 self.pop.setdefault(int(ano), np.full(len(self.m), np.nan))[
                     self.pos[int(cod)]
                 ] = pop
-        atual = {
-            int(x["D1C"]): int(x["V"]) for x in self.ler("ibge_populacao_2026.json")[1:]
-        }
+        oficial=self.ler('ibge_populacao_2026.json')[1:]
+        anos_oficiais={int(x['D3C']) for x in oficial}
+        assert len(anos_oficiais)==1,'Publicação de população mistura anos'
+        ano_atual=next(iter(anos_oficiais))
+        atual = {int(x['D1C']):int(x['V']) for x in oficial}
         assert set(atual) == set(self.pos)
         for cod, v in atual.items():
-            antigo = self.pop.get(2026, np.full(len(self.m), np.nan))[self.pos[cod]]
+            antigo = self.pop.get(ano_atual, np.full(len(self.m), np.nan))[self.pos[cod]]
             assert (
                 not np.isfinite(antigo) or antigo == v
-            ), "População 2026 local diferente da publicação atual"
-            self.pop.setdefault(2026, np.full(len(self.m), np.nan))[self.pos[cod]] = v
-        for y in range(1990, 2027):
+            ), "População local diferente da publicação atual"
+            self.pop.setdefault(ano_atual, np.full(len(self.m), np.nan))[self.pos[cod]] = v
+        for y in range(1990,max([ano_atual,*self.pop])+1):
             # Mesma regra do painel original: em 2023 não houve estimativa, utiliza-se
             # o Censo 2022, com o ano da base explícito. Não se cria população 2023.
             self.pop_anos[y] = (

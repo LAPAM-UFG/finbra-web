@@ -299,14 +299,14 @@ def populacao_ibge(con) -> str:
     return "pop_ref"
 
 
-def gerar_gold(con):
+def gerar_gold(con, somente_caged=False):
     GOLD_T.mkdir(parents=True, exist_ok=True)
     s, g = SILVER_T.as_posix(), GOLD_T.as_posix()
     # RAIS usa o código IBGE de 6 dígitos; Brasília (530010) é o Distrito Federal
     con.execute(f"""CREATE OR REPLACE TEMP TABLE muni AS
                     SELECT cod_ibge, cod_ibge // 10 AS municipio, nome, uf, regiao FROM '{SILVER.as_posix()}/entes.parquet'
                     WHERE esfera = 'M'""")
-    pop_ibge = populacao_ibge(con)
+    pop_ibge = populacao_ibge(con) if not somente_caged else None
     # UF pelo prefixo do código, para movimentações em códigos fora do cadastro (Fernando de Noronha, 260545);
     # o código 999999 (município ignorado) não tem UF e entra só no total do Brasil
     con.execute(f"""CREATE OR REPLACE TEMP TABLE estados AS
@@ -314,7 +314,7 @@ def gerar_gold(con):
     com_uf = lambda rel, cod: f"""(SELECT x.*, coalesce(m.uf, u.uf) AS uf_
                                    FROM {rel} x LEFT JOIN muni m ON m.municipio = x.{cod}
                                    LEFT JOIN estados u ON u.cod = x.{cod} // 10000)"""
-    if any((SILVER_T / "rais_vinculos").glob("*.parquet")):
+    if not somente_caged and any((SILVER_T / "rais_vinculos").glob("*.parquet")):
         # zero, e não nulo, no setor sem vínculo: o município tem RAIS no ano (a linha existe) e nenhum vínculo ativo ali
         setores = ", ".join(f"coalesce(sum(vinculos) FILTER (grande_setor = '{x}'), 0) AS empregos_{x}" for x in SETORES)
         con.execute(f"""
@@ -392,9 +392,10 @@ def gerar_gold(con):
                 WHERE escopo IS NOT NULL ORDER BY ALL
             ) TO '{g}/caged_uf.parquet' (FORMAT parquet, COMPRESSION zstd)""")
         print("gold/trabalho: caged, caged_anual e caged_uf")
-    cnae(con)
-    dicionario(con)
-    atualizar_manifesto(con)
+    if not somente_caged:
+        cnae(con)
+        dicionario(con)
+    atualizar_manifesto(con, fontes=['caged', 'caged_cbo'] if somente_caged else None)
 
 
 def dicionario(con):
@@ -446,7 +447,7 @@ def gerar_caged_ocupacao(con, micro: Path):
     print(f"gold/trabalho/caged_cbo: {n:,} linhas, {destino.stat().st_size / 1e6:.1f} MB")
 
 
-def atualizar_manifesto(con):
+def atualizar_manifesto(con, fontes=None):
     """Grava os anos da RAIS e os meses do CAGED no manifesto (o gold.py faz o mesmo ao gerá-lo inteiro)."""
     import json
     from gold import fonte_trabalho
@@ -457,7 +458,10 @@ def atualizar_manifesto(con):
     from datetime import datetime, timezone
 
     manifesto = json.loads(caminho.read_text(encoding="utf-8"))
-    manifesto.setdefault("fontes", {}).update(fonte_trabalho(con))
+    descritores = fonte_trabalho(con)
+    if fontes is not None:
+        descritores = {k: v for k, v in descritores.items() if k in fontes}
+    manifesto.setdefault("fontes", {}).update(descritores)
     # o site põe gerado_em no caminho dos arquivos (/dados/v/<versão>/): sem mudar, o navegador usaria o cache antigo
     manifesto["gerado_em"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     caminho.write_text(json.dumps(manifesto, ensure_ascii=False, indent=1), encoding="utf-8")

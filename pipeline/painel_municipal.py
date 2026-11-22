@@ -71,13 +71,13 @@ def campo(nome,descricao=None,unidade='número',fonte='',regra='Valor do ano pub
 
 
 class Painel:
- def __init__(self,base,saida):
+ def __init__(self,base,saida,catalogos=None):
   self.base=base.resolve();self.root=destino_isolado(saida,self.base)
   self.work=self.root/'trabalho_downloads';self.dest=self.root/'gold/downloads'
   self.work.mkdir(parents=True,exist_ok=True);self.dest.mkdir(parents=True,exist_ok=True)
   self.manifest=json.loads((self.base/'gold/manifesto.json').read_text(encoding='utf-8-sig'))
   self.base_sha=sha(self.base/'gold/manifesto.json')
-  self.catalog=json.loads(Path(__file__).with_name('painel_municipal_catalogos.json').read_text(encoding='utf-8'))
+  self.catalog=json.loads(Path(catalogos or Path(__file__).with_name('painel_municipal_catalogos.json')).read_text(encoding='utf-8'))
   if self.catalog.get('base_gerado_em')!=self.manifest['gerado_em']:
    raise ValueError('Atualize o catálogo de downloads para este manifesto antes de gerar a base (veja PAINEL_MUNICIPAL.md)')
   self.db=duckdb.connect(str(self.work/'painel.duckdb'))

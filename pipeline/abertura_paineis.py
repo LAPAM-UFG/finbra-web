@@ -245,6 +245,13 @@ def gerar(base,saida,curadoria=CURADORIA):
     if base==saida or base.is_relative_to(saida) or saida.is_relative_to(base):
         raise ValueError('A saída candidata deve ser separada da origem.')
     m=json.loads((base/'gold/manifesto.json').read_bytes())
+    perfil_meta=m.get('fontes',{}).get('rais_perfis',{})
+    perfil_template=perfil_meta.get('arquivos')
+    if perfil_template:
+        for ano in perfil_meta.get('anos',[]):
+            arquivo=(base/perfil_template.replace('{ano}',str(ano))).resolve()
+            if not arquivo.is_relative_to(base) or not arquivo.is_file():
+                raise ValueError('Perfil RAIS anunciado no manifesto está ausente: '+str(ano))
     cur=ler_curadoria(curadoria)
     con=duckdb.connect();con.execute('SET threads=4')
     # Wrapper mantém a origem junto à conexão sem depender de atributos do binding C++.

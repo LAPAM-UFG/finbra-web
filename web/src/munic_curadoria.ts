@@ -20,6 +20,13 @@ export const CURADORIA: IndicadorMunic[] = [
   },
   "fontes": [
    {
+    "ano": 2025,
+    "var": "MREH02",
+    "aba": "Recursos humanos",
+    "tema": "Composição do quadro de pessoal da administração indireta",
+    "rotulo": "Administração indireta - existência"
+   },
+   {
     "ano": 2024,
     "var": "MREH02",
     "aba": "Recursos humanos",
@@ -109,6 +116,13 @@ export const CURADORIA: IndicadorMunic[] = [
   },
   "fontes": [
    {
+    "ano": 2025,
+    "var": "MREH016",
+    "aba": "Recursos humanos",
+    "tema": "Composição do quadro de pessoal da administração direta",
+    "rotulo": "Total"
+   },
+   {
     "ano": 2024,
     "var": "MREH016",
     "aba": "Recursos humanos",
@@ -149,6 +163,13 @@ export const CURADORIA: IndicadorMunic[] = [
    "en": "Statutory staff (direct administration)"
   },
   "fontes": [
+   {
+    "ano": 2025,
+    "var": "MREH011",
+    "aba": "Recursos humanos",
+    "tema": "Composição do quadro de pessoal da administração direta",
+    "rotulo": "Estatutários"
+   },
    {
     "ano": 2024,
     "var": "MREH011",
@@ -191,6 +212,13 @@ export const CURADORIA: IndicadorMunic[] = [
   },
   "fontes": [
    {
+    "ano": 2025,
+    "var": "MREH012",
+    "aba": "Recursos humanos",
+    "tema": "Composição do quadro de pessoal da administração direta",
+    "rotulo": "Celetistas"
+   },
+   {
     "ano": 2024,
     "var": "MREH012",
     "aba": "Recursos humanos",
@@ -231,6 +259,13 @@ export const CURADORIA: IndicadorMunic[] = [
    "en": "Appointed-only staff (direct administration)"
   },
   "fontes": [
+   {
+    "ano": 2025,
+    "var": "MREH013",
+    "aba": "Recursos humanos",
+    "tema": "Composição do quadro de pessoal da administração direta",
+    "rotulo": "Somente comissionados"
+   },
    {
     "ano": 2024,
     "var": "MREH013",
@@ -273,6 +308,13 @@ export const CURADORIA: IndicadorMunic[] = [
   },
   "fontes": [
    {
+    "ano": 2025,
+    "var": "MREH014",
+    "aba": "Recursos humanos",
+    "tema": "Composição do quadro de pessoal da administração direta",
+    "rotulo": "Estagiários"
+   },
+   {
     "ano": 2024,
     "var": "MREH014",
     "aba": "Recursos humanos",
@@ -313,6 +355,13 @@ export const CURADORIA: IndicadorMunic[] = [
    "en": "No permanent tie (direct administration)"
   },
   "fontes": [
+   {
+    "ano": 2025,
+    "var": "MREH015",
+    "aba": "Recursos humanos",
+    "tema": "Composição do quadro de pessoal da administração direta",
+    "rotulo": "Sem vínculo permanente"
+   },
    {
     "ano": 2024,
     "var": "MREH015",
@@ -355,6 +404,13 @@ export const CURADORIA: IndicadorMunic[] = [
   },
   "fontes": [
    {
+    "ano": 2025,
+    "var": "MREH036",
+    "aba": "Recursos humanos",
+    "tema": "Composição do quadro de pessoal da administração indireta",
+    "rotulo": "Total"
+   },
+   {
     "ano": 2024,
     "var": "MREH036",
     "aba": "Recursos humanos",
@@ -381,6 +437,13 @@ export const CURADORIA: IndicadorMunic[] = [
    "en": "Statutory staff (indirect administration)"
   },
   "fontes": [
+   {
+    "ano": 2025,
+    "var": "MREH031",
+    "aba": "Recursos humanos",
+    "tema": "Composição do quadro de pessoal da administração indireta",
+    "rotulo": "Estatutários"
+   },
    {
     "ano": 2024,
     "var": "MREH031",
@@ -409,6 +472,13 @@ export const CURADORIA: IndicadorMunic[] = [
   },
   "fontes": [
    {
+    "ano": 2025,
+    "var": "MREH032",
+    "aba": "Recursos humanos",
+    "tema": "Composição do quadro de pessoal da administração indireta",
+    "rotulo": "Celetistas"
+   },
+   {
     "ano": 2024,
     "var": "MREH032",
     "aba": "Recursos humanos",
@@ -435,6 +505,13 @@ export const CURADORIA: IndicadorMunic[] = [
    "en": "Appointed-only staff (indirect administration)"
   },
   "fontes": [
+   {
+    "ano": 2025,
+    "var": "MREH033",
+    "aba": "Recursos humanos",
+    "tema": "Composição do quadro de pessoal da administração indireta",
+    "rotulo": "Somente comissionados"
+   },
    {
     "ano": 2024,
     "var": "MREH033",
@@ -463,6 +540,13 @@ export const CURADORIA: IndicadorMunic[] = [
   },
   "fontes": [
    {
+    "ano": 2025,
+    "var": "MREH034",
+    "aba": "Recursos humanos",
+    "tema": "Composição do quadro de pessoal da administração indireta",
+    "rotulo": "Estagiários"
+   },
+   {
     "ano": 2024,
     "var": "MREH034",
     "aba": "Recursos humanos",
@@ -489,6 +573,13 @@ export const CURADORIA: IndicadorMunic[] = [
    "en": "No permanent tie (indirect administration)"
   },
   "fontes": [
+   {
+    "ano": 2025,
+    "var": "MREH035",
+    "aba": "Recursos humanos",
+    "tema": "Composição do quadro de pessoal da administração indireta",
+    "rotulo": "Sem vínculo permanente"
+   },
    {
     "ano": 2024,
     "var": "MREH035",
@@ -767,6 +858,13 @@ export const CURADORIA: IndicadorMunic[] = [
    "en": "Has a master plan"
   },
   "fontes": [
+   {
+    "ano": 2025,
+    "var": "MLEG01",
+    "aba": "Legislação e instr planejamento",
+    "tema": "Plano Diretor",
+    "rotulo": "Plano diretor - existência"
+   },
    {
     "ano": 2021,
     "var": "Mleg01",
@@ -1397,6 +1495,13 @@ export const CURADORIA: IndicadorMunic[] = [
   },
   "fontes": [
    {
+    "ano": 2025,
+    "var": "EREH016",
+    "aba": "Recursos Humanos",
+    "tema": "Composição do quadro de pessoal da administração direta",
+    "rotulo": "Administração direta - existência › Total"
+   },
+   {
     "ano": 2024,
     "var": "EREH016",
     "aba": "Recursos humanos",
@@ -1437,6 +1542,13 @@ export const CURADORIA: IndicadorMunic[] = [
    "en": "Statutory staff (direct administration)"
   },
   "fontes": [
+   {
+    "ano": 2025,
+    "var": "EREH011",
+    "aba": "Recursos Humanos",
+    "tema": "Composição do quadro de pessoal da administração direta",
+    "rotulo": "Administração direta - existência › Estatutários"
+   },
    {
     "ano": 2024,
     "var": "EREH011",
@@ -1479,6 +1591,13 @@ export const CURADORIA: IndicadorMunic[] = [
   },
   "fontes": [
    {
+    "ano": 2025,
+    "var": "EREH012",
+    "aba": "Recursos Humanos",
+    "tema": "Composição do quadro de pessoal da administração direta",
+    "rotulo": "Administração direta - existência › Celetistas"
+   },
+   {
     "ano": 2024,
     "var": "EREH012",
     "aba": "Recursos humanos",
@@ -1519,6 +1638,13 @@ export const CURADORIA: IndicadorMunic[] = [
    "en": "Appointed-only staff (direct administration)"
   },
   "fontes": [
+   {
+    "ano": 2025,
+    "var": "EREH013",
+    "aba": "Recursos Humanos",
+    "tema": "Composição do quadro de pessoal da administração direta",
+    "rotulo": "Administração direta - existência › Somente comissionados"
+   },
    {
     "ano": 2024,
     "var": "EREH013",
@@ -1561,6 +1687,13 @@ export const CURADORIA: IndicadorMunic[] = [
   },
   "fontes": [
    {
+    "ano": 2025,
+    "var": "EREH014",
+    "aba": "Recursos Humanos",
+    "tema": "Composição do quadro de pessoal da administração direta",
+    "rotulo": "Administração direta - existência › Estagiários"
+   },
+   {
     "ano": 2024,
     "var": "EREH014",
     "aba": "Recursos humanos",
@@ -1601,6 +1734,13 @@ export const CURADORIA: IndicadorMunic[] = [
    "en": "No permanent tie (direct administration)"
   },
   "fontes": [
+   {
+    "ano": 2025,
+    "var": "EREH015",
+    "aba": "Recursos Humanos",
+    "tema": "Composição do quadro de pessoal da administração direta",
+    "rotulo": "Administração direta - existência › Sem vínculo permanente"
+   },
    {
     "ano": 2024,
     "var": "EREH015",
@@ -1643,6 +1783,13 @@ export const CURADORIA: IndicadorMunic[] = [
   },
   "fontes": [
    {
+    "ano": 2025,
+    "var": "EREH036",
+    "aba": "Recursos Humanos",
+    "tema": "Composição do quadro de pessoal da administração indireta",
+    "rotulo": "Total"
+   },
+   {
     "ano": 2024,
     "var": "EREH036",
     "aba": "Recursos humanos",
@@ -1669,6 +1816,13 @@ export const CURADORIA: IndicadorMunic[] = [
    "en": "Statutory staff (indirect administration)"
   },
   "fontes": [
+   {
+    "ano": 2025,
+    "var": "EREH031",
+    "aba": "Recursos Humanos",
+    "tema": "Composição do quadro de pessoal da administração indireta",
+    "rotulo": "Estatutários"
+   },
    {
     "ano": 2024,
     "var": "EREH031",
@@ -1697,6 +1851,13 @@ export const CURADORIA: IndicadorMunic[] = [
   },
   "fontes": [
    {
+    "ano": 2025,
+    "var": "EREH032",
+    "aba": "Recursos Humanos",
+    "tema": "Composição do quadro de pessoal da administração indireta",
+    "rotulo": "Celetistas"
+   },
+   {
     "ano": 2024,
     "var": "EREH032",
     "aba": "Recursos humanos",
@@ -1723,6 +1884,13 @@ export const CURADORIA: IndicadorMunic[] = [
    "en": "Appointed-only staff (indirect administration)"
   },
   "fontes": [
+   {
+    "ano": 2025,
+    "var": "EREH033",
+    "aba": "Recursos Humanos",
+    "tema": "Composição do quadro de pessoal da administração indireta",
+    "rotulo": "Somente comissionados"
+   },
    {
     "ano": 2024,
     "var": "EREH033",
@@ -1751,6 +1919,13 @@ export const CURADORIA: IndicadorMunic[] = [
   },
   "fontes": [
    {
+    "ano": 2025,
+    "var": "EREH034",
+    "aba": "Recursos Humanos",
+    "tema": "Composição do quadro de pessoal da administração indireta",
+    "rotulo": "Estagiários"
+   },
+   {
     "ano": 2024,
     "var": "EREH034",
     "aba": "Recursos humanos",
@@ -1778,6 +1953,13 @@ export const CURADORIA: IndicadorMunic[] = [
   },
   "fontes": [
    {
+    "ano": 2025,
+    "var": "EREH035",
+    "aba": "Recursos Humanos",
+    "tema": "Composição do quadro de pessoal da administração indireta",
+    "rotulo": "Sem vínculo permanente"
+   },
+   {
     "ano": 2024,
     "var": "EREH035",
     "aba": "Recursos humanos",
@@ -1804,6 +1986,13 @@ export const CURADORIA: IndicadorMunic[] = [
    "en": "Has indirect administration"
   },
   "fontes": [
+   {
+    "ano": 2025,
+    "var": "EREH02",
+    "aba": "Recursos Humanos",
+    "tema": "Composição do quadro de pessoal da administração indireta",
+    "rotulo": "Administração indireta - existência"
+   },
    {
     "ano": 2024,
     "var": "EREH02",
@@ -4545,4 +4734,4 @@ export const CURADORIA: IndicadorMunic[] = [
    "Não"
   ]
  }
-] as IndicadorMunic[];
+];

@@ -23,24 +23,44 @@ permissions:
 jobs:
   atualizar:
     runs-on: ubuntu-latest
-    timeout-minutes: 340   # ~1h50 por exercício na API (1 req/s) + processamento
+    timeout-minutes: 360
     env:
       R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
       R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
       R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
       R2_BUCKET: ${{ secrets.R2_BUCKET }}
       PYTHONIOENCODING: utf-8
+      DATA_DIR: ${{ runner.temp }}/finbra-fiscal
     steps:
       - uses: actions/checkout@v7
+
+      - name: Reservar espaço para as bases e os formatos de download
+        run: |
+          # SDKs sem uso neste job, em uma máquina descartável do GitHub.
+          sudo rm -rf -- /usr/share/dotnet /usr/local/lib/android /usr/share/swift /opt/ghc
+          df -h "$RUNNER_TEMP"
 
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: pipeline/requirements.txt
+          cache-dependency-path: pipeline/requirements-atualizacao.txt
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
 
       - name: Instalar dependências
-        run: pip install -r pipeline/requirements.txt
+        run: |
+          pip install -r pipeline/requirements-atualizacao.txt
+          npm ci --prefix web
+          npm ci --prefix worker
+          Rscript -e 'install.packages(c("arrow", "jsonlite"))'
 
       - name: Definir exercícios
         id: anos
@@ -59,8 +79,8 @@ jobs:
           echo "Exercícios: $anos"
           echo "anos=$anos" >> "$GITHUB_OUTPUT"
 
-      - name: Baixar camadas atuais do R2
-        run: python pipeline/r2.py baixar --camadas silver gold --ignorar "gold/comparacoes/*"
+      - name: Fixar somente as entradas fiscais atuais
+        run: python pipeline/atualizar_bases.py --raiz "$DATA_DIR" --preparar-fiscal fiscal
 
       - name: Extrair da API do Tesouro
         run: python pipeline/extract.py --anos ${{ steps.anos.outputs.anos }} --atualizar
@@ -68,8 +88,12 @@ jobs:
       - name: Processar e validar
         run: python pipeline/processar.py --anos ${{ steps.anos.outputs.anos }}
 
-      - name: Enviar ao R2
-        run: python pipeline/r2.py enviar --ignorar "gold/comparacoes/*"
+      - name: Validar código e proteções
+        run: |
+          python -m unittest discover -s pipeline -p 'testes_atualizacao*.py'
+          npm run build --prefix web
+      - name: Preparar derivados e publicar a edição completa
+        run: python pipeline/atualizar_bases.py --raiz "${{ runner.temp }}/finbra-atualizacao-fiscal" --base-extra "$DATA_DIR" --raw-area fiscal --fontes ipca pbf --rscript "$(command -v Rscript)" --publicar
 
       - name: Guardar logs e validação
         if: always()
@@ -77,8 +101,11 @@ jobs:
         with:
           name: logs-${{ github.run_id }}
           path: |
-            data/logs/
-            data/gold/validacao.csv
-            data/gold/validacao_divergencias.csv
+            ${{ env.DATA_DIR }}/logs/
+            ${{ env.DATA_DIR }}/gold/validacao.csv
+            ${{ env.DATA_DIR }}/gold/validacao_divergencias.csv
+            ${{ runner.temp }}/finbra-atualizacao-fiscal/resultado.json
+            ${{ runner.temp }}/finbra-atualizacao-fiscal/**/auditoria*.json
+            ${{ runner.temp }}/finbra-atualizacao-fiscal/backup_r2/
           if-no-files-found: ignore
           retention-days: 90

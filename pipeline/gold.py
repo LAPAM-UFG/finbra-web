@@ -13,6 +13,7 @@ Uso:
     py pipeline/gold.py
 """
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -22,6 +23,18 @@ import pandas as pd
 from config import GOLD, SILVER
 
 BRUTA = "Receitas Brutas Realizadas"
+
+
+def ano_base_ipca(con):
+    """Preserva a base publicada; uma troca de preços exige reprocessar os temas."""
+    old=GOLD/'manifesto.json'
+    year=os.environ.get('FINBRA_BASE_IPCA')
+    if not year and old.is_file():year=json.loads(old.read_bytes()).get('base_ipca')
+    if year is None:year=con.execute('SELECT max(exercicio) FROM read_parquet(?) WHERE completo',[str(SILVER/'ipca.parquet')]).fetchall()[0][0]
+    year=int(year)
+    rows=con.execute('SELECT completo FROM read_parquet(?) WHERE exercicio=?',[str(SILVER/'ipca.parquet'),year]).fetchall()
+    if len(rows)!=1 or not rows[0][0]:raise ValueError('ano-base do IPCA sem fechamento completo')
+    return year
 
 # Receitas por descrição (o código mudou entre ementários)
 POR_DESCRICAO = {
@@ -109,7 +122,7 @@ def gerar_alertas(con):
     de receita não tira a despesa do mesmo ente-ano dos agregados.
     """
     g, s = GOLD.as_posix(), SILVER.as_posix()
-    base = con.execute(f"SELECT max(exercicio) FROM '{s}/ipca.parquet' WHERE completo").fetchone()[0]
+    base = ano_base_ipca(con)
     con.execute("CREATE OR REPLACE TABLE revisoes (cod_ibge BIGINT, exercicio BIGINT, indicador VARCHAR, "
                 "categoria VARCHAR, evidencia VARCHAR, fonte VARCHAR, revisado_em VARCHAR)")
     if REVISOES.exists():
@@ -271,7 +284,7 @@ def gerar_web(con):
             ORDER BY ALL
         ) TO '{g}/escopos.parquet' (FORMAT parquet)
     """)
-    base = con.execute(f"SELECT max(exercicio) FROM '{s}/ipca.parquet' WHERE completo").fetchone()[0]
+    base = ano_base_ipca(con)
     ultimo_ipca = con.execute(f"SELECT exercicio, meses FROM '{s}/ipca.parquet' ORDER BY exercicio DESC LIMIT 1").fetchone()
     manifesto = {
         "gerado_em": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -643,9 +656,10 @@ def main():
     gerar_web(con)
     # fator_real: R$ de dezembro do ano-base (o último ano completo) = nominal × fator_real; pronto, para ninguém
     # montar a razão de índices (e invertê-la)
+    base=ano_base_ipca(con)
     con.execute(f"""COPY (SELECT p.*, b.indice / p.indice AS fator_real, b.exercicio AS ano_base
                           FROM '{s}/ipca.parquet' p
-                          CROSS JOIN (SELECT exercicio, indice FROM '{s}/ipca.parquet' WHERE completo ORDER BY exercicio DESC LIMIT 1) b)
+                          CROSS JOIN (SELECT exercicio, indice FROM '{s}/ipca.parquet' WHERE exercicio={base}) b)
                     TO '{GOLD.as_posix()}/ipca.parquet' (FORMAT parquet)""")
     faixas.to_parquet(GOLD / "faixas.parquet", index=False)
 

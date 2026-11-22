@@ -246,7 +246,9 @@ describe('instruções', () => {
     // as regras que protegem o número: denominador das válidas, par (ano, var), ligação automática, numéricas que são códigos
     assert.match(munic, /valida = false e FORA do denominador/);
     assert.match(munic, /par \(ano, var\)/);
-    assert.match(munic, /AUTOMÁTICA, pelo enunciado/);
+    assert.match(munic, /ligações da curadoria foram conferidas/);
+    assert.match(munic, /mesma aba, tema, tipo e enunciado/);
+    assert.match(munic, /Nunca associe pessoal da administração direta ao da indireta/);
     assert.match(munic, /identificadores, não quantidades/);
     assert.doesNotMatch(munic, /# Painel de finanças públicas|# Painel de saúde|# Cruzando painéis/);
     // cruzamento: a regra de gestão pública × finanças só entra com os dois painéis

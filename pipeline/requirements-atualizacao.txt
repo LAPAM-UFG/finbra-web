@@ -1,0 +1,7 @@
+-r requirements.txt
+geopandas>=1.0
+rasterio>=1.4
+xarray>=2024.1
+netCDF4>=1.7
+cdsapi>=0.7
+scipy>=1.14

@@ -1379,9 +1379,34 @@ describe('gestão pública: painel automático (MUNIC e ESTADIC)', () => {
   const temRh2024 = async () => (await rota<L[]>('munic_perguntas', { pesquisa: 'munic', ano: 2024, aba: 'Recursos humanos' })).some((r) => r.var === 'MREH016');
   type Rota = DadosPainel & { territorio: L | null };
   const painel = (q: Record<string, string | number | undefined>) => rota<Rota>('munic_painel', q);
+  // Preserva as referências independentes das edições anteriores à ampliação.
+  const curadoriaAnterior = CURADORIA.map(i => ({...i,fontes:i.fontes.filter(f=>f.ano<=2024)}));
+  const painelAnterior = async (q:Record<string,string|number|undefined>) => {
+    const edicoes=await Promise.all([2021,2023,2024].map(ano=>painel({...q,ano})));
+    return {...edicoes[2],agregados:edicoes.flatMap(r=>r.agregados),respostas:edicoes.flatMap(r=>r.respostas),universo:edicoes.flatMap(r=>r.universo)};
+  };
   const cartoesDe = (r: Rota, pesquisa: 'munic' | 'estadic', modo: Modo, escopo: Escopo, uf: string | null = null) =>
-    montarCartoes(selecionar(CURADORIA, pesquisa, modo), r, escopo, uf);
+    montarCartoes(selecionar(curadoriaAnterior, pesquisa, modo), r, escopo, uf);
   const achar = (cs: ReturnType<typeof cartoesDe>, id: string) => cs.find((c) => c.ind.id === id)!;
+
+  test('edição 2025: quadros direto e indireto distintos, totais nacionais, Goiânia e governo de GO', { skip: semMunic }, async ctx => {
+    if (!(MANIFESTO_TESTE!.fontes.munic as {anos:number[]})?.anos.includes(2025)) return ctx.skip('edição 2025 ainda não publicada');
+    const atual = (r:Rota,pesquisa:'munic'|'estadic',escopo:Escopo) => montarCartoes(selecionar(CURADORIA,pesquisa,{tipo:'ultima'}),r,escopo);
+    const br = atual(await painel({pesquisa:'munic'}),'munic',{tipo:'brasil'});
+    const direta = achar(br,'m_rh_direta_16');
+    assert.equal(direta.fonte!.ano,2025);
+    assert.deepEqual([(direta.recorte as {n:number}).n,(direta.recorte as {soma:number}).soma,direta.universo],[5562,7512767,5571]);
+    const prefeitura = atual(await painel({pesquisa:'munic',cod:5208707}),'munic',{tipo:'territorio',cod:5208707,uf:'GO'});
+    assert.deepEqual(achar(prefeitura,'m_rh_direta_16').territorio,{estado:'valor',valor:32497});
+    assert.deepEqual(achar(prefeitura,'m_rh_indireta_36').territorio,{estado:'valor',valor:1890});
+    const estado = atual(await painel({pesquisa:'estadic',uf:'GO'}),'estadic',{tipo:'territorio',cod:52,uf:'GO'});
+    assert.equal(achar(estado,'e_rh_direta_16').fonte!.var,'EREH016');
+    assert.deepEqual(achar(estado,'e_rh_direta_16').territorio,{estado:'valor',valor:84643});
+    assert.deepEqual(achar(estado,'e_rh_indireta_36').territorio,{estado:'valor',valor:6961});
+    const estados = atual(await painel({pesquisa:'estadic'}),'estadic',{tipo:'brasil'});
+    const total=achar(estados,'e_rh_direta_16').recorte as {n:number;soma:number};
+    assert.deepEqual([total.n,total.soma],[26,2331088]);
+  });
 
   test('curadoria: cada par pesquisa/edição/variável existe no catálogo real com aba, tema e enunciado exatos, e as respostas válidas são as previstas', { skip: semMunic }, async (ctx) => {
     if (!(await temRh2024())) return ctx.skip('gold sem o pessoal direto de 2024: use MUNIC_CANDIDATO');
@@ -1411,9 +1436,9 @@ describe('gestão pública: painel automático (MUNIC e ESTADIC)', () => {
 
   test('Brasil (última informação): números dos cartões contra a contagem independente, com ano real e universo', { skip: semMunic }, async (ctx) => {
     if (!(await temRh2024())) return ctx.skip('gold sem o pessoal direto de 2024: use MUNIC_CANDIDATO');
-    const r = await painel({ pesquisa: 'munic' });
+    const r = await painelAnterior({ pesquisa: 'munic' });
     assert.equal(r.territorio, null);
-    assert.deepEqual([...new Set(r.agregados.map((x) => x.ano))].sort(), [2021, 2023, 2024]); // uma rota só, só as edições dos cartões
+    assert.deepEqual([...new Set(r.agregados.map((x) => x.ano))].sort(), [2021, 2023, 2024]);
     assert.deepEqual([...new Set(r.agregados.map((x) => `${x.corte}|${x.grupo}`))], ['brasil|BR']);
     const cs = cartoesDe(r, 'munic', { tipo: 'ultima' }, { tipo: 'brasil' });
     const b = (id: string) => achar(cs, id).recorte as { sim: number; nao: number; base: number; pct: number; semResposta: number };
@@ -1445,7 +1470,7 @@ describe('gestão pública: painel automático (MUNIC e ESTADIC)', () => {
 
   test('UF e município: prefeituras de GO somam só GO; Goiânia mostra a própria resposta, com UF e Brasil à parte', { skip: semMunic }, async (ctx) => {
     if (!(await temRh2024())) return ctx.skip('gold sem o pessoal direto de 2024: use MUNIC_CANDIDATO');
-    const go = await painel({ pesquisa: 'munic', uf: 'GO' });
+    const go = await painelAnterior({ pesquisa: 'munic', uf: 'GO' });
     const cu = cartoesDe(go, 'munic', { tipo: 'ultima' }, { tipo: 'uf', uf: 'GO' });
     const ind = achar(cu, 'm_rh_existe_indireta');
     assert.deepEqual([(ind.recorte as { sim: number }).sim, (ind.recorte as { nao: number }).nao, ind.universo], [108, 138, 246]);
@@ -1455,7 +1480,7 @@ describe('gestão pública: painel automático (MUNIC e ESTADIC)', () => {
     const rhi = achar(cu, 'm_rh_indireta_36').recorte as { n: number; soma: number; semResposta: number };
     assert.deepEqual([rhi.n, rhi.soma, rhi.semResposta], [108, 10117, 138]); // só os 108 com administração indireta; 138 "–"
     assert.ok(achar(cu, 'm_rh_existe_indireta').brasil, 'Brasil como comparação');
-    const g = await painel({ pesquisa: 'munic', cod: 5208707 });
+    const g = await painelAnterior({ pesquisa: 'munic', cod: 5208707 });
     assert.equal(g.territorio?.nome, 'Goiânia');
     assert.equal(g.territorio?.uf, 'GO');
     const cg = cartoesDe(g, 'munic', { tipo: 'ultima' }, { tipo: 'territorio', cod: 5208707, uf: null }, 'GO');
@@ -1475,11 +1500,11 @@ describe('gestão pública: painel automático (MUNIC e ESTADIC)', () => {
 
   test('ESTADIC é outra pesquisa: governo de GO e conjunto dos estados, sem usar prefeituras', { skip: semMunic }, async (ctx) => {
     if (!(await temRh2024())) return ctx.skip('gold sem o pessoal direto de 2024: use MUNIC_CANDIDATO');
-    const br = await painel({ pesquisa: 'estadic' });
+    const br = await painelAnterior({ pesquisa: 'estadic' });
     const cb = cartoesDe(br, 'estadic', { tipo: 'ultima' }, { tipo: 'brasil' });
     assert.deepEqual([(achar(cb, 'e_tr_conselho').recorte as { sim: number }).sim, (achar(cb, 'e_tr_conselho').recorte as { nao: number }).nao, achar(cb, 'e_tr_conselho').universo], [14, 12, 27]);
     assert.ok(cb.every((c) => c.ind.pesquisa === 'estadic'));
-    const go = await painel({ pesquisa: 'estadic', uf: 'GO' });
+    const go = await painelAnterior({ pesquisa: 'estadic', uf: 'GO' });
     assert.equal(go.territorio?.cod, 52);
     const cg = cartoesDe(go, 'estadic', { tipo: 'ultima' }, { tipo: 'territorio', cod: 52, uf: 'GO' });
     assert.deepEqual(achar(cg, 'e_tr_conselho').territorio, { estado: 'sim', texto: 'Sim' });
@@ -2678,7 +2703,12 @@ describe('IA: auditoria das cinco perguntas (regressão)', () => {
     await tabelasIaTrabalho();
     const r = await sql(`SELECT competencia // 100 AS ano, count(*) AS meses, sum(admissoes) AS adm, sum(desligamentos) AS desl, sum(saldo) AS saldo
       FROM trab_caged_uf WHERE escopo = 'GO' AND secao = 'TOTAL' AND competencia % 100 BETWEEN 1 AND 8 AND competencia // 100 IN (2025, 2026) GROUP BY 1 ORDER BY 1`, ['trabalho']);
-    assert.deepEqual(r.linhas, [[2025, 8, 724483, 649839, 74644], [2026, 8, 704074, 653545, 50529]]);
+    // Referência recalculada dos MOV/FOR/EXC oficiais, edição de setembro/2026:
+    // as novas declarações e exclusões também retificam competências anteriores.
+    const ate=(MANIFESTO_TESTE!.fontes.caged as {ate:number}).ate;
+    if(ate===202608)assert.deepEqual(r.linhas, [[2025, 8, 724483, 649839, 74644], [2026, 8, 704074, 653545, 50529]]);
+    else if(ate===202609)assert.deepEqual(r.linhas, [[2025,8,724473,649824,74649],[2026,8,705908,655595,50313]]);
+    for(const row of r.linhas){assert.equal(row[1],8);assert.equal(Number(row[2])-Number(row[3]),row[4]);}
   });
 
   test('SIOPS × DCA (Goiânia, 2024): nenhum estágio da função Saúde coincide com a despesa total do SIOPS', { skip: semIndicadores || semSiops }, async () => {
@@ -4316,12 +4346,14 @@ describe('MUNIC e ESTADIC (IBGE)', () => {
   const D = (q: Record<string, string | number>) => rota<L[]>('munic_distribuicao', q);
   const nCorte = (linhas: L[], corte: string, valido = true) => linhas.filter((r) => r.corte === corte && !!r.valida === valido).reduce((s, r) => s + Number(r.n), 0);
 
-  test('edições: a MUNIC tem 17 edições com base por município; a ESTADIC, 10', { skip: semMunic }, async () => {
+  test('edições: histórico preservado e todas as edições anunciadas no manifesto presentes', { skip: semMunic }, async () => {
     const anos = (r: L[]) => [...new Set(r.map((x) => Number(x.ano)))];
     const m = anos(await rota<L[]>('munic_temas', { pesquisa: 'munic' }));
-    assert.deepEqual(m, [2004, 2005, 2006, 2008, 2009, 2011, 2012, 2013, 2014, 2015, 2017, 2018, 2019, 2020, 2021, 2023, 2024]);
+    assert.deepEqual(m.filter(y=>y<=2024), [2004, 2005, 2006, 2008, 2009, 2011, 2012, 2013, 2014, 2015, 2017, 2018, 2019, 2020, 2021, 2023, 2024]);
+    assert.deepEqual(m,(MANIFESTO_TESTE!.fontes.munic as {anos:number[]}).anos);
     const e = anos(await rota<L[]>('munic_temas', { pesquisa: 'estadic' }));
-    assert.equal(e.length, 10);
+    assert.equal(e.filter(y=>y<=2024).length, 10);
+    assert.deepEqual(e,(MANIFESTO_TESTE!.fontes.estadic as {anos:number[]}).anos);
     assert.ok(!e.includes(2015) && !e.includes(2022));
   });
 
@@ -4586,27 +4618,30 @@ describe('painel de clima: resumo das seis variáveis (rotas do site)', () => {
     for (const v of ['evap_mm', 'radiacao_wm2']) assert.equal(r.linhas.find((l) => l.variavel === v)!.anos_lacuna, '2022,2023,2024');
     for (const v of ['chuva_mm', 'temperatura_c', 'orvalho_c', 'umid_solo_pct']) assert.equal(r.linhas.find((l) => l.variavel === v)!.anos_lacuna, null);
     for (const l of r.linhas) {
-      assert.equal(l.parcial_meses, 9, String(l.variavel)); // janeiro a setembro de 2026
+      const ate=Number((MANIFESTO_TESTE!.fontes.clima as {ate:number}).ate);
+      assert.equal(l.parcial_meses, ate%100, String(l.variavel));
       const normalAno = Number(l.normal);
       const normalParcial = Number(l.parcial_normal);
       assert.ok(normalParcial > 0 && normalParcial !== normalAno);
-      if (l.variavel === 'chuva_mm' || l.variavel === 'evap_mm') assert.ok(normalParcial < normalAno, 'soma de 9 meses contra a soma das normais de 9 meses, não contra o ano inteiro');
+      if (l.variavel === 'chuva_mm' || l.variavel === 'evap_mm') assert.ok(normalParcial < normalAno, 'soma parcial contra as normais dos mesmos meses, não do ano inteiro');
     }
   });
 
   test('chuva acumulada de 3, 6 e 12 meses de Goiânia: soma dos mensais contra a soma das normais dos mesmos meses; só chuva tem acumulado', { skip: semClima }, async () => {
     const r = await semArquivoLeve(() => resumo({ cod: GOIANIA }));
     const l = r.linhas.find((x) => x.variavel === 'chuva_mm')!;
-    assert.equal(l.acum_fim, 202609);
-    for (const [k, ini] of [[3, 7], [6, 4]] as const) {
-      const soma = await consulta2(`SELECT sum(valor) FROM read_parquet('${DATA}/gold/clima/mensal.parquet') WHERE variavel = 'chuva_mm' AND cod = ${GOIANIA} AND ano = 2026 AND mes >= ${ini}`);
-      const normais = await consulta2(`SELECT sum(normal) FROM read_parquet('${DATA}/gold/clima/normal.parquet') WHERE variavel = 'chuva_mm' AND cod = ${GOIANIA} AND mes BETWEEN ${ini} AND 9`);
+    const fim=await consulta2(`SELECT max(ano*100+mes) FROM read_parquet('${DATA}/gold/clima/mensal.parquet') WHERE variavel='chuva_mm' AND cod=${GOIANIA}`);
+    assert.equal(l.acum_fim, fim);
+    const serial=Math.floor(fim/100)*12+fim%100-1;
+    for (const k of [3,6,12]) {
+      const periodos=Array.from({length:k},(_,j)=>serial-k+j+1).map(s=>Math.floor(s/12)*100+s%12+1);
+      const meses=periodos.map(p=>p%100).join(',');
+      const soma = await consulta2(`SELECT sum(valor) FROM read_parquet('${DATA}/gold/clima/mensal.parquet') WHERE variavel = 'chuva_mm' AND cod = ${GOIANIA} AND ano*100+mes IN (${periodos.join(',')})`);
+      const normais = await consulta2(`SELECT sum(normal) FROM read_parquet('${DATA}/gold/clima/normal.parquet') WHERE variavel = 'chuva_mm' AND cod = ${GOIANIA} AND mes IN (${meses})`);
       assert.equal(l[`acum${k}_cob`], k);
       quase(Number(l[`acum${k}_valor`]), soma, 1e-9);
       quase(Number(l[`acum${k}_normal`]), normais, 1e-9);
     }
-    const doze = await consulta2(`SELECT sum(valor) FROM read_parquet('${DATA}/gold/clima/mensal.parquet') WHERE variavel = 'chuva_mm' AND cod = ${GOIANIA} AND ano * 100 + mes BETWEEN 202510 AND 202609`);
-    quase(Number(l.acum12_valor), doze, 1e-9);
     for (const x of r.linhas.filter((y) => y.variavel !== 'chuva_mm')) assert.ok(x.acum3_cob === null && x.acum12_valor === null, String(x.variavel));
   });
 

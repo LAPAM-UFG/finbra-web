@@ -286,9 +286,11 @@ test('curadoria: indicadores únicos, enunciado e tema exatos presentes, binári
     const ind = CURADORIA.filter((i) => i.pesquisa === p && i.id.includes('_rh_indireta_'));
     assert.equal(dir.length, 6, p);
     assert.equal(ind.length, 6, p);
-    assert.ok(dir.every((i) => i.fontes.map((f) => f.ano).join() === '2024,2023,2021'), `${p}: direta 2024, 2023 e 2021`);
-    assert.ok(ind.every((i) => i.fontes.map((f) => f.ano).join() === '2024'), `${p}: indireta só 2024`);
-    assert.deepEqual(dir.map((i) => i.fontes[0].rotulo).sort(), ind.map((i) => i.fontes[0].rotulo).sort());
+    assert.ok(dir.every((i) => i.fontes.map((f) => f.ano).join() === '2025,2024,2023,2021'), `${p}: direta 2025, 2024, 2023 e 2021`);
+    assert.ok(ind.every((i) => i.fontes.map((f) => f.ano).join() === '2025,2024'), `${p}: indireta 2025 e 2024`);
+    // Em 2025 a ESTADIC prefixa as categorias diretas com o quadro-pai.
+    // O enunciado completo segue conferido contra o catálogo real.
+    assert.deepEqual(dir.map((i) => i.fontes[0].rotulo.replace(/^Administração direta - existência › /,'')).sort(), ind.map((i) => i.fontes[0].rotulo).sort());
   }
   // nenhum indicador reaproveita a mesma variável em dois cartões
   const usadas = CURADORIA.map((i) => `${i.pesquisa}|${i.fontes[0].ano}|${i.fontes[0].var}`);

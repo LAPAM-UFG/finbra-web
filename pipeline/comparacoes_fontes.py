@@ -23,18 +23,23 @@ def sha(b):
 
 
 class Fontes:
-    def __init__(self, revisao, bases):
+    def __init__(self, revisao, bases, overlay=None):
         self.rev = Path(revisao).resolve()
         self.bases = [Path(p).resolve() for p in bases]
+        self.overlay = Path(overlay).resolve() if overlay else None
         self.rev.mkdir(parents=True, exist_ok=True)
         self.refs = {}
         self.raizes = {}
 
     def snapshot(self, item):
         nome, key = item
-        r = requests.get(URL + key, timeout=90)
-        r.raise_for_status()
-        b = r.content
+        local = self.overlay / key if self.overlay else None
+        if local and local.is_file():
+            b = local.read_bytes()
+        else:
+            r = requests.get(URL + key, timeout=90)
+            r.raise_for_status()
+            b = r.content
         p = self.rev / (nome + "_base.json")
         if p.exists():
             assert p.read_bytes() == b, "Fonte atualizada; use uma revisão nova: " + key
@@ -46,7 +51,7 @@ class Fontes:
     def resolver(self, ref):
         key = ref["caminho"]
         assert key.startswith("gold/") and ".." not in key
-        for base in self.bases + [self.rev / "fontes"]:
+        for base in ([self.overlay] if self.overlay else []) + self.bases + [self.rev / "fontes"]:
             p = base / key
             if (
                 p.is_file()
@@ -76,6 +81,11 @@ class Fontes:
             self.resolver(x)
 
     def parquet_publicado(self, key):
+        if self.overlay and (self.overlay / key).is_file():
+            p = self.overlay / key
+            raw=p.read_bytes()
+            self.refs[key] = dict(caminho=key, local=str(p), bytes=len(raw), sha256=sha(raw),etag='"'+hashlib.md5(raw).hexdigest()+'"')
+            return p
         # Esses arquivos antigos não têm nomes por conteúdo. GET fixa a edição e
         # HEAD posterior garante que o objeto não mudou durante a aquisição.
         head = requests.head(URL + key, timeout=60)
@@ -165,10 +175,8 @@ class Fontes:
             "ibge_localidades.json",
             "https://servicodados.ibge.gov.br/api/v1/localidades/municipios?orderBy=nome",
         )
-        self.oficial(
-            "ibge_populacao_2026.json",
-            "https://apisidra.ibge.gov.br/values/t/6579/n6/all/v/9324/p/2026",
-        )
+        ano_pop = max(metas['global']['fontes']['ibge_populacao']['anos'])
+        self.oficial("ibge_populacao_2026.json", f"https://apisidra.ibge.gov.br/values/t/6579/n6/all/v/9324/p/{ano_pop}")
         self.oficial(
             "ipca_mensal.json",
             "https://apisidra.ibge.gov.br/values/t/1737/n1/all/v/2266/p/all?formato=json",
@@ -208,5 +216,6 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--revisao", required=True, type=Path)
     p.add_argument("--bases", required=True, nargs="+", type=Path)
+    p.add_argument("--overlay", type=Path, help="candidato local validado, antes da publicação")
     a = p.parse_args()
-    Fontes(a.revisao, a.bases).preparar()
+    Fontes(a.revisao, a.bases, a.overlay).preparar()

@@ -1,6 +1,6 @@
 # Atualização mensal do RREO e do RGF (fechamento do ano): traz a silver e a gold do R2, busca na API
-# do Tesouro só os entes que ainda não tinham o relatório nos dois últimos exercícios fechados (entregas
-# atrasadas e o ano novo), reprocessa a tabela da LRF e devolve ao R2. A carga completa (2015 em diante,
+# do Tesouro os entes faltantes e as retificações do último exercício selecionado,
+# reprocessa a LRF e seus derivados e devolve ao R2. A carga completa (2015 em diante,
 # ~46 h a 1 req/s) não cabe numa Action: é feita localmente com extract_lrf.py.
 name: Atualizar RREO e RGF
 
@@ -24,24 +24,44 @@ permissions:
 jobs:
   atualizar:
     runs-on: ubuntu-latest
-    timeout-minutes: 340
+    timeout-minutes: 360
     env:
       R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
       R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
       R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
       R2_BUCKET: ${{ secrets.R2_BUCKET }}
       PYTHONIOENCODING: utf-8
+      DATA_DIR: ${{ runner.temp }}/finbra-lrf
     steps:
       - uses: actions/checkout@v7
+
+      - name: Reservar espaço para as bases e os formatos de download
+        run: |
+          # SDKs sem uso neste job, em uma máquina descartável do GitHub.
+          sudo rm -rf -- /usr/share/dotnet /usr/local/lib/android /usr/share/swift /opt/ghc
+          df -h "$RUNNER_TEMP"
 
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: pipeline/requirements.txt
+          cache-dependency-path: pipeline/requirements-atualizacao.txt
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
 
       - name: Instalar dependências
-        run: pip install -r pipeline/requirements.txt
+        run: |
+          pip install -r pipeline/requirements-atualizacao.txt
+          npm ci --prefix web
+          npm ci --prefix worker
+          Rscript -e 'install.packages(c("arrow", "jsonlite"))'
 
       - name: Definir exercícios
         id: anos
@@ -60,25 +80,37 @@ jobs:
           echo "Exercícios: $anos"
           echo "anos=$anos" >> "$GITHUB_OUTPUT"
 
-      - name: Baixar camadas atuais do R2
-        run: python pipeline/r2.py baixar --camadas silver gold --ignorar "gold/comparacoes/*"
+      - name: Fixar somente as entradas da LRF
+        run: python pipeline/atualizar_bases.py --raiz "$DATA_DIR" --preparar-fiscal lrf
 
-      - name: Extrair o que falta da API do Tesouro
-        run: python pipeline/extract_lrf.py --anos ${{ steps.anos.outputs.anos }} --faltantes
+      - name: Extrair faltantes e retificações do último exercício
+        env:
+          ANOS: ${{ steps.anos.outputs.anos }}
+        run: |
+          ultimo=$(printf '%s\n' $ANOS | sort -n | tail -1)
+          for ano in $ANOS; do
+            if [ "$ano" = "$ultimo" ]; then modo=--atualizar; else modo=--faltantes; fi
+            python pipeline/extract_lrf.py --anos "$ano" "$modo"
+          done
 
       - name: Processar
         run: |
           python pipeline/lrf.py
-          python pipeline/testes.py
+          python -m unittest discover -s pipeline -p 'testes_atualizacao*.py'
+          npm run build --prefix web
 
-      - name: Enviar ao R2
-        run: python pipeline/r2.py enviar --camadas silver gold --ignorar "gold/comparacoes/*"
+      - name: Preparar derivados e publicar a edição completa
+        run: python pipeline/atualizar_bases.py --raiz "${{ runner.temp }}/finbra-atualizacao-lrf" --base-extra "$DATA_DIR" --raw-area lrf --fontes ipca --rscript "$(command -v Rscript)" --publicar
 
       - name: Guardar logs
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: logs-lrf-${{ github.run_id }}
-          path: data/logs/
+          path: |
+            ${{ env.DATA_DIR }}/logs/
+            ${{ runner.temp }}/finbra-atualizacao-lrf/resultado.json
+            ${{ runner.temp }}/finbra-atualizacao-lrf/**/auditoria*.json
+            ${{ runner.temp }}/finbra-atualizacao-lrf/backup_r2/
           if-no-files-found: ignore
           retention-days: 90

@@ -1,0 +1,86 @@
+name: Atualizar painéis e arquivos derivados
+
+on:
+  schedule:
+    - cron: "0 9 * * 2" # terça-feira, 06h de Brasília
+  workflow_dispatch:
+    inputs:
+      publicar:
+        description: "Publicar após todas as validações (desmarcado: somente candidato)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: atualizar-dados
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  atualizar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      CDSAPI_URL: ${{ secrets.CDSAPI_URL }}
+      CDSAPI_KEY: ${{ secrets.CDSAPI_KEY }}
+      PYTHONIOENCODING: utf-8
+      ATUALIZACAO_RAIZ: ${{ runner.temp }}/finbra-atualizacao
+    steps:
+      - uses: actions/checkout@v7
+      - name: Reservar espaço para as bases e os formatos de download
+        run: |
+          # SDKs sem uso neste job, em uma máquina descartável do GitHub.
+          sudo rm -rf -- /usr/share/dotnet /usr/local/lib/android /usr/share/swift /opt/ghc
+          df -h "$RUNNER_TEMP"
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pipeline/requirements-atualizacao.txt
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+      - name: Instalar dependências
+        run: |
+          if ! command -v 7z >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y p7zip-full
+          fi
+          pip install -r pipeline/requirements-atualizacao.txt
+          npm ci --prefix web
+          npm ci --prefix worker
+          Rscript -e 'install.packages(c("arrow", "jsonlite"))'
+      - name: Conferir coletores e proteções
+        run: python -m unittest discover -s pipeline -p 'testes_atualizacao*.py'
+      - name: Validar código do site
+        run: npm run build --prefix web
+      - name: Preparar, validar e publicar a edição
+        env:
+          PUBLICAR: ${{ github.event_name == 'schedule' || inputs.publicar }}
+        run: |
+          args=()
+          if [ "$PUBLICAR" = "true" ]; then args+=(--publicar); fi
+          python pipeline/atualizar_bases.py --raiz "$ATUALIZACAO_RAIZ" --rscript "$(command -v Rscript)" "${args[@]}"
+      - name: Guardar resultados e auditorias
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: auditoria-paineis-${{ github.run_id }}
+          path: |
+            ${{ env.ATUALIZACAO_RAIZ }}/resultado.json
+            ${{ env.ATUALIZACAO_RAIZ }}/snapshot_base.json
+            ${{ env.ATUALIZACAO_RAIZ }}/**/auditoria*.json
+            ${{ env.ATUALIZACAO_RAIZ }}/**/resultado.json
+            ${{ env.ATUALIZACAO_RAIZ }}/backup_r2/
+          if-no-files-found: ignore
+          retention-days: 90

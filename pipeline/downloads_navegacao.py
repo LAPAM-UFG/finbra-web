@@ -65,7 +65,7 @@ def pacote(root,work,m,fmt):
    else:target.write(source,a['id']+'.'+a['formato'])
  ref=registrar(root,file,'pacote_brasil_'+fmt.replace('.','_'),'zip')
  with zipfile.ZipFile(file) as z:extracted=sum(x.file_size for x in z.infolist())
- label={'dta':'Stata','csv.zip':'CSV','parquet':'Parquet'}[fmt]
+ label={'dta':'Stata','csv.zip':'CSV','parquet':'Parquet','rds':'R'}[fmt]
  name=f'Brasil — {label} + dicionário'
  return dict(id='pacote_brasil_'+fmt.replace('.','_'),tipo='pacote',area=None,uf=None,nome=name,nome_en=f'Brazil — {label} + dictionary',descricao='Um único formato de dados, dicionário e instruções.',descricao_en='One data format, dictionary and instructions.',formato='zip',conteudo=fmt,linhas=data['linhas'],variaveis=data['variaveis'],ano_de=data['ano_de'],ano_ate=data['ano_ate'],bytes_extraido=extracted,**ref)
 

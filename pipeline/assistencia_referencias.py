@@ -76,7 +76,7 @@ def componentes(fontes, m, refs, legado):
     assert not pop.duplicated(['cod_ibge','ano']).any()
     populacao = {(str(int(r.cod_ibge)),int(r.ano)):float(r.populacao) for r in pop.itertuples() if pd.notna(r.populacao) and r.populacao > 0}
     for row in json.loads((fontes / 'ibge_populacao_2026.json').read_bytes())[1:]:
-        populacao[str(int(row['D1C'])),2026] = int(row['V'])
+        populacao[str(int(row['D1C'])),int(row['D3C'])] = int(row['V'])
     anos_pop = {ano for _,ano in populacao}
     base_pop = {a:a if a in anos_pop else 2022 if a == 2023 else None for a in legado['anos']}
     rais = pq.read_table(fontes / 'gold/trabalho/municipios.parquet', columns=['cod_ibge','ano','massa_dez','n_rem_dez','empregos']).to_pandas()
