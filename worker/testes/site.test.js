@@ -9,6 +9,12 @@ const pedir=(path,extra={})=>worker.fetch(new Request('https://site.exemplo'+pat
 test('404 real com metadados próprios, sem classificar o endereço como Finanças',async()=>{
   const r=await pedir('/nao-existe');assert.equal(r.status,404);assert.equal(r.headers.get('X-Robots-Tag'),'noindex');assert.match(await r.text(),/<title>Página não encontrada/);
 });
+test('documento usa a raiz de Assets: index.html redireciona na Cloudflare',async()=>{
+  const caminhos=[];
+  const ASSETS={fetch:async request=>{const path=new URL(request.url).pathname;caminhos.push(path);return path==='/index.html'?Response.redirect('https://site.exemplo/',308):new Response(html,{headers:{'Content-Type':'text/html; charset=utf-8'}});}};
+  const r=await pedir('/raio-x?cod=3509502',{ASSETS});
+  assert.equal(r.status,200);assert.equal(r.headers.get('Location'),null);assert.deepEqual(caminhos,['/']);assert.match(await r.text(),/Raio X/);
+});
 test('robots e sitemap reais; excluem aliases e a IA pausada',async()=>{
   const robots=await pedir('/robots.txt');assert.match(robots.headers.get('Content-Type'),/text\/plain/);assert.match(await robots.text(),/Sitemap: https:\/\/site.exemplo\/sitemap.xml/);
   const sitemap=await pedir('/sitemap.xml'),s=await sitemap.text();assert.match(s,/\/raio-x<\/loc>/);assert.doesNotMatch(s,/\/ia<\/loc>|\/assistencia\/rankings-pib<\/loc>/);

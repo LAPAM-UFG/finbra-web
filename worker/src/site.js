@@ -47,7 +47,9 @@ export async function paginaSite(request, env, url) {
   const titulo = encontrada ? `LAPAM · ${(TITULOS[path] || ['Dados públicos municipais','Municipal public data'])[en ? 1 : 0]}` : en ? 'Page not found · LAPAM' : 'Página não encontrada · LAPAM';
   const descricao = titulo + (en ? '. Official municipal data, indicators, maps, comparisons and downloads.' : '. Dados municipais oficiais, indicadores, mapas, comparações e downloads.');
   const meta = `<meta property="og:type" content="website"><meta property="og:title" content="${escapar(titulo)}"><meta property="og:description" content="${escapar(descricao)}"><meta property="og:url" content="${escapar(url.origin + path)}"><meta property="og:image" content="${escapar(url.origin)}/logo_lapam.png"><link rel="canonical" href="${escapar(url.origin + path)}">`;
-  const asset = await env.ASSETS.fetch(new Request(new URL('/index.html', url), request));
+  // O binding de Assets canonicaliza /index.html para /. Pedir o documento
+  // pela raiz evita devolver esse redirect no lugar de uma rota da SPA.
+  const asset = await env.ASSETS.fetch(new Request(new URL('/', url), request));
   const headers = new Headers(asset.headers);
   headers.delete('Content-Length'); headers.delete('ETag');
   headers.set('Content-Type', 'text/html; charset=utf-8'); headers.set('Cache-Control', 'no-cache');
