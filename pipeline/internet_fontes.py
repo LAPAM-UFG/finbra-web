@@ -10,6 +10,14 @@ def qs(v):return "'"+str(v).replace("'","''")+"'"
 def qi(v):return '"'+str(v).replace('"','""')+'"'
 def salvar(p,v):p.write_text(json.dumps(v,ensure_ascii=False,indent=2),encoding='utf-8')
 
+def validar_periodos(periodos):
+ if not periodos:raise ValueError('Série mensal vazia')
+ ultimo=max(periodos)
+ for year in range(min(periodos)//100,ultimo//100+1):
+  meses={p%100 for p in periodos if p//100==year}
+  esperado=set(range(1,(ultimo%100 if year==ultimo//100 else 12)+1))
+  if meses!=esperado:raise ValueError('Lacuna ou mês inválido na série: '+str(year))
+
 def adquirir(root):
  """Aquisição reproduzível: publica apenas agregados, nunca o arquivo de origem."""
  url='https://www.anatel.gov.br/dadosabertos/paineis_de_dados/acessos/acessos_banda_larga_fixa.zip'
@@ -49,8 +57,9 @@ def fixar(root):
  p=pd.read_parquet(root/main['caminho'],columns=['ano',*pop]);print(json.dumps(dict(base_fixada=True,populacoes={c:sorted(map(int,p.loc[p[c].notna(),'ano'].unique()))for c in pop})),flush=True)
  return main
 
-def normalizar(root):
- root=Path(root).resolve();root.mkdir(parents=True,exist_ok=True);adquirir(root);fixar(root)
+def normalizar(root,fixar_base=True):
+ root=Path(root).resolve();root.mkdir(parents=True,exist_ok=True);adquirir(root)
+ if fixar_base:fixar(root)
  pop=root/'populacao_2026_sidra.json'
  if not pop.exists():
   resp=requests.get('https://apisidra.ibge.gov.br/values/t/6579/n6/all/v/9324/p/2026',timeout=180);resp.raise_for_status();rows=resp.json()
@@ -62,29 +71,41 @@ def normalizar(root):
  with zipfile.ZipFile(root/meta['arquivo'])as z:
   # Em 2026, a versão em colunas omite acessos de janeiro a março que estão
   # no arquivo longo e no total oficial. Usa-se o longo nessa edição.
-  files=[i for i in z.infolist()if i.filename.endswith('_Colunas.csv')and 2013<=int(re.search(r'20\d{2}',i.filename)[0])<2026]+[z.getinfo('Acessos_Banda_Larga_Fixa_2026.csv')]
+  available={int(m[1]) for i in z.infolist() if (m:=re.fullmatch(r'Acessos_Banda_Larga_Fixa_(20\d{2})(?:_Colunas)?\.csv',i.filename)) and int(m[1])>=2013}
+  prefer_longos={2026,max(available)}
+  files=[]
+  for year in sorted(available):
+   long_name=f'Acessos_Banda_Larga_Fixa_{year}.csv';wide_name=f'Acessos_Banda_Larga_Fixa_{year}_Colunas.csv'
+   name=long_name if (year in prefer_longos or wide_name not in z.namelist())and long_name in z.namelist() else wide_name
+   files.append(z.getinfo(name))
   for member in files:
    dest=raw/Path(member.filename).name
+   if dest.exists():
+    crc=0
+    with dest.open('rb') as cached:
+     for b in iter(lambda:cached.read(1024*1024),b''):crc=__import__('zlib').crc32(b,crc)
+    if dest.stat().st_size!=member.file_size or crc!=member.CRC:dest.unlink()
    if not dest.exists():
     with z.open(member)as f,dest.open('wb')as out:shutil.copyfileobj(f,out,1024*1024)
    assert dest.stat().st_size==member.file_size
    with dest.open(encoding='utf-8-sig',newline='')as f:cols=next(csv.reader(f,delimiter=';'))
    longo='Ano'in cols
    meses=[c for c in cols if re.fullmatch(r'20\d{2}-\d{2}',c)]
-   if longo:
-    pp=[202600+m for m in range(1,10)]
-   else:pp=[int(c.replace('-',''))for c in meses]
-   assert pp and not periodos.intersection(pp);periodos.update(pp)
-   for p in pp:campos[str(p)]=dict(pessoa='Tipo de Pessoa'in cols,velocidade='Velocidade'in cols)
+   pp=[] if longo else [int(c.replace('-',''))for c in meses]
    def col(nome,default='CAST(NULL AS VARCHAR)'):return qi(nome)if nome in cols else default
    select=[col('CNPJ')+' AS cnpj',col('UF')+' AS uf',col('Código IBGE Município')+' AS cod',col('Meio de Acesso')+' AS meio',col('Tecnologia')+' AS tecnologia',col('Faixa de Velocidade')+' AS faixa',col('Porte da Prestadora')+' AS porte',col('Tipo de Pessoa')+' AS pessoa',col('Tipo de Produto')+' AS produto',col('Velocidade')+' AS velocidade',('TRUE'if'Tipo de Pessoa'in cols else'FALSE')+' AS tem_pessoa',('TRUE'if'Velocidade'in cols else'FALSE')+' AS tem_vel',*([qi('Ano'),qi('Mês'),qi('Acessos')]if longo else[qi(c)for c in meses])]
    db.execute('CREATE OR REPLACE VIEW wide AS SELECT '+','.join(select)+' FROM read_csv('+qs(dest.as_posix())+",delim=';',header=true,all_varchar=true,nullstr='',sample_size=-1)")
+   if longo:pp=[int(p) for p, in db.execute('SELECT DISTINCT cast("Ano" AS INTEGER)*100+cast("Mês" AS INTEGER) FROM wide ORDER BY 1').fetchall()]
+   if not pp or periodos.intersection(pp)or any(p%100 not in range(1,13)for p in pp):raise ValueError('Períodos ausentes, duplicados ou inválidos no SCM')
+   periodos.update(pp)
+   for p in pp:campos[str(p)]=dict(pessoa='Tipo de Pessoa'in cols,velocidade='Velocidade'in cols)
    sql='SELECT cast(replace(periodo,\'-\',\'\')as INTEGER)periodo,upper(trim(uf))uf,try_cast(cod as BIGINT)cod_ibge,upper(regexp_replace(cnpj,\'[^A-Za-z0-9]\',\'\',\'g\'))cnpj,meio,tecnologia,faixa,porte,pessoa,produto,try_cast(replace(velocidade,\',\',\'.\')as DOUBLE)mbps,tem_pessoa,tem_vel,try_cast(replace(valor,\',\',\'.\')as DOUBLE)q FROM(UNPIVOT wide ON '+','.join(qi(c)for c in meses)+' INTO NAME periodo VALUE valor)'
    if longo:sql=sql.replace("cast(replace(periodo,'-','')as INTEGER)",'cast("Ano"as INTEGER)*100+cast("Mês"as INTEGER)').replace('FROM(UNPIVOT wide ON  INTO NAME periodo VALUE valor)','FROM(SELECT *,"Acessos"valor FROM wide)')
    if not membros:db.execute('CREATE TABLE fatos AS '+sql)
    else:db.execute('INSERT INTO fatos '+sql)
    n=db.execute('SELECT count(*)FROM fatos WHERE periodo BETWEEN ?AND?',[min(pp),max(pp)]).fetchone()[0];membros.append(dict(arquivo=member.filename,sha256=sha(dest),periodos=pp,linhas=n));print(json.dumps(dict(normalizado=member.filename,linhas=n)),flush=True)
   with z.open('Acessos_Banda_Larga_Fixa_Total.csv')as f:oficial=pd.read_csv(f,sep=';',encoding='utf-8-sig')
+ validar_periodos(periodos)
  assert db.execute('SELECT count(*)FROM fatos WHERE q IS NULL OR q<0 OR NOT isfinite(q) OR q<>floor(q)').fetchone()[0]==0
  assert db.execute("SELECT count(*)FROM fatos WHERE uf NOT IN ('AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO')OR uf IS NULL").fetchone()[0]==0
  totals=db.execute('SELECT periodo,sum(q)acessos FROM fatos GROUP BY 1 ORDER BY 1').fetchdf().set_index('periodo').acessos

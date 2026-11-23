@@ -1,0 +1,114 @@
+name: Atualizar demais bases e todos os derivados
+
+on:
+  schedule:
+    - cron: "0 10 * * *" # calendário mensal por fonte, 07h de Brasília
+  workflow_dispatch:
+    inputs:
+      rotina:
+        description: "Fonte a conferir; todas executa uma rotina por job, em sequência"
+        type: choice
+        default: calendario
+        options: [calendario, todas, rais, ibge, previdencia, siope, siops, saude_sim, saude_sih, saude_cnes, saude_sia, saude_agravos, saude_cancer, aps, fns, vacinacao, assistencia, educacao, saneamento, agropecuaria, mobilidade, seguranca, internet, energia, comex]
+      publicar:
+        description: "Publicar somente depois de validar a edição completa"
+        type: boolean
+        default: false
+
+concurrency:
+  group: atualizar-dados
+  cancel-in-progress: false
+  queue: max
+
+permissions:
+  contents: read
+
+jobs:
+  calendario:
+    runs-on: ubuntu-latest
+    outputs:
+      rotinas: ${{ steps.plano.outputs.rotinas }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - id: plano
+        name: Selecionar as fontes do dia
+        env:
+          ROTINA: ${{ inputs.rotina || 'calendario' }}
+        run: |
+          args=()
+          if [ "$ROTINA" != calendario ]; then args+=(--rotinas "$ROTINA"); fi
+          echo "rotinas=$(python pipeline/automacao_catalogo.py "${args[@]}")" >> "$GITHUB_OUTPUT"
+  atualizar:
+    needs: calendario
+    if: needs.calendario.outputs.rotinas != '[]'
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        rotina: ${{ fromJSON(needs.calendario.outputs.rotinas) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      PYTHONIOENCODING: utf-8
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - name: Reservar espaço para os insumos e formatos
+        run: |
+          sudo rm -rf -- /usr/share/dotnet /usr/local/lib/android /usr/share/swift /opt/ghc
+          df -h "$RUNNER_TEMP"
+          echo "ATUALIZACAO_RAIZ=$RUNNER_TEMP/finbra-demais-bases" >> "$GITHUB_ENV"
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pipeline/requirements-atualizacao.txt
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+      - name: Instalar dependências
+        run: |
+          if ! command -v 7z >/dev/null; then sudo apt-get update; sudo apt-get install -y p7zip-full; fi
+          pip install -r pipeline/requirements-atualizacao.txt
+          npm ci --prefix web
+          npm ci --prefix worker
+          Rscript -e 'install.packages(c("arrow", "jsonlite"))'
+      - name: Conferir coletores e proteções
+        run: |
+          python -m unittest discover -s pipeline -p 'testes_atualizacao*.py'
+          python -m unittest discover -s pipeline -p 'testes_automacao*.py'
+          python -m compileall -q pipeline
+          npm run build --prefix web
+      - name: Conferir a fonte e atualizar todos os produtos afetados
+        env:
+          PUBLICAR: ${{ github.event_name == 'schedule' || inputs.publicar }}
+          ROTINA: ${{ matrix.rotina }}
+        run: |
+          args=()
+          if [ "$PUBLICAR" = true ]; then args+=(--publicar); fi
+          python pipeline/automatizar_demais_bases.py --raiz "$ATUALIZACAO_RAIZ" --rotinas "$ROTINA" --rscript "$(command -v Rscript)" "${args[@]}"
+      - name: Guardar resultado e auditorias
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: auditoria-${{ matrix.rotina }}-${{ github.run_id }}
+          path: |
+            ${{ env.ATUALIZACAO_RAIZ }}/resultado.json
+            ${{ env.ATUALIZACAO_RAIZ }}/snapshot_base.json
+            ${{ env.ATUALIZACAO_RAIZ }}/plano_publicacao.json
+            ${{ env.ATUALIZACAO_RAIZ }}/**/auditoria*.json
+            ${{ env.ATUALIZACAO_RAIZ }}/backup_r2/
+          if-no-files-found: ignore
+          retention-days: 90

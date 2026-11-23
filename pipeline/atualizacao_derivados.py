@@ -87,12 +87,14 @@ def mapas(publicado,base,trabalho,saida,caches=()):
             if 'arquivo' in index:
                 a=index['arquivo'];path=snap.obter(a['caminho'],a);refs[a['caminho']]={'caminho_local':str(path),**a}
     edu=json.loads((base/'gold/educacao/manifesto.json').read_bytes());a=edu['busca_municipios'];path=snap.obter(a['caminho'],a);refs[a['caminho']]={'caminho_local':str(path),**a}
+    san=json.loads((base/'gold/saneamento/manifesto.json').read_bytes());a=san['arquivo'];path=snap.obter(a['caminho'],a);refs[a['caminho']]={'caminho_local':str(path),**a}
     (rev/'fontes_resolvidas.json').write_text(json.dumps(refs,ensure_ascii=False),encoding='utf-8')
     bundle=repo/'web/testes/.saida/mapas_atualizacao'
     subprocess.run(['node',str(repo/'web/node_modules/vite/bin/vite.js'),'build','--ssr','scripts/preparar_mapas_trabalho.ts','--outDir',str(bundle),'--emptyOutDir','--logLevel','warn'],cwd=repo/'web',check=True)
     subprocess.run(['node',str(bundle/'preparar_mapas_trabalho.js'),str(rev)],cwd=repo/'web',check=True)
     from mapas_trabalho_saneamento import Gerador
     writer=Gerador(rev,saida);writer.trabalho()
+    if sha(base/'gold/saneamento/manifesto.json')!=sha(publicado/'gold/saneamento/manifesto.json'):writer.saneamento()
     # Saúde é reempacotada por compatibilidade do manifesto. Se os valores são
     # idênticos, conserva o mapa pronto e atualiza apenas sua referência de fonte.
     previous=json.loads((publicado/'gold/manifesto.json').read_bytes())['aberturas']['saude'];current=json.loads((base/'gold/manifesto.json').read_bytes())['aberturas']['saude']
@@ -118,6 +120,9 @@ def mapas(publicado,base,trabalho,saida,caches=()):
         subprocess.run(['node',str(bundle/'catalogo_mapas.js'),str(rev/'global_base.json'),str(rev/'saude_catalogo_origem.json')],cwd=repo/'web',check=True)
         from mapas_indicadores import Gerador as MapasSaude
         health=trabalho/'mapa_saude';MapasSaude(base,rev,health).saude();instalar_overlay(health,saida)
+    if sha(base/'gold/educacao/manifesto.json')!=sha(publicado/'gold/educacao/manifesto.json'):
+        from mapas_indicadores import Gerador as MapasEducacao
+        educacao=trabalho/'mapa_educacao';MapasEducacao(base,rev,educacao).educacao();instalar_overlay(educacao,saida)
     audit=dict(ok=True,trabalho=writer.audit,saude_grupos_identicos=groups,saude_mapa_preservado=identical)
     (saida/'auditoria_mapas.json').write_text(json.dumps(audit,ensure_ascii=False,indent=2),encoding='utf-8')
     return audit
@@ -134,9 +139,14 @@ def comparacoes(publicado,base,trabalho,saida,caches=()):
     subprocess.run(['node',str(repo/'web/node_modules/vite/bin/vite.js'),'build','--ssr','scripts/catalogo_mapas.ts','--outDir',str(bundle),'--emptyOutDir','--logLevel','warn'],cwd=repo/'web',check=True)
     subprocess.run(['node',str(bundle/'catalogo_mapas.js'),str(rev/'global_base.json'),str(rev/'saude_catalogo_origem.json')],cwd=repo/'web',check=True)
     writer=Comparacoes(rev,saida,Path(__file__).resolve().parent.parent)
-    for area in ['trabalho','saude']:writer.mapa(area)
+    for area in ['trabalho','saude','educacao','saneamento']:
+        if area in ['trabalho','saude'] or sha(base/f'gold/mapas/{area}_manifesto.json')!=sha(publicado/f'gold/mapas/{area}_manifesto.json'):
+            if area=='educacao':
+                writer.mapa(area)
+                for rede in ['publica','municipal','estadual','federal','privada']:writer.mapa(area,rede)
+            else:writer.mapa(area)
     for area in ['financas','assistencia','clima','gestao']:getattr(writer,area)()
-    novo=writer.writer.concluir();old=json.loads((publicado/'gold/comparacoes/manifesto.json').read_bytes())
+    novo=writer.writer.concluir();old=json.loads((base/'gold/comparacoes/manifesto.json').read_bytes())
     atualizados=list(novo['catalogos']);preservados=sorted(set(old['catalogos'])-set(atualizados))
     resolver=Snapshot(trabalho/'geografia',[saida,publicado,base,*caches],copiar_cache=False)
     geografia=reconciliar_geografia(novo,old,writer.writer,resolver)

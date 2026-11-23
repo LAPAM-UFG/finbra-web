@@ -1,5 +1,5 @@
 """Painel pronto de Mobilidade: Senatran/dezembro e SIM definitivo desde 2013."""
-import argparse,gzip,hashlib,json,math
+import argparse,gzip,hashlib,json,math,re
 from datetime import datetime,timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -48,6 +48,7 @@ def gerar(fontes,saida):
  g=json.loads((fontes/'geografia.json').read_bytes());municipios=g['municipios'];nmun=len(municipios);assert nmun==5571
  grupos=[str(m[0])for m in municipios]+[u for _,_,u in g['governos']]+['BR'];pos={k:j for j,k in enumerate(grupos)};lookup=correspondencias(g);ufcode={int(c.removeprefix('E:')):u for c,_,u in g['governos']}
  sn=json.loads((fontes/'normalizados.json').read_bytes());sm=json.loads((fontes/'sim.json').read_bytes());assert sn['ok']and sm['ok']
+ ANOS[:]=list(range(2013,max(max(r['ano']for r in sn['arquivos']),max(sm['anos']))+1))
  frames={};pend=[]
  for ref in sn['arquivos']:
   b=(fontes/ref['arquivo']).read_bytes();assert sha(b)==ref['sha256'];x=pd.read_parquet(fontes/ref['arquivo']);x['cod_ibge']=[lookup.get((u,chave(n)))for u,n in zip(x.uf,x.municipio)]
@@ -64,7 +65,16 @@ def gerar(fontes,saida):
   defs.append(dict(id=id,nome=nome,nome_en=nome,familia=familia,unidade=unidade,fonte=fonte,fonte_nome='Senatran / Renavam'if fonte=='senatran'else'Ministério da Saúde · SIM'if fonte=='sim'else'SVS/MS · população residente (IBGE)',fonte_url=SENATRAN if fonte=='senatran'else SIM if fonte=='sim'else POP,descricao=texto,anos=ANOS if fonte!='sim'else sm['anos']))
  for _,(id,nome)in TIPOS.items():add('mob_'+id,nome,'frota')
  for id,nome in [('motos','Motocicletas e motonetas'),('onibus_total','Ônibus e micro-ônibus'),('carga','Caminhões e caminhões-tratores')]:add('mob_'+id,nome,'frota',descricao=nome+'. Soma das categorias indicadas, já incluídas na frota total; não somar novamente com seus componentes.')
- fuel_ids={label:f'mob_cb_{j:02d}'for j,label in enumerate(fuels)}
+ fuel_ids={}
+ previous=fontes/'gold/mobilidade/manifesto.json'
+ if previous.is_file():
+  ref=json.loads(previous.read_bytes())['catalogo'];raw=(fontes/ref['caminho']).read_bytes()
+  assert sha(raw)==ref['sha256']
+  cat=json.loads(gzip.decompress(raw))
+  fuel_ids={i['nome'].split(': ',1)[1]:i['id']for i in cat['indicadores']if re.fullmatch(r'mob_cb_\d+',i['id'])}
+ next_id=max((int(v.rsplit('_',1)[1])for v in fuel_ids.values()),default=-1)+1
+ for label in fuels:
+  if label not in fuel_ids:fuel_ids[label]=f'mob_cb_{next_id:02d}';next_id+=1
  for label,id in fuel_ids.items():add(id,'Combustível: '+label,'combustiveis',descricao='Categoria do cadastro de combustível da Senatran, normalizada apenas em acentuação, caixa e espaços: '+label+'. Quando a categoria existe no ano, sua ausência na tabela de frequências de um município presente representa zero. Categorias não observadas em nenhum município no ano e municípios não retornados permanecem indisponíveis.')
  add('mob_cb_total','Veículos no cadastro de combustível','combustiveis')
  add('mob_eletrificados','Categorias elétricas e híbridas cadastradas','combustiveis',descricao='Soma das categorias de combustível cujo nome contém ELÉTRICO, incluindo combinações híbridas e fonte interna/externa. Não identifica autonomia, tecnologia de recarga ou consumo. A classificação é a do registro, não uma reclassificação por modelo.')
@@ -167,8 +177,8 @@ def gerar(fontes,saida):
     loc=pos[key];body=compacto(dict(versao=1,grupo=key,anos=ANOS,valores=[numeros(r)for r in a[:,loc]],condicoes=c[:,loc].tolist(),derivados=[numeros(r)for r in dv[:,loc]],condicoes_derivados=dc[:,loc].tolist(),numeradores=[numeros(r)for r in dn[:,loc]],denominadores=[numeros(r)for r in dd[:,loc]],coberturas=dq[:,loc].tolist(),residuos={f'{y}:{kind}':(None if kind=='sim'and y>sm['anos'][-1]else residuos.get(f'{y}:{kind}',{}).get(key,0))for y in ANOS for kind in ['tipo','combustivel','idade','sim']}if len(key)!=7 else{}))+b'\n';entries[key]=[f.tell(),len(body),sha(body)];f.write(body);max_slice=max(max_slice,len(body))
   h=sha(temp.read_bytes());p=dest/f'series_{bucket.lower()}_{h[:16]}.ndjson';temp.rename(p);indices[bucket]=objeto('mobilidade','indice_'+bucket.lower(),dict(versao=1,arquivo=dict(caminho=p.relative_to(saida).as_posix(),bytes=p.stat().st_size,sha256=h),grupos=entries))
  catalogo=objeto('mobilidade','catalogo',dict(versao=1,anos=ANOS,indicadores=defs,derivados=[dict(q.definicao,periodos=q.periodos)for q in quadros],condicoes=CONDICOES),True);geo=objeto('mobilidade','geografia',g,True)
- m=dict(versao=1,gerado_em=datetime.now(timezone.utc).isoformat(),anos=ANOS,catalogo=catalogo,geografia=geo,indices=indices,variaveis=len(defs),calculados=len(quadros),territorios=len(grupos),max_trecho_bytes=max_slice,ultimos={'senatran':2025,'sim':2024},especie_anos_ausentes=perfis['ausencias_dezembro']if perfis else ANOS,origens={'senatran':sha((fontes/'senatran.json').read_bytes()),'sim':sha((fontes/'sim.json').read_bytes()),'populacao':main['sha256'],**({'senatran_perfis':sha((fontes/'senatran_perfis.json').read_bytes())}if perfis else{})});(dest/'manifesto.json').write_bytes(compacto(m))
- data={'cod_ibge':np.tile([m[0]for m in municipios],13),'ano':np.repeat(ANOS,nmun),'municipio':np.tile([m[1]for m in municipios],13),'uf':np.tile([m[2]for m in municipios],13)}
+ m=dict(versao=1,gerado_em=datetime.now(timezone.utc).isoformat(),anos=ANOS,catalogo=catalogo,geografia=geo,indices=indices,variaveis=len(defs),calculados=len(quadros),territorios=len(grupos),max_trecho_bytes=max_slice,ultimos={'senatran':max(r['ano']for r in sn['arquivos']),'sim':max(sm['anos'])},especie_anos_ausentes=perfis['ausencias_dezembro']if perfis else ANOS,origens={'senatran':sha((fontes/'senatran.json').read_bytes()),'sim':sha((fontes/'sim.json').read_bytes()),'populacao':main['sha256'],**({'senatran_perfis':sha((fontes/'senatran_perfis.json').read_bytes())}if perfis else{})});(dest/'manifesto.json').write_bytes(compacto(m))
+ data={'cod_ibge':np.tile([m[0]for m in municipios],len(ANOS)),'ano':np.repeat(ANOS,nmun),'municipio':np.tile([m[1]for m in municipios],len(ANOS)),'uf':np.tile([m[2]for m in municipios],len(ANOS))}
  for j,i in enumerate(defs):data[i['id']]=a[:,:nmun,j].reshape(-1);data[i['id']+'_cond']=c[:,:nmun,j].reshape(-1)
  for j,q in enumerate(quadros):id=q.definicao['variavel_download'];data[id]=dv[:,:nmun,j].reshape(-1);data[id+'_cond']=dc[:,:nmun,j].reshape(-1)
  work=saida/'trabalho_mobilidade';work.mkdir();pd.DataFrame(data).sort_values(['cod_ibge','ano']).to_parquet(work/'municipios.parquet',index=False,compression='zstd')

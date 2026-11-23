@@ -103,8 +103,9 @@ def uma(tabela: str, ano: int, uf: str, refazer: bool) -> str:
         except duckdb.Error:
             # sem linhas: a lista 'value' vem vazia e o unnest não tem colunas
             con.execute("CREATE OR REPLACE TEMP TABLE r AS SELECT NULL::VARCHAR AS TIPO WHERE false")
-        con.execute(f"COPY (SELECT {ano} AS ano, '{uf}' AS uf, * FROM r) TO '{saida.as_posix()}' (FORMAT parquet, COMPRESSION zstd)")
         n = con.execute("SELECT count(*) FROM r").fetchone()[0]
+        if not n and saida.exists()and con.execute('SELECT count(*)FROM read_parquet(?)',[str(saida)]).fetchone()[0]:raise ValueError(f'SIOPE {tabela}/{ano}/{uf}: resposta vazia substitui dados publicados')
+        con.execute(f"COPY (SELECT {ano} AS ano, '{uf}' AS uf, * FROM r) TO '{saida.as_posix()}' (FORMAT parquet, COMPRESSION zstd)")
     return f"{n} linhas"
 
 
@@ -153,6 +154,7 @@ def remuneracao(ano: int, mes: int, uf: str, refazer: bool) -> str:
                        {so_grupo('avg(outros)')} AS outros_medio
                 FROM pessoa GROUP BY ALL) TO '{saida.as_posix()}' (FORMAT parquet, COMPRESSION zstd)""")
         else:
+            if saida.exists()and con.execute('SELECT count(*)FROM read_parquet(?)',[str(saida)]).fetchone()[0]:raise ValueError(f'SIOPE remuneração {ano}/{mes}/{uf}: resposta vazia substitui dados publicados')
             con.execute(f"COPY (SELECT {ano} AS ano, {mes} AS mes, '{uf}' AS uf WHERE false) TO '{saida.as_posix()}' (FORMAT parquet)")
     return f"{n} profissionais"
 

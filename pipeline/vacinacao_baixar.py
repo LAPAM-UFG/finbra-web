@@ -32,13 +32,14 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 HOST = "infoms.saude.gov.br"
 PAGINA = "/extensions/SEIDIGI_DEMAS_VACINACAO_CALENDARIO_NACIONAL_COBERTURA_RESIDENCIA/index.html"
 URL_FONTE = "https://" + HOST + PAGINA
 APP_ID = "c39051de-3ffe-47af-a43a-ae74f14be34f"
 OBJETO = "cGQKsZ"
-ANOS = (2015, 2025)  # 2026 está em andamento: fica de fora desta entrega anual
+ANOS = (2015, datetime.now(ZoneInfo('America/Sao_Paulo')).year-1)
 CELULAS_POR_PAGINA = 9900  # a API limita a 10 mil células por requisição
 PAUSA = 0.25
 BRUTOS_PADRAO = Path("E:/finbra/brutos/vacinacao")

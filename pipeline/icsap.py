@@ -31,10 +31,11 @@ import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import duckdb
 
-ICSAP_ANOS = (2008, 2025)  # os mesmos do SIH no painel; 2026 fica de fora até fechar
+ICSAP_ANOS = (2008, datetime.now(ZoneInfo('America/Sao_Paulo')).year-1)
 PARTO = ("O80", "O84")  # partos: fora do denominador da proporção
 
 GRUPOS = {

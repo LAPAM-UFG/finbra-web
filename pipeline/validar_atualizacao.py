@@ -8,7 +8,7 @@ from pathlib import Path
 import duckdb
 from atualizacao_artefatos import Snapshot,referencias,sha
 from comparacoes_base import compatibilidade_global
-from publicacao_lote import PONTEIROS
+from publicacao_lote import PONTEIROS,MAPAS,TEMAS
 
 
 def gerar(base,publicado,trabalho,caches=()):
@@ -25,9 +25,12 @@ def gerar(base,publicado,trabalho,caches=()):
     work=json.loads((base/'gold/mapas/trabalho_manifesto.json').read_bytes())
     work_hash=hashlib.sha256(json.dumps(opening['trabalho'],sort_keys=True,ensure_ascii=False,separators=(',',':')).encode()).hexdigest()
     if work['origem']['sha256']!=work_hash:raise ValueError('mapa de trabalho de outra edição')
-    for key in ['gold/mapas/trabalho_manifesto.json','gold/mapas/saude_manifesto.json']:
+    for key in [f'gold/mapas/{area}_manifesto.json'for area in MAPAS]:
         novo=json.loads((base/key).read_bytes());anterior=json.loads((publicado/key).read_bytes())
-        if {x['id'] for x in novo['indicadores']}!={x['id'] for x in anterior['indicadores']}:raise ValueError('indicadores de mapa alterados: '+key)
+        if not {x['id'] for x in anterior['indicadores']}<={x['id'] for x in novo['indicadores']}:raise ValueError('indicadores de mapa perdidos: '+key)
+    for area in TEMAS:
+        ref=downloads.get('fontes_complementares',{}).get(area)
+        if ref and ref['sha256']!=sha(base/ref['caminho']):raise ValueError('download temático de outra edição: '+area)
     cmp=json.loads((base/'gold/comparacoes/manifesto.json').read_bytes());cmp_old=json.loads((publicado/'gold/comparacoes/manifesto.json').read_bytes())
     if not set(cmp_old['catalogos'])<=set(cmp['catalogos']):raise ValueError('catálogo de comparações perdido')
     if cmp['compatibilidade_global']!=compatibilidade_global(m):raise ValueError('comparações de outra edição')

@@ -34,8 +34,9 @@ def agrupar_sim(c):
  cols=','.join(f'count(*)FILTER(WHERE {expr})AS {id}'for id,expr in GRUPOS.items())
  return c.execute(f"SELECT ano,municipio6,uf_codigo,{cols} FROM ob WHERE cid BETWEEN 'V01' AND 'V89' GROUP BY 1,2,3 ORDER BY 1,2").fetchdf()
 
-def gerar(micro,fontes):
- fontes=Path(fontes).resolve();micro=Path(micro).resolve();globalm=json.loads((fontes/'gold/manifesto.json').read_bytes());anos=[y for y in globalm['fontes']['sim']['anos']if y>=2013];assert anos==list(range(2013,2025)),anos
+def gerar(micro,fontes,anos_selecionados=None):
+ fontes=Path(fontes).resolve();micro=Path(micro).resolve();globalm=json.loads((fontes/'gold/manifesto.json').read_bytes());anos=[y for y in globalm['fontes']['sim']['anos']if y>=2013];assert anos==list(range(2013,max(anos)+1)),anos
+ if anos_selecionados is not None:anos=sorted(set(anos_selecionados))
  paths=sorted(p for p in micro.glob('DO*.parquet')if re.fullmatch(r'DO[A-Z]{2}\d{4}\.parquet',p.name)and not p.name.startswith('DOBR')and int(p.stem[-4:])in anos)
  g=json.loads((fontes/'geografia.json').read_bytes());ufs={uf:int(code.removeprefix('E:'))for code,_,uf in g['governos']}
  assert len(paths)==27*len(anos)

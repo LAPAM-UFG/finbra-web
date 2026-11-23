@@ -40,14 +40,14 @@ def incorporar_financeiro(saida,financeiro):
     e.json_file(root/'manifesto.json',m)
 
 
-def gerar(brutos,base,saida,trabalho,retomar=False,financeiro=None):
+def gerar(brutos,base,saida,trabalho,retomar=False,financeiro=None,fontes_atualizadas=False):
     for a,b in [(saida,base),(saida,brutos),(trabalho,base),(trabalho,brutos),(saida,trabalho)]:destino_isolado(a.resolve(),b.resolve())
     if (saida/'gold/educacao/manifesto.json').exists() and not retomar:raise ValueError('Use uma nova pasta candidata')
     paths={}
     for rede in e.REDES:
         root=saida if rede=='todas' else trabalho/rede
         args=[sys.executable,str(Path(e.__file__)),'--brutos',str(brutos),'--saida',str(root),'--rede',rede]
-        if rede=='todas':args+=['--publicado',str(base)]
+        if rede=='todas' and not fontes_atualizadas:args+=['--publicado',str(base)]
         if not (retomar and (root/'gold/educacao/manifesto.json').exists()):subprocess.run(args,check=True)
         m=ler(root/'gold/educacao/manifesto.json');assert m['rede']==rede and len(m['indicadores'])==93
         assert m['coleta_sha256']==e.sha(brutos/'coleta.json')

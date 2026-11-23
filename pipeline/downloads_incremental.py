@@ -18,7 +18,7 @@ from downloads_navegacao import previa, referencia, registrar, pacote
 from painel_municipal import Painel, KEYS, qi, qs, sha
 
 
-def gerar(publicado, base, saida, catalogos, areas=('trabalho','gestao','assistencia','clima'), stata=None,rscript=None,caches=()):
+def gerar(publicado, base, saida, catalogos, areas=('trabalho','gestao','assistencia','clima'), stata=None,rscript=None,caches=(),tabelas=None,chaves_extras=()):
     publicado,base=Path(publicado).resolve(),Path(base).resolve()
     saida=destino_isolado(Path(saida),publicado);destino_isolado(saida,base)
     snapshots=Snapshot(publicado,caches)
@@ -32,7 +32,18 @@ def gerar(publicado, base, saida, catalogos, areas=('trabalho','gestao','assiste
     snapshots.obter(core['caminho'],core)
     # Os geradores usam o mesmo catálogo de conceitos do frontend.
     preparation=saida/'preparacao';p=Painel(base,preparation,catalogos)
-    for area in areas:getattr(p,area)()
+    tabelas=tabelas or {}
+    for area in areas:
+        if area in tabelas:
+            src=p.fonte(tabelas[area]);schema=p.schema('SELECT * FROM '+src)
+            required={d.get('variavel_original',d['variavel']) for d in dictionary if d.get('arquivo_principal') and d['area']==area}
+            if not required<=schema.keys():raise ValueError('Colunas da seleção principal ausentes em '+area+': '+str(sorted(required-schema.keys())))
+            cols={k:dict(nome=k,descricao=k,unidade='conforme dicionário',fonte=area) for k in sorted(required)}
+            p.tabela('atualizacao_'+area,area,'SELECT cast(cod_ibge AS VARCHAR) cod_ibge,ano::INTEGER ano,'+','.join(qi(k) for k in cols)+' FROM '+src,cols)
+        else:getattr(p,area)()
+    for index,key in enumerate(chaves_extras):
+        src=p.fonte(key)
+        p.tabela('chaves_extras_'+str(index),'identificacao','SELECT DISTINCT cast(cod_ibge AS VARCHAR) cod_ibge,ano::INTEGER ano FROM '+src,{})
     select=[];joins=[];columns={}
     for table,area,names in p.tables:
         for name in names:
@@ -47,7 +58,7 @@ def gerar(publicado, base, saida, catalogos, areas=('trabalho','gestao','assiste
                 if original.startswith(('inss_','as_')):continue  # fontes anuais não modificadas nesta carga mensal
                 raise ValueError('variável da edição publicada ausente: '+original)
             select.append(qi(columns[original])+'.'+qi(original)+' AS '+qi(name));changed.append(name)
-    if not changed:raise ValueError('nenhuma variável selecionada para atualização')
+    if not changed and not chaves_extras:raise ValueError('nenhuma variável selecionada para atualização')
     source='read_parquet('+qs((publicado/core['caminho']).as_posix())+')'
     schema=p.schema('SELECT * FROM '+source)
     union=' UNION '.join('SELECT cod_ibge,ano FROM '+qi(table) for table,_,_ in p.tables)
@@ -56,7 +67,8 @@ def gerar(publicado, base, saida, catalogos, areas=('trabalho','gestao','assiste
         value='n.ano' if name=='ano' else 't.'+qi(name) if name in KEYS else 'NULL'
         extras.append('cast('+value+' AS '+typ+') AS '+qi(name))
     p.db.execute('CREATE OR REPLACE TABLE ancora AS SELECT * FROM '+source+' UNION ALL SELECT '+','.join(extras)+' FROM ('+union+') n JOIN territorios t USING(cod_ibge) ANTI JOIN (SELECT cast(cod_ibge AS VARCHAR) cod_ibge,ano FROM '+source+') old USING(cod_ibge,ano) WHERE n.ano>=2013')
-    p.db.execute('CREATE OR REPLACE TABLE atualizado AS SELECT o.* REPLACE('+','.join(select)+') FROM ancora o '+' '.join(joins))
+    projection='o.* REPLACE('+','.join(select)+')' if select else 'o.*'
+    p.db.execute('CREATE OR REPLACE TABLE atualizado AS SELECT '+projection+' FROM ancora o '+' '.join(joins))
     # O conjunto de municípios/anos e cada coluna fora do lote permanecem iguais.
     names=list(p.schema('SELECT * FROM atualizado'));keep=[n for n in names if n not in changed]
     fields=','.join(qi(k) for k in keep)
@@ -76,12 +88,19 @@ def gerar(publicado, base, saida, catalogos, areas=('trabalho','gestao','assiste
         e.exportar('painel_'+uf.lower(),'SELECT * FROM atualizado WHERE uf='+qs(uf)+' ORDER BY cod_ibge,ano','Base enxuta — '+uf,uf=uf)
     for area in areas:
         cols=[d['variavel'] for d in dictionary if d.get('arquivo_principal') and d['area']==area]
+        if not cols:continue
         query='SELECT '+','.join(qi(k) for k in [*KEYS,*cols])+' FROM atualizado WHERE ('+' OR '.join(qi(k)+' IS NOT NULL' for k in cols)+')'
         e.exportar('painel_'+area,query+' ORDER BY cod_ibge,ano','Base enxuta — '+area,area=area)
         for uf, in p.db.execute('SELECT DISTINCT uf FROM atualizado ORDER BY uf').fetchall():
             e.exportar('painel_'+area+'_'+uf.lower(),query+' AND uf='+qs(uf)+' ORDER BY cod_ibge,ano',area+' — '+uf,area=area,uf=uf)
     if stata:e.processar_stata(Path(stata))
-    for item in e.pending:e.registrar(Path(item['path']),item['id'],item['tipo'],'dta',item['nome'],**item['meta'])
+    for item in e.pending:
+        parquet=next(a for a in e.p.files if a['id']==item['id'].removesuffix('_dta')+'_parquet')
+        expected,_=preparar_stata(pq.read_table(saida/parquet['caminho']).to_pandas(),dictionary)
+        actual=pd.read_stata(item['path'],convert_categoricals=False,convert_dates=False)
+        pd.testing.assert_frame_equal(actual,expected,check_dtype=False,check_exact=True)
+        if actual[['cod_ibge','ano']].isna().any().any()or actual.duplicated(['cod_ibge','ano']).any():raise ValueError('Chaves inválidas no download Stata')
+        e.registrar(Path(item['path']),item['id'],item['tipo'],'dta',item['nome'],**item['meta'])
     updated_files=e.p.files
     # Inclui somente edições MUNIC novas, sem recodificar os questionários antigos.
     advanced_ref=next(a for a in old['arquivos'] if a['id']=='dicionario_complementos_json')

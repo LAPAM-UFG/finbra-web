@@ -48,7 +48,7 @@ def baixar(root,name,url):
 def adquirir(root):
  root=Path(root);root.mkdir(parents=True,exist_ok=True);baixar(root,'pagina_mdic.html',PAGINA)
  page=(root/'pagina_mdic.html').read_text(encoding='utf-8');match=re.search(r'janeiro\s*[-–]\s*(\w+)\s+de\s+(\d{4})',page,re.I);assert match,'Cobertura oficial não identificada'
- meses=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];mes=meses.index(match[1].lower())+1;ano=int(match[2]);assert 2013<=ano<=2030
+ meses=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];mes=meses.index(match[1].lower())+1;ano=int(match[2]);assert 2013<=ano<=datetime.now(timezone.utc).year
  jobs=[(x,ORIGEM+'tabelas/'+x)for x in ['UF_MUN.csv','PAIS.csv','NCM_SH.csv']]
  jobs += [(f'{f}_TOTAIS_CONFERENCIA_MUN.csv',ORIGEM+f'comexstat-bd/mun/{f}_TOTAIS_CONFERENCIA_MUN.csv')for f in ['EXP','IMP']]
  jobs += [(f'{f}_{y}_MUN.csv',ORIGEM+f'comexstat-bd/mun/{f}_{y}_MUN.csv')for y in reversed(range(2013,ano+1))for f in ['EXP','IMP']]

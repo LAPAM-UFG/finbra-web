@@ -312,7 +312,7 @@ def agregar(resultados: list[dict], base: Path, saida_saude: Path, fontes: dict)
     con.execute(f"""
         CREATE TABLE base AS
         SELECT coalesce(p.ano, m.ano) AS ano, coalesce(p.municipio, m.municipio) AS municipio, p.populacao, m.bruto, m.liquido, m.linhas, m.destino
-        FROM (SELECT ano, municipio, populacao FROM '{b}/saude/populacao.parquet' WHERE ano BETWEEN 2002 AND 2025) p
+        FROM (SELECT ano, municipio, populacao FROM '{b}/saude/populacao.parquet' WHERE ano BETWEEN {min(r['ano']for r in resultados)} AND {max(r['ano']for r in resultados)}) p
         FULL JOIN mun m ON m.ano = p.ano AND m.municipio = p.municipio""")
     con.execute(f"""
         COPY (

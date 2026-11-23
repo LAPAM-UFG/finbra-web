@@ -102,7 +102,7 @@ def gerar(fontes,saida):
  for suffix in ['', '_c']:
   df['cex_saldo_fob'+suffix]=df['cex_exp_fob'+suffix]-df['cex_imp_fob'+suffix];df['cex_corrente_fob'+suffix]=df['cex_exp_fob'+suffix]+df['cex_imp_fob'+suffix]
  dm=json.loads((fontes/'gold/downloads/manifesto.json').read_bytes());main=next(v for v in dm['arquivos']if v['id']=='painel_brasil_parquet');assert sha(fontes/main['caminho'])==main['sha256'];pop=pd.read_parquet(fontes/main['caminho'],columns=['cod_ibge','ano','sau_populacao']).set_index(['cod_ibge','ano']).sau_populacao
- for row in json.loads((fontes/'populacao_2026_sidra.json').read_bytes())[1:]:pop.loc[(int(row['D1C']),2026)]=int(row['V'])
+ for row in json.loads((fontes/'populacao_2026_sidra.json').read_bytes())[1:]:pop.loc[(int(row['D1C']),int(row['D3C']))]=int(row['V'])
  pop=pop.reindex(pd.MultiIndex.from_product([[m[0]for m in mun],years])).to_numpy().reshape(len(mun),len(years)).T
  pops=[]
  for key,pp in groups.items():

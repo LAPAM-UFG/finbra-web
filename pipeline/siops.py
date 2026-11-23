@@ -121,6 +121,7 @@ def baixar(anos: list[int], refazer: bool):
                 continue
             linhas = consultar(uf, ano)
             if not linhas:
+                if arq.exists():raise ValueError(f'SIOPS {ano}/{uf}: a API deixou de devolver dados já publicados')
                 print(f"{ano} {uf}: sem dados")
                 continue
             arq.parent.mkdir(parents=True, exist_ok=True)

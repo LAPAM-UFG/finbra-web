@@ -197,12 +197,12 @@ def _linhas_xlsx(z: zipfile.ZipFile, folha: str, textos: list[str]):
                 break
 
 
-def inss(anos: list[int], temporario: Path):
+def inss(anos: list[int], temporario: Path,baixador=baixar):
     """Benefícios emitidos em dezembro, por município, de cada ano com planilha publicada."""
     saida = []
     for ano in anos:
         arq = Path(tempfile.mkdtemp(dir=temporario)) / f"{ano}.xlsx"
-        if not baixar(PREVIDENCIA.format(ano=ano), arq):
+        if not baixador(PREVIDENCIA.format(ano=ano), arq):
             print(f"  INSS {ano}: planilha não publicada")
             continue
         with zipfile.ZipFile(arq) as z:

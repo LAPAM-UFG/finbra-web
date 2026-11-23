@@ -123,11 +123,12 @@ def gerar(fontes,saida):
  pop=pd.read_parquet(fontes/main['caminho'],columns=['cod_ibge','ano','uf','sau_populacao'])
  for row in pop[pop.sau_populacao.notna()].itertuples(index=False):put(row.ano,'int_populacao',row.cod_ibge,row.sau_populacao)
  p26=json.loads((fontes/'populacao_2026_sidra.json').read_bytes());assert len(p26)==5572
+ pop_year=int(p26[1]['D3C'])
  for row in p26[1:]:
-  assert row['D3C']=='2026'and row['D2C']=='9324'and row['V'].isdigit();put(2026,'int_populacao',row['D1C'],int(row['V']))
+  assert int(row['D3C'])==pop_year and row['D2C']=='9324'and row['V'].isdigit();put(pop_year,'int_populacao',row['D1C'],int(row['V']))
  for key in [*sorted(ufs),'BR']:
   for k,y in enumerate(ANOS):put(y,'int_populacao',key,np.nansum(a[k,groups[key],idx['int_populacao']])if np.isfinite(a[k,groups[key],idx['int_populacao']]).any()else np.nan)
- assert a[-1,pos['BR'],idx['int_populacao']]==214211951
+ if pop_year in ANOS:assert a[ANOS.index(pop_year),pos['BR'],idx['int_populacao']]==sum(int(r['V'])for r in p26[1:])
  for j,i in enumerate(defs):i['anos']=[y for k,y in enumerate(ANOS)if np.isfinite(a[k,:,j]).any()]
  quadros=[]
  def razao(id,n,d,pt,en,tema,fator=100,unidade='%',market_kind=None):

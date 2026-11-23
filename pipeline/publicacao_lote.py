@@ -12,8 +12,13 @@ from pathlib import Path
 
 from atualizacao_artefatos import referencias
 
-PONTEIROS=['gold/abertura/manifesto.json','gold/mapas/trabalho_manifesto.json','gold/mapas/saude_manifesto.json','gold/assistencia/economia_manifesto.json','gold/assistencia/referencias_manifesto.json','gold/comparacoes/manifesto.json','gold/downloads/manifesto.json','gold/raiox/v13_manifesto.json','gold/manifesto.json']
-FIXOS={'gold/ipca.parquet','gold/assistencia/fonte.json','gold/assistencia/qualidade.json','silver/ipca.parquet','silver/atualizacao/fontes.json'}
+TEMAS=('educacao','saneamento','agropecuaria','mobilidade','seguranca','internet','energia','comex')
+MAPAS=('trabalho','saude',*TEMAS)
+PONTEIROS=['gold/abertura/manifesto.json',*[f'gold/{a}/manifesto.json' for a in TEMAS],
+           *[f'gold/mapas/{a}_manifesto.json' for a in MAPAS],
+           'gold/assistencia/economia_manifesto.json','gold/assistencia/referencias_manifesto.json',
+           'gold/comparacoes/manifesto.json','gold/downloads/manifesto.json','gold/raiox/v13_manifesto.json','gold/manifesto.json']
+FIXOS={'gold/ipca.parquet','gold/saude_educacao.parquet','gold/assistencia/fonte.json','gold/assistencia/qualidade.json','silver/ipca.parquet','silver/atualizacao/fontes.json'}
 
 
 def mutavel(key):
@@ -21,8 +26,11 @@ def mutavel(key):
     if key.startswith(('gold/clima/','gold/munic/')):
         return key.endswith('.parquet') or key.endswith(('painel_indice.json',))
     if key.startswith('gold/trabalho/'):
-        return key.rsplit('/',1)[-1] in ['caged.parquet','caged_anual.parquet','caged_uf.parquet','caged_cbo.parquet']
-    if key.startswith(('silver/clima/','silver/trabalho/caged/','silver/trabalho/caged_cbo/','silver/bolsa_familia_mensal/','silver/assistencia/pbf_cgu/')):return key.endswith(('.parquet','.json'))
+        return key.rsplit('/',1)[-1] in ['municipios.parquet','estados.parquet','setores.parquet','setores_uf.parquet','setores_validos.parquet','setores_uf_validos.parquet','cnae.parquet','dicionario.parquet','indice.json','caged.parquet','caged_anual.parquet','caged_uf.parquet','caged_cbo.parquet'] or key.startswith(('gold/trabalho/perfis_v2/','gold/trabalho/perfis_v2_validos/','gold/trabalho/perfis/','gold/trabalho/cubo_'))
+    if key.startswith(('gold/saude/','gold/siope/','gold/siops/')):
+        name=key.rsplit('/',1)[-1]
+        return name in {'populacao.parquet','obitos.parquet','obitos_fetais.parquet','nascimentos.parquet','internacoes.parquet','internacoes_atend.parquet','icsap.parquet','cnes.parquet','sinan.parquet','siscan.parquet','oncologia.parquet','resp.parquet','ambulatorial.parquet','ambulatorial_subgrupo.parquet','aps_cobertura.parquet','municipios.parquet','fns_municipios.parquet','fns_composicao.parquet','fns_anos.parquet','vacinacao.parquet','vacinacao_catalogo.parquet','vacinacao_territorios.parquet','indicadores.parquet','remuneracao.parquet','receitas.parquet','despesas.parquet','despesas_funcao.parquet','gerais.parquet','fundeb.parquet'}
+    if key.startswith(('silver/clima/','silver/trabalho/','silver/siope/','silver/siops/','silver/bolsa_familia_mensal/','silver/assistencia/pbf_cgu/')):return key.endswith(('.parquet','.json'))
     return key in ['gold/indicadores.parquet','gold/alertas.parquet','gold/escopos.parquet','gold/receita_fonte.parquet','gold/despesa_funcao.parquet','gold/lrf.parquet','gold/arvore.parquet','gold/faixas.parquet','silver/entes.parquet','silver/ibge_pib.parquet','silver/ibge_populacao.parquet','silver/inss_municipios.parquet'] or key.startswith(('gold/entes/','gold/grupos/','silver/dca/','silver/lrf/','silver/contas/','silver/populacao/'))
 
 

@@ -44,11 +44,11 @@ def preparar_fiscal(root,area):
 
 def fixar_base(root,caches=()):
     import r2
-    from publicacao_lote import inventario
+    from publicacao_lote import inventario,MAPAS,TEMAS
     client,bucket=r2.cliente();inv=inventario(client,bucket);base=root/'base';snap=Snapshot(base,caches)
     keys={k for k in inv if k.startswith('gold/') and (k.count('/')==1 or k.startswith(('gold/munic/','gold/clima/','gold/trabalho/','gold/saude/','gold/siope/','gold/siops/')) and k.endswith('.parquet') and not any(x in k for x in ['cubo_','perfis_','abertura_']))}
     keys.update(k for k in inv if k.startswith(('silver/trabalho/caged/','silver/trabalho/caged_cbo/','silver/bolsa_familia_mensal/','silver/clima/')) or k in ['silver/entes.parquet','silver/ibge_populacao.parquet','silver/ibge_pib.parquet','silver/ipca.parquet','silver/inss_municipios.parquet','silver/atualizacao/fontes.json'])
-    keys.update(['gold/manifesto.json','gold/abertura/manifesto.json','gold/comparacoes/manifesto.json','gold/downloads/manifesto.json','gold/raiox/v12_manifesto.json',*[f'gold/mapas/{x}_manifesto.json' for x in ['trabalho','saude','educacao','saneamento']],*[f'gold/{x}/manifesto.json' for x in ['educacao','saneamento','agropecuaria','mobilidade','seguranca','internet','energia','comex']]])
+    keys.update(['gold/manifesto.json','gold/abertura/manifesto.json','gold/comparacoes/manifesto.json','gold/downloads/manifesto.json','gold/raiox/v12_manifesto.json',*[f'gold/mapas/{x}_manifesto.json' for x in MAPAS],*[f'gold/{x}/manifesto.json' for x in TEMAS]])
     if 'gold/raiox/v13_manifesto.json' in inv:keys.add('gold/raiox/v13_manifesto.json')
     from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=4) as pool:list(pool.map(lambda key:snap.obter_r2(client,bucket,key,inv[key]),sorted(keys)))

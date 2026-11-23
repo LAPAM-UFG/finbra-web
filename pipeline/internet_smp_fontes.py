@@ -2,7 +2,7 @@
 import argparse,csv,hashlib,io,json,re,shutil,struct,zipfile,zlib
 from pathlib import Path
 import duckdb,pandas as pd,requests
-from internet_fontes import sha,qs,qi,salvar
+from internet_fontes import sha,qs,qi,salvar,validar_periodos
 
 URL='https://www.anatel.gov.br/dadosabertos/paineis_de_dados/acessos/acessos_telefonia_movel.zip'
 
@@ -76,13 +76,26 @@ def adquirir(root):
  root=Path(root);raw=root/'csv_smp';raw.mkdir(exist_ok=True)
  source=ZipRemoto();out=[]
  with zipfile.ZipFile(source)as z:
-  longos=['Acessos_Telefonia_Movel_'+v+'.csv'for v in ['2019_1S','2019_2S','2022_1S','2026_2S']]
+  semesters=sorted({m[1]+'_'+m[2]+'S' for i in z.infolist() if (m:=re.fullmatch(r'Acessos_Telefonia_Movel_(20\d{2})_([12])S(?:_Colunas)?\.csv',i.filename)) and int(m[1])>=2019})
+  if not semesters:raise ValueError('Nenhum semestre municipal SMP na fonte')
+  preferidos={'2019_1S','2019_2S','2022_1S','2026_2S',semesters[-1]}
+  longos=['Acessos_Telefonia_Movel_'+v+'.csv'for v in sorted(preferidos)if 'Acessos_Telefonia_Movel_'+v+'.csv'in z.namelist()]
   # Em 2019 as representações não são equivalentes. Junho/2022 e a
   # edição mais recente também são cotejados no arquivo longo.
-  members=[i for i in z.infolist()if re.fullmatch(r'Acessos_Telefonia_Movel_20(?:19|2[0-6])_[12]S_Colunas\.csv',i.filename)or i.filename in ['Acessos_Telefonia_Movel_Total.csv','Densidade_Telefonia_Movel.csv',*longos]]
-  if len(members)!=22:raise ValueError('Edição diferente: revise os membros municipais do SMP')
+  wanted=['Acessos_Telefonia_Movel_Total.csv','Densidade_Telefonia_Movel.csv']
+  for sem in semesters:
+   long_name='Acessos_Telefonia_Movel_'+sem+'.csv';wide_name='Acessos_Telefonia_Movel_'+sem+'_Colunas.csv'
+   if wide_name not in z.namelist()and long_name in z.namelist()and long_name not in longos:longos.append(long_name)
+   wanted.append(long_name if long_name in longos else wide_name)
+  if len(wanted)!=len(set(wanted))or not set(wanted)<=set(z.namelist()):raise ValueError('Semestres SMP incompletos ou duplicados')
+  members=[z.getinfo(name)for name in wanted]
   for i in members:
    p=raw/i.filename
+   if p.exists():
+    crc=0
+    with p.open('rb')as cached:
+     for b in iter(lambda:cached.read(1024*1024),b''):crc=zlib.crc32(b,crc)
+    if p.stat().st_size!=i.file_size or crc!=i.CRC:p.unlink()
    if i.filename in longos:source.membro_longo(i,p,root/'telefonia_movel.zip.parcial')
    else:source.membro(i,p)
    out.append(dict(arquivo=p.relative_to(root).as_posix(),bytes=p.stat().st_size,sha256=sha(p),crc32=i.CRC,comprimido=i.compress_size))
@@ -90,33 +103,32 @@ def adquirir(root):
  report=dict(ok=True,url=URL,arquivo_bytes=source.size,etag=source.etag,modificado=source.modificado,membros=out)
  salvar(root/'smp_fonte.json',report);source.s.close();return report
 
-def normalizar(root):
- root=Path(root).resolve();meta=adquirir(root)
+def normalizar(root,meta=None):
+ root=Path(root).resolve();meta=meta or adquirir(root)
  work=root/'trabalho_smp';work.mkdir(exist_ok=True);db=duckdb.connect(str(work/'smp.duckdb'));db.execute("SET threads=2;SET memory_limit='3GB'");db.execute('SET temp_directory='+qs(str(work/'temporario')))
- db.execute('DROP TABLE IF EXISTS fatos');periodos=set();quantidade=0
+ db.execute('DROP TABLE IF EXISTS fatos');periodos=set();periodos_longos=set();quantidade=0
  for member in meta['membros']:
   filename=Path(member['arquivo']).name
-  if filename in ['Acessos_Telefonia_Movel_'+v+'_Colunas.csv'for v in ['2019_1S','2019_2S','2022_1S','2026_2S']]:continue
   if filename in ['Acessos_Telefonia_Movel_Total.csv','Densidade_Telefonia_Movel.csv']:continue
   p=root/member['arquivo'];assert sha(p)==member['sha256']
   with p.open(encoding='utf-8-sig',newline='')as f:cols=next(csv.reader(f,delimiter=';'))
   longo='Ano'in cols;meses=[c for c in cols if re.fullmatch(r'20\d{2}-\d{2}',c)]
   pp=[int(c.replace('-',''))for c in meses]
-  if longo:
-   year=int(re.search(r'20\d{2}',filename)[0]);pp=[year*100+m for m in(range(1,7)if'_1S'in filename else range(7,10)if year==2026 else range(7,13))]
-  if not pp or periodos.intersection(pp):raise ValueError('Períodos ausentes ou duplicados')
-  periodos.update(pp)
   aliases={'UF':'uf','Código IBGE Município':'cod','Tipo de Produto':'produto','Modalidade de Cobrança':'cobranca','Tecnologia Geração':'geracao','Tipo de Pessoa':'pessoa'}
   select=','.join(qi(k)+' AS '+v for k,v in aliases.items())+','+','.join(qi(m)for m in(['Ano','Mês','Acessos']if longo else meses))
   db.execute('CREATE OR REPLACE VIEW wide AS SELECT '+select+' FROM read_csv('+qs(p.as_posix())+",delim=';',header=true,all_varchar=true,nullstr='',sample_size=20480)")
+  if longo:pp=[int(p) for p, in db.execute('SELECT DISTINCT cast("Ano" AS INTEGER)*100+cast("Mês" AS INTEGER) FROM wide ORDER BY 1').fetchall()]
+  if not pp or periodos.intersection(pp)or any(p%100 not in range(1,13)for p in pp):raise ValueError('Períodos SMP ausentes, duplicados ou inválidos')
+  periodos.update(pp)
+  if longo:periodos_longos.update(pp)
   sql="SELECT cast(replace(periodo,'-','')AS INTEGER)periodo,upper(trim(uf))uf,try_cast(cod AS BIGINT)cod_ibge,produto,cobranca,geracao,pessoa,try_cast(replace(valor,',','.')AS DOUBLE)q FROM(UNPIVOT wide ON "+','.join(qi(m)for m in meses)+' INTO NAME periodo VALUE valor)'
   if longo:sql=sql.replace("cast(replace(periodo,'-','')AS INTEGER)",'cast("Ano"AS INTEGER)*100+cast("Mês"AS INTEGER)').replace('FROM(UNPIVOT wide ON  INTO NAME periodo VALUE valor)','FROM(SELECT *,"Acessos"valor FROM wide)')
   sql+=' WHERE valor IS NOT NULL'
   db.execute(('CREATE TABLE fatos AS 'if quantidade==0 else'INSERT INTO fatos ')+sql);quantidade+=1
   print(json.dumps(dict(normalizado=p.name)),flush=True)
- finalizar(root,db,meta,periodos)
+ finalizar(root,db,meta,periodos,periodos_longos)
 
-def finalizar(root,db,meta,periodos):
+def finalizar(root,db,meta,periodos,periodos_longos=None):
  assert {p for p, in db.execute('SELECT DISTINCT periodo FROM fatos').fetchall()}==set(periodos),'Período inesperado na edição: revisar seleção dos arquivos'
  assert db.execute('SELECT count(*)FROM fatos WHERE q IS NULL OR q<0 OR NOT isfinite(q)OR q<>floor(q)').fetchone()[0]==0
  totals=db.execute('SELECT periodo,sum(q)q FROM fatos GROUP BY 1 ORDER BY 1').fetchdf().set_index('periodo').q
@@ -125,10 +137,10 @@ def finalizar(root,db,meta,periodos):
  standard=db.execute("SELECT periodo,sum(q)q FROM fatos WHERE produto IN ('VOZ','DADOS','VOZ+DADOS','OCIOSO')GROUP BY 1 ORDER BY 1").fetchdf().set_index('periodo').q
  diferenca=(standard-truth)[truth.notna()];different=diferenca[diferenca.ne(0)]
  expected={201901:795101,201907:-56315,202206:-12518}
- assert {int(k):int(v)for k,v in different.items()}==expected,'Divergência nova entre resumo e detalhado: revisar antes de gerar'
+ assert all(int(k)in expected and int(v)==expected[int(k)]for k,v in different.items()),'Divergência nova entre resumo e detalhado: revisar antes de gerar'
  assert not any(p%100==12 for p in different.index),'Retrato anual de dezembro diverge do resumo'
  divergencias={str(p):dict(detalhado=int(standard.loc[p]),resumo=int(truth.loc[p]),diferenca=int(v))for p,v in different.items()}
- assert max(periodos)==202609 and int(official.periodo.max())==202608,'Edição nova: reveja o cotejo do resumo e arquivos detalhados'
+ validar_periodos(periodos)
  refs={y:max(p for p in periodos if p//100==y)for y in sorted({p//100 for p in periodos})}
  def norm(col):return "regexp_replace(lower(strip_accents(trim("+col+"))),'[^a-z0-9]','','g')"
  prod,gen,cob,pessoa=map(norm,['produto','geracao','cobranca','pessoa'])
@@ -144,7 +156,7 @@ def finalizar(root,db,meta,periodos):
   for key,expr in items.items():sums.append('sum(CASE WHEN '+std+' AND('+expr+')THEN q ELSE 0 END)int_smp_'+prefix+'_'+key)
  path=root/'smp_municipio_mensal.parquet';db.execute('COPY(SELECT periodo,uf,cod_ibge,'+','.join(sums)+' FROM f GROUP BY 1,2,3 ORDER BY 1,2,3)TO '+qs(path.as_posix())+'(FORMAT PARQUET,COMPRESSION ZSTD)')
  dist={c:db.execute('SELECT '+qi(c)+',sum(q) FROM fatos GROUP BY 1 ORDER BY 2 DESC').fetchall()for c in ['produto','geracao','cobranca','pessoa']}
- report=dict(ok=True,fonte=meta,referencias=refs,periodos=sorted(periodos),resumo_oficial_ate=202608,meses_cotejados=int(truth.notna().sum()),meses_iguais=int(truth.notna().sum())-len(divergencias),divergencias_resumo=divergencias,ultimo_mes_conferido_em_arquivo_longo=202609,linhas=int(db.execute('SELECT count(*)FROM fatos').fetchone()[0]),totais={int(k):int(v)for k,v in totals.items()},distribuicoes=dist,agregado=dict(arquivo=path.name,sha256=sha(path),bytes=path.stat().st_size))
+ report=dict(ok=True,fonte=meta,referencias=refs,periodos=sorted(periodos),resumo_oficial_ate=int(official.periodo.max()),meses_cotejados=int(truth.notna().sum()),meses_iguais=int(truth.notna().sum())-len(divergencias),divergencias_resumo=divergencias,ultimo_mes_conferido_em_arquivo_longo=max(periodos_longos or [],default=None),linhas=int(db.execute('SELECT count(*)FROM fatos').fetchone()[0]),totais={int(k):int(v)for k,v in totals.items()},distribuicoes=dist,agregado=dict(arquivo=path.name,sha256=sha(path),bytes=path.stat().st_size))
  salvar(root/'smp_normalizado.json',report);db.close();print(json.dumps(dict(ok=True,referencias=refs,distribuicoes=dist),ensure_ascii=True),flush=True)
 
 def validar_pastas(fixa,saida):

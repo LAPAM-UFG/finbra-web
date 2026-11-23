@@ -210,7 +210,9 @@ def gerar(normalizado,cadastro,saida):
     groups={str(int(r.cod_ibge)):dict(grupo=str(int(r.cod_ibge)),nome=str(r.nome),uf=str(r.uf),nivel='M',cod_ibge=int(r.cod_ibge)) for r in cad.itertuples()}
     groups['BR']=dict(grupo='BR',nome='Brasil',uf=None,nivel='BR',cod_ibge=None)
     for uf in sorted(cad.uf.unique()):groups[uf]=dict(grupo=uf,nome='Municípios de '+uf,uf=uf,nivel='UF',cod_ibge=None)
-    allrows=[];audits=[];metricmeta=copy.deepcopy(INDICADORES);years=list(range(2013,2025))
+    years=sorted({y for _,_,y in schemas if y>=2013})
+    if not years or years!=list(range(2013,max(years)+1)):raise ValueError('Referências anuais de saneamento incompletas')
+    allrows=[];audits=[];metricmeta=copy.deepcopy(INDICADORES)
     for y in years:
         system='SNIS' if y<=2022 else 'SINISA';moduleframes={};providerframes={}
         for mod in ['ae','agua','esgoto','rs','ap']:

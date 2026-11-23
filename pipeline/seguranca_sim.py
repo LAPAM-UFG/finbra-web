@@ -16,9 +16,10 @@ def validar_particoes(x):
  assert(x.sec_agressoes==x[['sec_ag_armas',*['sec_ag_meio_'+i[0]for i in MEIOS_AG]]].sum(axis=1)).all()
  for tipo,itens,total in [('rc',RACAS,'sec_suicidios'),('esc',ESCOLAS,'sec_su_15_mais'),('loc',LOCAIS,'sec_suicidios'),('mes',MESES+[('ign','','')],'sec_suicidios')]:
   assert(x[total]==x[[f'sec_su_{tipo}_{a[0]}'for a in itens]].sum(axis=1)).all()
-def gerar(micro,fontes):
+def gerar(micro,fontes,anos_selecionados=None):
  root=Path(fontes).resolve();micro=Path(micro).resolve();g=json.loads((root/'geografia.json').read_bytes());ufs={u:int(c.removeprefix('E:'))for c,_,u in g['governos']}
- edicao=json.loads((root/'gold/manifesto.json').read_bytes())['fontes']['sim'];anos=[y for y in edicao['anos']if y>=2013];assert anos==list(range(2013,2025))
+ edicao=json.loads((root/'gold/manifesto.json').read_bytes())['fontes']['sim'];anos=[y for y in edicao['anos']if y>=2013];assert anos==list(range(2013,max(anos)+1))
+ if anos_selecionados is not None:anos=sorted(set(anos_selecionados))
  paths=sorted(p for p in micro.glob('DO*.parquet')if re.fullmatch(r'DO[A-Z]{2}\d{4}\.parquet',p.name)and not p.name.startswith('DOBR')and int(p.stem[-4:])in anos)
  assert len(paths)==27*len(anos)
  for y in anos:assert {p.name[2:4]for p in paths if int(p.stem[-4:])==y}==set(ufs)

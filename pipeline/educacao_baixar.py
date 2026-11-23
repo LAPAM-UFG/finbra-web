@@ -106,11 +106,12 @@ def sha(path):
 
 
 def extrair_censo(job):
-    year, url, root = job
+    year, url, root, *opcoes = job
+    revalidar=bool(opcoes and opcoes[0])
     folder = root / str(year)
     folder.mkdir(parents=True, exist_ok=True)
     record = folder / 'origem.json'
-    if record.exists():
+    if record.exists() and not revalidar:
         old = json.loads(record.read_text(encoding='utf-8'))
         adicionais = year < 2025 or all(any(re.search('Tabela_'+tipo+'_',f['nome'],re.I) for f in old['arquivos']) for tipo in ['Docente','Turma'])
         if old['url'] == url and adicionais and all((folder / f['nome']).is_file() and sha(folder/f['nome']) == f['sha256'] for f in old['arquivos']):
@@ -186,7 +187,7 @@ def baixar_indicador(job):
     return result
 
 
-def coletar(root, inicio=2013, fim=2025):
+def coletar(root, inicio=2013, fim=2025,revalidar=False,cobertura_anterior=None):
     root = root.resolve()
     if any(p.lower()=='gold' for p in root.parts):
         raise ValueError('A coleta bruta não pode escrever em gold')
@@ -195,7 +196,7 @@ def coletar(root, inicio=2013, fim=2025):
     for url, title in links(pagina(PAGINAS['censo'])):
         match = re.search(r'microdados_censo_escolar_(\d{4})_?\.zip$', url)
         if match and inicio <= int(match[1]) <= fim:
-            jobs.append((int(match[1]), url, root))
+            jobs.append((int(match[1]), url, root,revalidar))
     if {j[0] for j in jobs} != set(range(inicio, fim+1)):
         raise ValueError('O catálogo oficial não contém todos os anos pedidos')
     with ThreadPoolExecutor(max_workers=3) as pool:
@@ -203,7 +204,10 @@ def coletar(root, inicio=2013, fim=2025):
     tasks = []
     for kind in ['rendimento', 'distorcao']:
         def ano(year):
-            page = pagina(PAGINAS[kind] + '/' + str(year))
+            try:page = pagina(PAGINAS[kind] + '/' + str(year))
+            except requests.HTTPError as error:
+                if error.response.status_code==404 and year>(cobertura_anterior or {}).get(kind,fim):return []
+                raise
             found = []
             for url, title in links(page):
                 if re.search(r'\.zip$|\.xlsx?$', url, re.I) and ('Munic' in title or 'munic' in url.lower() or 'regi' in title.lower() or 'ufs' in url.lower()):

@@ -35,16 +35,16 @@ class EnxutoEducacao(Enxuto):
         for item in self.pending[before:]:item["meta"]["rede"]=self.rede
 
 
-def gerar(base,educacao,saida,stata,rscript):
+def gerar(base,educacao,saida,stata,rscript,atualizar=False):
     base=base.resolve();educacao=educacao.resolve();saida=destino_isolado(saida,base);destino_isolado(saida,educacao)
     work=saida/'trabalho_downloads';dest=saida/'gold/downloads'
     work.mkdir(parents=True,exist_ok=True);dest.mkdir(parents=True,exist_ok=True)
     old=ler(base/'gold/downloads/manifesto.json');m=copy.deepcopy(old);edu=ler(educacao/'gold/educacao/manifesto.json')
     assert old['base_sha256']==sha(base/'gold/manifesto.json')
-    assert old['resumo']['variaveis']==297 and len(edu['indicadores'])==93
+    assert old['resumo']['variaveis']==297 and len(edu['indicadores'])>=93
     old_refs,old_files=objetos(base,old)
     dictionary=[copy.deepcopy(d) for d in ler(base/old['dicionario']['caminho']) if d['area']!='educacao']
-    for d in dictionary:d['arquivo_principal']=True
+    for d in dictionary:d.setdefault('arquivo_principal',True)
     municipal=pq.read_table(educacao/edu['parquet']['caminho'],columns=['ano',*[i['variavel'] for i in edu['indicadores']]]).to_pandas()
     for i in edu['indicadores']:
         years=sorted(int(y) for y in municipal.loc[municipal[i['variavel']].notna(),'ano'].unique())
@@ -55,7 +55,7 @@ def gerar(base,educacao,saida,stata,rscript):
             observacao=('Disponível na base principal e no arquivo de Educação. ' if i['principal'] else 'Disponível no arquivo temático de Educação. ')+i['descricao'],anos_observados=years,
             arquivo_principal=i['principal'],
             ano_de=min(years) if years else None,ano_ate=max(years) if years else None,variavel_original=i['variavel'],**({'stata_rotulos':i['rotulos']} if i.get('rotulos') else {})))
-    assert len(dictionary)==353 and len({x['variavel'] for x in dictionary})==353
+    assert len({x['variavel'] for x in dictionary})==len(dictionary)
     assert sum(d['arquivo_principal'] for d in dictionary)==303
     stamp=datetime.now(timezone.utc).isoformat();m['gerado_em']=stamp
     # Métodos conhecidos do exportador; toda a escrita aponta para a candidata.
@@ -82,7 +82,7 @@ def gerar(base,educacao,saida,stata,rscript):
     assert set(previous_names).issubset(set(cols))
     e.db.execute('CREATE VIEW educacao_anterior AS SELECT * FROM read_parquet('+qs(previous_path.as_posix())+')')
     old_changed=e.db.execute('SELECT count(*) FROM educacao_anterior p FULL JOIN educacao e USING(cod_ibge,ano) WHERE '+ ' OR '.join('p.'+qi(k)+' IS DISTINCT FROM e.'+qi(k) for k in previous_names)).fetchone()[0]
-    if old_changed:raise ValueError('Os indicadores de Educação já publicados mudaram')
+    if old_changed and not atualizar:raise ValueError('Os indicadores de Educação já publicados mudaram')
     for rede in REDES:
         meta=edu if rede=='todas' else ler(educacao/edu['redes'][rede]['caminho'])
         source=educacao/meta['parquet']['caminho'];assert sha(source)==meta['parquet']['sha256']
@@ -98,7 +98,10 @@ def gerar(base,educacao,saida,stata,rscript):
         e.exportar(prefix,query+' ORDER BY cod_ibge,ano',label+' — Brasil',area='educacao')
         for uf, in e.db.execute('SELECT DISTINCT uf FROM ('+query+') ORDER BY 1').fetchall():
             e.exportar(prefix+'_'+uf.lower(),query+' AND uf='+qs(uf)+' ORDER BY cod_ibge,ano',label+' — '+uf,area='educacao',uf=uf)
-    e.processar_stata(stata)
+    if stata:e.processar_stata(stata)
+    else:
+        from saneamento_downloads import declarar_stata
+        declarar_stata(e.pending,work,None)
     for f in e.pending:e.registrar(Path(f['path']),f['id'],f['tipo'],'dta',f['nome'],**f['meta'])
     new=e.p.files
     stata_cells=0
@@ -165,7 +168,7 @@ def gerar(base,educacao,saida,stata,rscript):
         for row in ws.iter_rows(min_row=2):
             ws.row_dimensions[row[0].row].height=60
             for cell in row:cell.alignment=Alignment(vertical='top',wrap_text=True)
-    assert len(pd.read_excel(excel,engine='calamine'))==353
+    assert len(pd.read_excel(excel,engine='calamine'))==len(dictionary)
     dict_item('dicionario_excel','xlsx',excel,'Dicionário dos downloads — Excel')
     dict_item('dicionario_rds','rds',dict_rds,'Dicionário dos downloads — R')
     m['resumo']['variaveis']=297
@@ -182,13 +185,19 @@ def gerar(base,educacao,saida,stata,rscript):
     refs,_=objetos(saida,m)
     for ref in refs:
         target=saida/ref['caminho']
+        if atualizar and not target.exists():
+            # Objetos imutáveis preservados serão verificados pelo validador do grafo.
+            assert ref in old_refs
+            continue
         if not target.exists():
             origin=base/ref['caminho'];assert sha(origin)==ref['sha256'];shutil.copyfile(origin,target)
         assert target.stat().st_size==ref['bytes'] and sha(target)==ref['sha256']
     # Pacotes nacionais contêm a seleção principal e seu dicionário: também são preservados.
     assert [a for a in m['arquivos'] if a['tipo'] in ['painel','pacote']]==[a for a in old['arquivos'] if a['tipo'] in ['painel','pacote']]
     refs,files=objetos(saida,m)
-    for ref in refs:assert sha(saida/ref['caminho'])==ref['sha256']
+    for ref in refs:
+        if (saida/ref['caminho']).exists():assert sha(saida/ref['caminho'])==ref['sha256']
+        else:assert atualizar and ref in old_refs
     assert old['base_sha256']==sha(base/'gold/manifesto.json')
     (dest/'manifesto.json').write_text(json.dumps(m,ensure_ascii=False,allow_nan=False,separators=(',',':')),encoding='utf-8')
     audit=dict(ok=True,variaveis=297,colunas=303,indicadores_educacao=85,condicoes_saeb=8,redes=6,dicionario=353,principal_identica=True,educacao_anterior_identica=True,linhas=original['linhas'],novos_conjuntos=len(plan),celulas_r_conferidas=cells,

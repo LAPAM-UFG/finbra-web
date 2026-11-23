@@ -86,7 +86,7 @@ def gerar(fontes,saida):
  dm=json.loads((fontes/'gold/downloads/manifesto.json').read_bytes());main=next(x for x in dm['arquivos']if x['id']=='painel_brasil_parquet');assert sha(fontes/main['caminho'])==main['sha256']
  pop=pd.read_parquet(fontes/main['caminho'],columns=['cod_ibge','ano','sau_populacao'])
  for row in pop[pop.sau_populacao.notna()].itertuples(index=False):put(int(row.ano),'ene_populacao',int(row.cod_ibge),row.sau_populacao)
- for row in json.loads((fontes/'populacao_2026_sidra.json').read_bytes())[1:]:put(2026,'ene_populacao',row['D1C'],int(row['V']))
+ for row in json.loads((fontes/'populacao_2026_sidra.json').read_bytes())[1:]:put(int(row['D3C']),'ene_populacao',row['D1C'],int(row['V']))
  for key in [*sorted(ufs),'BR']:
   for k,yy in enumerate(ANOS):
    z=a[k,groups[key],idx['ene_populacao']];put(yy,'ene_populacao',key,np.nansum(z)if np.isfinite(z).any()else np.nan)

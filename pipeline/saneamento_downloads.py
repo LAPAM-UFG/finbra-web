@@ -16,6 +16,14 @@ from painel_municipal import Painel,KEYS,qi,qs,sha
 from saneamento_indicadores import CONDICOES
 
 def declarar_stata(pending,work,exe):
+    if exe is None:
+        for item in pending:
+            frame=pd.read_stata(item['path'],convert_categoricals=False,convert_dates=False)
+            if frame[['cod_ibge','ano']].isna().any().any() or frame.duplicated(['cod_ibge','ano']).any():raise ValueError('Chave município/ano inválida no Stata')
+            if not frame.ano.ge(2013).all():raise ValueError('Stata com observações anteriores a 2013')
+            if not frame.cod_ibge.between(1000000,9999999).all():raise ValueError('Código municipal inválido no Stata')
+        print('Stata 14+: arquivos relidos e chaves conferidas; executável nativo não disponível neste ambiente.',flush=True)
+        return
     flag=work/'stata_ok.txt';flag.unlink(missing_ok=True)
     do=work/'declarar_saneamento.do';log=work/'stata_nativo.log'
     lines=['version 14','set more off','capture log close _all','log using "'+log.as_posix()+'", text replace']

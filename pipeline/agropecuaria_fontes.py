@@ -20,7 +20,7 @@ ANOS = list(range(2013, 2026))
 def compacto(x): return json.dumps(x,ensure_ascii=False,separators=(',',':'),allow_nan=False).encode()
 def sha(b): return hashlib.sha256(b).hexdigest()
 
-def adquirir(saida, geografia, workers=6):
+def adquirir(saida, geografia, workers=6,anos=None):
     saida=Path(saida).resolve(); geo=Path(geografia).resolve()
     if saida==geo or geo.is_relative_to(saida/'sidra'): raise ValueError('Destino sobreposto à origem')
     raw=saida/'sidra';raw.mkdir(parents=True,exist_ok=True)
@@ -31,10 +31,13 @@ def adquirir(saida, geografia, workers=6):
         if not p.exists():
             r=session.get(API+tab+'/metadados',timeout=90);r.raise_for_status();p.write_bytes(r.content)
         metas[tab]=json.loads(p.read_bytes())
+    ANOS[:]=list(anos) if anos is not None else list(range(2013,min(int(m['periodicidade']['fim']) for m in metas.values())+1))
+    if ANOS!=list(range(2013,max(ANOS)+1)):raise ValueError('A série agropecuária deve começar em 2013, sem lacunas')
+    for tab in TABELAS:
         if not set(ANOS).issubset(set(range(int(metas[tab]['periodicidade']['inicio']),int(metas[tab]['periodicidade']['fim'])+1))):raise ValueError('Período mudou: '+tab)
         units=saida/f'unidades_{tab}.json';cl=TABELAS[tab][0]
         if not units.exists():
-            url='https://apisidra.ibge.gov.br/values/t/'+tab+'/n1/all/p/2025/v/all'+('/c'+cl+'/all'if cl else'')
+            url='https://apisidra.ibge.gov.br/values/t/'+tab+'/n1/all/p/'+str(ANOS[-1])+'/v/all'+('/c'+cl+'/all'if cl else'')
             r=session.get(url,timeout=90);r.raise_for_status();units.write_bytes(r.content)
     g=json.loads(geo.read_bytes());counts={}
     for m in g['municipios']:counts[m[2]]=counts.get(m[2],0)+1
@@ -48,7 +51,7 @@ def adquirir(saida, geografia, workers=6):
                 selected=cats[start:start+step]
                 params={'localidades':f'N6[N3[{ufcode[uf]}]]' if uf!='referencias' else 'N3[all]|N1[1]'}
                 if cl:params['classificacao']=cl+'['+','.join(selected)+']'
-                url=API+tab+'/periodos/2013-2025/variaveis/'+'|'.join(vs)
+                url=API+tab+'/periodos/2013-'+str(ANOS[-1])+'/variaveis/'+'|'.join(vs)
                 jobs.append((tab,uf,selected,vs,url,params))
     def buscar(job):
         tab,uf,cats,vs,url,params=job

@@ -109,6 +109,8 @@ def gerar(fontes,saida):
     if dest.exists() and any(dest.iterdir()):raise ValueError('Use uma candidata nova')
     dest.mkdir(parents=True,exist_ok=True)
     prov=json.loads((fontes/'fontes.json').read_bytes());g=json.loads((fontes/'geografia.json').read_bytes())
+    ANOS[:]=prov['anos']
+    if ANOS!=list(range(2013,max(ANOS)+1)):raise ValueError('Períodos agropecuários incompletos')
     assert sha((fontes/'geografia.json').read_bytes())==prov['geografia_sha256']
     municipios=g['municipios'];nmun=len(municipios);assert nmun==5571
     grupos=[str(m[0])for m in municipios]+[u for _,_,u in g['governos']]+['BR'];pos={k:j for j,k in enumerate(grupos)}

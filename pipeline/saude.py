@@ -70,6 +70,7 @@ import tempfile
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import duckdb
 import pyarrow as pa
@@ -78,6 +79,7 @@ from config import GOLD, SILVER
 from icsap import agregar_icsap
 
 GOLD_S = GOLD / "saude"
+ANO_FECHADO = datetime.now(ZoneInfo('America/Sao_Paulo')).year - 1
 
 # idade do SIM: 1º dígito é a unidade (0 minutos, 1 horas, 2 dias, 3 meses, 4 anos, 5 = 100 + anos, 9 ignorada)
 UNIDADE = "TRY_CAST(left(IDADE, 1) AS INTEGER)"
@@ -228,7 +230,7 @@ def nascimentos(con, micro: Path):
         round(100 * sum(cesareos) / sum(parto_informado), 2) FROM nascimentos WHERE ano IN (2019, 2024) GROUP BY 1 ORDER BY 1""").fetchall())
 
 
-SIH_ANOS = (2008, 2025)
+SIH_ANOS = (2008, ANO_FECHADO)
 # idade em anos do SIH: COD_IDADE 2 = dias, 3 = meses, 4 = anos, 5 = 100 anos ou mais
 SIH_IDADE = "CASE WHEN COD_IDADE IN ('0', '1', '2', '3') THEN 0 WHEN COD_IDADE = '4' THEN TRY_CAST(IDADE AS INTEGER) WHEN COD_IDADE = '5' THEN 100 + TRY_CAST(IDADE AS INTEGER) END"
 
@@ -276,7 +278,7 @@ def internacoes(con, micro: Path):
     con.execute("DROP TABLE sih")
 
 
-SIA_ANOS = (2008, 2025)  # 2026 fica de fora até fechar o ano
+SIA_ANOS = (2008, ANO_FECHADO)
 # grupos de procedimentos da tabela do SUS (2 primeiros dígitos de PA_PROC_ID)
 GRUPOS_SIA = {1: "promocao", 2: "diagnostico", 3: "clinicos", 4: "cirurgicos", 5: "transplantes", 6: "medicamentos", 7: "orteses", 8: "complementares"}
 
@@ -327,7 +329,7 @@ def ambulatorial(con, sia: Path, saida: Path | None = None):
     con.execute("DROP TABLE sia")
 
 
-CNES_ANOS = (2006, 2025)
+CNES_ANOS = (2006, ANO_FECHADO)
 
 
 def cnes(con, micro: Path):
@@ -455,7 +457,7 @@ def sinan(con, micro: Path):
             FROM chaves k LEFT JOIN deng d USING (ano, municipio) LEFT JOIN chik c USING (ano, municipio) LEFT JOIN tube t USING (ano, municipio)
                  LEFT JOIN tubd td USING (ano, municipio)
                  LEFT JOIN hans h USING (ano, municipio) LEFT JOIN viol v USING (ano, municipio)
-            WHERE k.municipio IS NOT NULL AND k.ano BETWEEN 2000 AND 2025)
+            WHERE k.municipio IS NOT NULL AND k.ano BETWEEN 2000 AND {ANO_FECHADO})
         -- agravo ausente do ano (arquivo inexistente ou sem a coluna) fica nulo, nunca zero: sem nenhum registro no país, não há dado
         SELECT ano, municipio, uf,
                {', '.join(f"CASE WHEN sum({c}) OVER (PARTITION BY ano) > 0 THEN {c} END AS {c}" for c in SINAN_COLUNAS)}
@@ -484,7 +486,7 @@ def siscan(con, brutos: Path):
         return f"read_csv('{(base / arq).as_posix()}', delim = '{sep}', header = true, all_varchar = true)"
 
     partes = []
-    for ano in range(2014, 2026):
+    for ano in range(2014, ANO_FECHADO+1):
         cito, mamo = base / f"SISCAN_CITO_COLO_{ano}.csv", base / f"SISCAN_MAMOGRAFIA_{ano}.csv"
         hc, hm = base / f"SISCAN_HISTO_COLO_{ano}.csv", base / f"SISCAN_HISTO_MAMA_{ano}.csv"
         if not (cito.exists() and mamo.exists() and hc.exists() and hm.exists()):
@@ -545,7 +547,7 @@ def oncologia(con, micro: Path):
                count(*) FILTER (WHERE dt_trat IS NOT NULL) AS onco_tratados,
                count(*) FILTER (WHERE dt_trat >= dt_diag) AS onco_trat_validos,
                count(*) FILTER (WHERE date_diff('day', dt_diag, dt_trat) BETWEEN 0 AND 60) AS onco_trat_60d
-        FROM c WHERE ano BETWEEN 2019 AND 2025 AND municipio IS NOT NULL GROUP BY ano, municipio ORDER BY ano, municipio""")
+        FROM c WHERE ano BETWEEN 2019 AND {ANO_FECHADO} AND municipio IS NOT NULL GROUP BY ano, municipio ORDER BY ano, municipio""")
     con.execute(f"COPY oncologia TO '{GOLD_S / 'oncologia.parquet'}' (FORMAT parquet, COMPRESSION zstd)")
     print("oncologia:", con.sql("""SELECT ano, sum(onco_casos), sum(onco_tratados), sum(onco_trat_validos), sum(onco_trat_60d)
         FROM oncologia GROUP BY 1 ORDER BY 1""").fetchall())

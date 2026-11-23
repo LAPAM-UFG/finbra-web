@@ -33,6 +33,7 @@ def gerar(fontes,saida):
  fontes,saida=destino_seguro(fontes,saida);g=json.loads((fontes/'geografia.json').read_bytes());municipios=g['municipios'];nmun=len(municipios);assert nmun==5571
  grupos=[str(m[0])for m in municipios]+[u for _,_,u in g['governos']]+['BR'];pos={v:j for j,v in enumerate(grupos)};ufs={u for _,_,u in g['governos']}
  sm=json.loads((fontes/'sim_seguranca.json').read_bytes());sn=json.loads((fontes/'sinesp_normalizado.json').read_bytes());assert sm['ok']and sn['ok']
+ ANOS[:]=list(range(2013,max(max(sm['anos']),max(sn['anos']))+1))
  for ref in [sm['agregado'],sn['agregado'],sn['mensal']]:assert arquivo_sha(fontes/ref['arquivo'])==ref['sha256']
  defs=[]
  def add(id,n,en,familia,fonte='sim',unidade='óbitos',descricao='',helper=False):
@@ -93,7 +94,7 @@ def gerar(fontes,saida):
  for j,i in enumerate(defs):i['anos']=[y for k,y in enumerate(ANOS)if np.isfinite(a[k,:,j]).any()]
  quadros=[]
  def razao(id,n,d,nome,en,tema,fator=100,unidade='%',periodos=None):
-  ni,di=idx[n],idx[d];pp=periodos or list(range(2015,2026))if defs[ni]['fonte']=='sinesp'else periodos or sm['anos'];yy=[ANOS.index(y)for y in pp]
+  ni,di=idx[n],idx[d];pp=(periodos or sn['anos'])if defs[ni]['fonte']=='sinesp'else(periodos or sm['anos']);yy=[ANOS.index(y)for y in pp]
   nn,dd=a[yy,:nmun,ni],a[yy,:nmun,di];vv,cc=taxa(nn,dd,c[yy,:nmun,ni],c[yy,:nmun,di],fator)
   descricao=NOTA_BASE+' '+defs[ni]['descricao']
   if '_3a'in n:descricao+=' Taxa anual média do triênio encerrado no ano selecionado = soma dos óbitos dos três anos / soma das populações dos mesmos anos × 100 mil. Exige os três anos completos.'
@@ -134,7 +135,7 @@ def gerar(fontes,saida):
     loc=pos[key];body=compacto(dict(versao=1,grupo=key,anos=ANOS,valores=[numeros(r)for r in a[:,loc]],condicoes=c[:,loc].tolist(),derivados=[numeros(r)for r in dv[:,loc]],condicoes_derivados=dc[:,loc].tolist(),numeradores=[numeros(r)for r in dn[:,loc]],denominadores=[numeros(r)for r in dd[:,loc]],coberturas=dq[:,loc].tolist(),residuos=residuos if len(key)!=7 else{}))+b'\n';entries[key]=[f.tell(),len(body),sha(body)];f.write(body);maxslice=max(maxslice,len(body))
   h=arquivo_sha(temp);p=dest/f'series_{bucket.lower()}_{h[:16]}.ndjson';temp.rename(p);indices[bucket]=objeto('seguranca','indice_'+bucket.lower(),dict(versao=1,arquivo=dict(caminho=p.relative_to(saida).as_posix(),bytes=p.stat().st_size,sha256=h),grupos=entries))
  cat=objeto('seguranca','catalogo',dict(versao=1,anos=ANOS,indicadores=defs,derivados=[dict(q.definicao,periodos=q.periodos)for q in quadros],condicoes=CONDICOES),True);geo=objeto('seguranca','geografia',g,True)
- m=dict(versao=1,gerado_em=datetime.now(timezone.utc).isoformat(),anos=ANOS,catalogo=cat,geografia=geo,indices=indices,variaveis=len(defs),calculados=len(quadros),territorios=len(grupos),max_trecho_bytes=maxslice,ultimos={'sim':2024,'sinesp':2025,'populacao':2025},origens={'sim':arquivo_sha(fontes/'sim_seguranca.json'),'sinesp':arquivo_sha(fontes/'sinesp_normalizado.json'),'populacao':main['sha256']},notas=[NOTA_SIM,NOTA_SINESP,NOTA_BASE]);(dest/'manifesto.json').write_bytes(compacto(m))
+ m=dict(versao=1,gerado_em=datetime.now(timezone.utc).isoformat(),anos=ANOS,catalogo=cat,geografia=geo,indices=indices,variaveis=len(defs),calculados=len(quadros),territorios=len(grupos),max_trecho_bytes=maxslice,ultimos={'sim':max(sm['anos']),'sinesp':max(sn['anos']),'populacao':int(pop.loc[pop.sau_populacao.notna(),'ano'].max())},origens={'sim':arquivo_sha(fontes/'sim_seguranca.json'),'sinesp':arquivo_sha(fontes/'sinesp_normalizado.json'),'populacao':main['sha256']},notas=[NOTA_SIM,NOTA_SINESP,NOTA_BASE]);(dest/'manifesto.json').write_bytes(compacto(m))
  data={'cod_ibge':np.tile([m[0]for m in municipios],len(ANOS)),'ano':np.repeat(ANOS,nmun),'municipio':np.tile([m[1]for m in municipios],len(ANOS)),'uf':np.tile([m[2]for m in municipios],len(ANOS))}
  for j,i in enumerate(defs):data[i['id']]=a[:,:nmun,j].reshape(-1);data[i['id']+'_cond']=c[:,:nmun,j].reshape(-1)
  for j,q in enumerate(quadros):id=q.definicao['variavel_download'];data[id]=dv[:,:nmun,j].reshape(-1);data[id+'_cond']=dc[:,:nmun,j].reshape(-1)
