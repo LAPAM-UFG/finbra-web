@@ -21,7 +21,9 @@ def conferir_referencias(base,snap,pending,catalogos,geografia,workers=4):
         if local.is_file():
             if local.stat().st_size!=ref['bytes']or sha(local)!=ref['sha256']:raise ValueError('candidato corrompido: '+key)
             path=local
-        else:path=snap.obter(key,ref)
+        else:
+            try:path=snap.obter(key,ref)
+            except ValueError as error:raise ValueError(key+': '+str(error))from error
         children=[]
         if key.endswith(('.json','.json.gz')):
             raw=path.read_bytes();obj=json.loads(gzip.decompress(raw)if key.endswith('.gz')else raw)
