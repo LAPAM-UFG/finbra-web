@@ -6,6 +6,7 @@ import duckdb,pandas as pd,requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from internet_fontes import sha,qs,salvar
+from automacao_http import SessaoOficial
 
 MMGD='relacao-de-empreendimentos-de-geracao-distribuida'
 SIGA='siga-sistema-de-informacoes-de-geracao-da-aneel'
@@ -16,7 +17,7 @@ RECURSOS={MMGD:['empreendimento-geracao-distribuida.parquet',
  SIGA:['siga-empreendimentos-geracao-diario.csv']}
 
 def sessao():
- s=requests.Session();s.mount('https://',HTTPAdapter(max_retries=Retry(total=3,connect=3,read=1,backoff_factor=1)));return s
+ s=SessaoOficial();s.mount('https://',HTTPAdapter(max_retries=Retry(total=4,connect=3,read=1,status=4,backoff_factor=2,status_forcelist=[429,500,502,503,504,520,521,522,523,524,525,526,527],allowed_methods=['GET','HEAD'])));return s
 
 def adquirir(root):
  root=Path(root);root.mkdir(parents=True,exist_ok=True);out=[]

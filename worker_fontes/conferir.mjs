@@ -6,7 +6,7 @@ const nomes = new Set(['empreendimento-geracao-distribuida.parquet', 'empreendim
 async function consultar(target, method = 'GET') {
   for (let i = 0; i < 20; i++) {
     const r = await fetch(url + '?url=' + encodeURIComponent(target), { method, headers: { authorization: 'Bearer ' + token, 'accept-encoding': 'identity' }, signal: AbortSignal.timeout(60000) });
-    if ([401, 503].includes(r.status) && i < 19) { await r.body?.cancel(); await new Promise(resolve => setTimeout(resolve, 3000)); continue; }
+    if ([401, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524, 525, 526, 527].includes(r.status) && i < 19) { await r.body?.cancel(); await new Promise(resolve => setTimeout(resolve, 3000)); continue; }
     assert.equal(r.status, 200, 'Fonte oficial não respondeu pela ponte: HTTP ' + r.status);
     return r;
   }

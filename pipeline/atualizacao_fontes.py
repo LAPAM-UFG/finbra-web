@@ -16,10 +16,11 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from assistencia_utils import destino_isolado
+from automacao_http import SessaoOficial
 
-HTTP=requests.Session()
+HTTP=SessaoOficial()
 RETRY=Retry(total=4,connect=3,read=3,status=4,backoff_factor=2,backoff_max=60,
-            status_forcelist=[429,500,502,503,504],allowed_methods=['GET','HEAD'],
+            status_forcelist=[429,500,502,503,504,520,521,522,523,524,525,526,527],allowed_methods=['GET','HEAD'],
             respect_retry_after_header=True)
 HTTP.mount('https://',HTTPAdapter(max_retries=RETRY))
 HTTP.mount('http://',HTTPAdapter(max_retries=RETRY))

@@ -81,6 +81,16 @@ anteriores, somente como entradas: tamanho e hash são conferidos antes do uso.
 
 ## Cache e falhas
 
+O GitHub não conseguiu conectar diretamente à ANEEL em executores Linux,
+Windows e macOS. `finbra-fontes` faz somente essa aquisição por HTTPS, com
+execução próxima a São Paulo (`aws:sa-east-1`), autenticação própria e lista
+fechada de dois catálogos e seis arquivos oficiais. A credencial enviada à ponte
+é derivada por HMAC, não é a chave do R2; a ponte só armazena seu hash, não tem
+acesso ao bucket e não recebe credenciais para encaminhar à ANEEL. Ela transmite
+os bytes sem armazenar os arquivos. Os mesmos hashes e totais continuam sendo
+conferidos. No Windows local, sem `FINBRA_FONTE_PROXY_URL`, o acesso é direto.
+`publicar-fontes.yml` publica e testa essa ponte separadamente do site.
+
 `pipeline/automacao/` guarda insumos permitidos por SHA-256 e estados com versão
 condicional. A rota pública `/dados/` só atende `gold/` e `silver/`. Não armazena
 nesse cache os arquivos individuais do BPC, nomes/CPF do CNES ou microdados de
