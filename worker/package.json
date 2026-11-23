@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "deploy": "wrangler deploy",
-    "test": "node --test testes/ia.test.js testes/saneamento.test.js testes/paineis_preparados.test.js",
+    "test": "node --test testes/ia.test.js testes/ia_pausa.test.js testes/saneamento.test.js testes/paineis_preparados.test.js",
     "test:dados": "node --test testes/dados.test.js"
   },
   "devDependencies": {

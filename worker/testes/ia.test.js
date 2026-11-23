@@ -318,7 +318,7 @@ describe('conferência pelo especialista RAIS (pode_conferir)', () => {
   const dados = { get: async () => null };
   const estado = async (host, env) => {
     const url = new URL(`https://${host}/api/ia/estado`);
-    const r = await rotaIa(new Request(url), { DADOS: dados, CONFERENCIA_EMAILS: LISTA, ...env }, url);
+    const r = await rotaIa(new Request(url), { IA_HABILITADA: 'true', DADOS: dados, CONFERENCIA_EMAILS: LISTA, ...env }, url);
     return { status: r.status, corpo: await r.json() };
   };
 
@@ -360,7 +360,7 @@ describe('conferência pelo especialista RAIS (pode_conferir)', () => {
     assert.deepEqual([semLista.status, semLista.corpo.pode_conferir], [401, false]);
     // as outras rotas sem login não mudam
     const url = new URL('https://finbra-web.exemplo.dev/api/ia');
-    const r = await rotaIa(new Request(url, { method: 'POST', body: '{}' }), { DADOS: dados, ACCESS_TEAM: 'x', ACCESS_AUD: 'y' }, url);
+    const r = await rotaIa(new Request(url, { method: 'POST', body: '{}' }), { IA_HABILITADA: 'true', DADOS: dados, ACCESS_TEAM: 'x', ACCESS_AUD: 'y' }, url);
     assert.deepEqual(await r.json(), { erro: 'login necessário', codigo: 'sem_login' });
   });
 });
@@ -479,7 +479,7 @@ describe('modelo por pedido (só Haiku no site)', () => {
       const url = new URL('https://localhost/api/ia');
       const corpo = { idioma: 'pt', paineis: ['trabalho'], mensagens: [{ role: 'user', content: 'Quanto é 1+1?' }], ...(modelo === undefined ? {} : { modelo }) };
       const r = await rotaIa(new Request(url, { method: 'POST', body: JSON.stringify(corpo) }),
-        { ANTHROPIC_API_KEY: 'chave-de-teste', IA_DEV_EMAIL: 'a@b.c', ...env, DADOS: dados }, url);
+        { IA_HABILITADA: 'true', ANTHROPIC_API_KEY: 'chave-de-teste', IA_DEV_EMAIL: 'a@b.c', ...env, DADOS: dados }, url);
       return { status: r.status, corpo: await r.json(), chamadas, dados };
     } finally {
       globalThis.fetch = original;
@@ -530,7 +530,7 @@ describe('modelo por pedido (só Haiku no site)', () => {
 
   test('o estado informa o padrão e o ID configurado', async () => {
     const url = new URL('https://localhost/api/ia/estado');
-    const r = await rotaIa(new Request(url), { DADOS: { get: async () => null }, IA_DEV_EMAIL: 'a@b.c', ANTHROPIC_API_KEY: 'x' }, url);
+    const r = await rotaIa(new Request(url), { IA_HABILITADA: 'true', DADOS: { get: async () => null }, IA_DEV_EMAIL: 'a@b.c', ANTHROPIC_API_KEY: 'x' }, url);
     const corpo = await r.json();
     assert.equal(corpo.modelo_padrao, 'haiku');
     assert.equal(corpo.modelo, 'claude-haiku-5-5');
@@ -587,7 +587,7 @@ describe('assinatura dos blocos de raciocínio', () => {
       const dados = { get: async () => null, put: async (k, v) => void m.set(k, v) };
       const url = new URL('https://localhost/api/ia');
       const r = await rotaIa(new Request(url, { method: 'POST', body: JSON.stringify({ idioma: 'pt', paineis: ['trabalho'], mensagens: historico }) }),
-        { ANTHROPIC_API_KEY: 'x', IA_DEV_EMAIL: 'a@b.c', DADOS: dados }, url);
+        { IA_HABILITADA: 'true', ANTHROPIC_API_KEY: 'x', IA_DEV_EMAIL: 'a@b.c', DADOS: dados }, url);
       return { status: r.status, corpo: await r.json(), chamadas };
     } finally {
       globalThis.fetch = original;

@@ -9,6 +9,8 @@ import { contextoMunic, edicoesCuradas, type Destino } from './munic_painel';
 import { CURADORIA } from './munic_curadoria';
 import { PARAMS_TRABALHO } from './trabalho_comum';
 import { buscaEntreAreas, buscaIaLegada, buscaParaDownloads, type Area } from './navegacao';
+// Pausa temporária: reativar junto de IA_HABILITADA em worker/wrangler.jsonc.
+const IA_HABILITADA = false;
 const Comex = pagina(() => import('./pages/Comex').then(m => ({default:m.Comex})));
 const ComexMapa = pagina(() => import('./pages/MapasIndicadores').then(m => ({default:m.ComexMapa})));
 const Energia = pagina(() => import('./pages/Energia').then(m => ({default:m.Energia})));
@@ -305,7 +307,7 @@ export function App() {
   };
   const areas: {id: Area; nome: string; caminho: string; busca: string}[] = [
     {id:'raiox',nome:t('Raio X','Territory X-ray'),caminho:'/raio-x',busca:paraArea('raiox')},
-    {id:'ia',nome:t('Pergunte aos dados (IA)','Ask the data (AI)'),caminho:'/ia',busca:buscaIa},
+    ...(IA_HABILITADA ? [{id:'ia' as const,nome:t('Pergunte aos dados (IA)','Ask the data (AI)'),caminho:'/ia',busca:buscaIa}] : []),
     {id:'financas',nome:t('Finanças públicas','Public finances'),caminho:'/receitas',busca:paraArea('financas')},
     {id:'trabalho',nome:t('Mercado de trabalho','Labour market'),caminho:'/trabalho',busca:paraArea('trabalho')},
     {id:'saude',nome:t('Saúde','Health'),caminho:'/datasus',busca:paraArea('saude')},
@@ -392,14 +394,14 @@ export function App() {
             </div>
           ))}
           </div>
-          {area === 'ia' && <Suspense fallback={null}><HistoricoIa /></Suspense>}
+          {IA_HABILITADA && area === 'ia' && <Suspense fallback={null}><HistoricoIa /></Suspense>}
         </nav>}
         {/* a chave refaz as páginas ao trocar o idioma: gráficos e textos memorizados são recalculados */}
         <main key={idioma} id="conteudo" tabIndex={-1}>
           {!['ia', 'downloads', 'raiox'].includes(area) && /^\/(receitas|despesas|despesas-orcamentarias|socioeconomico|trabalho|datasus|educacao|saneamento|assistencia|munic|clima|rankings)\/?$/.test(pathname) && <aside className="atalho-comparacoes"><Link to={linkPagina(`${({ financas: '', trabalho: '/trabalho', saude: '/datasus', educacao: '/educacao', munic: '/munic', clima: '/clima', assistencia: '/assistencia', saneamento: '/saneamento', agropecuaria: '/agropecuaria', comex: '/comex', energia: '/energia', internet: '/internet', seguranca: '/seguranca', mobilidade: '/mobilidade', ia: '', downloads: '', raiox: '' })[area]}/comparar`)}>{t('Comparar com regiões e acompanhar no tempo →', 'Compare with regions and track changes over time →')}</Link><span>{t('Taxas, proporções e valores por habitante; totais nas tabelas originais.', 'Rates, shares and values per inhabitant; totals in the original tables.')}</span></aside>}
           <Suspense fallback={<p className="carregando" role="status">{t('Abrindo o painel…', 'Opening the dashboard…')}</p>}><ProvedorDados>
             <Routes>
-              <Route path="/" element={<Navigate to={{ pathname: search ? '/ia' : '/raio-x', search: buscaIaLegada(search), hash }} replace />} />
+              <Route path="/" element={<Navigate to={{ pathname: IA_HABILITADA && search ? '/ia' : '/raio-x', search: IA_HABILITADA ? buscaIaLegada(search) : buscaEntreAreas(search, 'ia', 'raiox'), hash }} replace />} />
               <Route path="/raio-x" element={<RaioX />} />
               <Route path="/receitas" element={<ReceitasVisaoGeral />} />
               <Route path="/receitas/evolucao" element={<ReceitasEvolucao />} />
@@ -420,7 +422,7 @@ export function App() {
               <Route path="/assistencia/comparar" element={<Comparacoes area="assistencia" />} />
               <Route path="/munic/comparar" element={<Comparacoes area="gestao" />} />
               <Route path="/clima/comparar" element={<Comparacoes area="clima" />} />
-              <Route path="/ia" element={<Ia />} />
+              <Route path="/ia" element={IA_HABILITADA ? <Ia /> : <Navigate to={{ pathname: '/raio-x', search: buscaEntreAreas(search, 'ia', 'raiox') }} replace />} />
               <Route path="/lrf" element={<LrfIndicadores />} />
               <Route path="/lrf/demonstrativos" element={<LrfDemonstrativos />} />
               <Route path="/educacao" element={<EducacaoPainel />} />
@@ -472,7 +474,7 @@ export function App() {
               <Route path="/trabalho/remuneracao" element={<TrabalhoRemuneracao />} />
               <Route path="/trabalho/estabelecimentos" element={<TrabalhoEstabelecimentos />} />
               <Route path="/trabalho/metodologia" element={<TrabalhoMetodologia />} />
-              <Route path="/trabalho/ia" element={<Navigate to={{ pathname: '/ia', search: buscaIaLegada(search, 'trabalho'), hash }} replace />} />
+              <Route path="/trabalho/ia" element={<Navigate to={{ pathname: IA_HABILITADA ? '/ia' : '/trabalho', search: IA_HABILITADA ? buscaIaLegada(search, 'trabalho') : buscaEntreAreas(search, 'trabalho', 'trabalho'), hash }} replace />} />
               <Route path="/datasus" element={<SaudeVisaoGeral />} />
               <Route path="/datasus/mapa" element={<SaudeMapa />} />
               <Route path="/datasus/evolucao" element={<SaudeEvolucao />} />

@@ -436,6 +436,9 @@ export function validar(mensagens) {
 // ---------------- rotas ----------------
 
 export async function rotaIa(request, env, url) {
+  // Exige reativação explícita, inclusive para abas antigas e chamadas diretas.
+  // Antes do login, leitura do histórico, contagem de uso e chamada à Anthropic.
+  if (env.IA_HABILITADA !== 'true') return erro('A IA está temporariamente desativada. Os painéis e downloads continuam disponíveis.', 503, 'ia_desativada', { configurada: false, pode_conferir: false });
   const { email, motivo, emailNegado } = await acesso(request, env);
   // depois do login do Access, volta para a página de onde a pessoa saiu (com território, ano e painéis)
   if (url.pathname === '/api/ia/entrar' && (email || motivo === 'nao_autorizado')) {
