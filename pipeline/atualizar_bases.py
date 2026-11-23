@@ -186,7 +186,7 @@ def executar(root,fontes,publicar=False,stata=None,rscript=None,caches=(),base_e
         import sys
         subprocess.run([sys.executable,str(REPO/'pipeline/munic.py'),'--anos',*map(str,sorted({x['ano'] for x in source_report['gestao']})),'--incremental'],env=env,check=True);changes.append('gestao')
     if 'clima' in fontes:
-        found=clima_disponivel();source_report['clima']=found
+        found=clima_disponivel(m['fontes']['clima']['ate']);source_report['clima']=found
         if found['ate']>m['fontes']['clima']['ate']:
             malha=root/'malha/BR_Municipios_2022.zip';baixar('https://geoftp.ibge.gov.br/organizacao_do_territorio/malhas_territoriais/malhas_municipais/municipio_2022/Brasil/BR/BR_Municipios_2022.zip',malha)
             old_month=m['fontes']['clima']['ate'];year,month=divmod(old_month,100);desde=(year+1)*100+1 if month==12 else old_month+1

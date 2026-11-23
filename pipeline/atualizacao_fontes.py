@@ -13,12 +13,21 @@ from datetime import date,datetime,timezone
 from pathlib import Path
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from assistencia_utils import destino_isolado
+
+HTTP=requests.Session()
+RETRY=Retry(total=4,connect=3,read=3,status=4,backoff_factor=2,backoff_max=60,
+            status_forcelist=[429,500,502,503,504],allowed_methods=['GET','HEAD'],
+            respect_retry_after_header=True)
+HTTP.mount('https://',HTTPAdapter(max_retries=RETRY))
+HTTP.mount('http://',HTTPAdapter(max_retries=RETRY))
 
 
 def baixar(url,path):
     path=Path(path);path.parent.mkdir(parents=True,exist_ok=True);tmp=path.with_name(path.name+'.parte')
-    with requests.get(url,headers={'Accept-Encoding':'identity'},stream=True,timeout=(20,180)) as r:
+    with HTTP.get(url,headers={'Accept-Encoding':'identity'},stream=True,timeout=(20,180)) as r:
         r.raise_for_status()
         with tmp.open('wb') as f:
             for chunk in r.iter_content(1024*1024):f.write(chunk)
@@ -76,7 +85,7 @@ def gestao_disponivel(pesquisa,ano=None):
         prefix='Perfil_Municipios' if pesquisa=='munic' else 'Perfil_Estados'
         name=f'Base_MUNIC_{year}.xlsx' if pesquisa=='munic' else f'Base_Estadic_{year}.xlsx'
         url=f'https://ftp.ibge.gov.br/{prefix}/{year}/'+('Base_de_Dados/' if pesquisa=='munic' else '')+name
-        r=requests.head(url,timeout=(15,30))
+        r=HTTP.head(url,timeout=(15,30))
         if r.status_code==200:return year,url
         if r.status_code not in [403,404]:r.raise_for_status()
     raise ValueError('edição oficial não localizada: '+pesquisa)
@@ -90,12 +99,14 @@ def baixar_gestao(raiz):
     return out
 
 
-def clima_disponivel():
+def clima_disponivel(ultimo_confirmado=None):
     url='https://cds.climate.copernicus.eu/api/catalogue/v1/collections/reanalysis-era5-land-monthly-means'
-    r=requests.get(url,timeout=(20,60));r.raise_for_status();catalog=r.json();end=catalog['extent']['temporal']['interval'][0][1];month=int(end[:4])*100+int(end[5:7])
+    r=HTTP.get(url,timeout=(20,60));r.raise_for_status();catalog=r.json();end=catalog['extent']['temporal']['interval'][0][1];month=int(end[:4])*100+int(end[5:7])
     for candidate in reversed(anterior(month,3)):
+        if ultimo_confirmado is not None and candidate<=ultimo_confirmado:
+            return dict(ate=ultimo_confirmado,era5_atualizado=catalog.get('updated'),sem_novo_mes=True)
         y,m=divmod(candidate,100);rain=f'https://data.chc.ucsb.edu/products/CHIRPS/v3.0/monthly/latam/tifs/chirps-v3.0.{y}.{m:02}.tif'
-        with requests.get(rain,headers={'Range':'bytes=0-3'},stream=True,timeout=(20,60)) as h:
+        with HTTP.get(rain,headers={'Range':'bytes=0-3'},stream=True,timeout=(20,60)) as h:
             if h.status_code==404:continue
             h.raise_for_status();magic=next(h.iter_content(4),b'')
             if magic not in [b'II*\x00',b'MM\x00*',b'II+\x00',b'MM\x00+']:raise ValueError('CHIRPS não entregou TIFF')

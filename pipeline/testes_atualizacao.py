@@ -40,6 +40,33 @@ class R2:
 
 
 class Atualizacao(unittest.TestCase):
+    def test_mes_clima_confirmado_nao_repete_probe_do_tiff_publicado(self):
+        from requests import Response
+        catalog=Response();catalog.status_code=200;catalog._content=b'{"extent":{"temporal":{"interval":[[null,"2026-10-31"]]}}}'
+        with patch('atualizacao_fontes.HTTP.get',return_value=catalog) as get:
+            result=clima_disponivel(202610)
+            self.assertEqual(result['ate'],202610);self.assertTrue(result['sem_novo_mes']);self.assertEqual(get.call_count,1)
+
+    def test_fonte_repetida_apos_429_sem_pular_competencia(self):
+        from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
+        from threading import Thread
+        from atualizacao_fontes import HTTP
+        calls=[]
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self,*args):pass
+            def do_GET(self):
+                calls.append(self.path)
+                self.send_response(429 if len(calls)==1 else 206)
+                self.send_header('Retry-After','0');self.end_headers()
+                self.wfile.write(b'aguarde' if len(calls)==1 else b'II*\x00')
+        server=ThreadingHTTPServer(('127.0.0.1',0),Handler)
+        thread=Thread(target=lambda:server.serve_forever(poll_interval=.01),daemon=True);thread.start()
+        try:
+            with HTTP.get(f'http://127.0.0.1:{server.server_port}/202610.tif',timeout=5) as response:
+                self.assertEqual(response.status_code,206);self.assertEqual(response.content,b'II*\x00')
+            self.assertEqual(calls,['/202610.tif','/202610.tif'])
+        finally:server.shutdown();thread.join();server.server_close()
+
     def test_renomeacao_oficial_preserva_valores_e_rejeita_novas_associacoes(self):
         import copy
         from atualizacao_derivados import reconciliar_geografia
@@ -187,14 +214,14 @@ class Atualizacao(unittest.TestCase):
     def test_fonte_gestao_erro_de_servidor_nao_vira_edicao_anterior(self):
         from requests import Response,HTTPError
         response=Response();response.status_code=503
-        with patch('atualizacao_fontes.requests.head',return_value=response):
+        with patch('atualizacao_fontes.HTTP.head',return_value=response):
             with self.assertRaises(HTTPError):gestao_disponivel('munic',2026)
 
     def test_chuva_em_erro_nao_e_tratada_como_mes_ainda_nao_publicado(self):
         from requests import Response,HTTPError
         catalog=Response();catalog.status_code=200;catalog._content=b'{"extent":{"temporal":{"interval":[[null,"2026-10-31"]]}}}'
         failed=Response();failed.status_code=503;failed._content_consumed=True
-        with patch('atualizacao_fontes.requests.get',side_effect=[catalog,failed]):
+        with patch('atualizacao_fontes.HTTP.get',side_effect=[catalog,failed]):
             with self.assertRaises(HTTPError):clima_disponivel()
 
 
