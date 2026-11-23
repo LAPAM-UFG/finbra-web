@@ -3,10 +3,83 @@ import { test } from 'node:test';
 import { apresentacaoRaio, criarLeitorRaio, grupoOrigemRaio, linkComparacaoRaio, pontoDoAnoRaio, pontoEfetivoRaio, serieExtraRaio, type IndicadorRaio, type PontoRaio } from '../src/raio_x';
 import type { GeografiaComparacao, ObjetoComparacao, SerieComparacao } from '../src/comparacoes_dados';
 import { buscaEntreAreas, buscaParaDownloads } from '../src/navegacao';
+import { apresentacaoDestaque, gruposReferenciaDestaques, pontoExatoDestaque, referenciaDestaque, referenciasDestaques } from '../src/raio_x_destaques';
+import type { CatalogoRaio, MetaRaio, RetratoRaio } from '../src/raio_x';
 
 const indicador:IndicadorRaio={id:'empregos',nome:'Vínculos por mil habitantes',nome_en:'Jobs per thousand residents',nome_original:'Vínculos formais',unidade_original:'vínculos',descricao:'Empregos',descricao_en:'Jobs',tema:'Trabalho',tema_en:'Jobs',unidade:'vínculos por mil',unidade_en:'jobs per thousand',formato:'numero',periodos:[2024,2025],frequencia:'anual',metodo_referencia:'razao',normalizacao:'Valor observado dividido pela população residente',normalizacao_en:'Observed value divided by population',fator:1000,ranking:true,fonte_nome:'RAIS',fontes:[],area:'trabalho',rede:'todas',catalogo:'trabalho_todas',indice:0};
 const serie:SerieComparacao={v:[2,0],n:[2,0],d:[1,1],c:[0,1],q:[1,1],r:[2,0]};
 const geo={versao:1,municipios:[],governos:[['E:52','Goiás','GO']],territorios:{BR:{nome:'Brasil',nivel:'BR',uf:null,cod:'BR'},GO:{nome:'GO',nivel:'UF',uf:'GO',cod:'GO'},'5208905':{nome:'Goiás',nivel:'M',uf:'GO',cod:5208905}}} as GeografiaComparacao;
+
+test('referências dos cartões não duplicam Brasil nem Brasília/DF', () => {
+  assert.deepEqual(gruposReferenciaDestaques(geo, '5208905'), ['GO', 'BR']);
+  assert.deepEqual(gruposReferenciaDestaques(geo, 'GO'), ['BR']);
+  assert.deepEqual(gruposReferenciaDestaques(geo, 'BR'), []);
+  assert.deepEqual(gruposReferenciaDestaques(geo, '5300108'), ['BR']);
+});
+
+test('referência mensal exige a competência exata, preservando zero e ausência', () => {
+  const s = { periodos: [202501, 202503], serie: { v: [0, 30], n: [0, 3], d: [100, 100], c: [1, 0], q: [1, 1], r: [0, 3] } };
+  assert.equal(pontoExatoDestaque(s, 202502), null);
+  assert.deepEqual(pontoExatoDestaque(s, 202501), [202501, 0, 0, 100, 1, 1, 0]);
+});
+
+test('cartão mantém total local, mas a referência usa a taxa regional e não seu total', () => {
+  const local: PontoRaio = [2025, 20, 200, 10000, 0, 1, 200];
+  const regional: PontoRaio = [2025, 40, 400000, 10000000, 0, 100, 400000];
+  const item = { i: indicador, k: 0, comparavel: false };
+  assert.equal(apresentacaoDestaque(item, local, '5208905', false).valor, 200);
+  assert.equal(referenciaDestaque(indicador, local, regional, false).valor, 40);
+  assert.equal(referenciaDestaque(indicador, local, [2024, ...regional.slice(1)] as PontoRaio, false).valor, null);
+});
+
+test('novo cartão monetário por habitante não recupera um total na unidade errada', () => {
+  const i = { ...indicador, id: 'fin_receita_liquida', formato: 'moeda', fator: 1, unidade: 'R$ por habitante', unidade_original: 'R$' };
+  const a = apresentacaoDestaque({ i, k: 0, comparavel: true }, [2025, 3000, 30000000, 10000, 0, 1, 30000000], '5208905', false);
+  assert.equal(a.valor, 3000);
+  assert.equal(a.unidade, 'R$ por habitante');
+});
+
+test('população usa participação no total regional, com denominador zero explícito', () => {
+  const i = { ...indicador, id: 'rx_populacao', catalogo: 'referencias' };
+  const local: PontoRaio = [2025, 20, 20, 1, 0, 1, null];
+  assert.equal(referenciaDestaque(i, local, [2025, 1000, 1000, 1, 0, 1, null], false).valor, 2);
+  assert.equal(referenciaDestaque(i, local, [2025, 1000, 1000, 1, 0, 1, null], false).texto, '2,0%');
+  assert.equal(referenciaDestaque(i, local, [2025, 12000, 12000, 1, 0, 1, null], false).texto, '0,17%');
+  assert.equal(referenciaDestaque(i, local, [2025, 0, 0, 1, 1, 1, null], false).valor, null);
+  assert.equal(referenciaDestaque(i, local, [2024, 1000, 1000, 1, 0, 1, null], false).valor, null);
+});
+
+test('ressalvas de referências também exigem opção; cobertura incompleta permanece visível', () => {
+  const p: PontoRaio = [2025, 30, 30, 1000, 18, 1, 30, [40, 40, 1000, 18, 1, 40]];
+  assert.equal(referenciaDestaque(indicador, p, p, false).valor, null);
+  assert.equal(referenciaDestaque(indicador, p, p, true).valor, 40);
+  assert.match(referenciaDestaque(indicador, p, [2025, 30, 30, 1000, 16, 1, 30], true).condicao, /incompleta/);
+});
+
+test('usa retratos prontos e só lê série histórica quando as datas são diferentes', async () => {
+  const local: RetratoRaio = { versao: 1, grupo: '5208905', linhas: [[2024, 2, 20, 10000, 0, 1, 20]], referencias: {} };
+  const reads: string[] = [];
+  const result = await referenciasDestaques({} as MetaRaio, {} as CatalogoRaio, geo, local,
+    [{ i: indicador, k: 0, comparavel: false }], {
+      retrato: async (_m, _g, grupo) => { reads.push(`retrato:${grupo}`); return { ...local, grupo, linhas: [[grupo === 'GO' ? 2024 : 2025, 8, 80, 10000, 0, 1, 80]] }; },
+      serie: async (_c, _g, grupo) => { reads.push(`serie:${grupo}`); return { periodos: [2024, 2025], serie }; },
+    });
+  assert.deepEqual(reads.sort(), ['retrato:BR', 'retrato:GO', 'serie:BR']);
+  assert.equal(result.pontos.GO['trabalho_todas:empregos']?.[1], 8);
+  assert.equal(result.pontos.BR['trabalho_todas:empregos']?.[0], 2024);
+  assert.equal(result.pontos.BR['trabalho_todas:empregos']?.[1], 2);
+});
+
+test('falha da referência estadual não remove a nacional nem dispara leitura em massa', async () => {
+  const local: RetratoRaio = { versao: 1, grupo: '5208905', linhas: [[2025, 2, 20, 10000, 0, 1, 20]], referencias: {} };
+  const result = await referenciasDestaques({} as MetaRaio, {} as CatalogoRaio, geo, local,
+    [{ i: indicador, k: 0, comparavel: false }], {
+      retrato: async (_m, _g, grupo) => { if (grupo === 'GO') throw Error('rede'); return { ...local, grupo }; },
+      serie: async () => { throw Error('não deve ler séries'); },
+    });
+  assert.deepEqual(result.falhas, ['GO']);
+  assert.equal(result.pontos.BR['trabalho_todas:empregos']?.[1], 2);
+});
 
 test('ano solicitado não usa outra data; meses são observações, não somas',()=>{
   assert.deepEqual(pontoDoAnoRaio(indicador,serie,2023),[2023,null,null,null,5,0,null]);

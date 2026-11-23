@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useId, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { BuscaRaioX } from '../components/BuscaRaioX';
+import { DestaquesRaioX } from '../components/DestaquesRaioX';
 import { Estado } from '../components/Kpi';
 import { useSocial } from '../assistencia_dados';
 import { periodoComparacao, textoComparacao } from '../comparacoes_apresentacao';
@@ -11,7 +12,6 @@ import { exportar, type Tabela } from '../exportar';
 import '../raio_x.css';
 
 const DetalheRaioX=lazy(()=>import('../components/DetalheRaioX'));
-const destaques=['referencias:rx_populacao','referencias:rx_pib_hab','trabalho_todas:empregos','trabalho_todas:rem_media_real','saude_todas:mortalidade_infantil','educacao_todas:mat_total','saneamento_todas:agua_cobertura_pct','assistencia_todas:cad_qtd_familias'];
 
 export function RaioX() {
   const [sp,setSp]=useSearchParams();
@@ -68,9 +68,7 @@ function CorpoRaioX({m,c,g,sp,setSp}:{m:Awaited<ReturnType<typeof leitorRaio.met
     {anoDados.carregando&&<Estado carregando/>}{anoDados.erro&&<Estado erro={anoDados.erro} mensagem={t('Não foi possível carregar o ano escolhido.','Could not load the selected year.')} tentarNovamente={anoDados.recarregar}/>}
     {!!Object.keys(erros).length&&<div role="status" className="rx-nota">{t('Algumas séries não carregaram. As áreas disponíveis continuam visíveis; os downloads aguardam uma leitura completa.','Some series did not load. Available areas remain visible; downloads wait for a complete read.')} <button className="botao-leve" onClick={anoDados.recarregar}>{t('Tentar novamente','Retry')}</button></div>}
     {r&&<>
-      <section className="rx-destaques" aria-label={t('Números em destaque','Key figures')}>
-        {destaques.map(key=>{const x=linhas.find(x=>chaveRaio(x.i)===key.replace('educacao_todas:',`educacao_${rede}:`));if(!x)return null;return <button type="button" key={key} className="rx-destaque" onClick={()=>focar(x.i)}><span>{x.a.nome}</span><strong>{x.a.texto}</strong><small>{x.a.unidade} · {x.a.ponto?periodoComparacao(x.a.ponto[0]):'—'}</small><small className="rx-status">{x.a.condicao}</small></button>;})}
-      </section>
+      <DestaquesRaioX m={m} c={c} g={g} r={r} rede={rede} ressalvas={ressalvas} focar={focar}/>
       <section className="rx-explorar" id="rx-indicadores">
         <div className="rx-secao-titulo"><div><h3>{t('Explore todos os indicadores','Explore all indicators')}</h3><p>{comValor.toLocaleString(local())} {t('com valor; os demais mantêm a condição do dado.','with a value; remaining indicators keep their data status.')}</p></div><div className="rx-acoes"><button className="botao-leve" onClick={()=>{setRecolhidas([]);setAbertas(AREAS_RAIO.map(a=>a.id));}}>{t('Abrir áreas','Expand areas')}</button><button className="botao-leve" onClick={()=>{setRecolhidas(AREAS_RAIO.map(a=>a.id));setAbertas([]);mudar({ind:null});}}>{t('Recolher','Collapse')}</button></div></div>
         <div className="rx-buscar-indicadores"><div className="rx-campo"><label htmlFor={`${id}-busca`}>{t('Buscar indicador','Find an indicator')}</label><input id={`${id}-busca`} type="search" value={busca} placeholder={t('Ex.: salário, vacinação, Bolsa Família','E.g. wages, vaccination, Bolsa Família')} onChange={e=>mudar({busca:e.target.value||null,ind:null},true)}/></div><div className="rx-campo"><label htmlFor={`${id}-tema`}>{t('Tema','Topic')}</label><select id={`${id}-tema`} value={tema} onChange={e=>mudar({tema:e.target.value==='todos'?null:e.target.value,ind:null})}><option value="todos">{t('Todos os temas','All topics')}</option>{AREAS_RAIO.map(a=><option key={a.id} value={a.id}>{t(a.nome,a.en)}</option>)}</select></div><div className="rx-campo"><label htmlFor={`${id}-rede`}>{t('Rede de ensino','School network')}</label><select id={`${id}-rede`} value={rede} onChange={e=>mudar({rede:e.target.value,ind:null})}>{REDES_RAIO.map(r=><option key={r} value={r}>{nomeRedeRaio(r)}</option>)}</select></div></div>
