@@ -1,0 +1,17 @@
+name: Conferir acesso dos executores às fontes oficiais
+on: workflow_dispatch
+permissions:
+  contents: read
+jobs:
+  conectividade:
+    strategy:
+      fail-fast: false
+      matrix:
+        sistema: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, macos-latest]
+    runs-on: ${{ matrix.sistema }}
+    timeout-minutes: 3
+    steps:
+      - name: Conferir a API pública da ANEEL com TLS
+        shell: bash
+        run: |
+          curl --fail --location --silent --show-error --connect-timeout 10 --max-time 25 --output "$RUNNER_TEMP/aneel.json" --write-out 'HTTP %{http_code}; tempo %{time_total}s\n' 'https://dadosabertos.aneel.gov.br/api/3/action/package_show?id=relacao-de-empreendimentos-de-geracao-distribuida'
