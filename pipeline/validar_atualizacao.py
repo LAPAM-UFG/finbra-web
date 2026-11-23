@@ -4,11 +4,44 @@ import gzip
 import hashlib
 import json
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
 
 import duckdb
 from atualizacao_artefatos import Snapshot,referencias,sha
 from comparacoes_base import compatibilidade_global
 from publicacao_lote import PONTEIROS,MAPAS,TEMAS
+
+
+def conferir_referencias(base,snap,pending,catalogos,geografia,workers=4):
+    """Confere em lotes sem baixar duas vezes a mesma referência."""
+    base=Path(base).resolve();checked={}
+    def conferir(ref):
+        key=ref['caminho'];local=(base/key).resolve()
+        if not local.is_relative_to(base):raise ValueError('referência fora da candidata: '+key)
+        if local.is_file():
+            if local.stat().st_size!=ref['bytes']or sha(local)!=ref['sha256']:raise ValueError('candidato corrompido: '+key)
+            path=local
+        else:path=snap.obter(key,ref)
+        children=[]
+        if key.endswith(('.json','.json.gz')):
+            raw=path.read_bytes();obj=json.loads(gzip.decompress(raw)if key.endswith('.gz')else raw)
+            if key in catalogos and obj['geografia']!=geografia:raise ValueError('catálogo com geografia divergente: '+key)
+            children=list(referencias(obj))
+        return ref,children
+    with ThreadPoolExecutor(max_workers=workers)as pool:
+        while pending:
+            batch={}
+            for ref in pending:
+                key=ref['caminho'];value=(ref['bytes'],ref['sha256'])
+                known=checked.get(key)or((batch[key]['bytes'],batch[key]['sha256'])if key in batch else None)
+                if known is not None:
+                    if known!=value:raise ValueError('referências incompatíveis: '+key)
+                else:batch[key]=ref
+            pending=[]
+            for ref,children in pool.map(conferir,batch.values()):
+                checked[ref['caminho']]=(ref['bytes'],ref['sha256']);pending.extend(children)
+                if len(checked)%100==0:print(f'Integridade: {len(checked)} arquivos conferidos',flush=True)
+    return checked
 
 
 def gerar(base,publicado,trabalho,caches=()):
@@ -48,22 +81,7 @@ def gerar(base,publicado,trabalho,caches=()):
     for entry in m.get('aberturas',{}).values():
         for key,size,h in [('arquivo','bytes','sha256'),('indice','indice_bytes','indice_sha256')]:
             if isinstance(entry.get(key),str):pending.append(dict(caminho=entry[key],bytes=entry[size],sha256=entry[h]))
-    while pending:
-        ref=pending.pop();key=ref['caminho']
-        if key in checked:
-            if checked[key]!=(ref['bytes'],ref['sha256']):raise ValueError('referências incompatíveis: '+key)
-            continue
-        local=base/key
-        if local.is_file():
-            if local.stat().st_size!=ref['bytes'] or sha(local)!=ref['sha256']:raise ValueError('candidato corrompido: '+key)
-            path=local
-        else:path=snap.obter(key,ref)
-        checked[key]=(ref['bytes'],ref['sha256'])
-        if len(checked)%100==0:print(f'Integridade: {len(checked)} arquivos conferidos',flush=True)
-        if key.endswith(('.json','.json.gz')):
-            raw=path.read_bytes();obj=json.loads(gzip.decompress(raw) if key.endswith('.gz') else raw)
-            if key in catalogos and obj['geografia']!=cmp['geografia']:raise ValueError('catálogo com geografia divergente: '+key)
-            pending.extend(referencias(obj))
+    checked=conferir_referencias(base,snap,pending,catalogos,cmp['geografia'])
     con=duckdb.connect()
     try:
         latest=con.execute('SELECT max(competencia) FROM read_parquet(?)',[str(base/'gold/trabalho/caged.parquet')]).fetchall()[0][0]

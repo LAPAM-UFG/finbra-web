@@ -153,5 +153,22 @@ class Automacao(unittest.TestCase):
             self.assertFalse(list(ctx.fontes.rglob('2026*.json')))
             self.assertTrue(all(p.exists()for p in ctx.insumos))
 
+    def test_integridade_em_lotes_recusa_corrupcao_e_referencias_contraditorias(self):
+        from atualizacao_artefatos import Snapshot
+        from validar_atualizacao import conferir_referencias
+        with tempfile.TemporaryDirectory()as d:
+            root=Path(d);(root/'gold').mkdir();leaf=root/'gold/dados.parquet';leaf.write_bytes(b'dados corretos')
+            ref=dict(caminho='gold/dados.parquet',bytes=leaf.stat().st_size,sha256=hashlib.sha256(leaf.read_bytes()).hexdigest())
+            meta=root/'gold/indice.json';meta.write_text(json.dumps(dict(arquivo=ref,repetida=ref)))
+            first=dict(caminho='gold/indice.json',bytes=meta.stat().st_size,sha256=hashlib.sha256(meta.read_bytes()).hexdigest())
+            snapshot=Snapshot(root/'cache')
+            self.assertEqual(len(conferir_referencias(root,snapshot,[first],set(),None)),2)
+            leaf.write_bytes(b'dados alterados')
+            with self.assertRaisesRegex(ValueError,'corrompido'):conferir_referencias(root,snapshot,[first],set(),None)
+            leaf.write_bytes(b'dados corretos')
+            meta.write_text(json.dumps(dict(arquivo=ref,repetida={**ref,'sha256':'f'*64})))
+            first.update(bytes=meta.stat().st_size,sha256=hashlib.sha256(meta.read_bytes()).hexdigest())
+            with self.assertRaisesRegex(ValueError,'incompatíveis'):conferir_referencias(root,snapshot,[first],set(),None)
+
 
 if __name__=='__main__':unittest.main()
