@@ -20,6 +20,13 @@ def preservar_edicao(fontes,sm,anos,idx,pos,a,c):
  if not p.exists():return
  m=json.loads(p.read_bytes())
  if m['datas']!={'mmgd':sm['mmgd_data'],'siga':sm['siga_data']}:return
+ if m.get('origens'):
+  dm=json.loads((fontes/'gold/downloads/manifesto.json').read_bytes())
+  principal=next(r for r in dm['arquivos']if r['id']=='painel_brasil_parquet')
+  inputs={'aneel':sha(fontes/'energia_normalizada.json'),'populacao':principal['sha256'],'populacao_2026':sha(fontes/'populacao_2026_sidra.json')}
+  # A mesma data pode conter uma retificação da ANEEL ou população nova.
+  # O cotejo de reprodução só vale quando as versões das três entradas coincidem.
+  if m['origens']!=inputs:return
  assert m['anos']==anos
  def ler(ref):
   raw=(fontes/ref['caminho']).read_bytes();assert len(raw)==ref['bytes']and hashlib.sha256(raw).hexdigest()==ref['sha256']

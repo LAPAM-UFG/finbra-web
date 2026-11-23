@@ -170,5 +170,30 @@ class Automacao(unittest.TestCase):
             first.update(bytes=meta.stat().st_size,sha256=hashlib.sha256(meta.read_bytes()).hexdigest())
             with self.assertRaisesRegex(ValueError,'incompatíveis'):conferir_referencias(root,snapshot,[first],set(),None)
 
+    def test_energia_recalcula_populacao_nova_sem_confundir_com_reproducao_da_mesma_edicao(self):
+        import gzip
+        import numpy as np
+        from energia import preservar_edicao
+        from atualizacao_artefatos import sha
+        with tempfile.TemporaryDirectory()as d:
+            root=Path(d);(root/'gold/energia').mkdir(parents=True);(root/'gold/downloads').mkdir()
+            (root/'energia_normalizada.json').write_bytes(b'fonte');(root/'populacao_2026_sidra.json').write_bytes(b'populacao nova')
+            (root/'gold/downloads/manifesto.json').write_text(json.dumps(dict(arquivos=[dict(id='painel_brasil_parquet',sha256='principal')])) )
+            def ref(name,raw):
+                p=root/name;p.write_bytes(raw)
+                return dict(caminho=name,bytes=len(raw),sha256=sha(p))
+            cat=ref('catalogo.json.gz',gzip.compress(json.dumps(dict(indicadores=[dict(id='ene_populacao')])).encode()))
+            body=json.dumps(dict(grupo='1',anos=[2026],valores=[[10.]],condicoes=[[0]])).encode()
+            series=ref('serie.ndjson',body)
+            index=ref('indice.json',json.dumps(dict(arquivo=series,grupos={'1':[0,len(body),series['sha256']]})).encode())
+            origens=dict(aneel=sha(root/'energia_normalizada.json'),populacao='principal',populacao_2026='populacao anterior')
+            meta=dict(datas=dict(mmgd='2026-11-22',siga='2026-11-22'),origens=origens,anos=[2026],catalogo=cat,indices={'BR':index})
+            path=root/'gold/energia/manifesto.json';path.write_text(json.dumps(meta))
+            values=np.array([[[11.]]]);flags=np.array([[[0]]],dtype='int8');sm=dict(mmgd_data='2026-11-22',siga_data='2026-11-22')
+            preservar_edicao(root,sm,[2026],{'ene_populacao':0},{'1':0},values,flags)
+            self.assertEqual(values.item(),11)
+            meta['origens']['populacao_2026']=sha(root/'populacao_2026_sidra.json');path.write_text(json.dumps(meta))
+            with self.assertRaises(AssertionError):preservar_edicao(root,sm,[2026],{'ene_populacao':0},{'1':0},values,flags)
+
 
 if __name__=='__main__':unittest.main()
