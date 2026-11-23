@@ -1,0 +1,8 @@
+{
+  "$schema": "../worker/node_modules/wrangler/config-schema.json",
+  "name": "finbra-fontes",
+  "main": "src/index.mjs",
+  "compatibility_date": "2026-09-01",
+  "placement": { "region": "aws:sa-east-1" },
+  "observability": { "enabled": true }
+}
