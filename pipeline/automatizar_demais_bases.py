@@ -91,7 +91,10 @@ def executar(root,rotinas,publicar=False,stata=None,rscript=None,caches=()):
                 if keys and p.name not in ['vacinacao_catalogo.parquet','fns_composicao.parquet','vacinacao_territorios.parquet','vacinacao.parquet']:perdas(p,target,keys)
         from validar_atualizacao import gerar as validar
         report['cobertura']=cobertura_downloads(base,out,snap,root/'cobertura_downloads')
-        report['validacao']=validar(out,base,root/'validacao',[snap.raiz,*caches]);report['ok']=True
+        # Reusa as entradas já fixadas pelos geradores. O Snapshot confere cada
+        # tamanho e SHA novamente, sem repetir downloads de temas preservados.
+        locais=[p.parent for p in root.rglob('gold')if p.is_dir()]
+        report['validacao']=validar(out,base,root/'validacao',[*locais,snap.raiz,*caches]);report['ok']=True
         states=[(c,c.estado(c.insumos))for c in contexts]
         salvar_json(root/'resultado.json',report)
         if publicar:
