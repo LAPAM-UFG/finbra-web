@@ -28,9 +28,10 @@ const erro = (status, texto) => new Response(texto, { status, headers: { 'cache-
 export async function atender(request, env, buscar = fetch) {
   const url = new URL(request.url);
   if (url.pathname === '/health' && request.method === 'GET') return Response.json({ ok: true, servico: 'fontes-oficiais' }, { headers: { 'cache-control': 'no-store' } });
-  if (!env.FONTE_TOKEN_SHA256) return erro(503, 'Coleta ainda não configurada');
+  const expected = env.FONTE_TOKEN_SHA256?.trim();
+  if (!expected) return erro(503, 'Coleta ainda não configurada');
   const token = request.headers.get('authorization')?.match(/^Bearer ([a-f0-9]{64})$/)?.[1];
-  if (!token || !igual(await sha(token), env.FONTE_TOKEN_SHA256)) return erro(401, 'Não autorizado');
+  if (!token || !igual(await sha(token), expected)) return erro(401, 'Não autorizado');
   if (!['GET', 'HEAD'].includes(request.method)) return erro(405, 'Método não permitido');
   let target = url.searchParams.get('url');
   if (!permitido(target)) return erro(403, 'Fonte não permitida');

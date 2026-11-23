@@ -16,6 +16,10 @@ test('sem autenticação não consulta a fonte', async () => {
   assert.equal((await atender(req(api, { headers: { authorization: 'Bearer ' + 'b'.repeat(64) } }), env, f)).status, 401);
   assert.equal(calls, 0);
 });
+test('a quebra de linha do cadastro do segredo não muda seu hash', async () => {
+  const r = await atender(req(), { FONTE_TOKEN_SHA256: env.FONTE_TOKEN_SHA256 + '\n' }, async () => new Response('{}'));
+  assert.equal(r.status, 200);
+});
 test('não encaminha credenciais e preserva bytes, range e validadores', async () => {
   const response = await atender(req(arquivo, { headers: { range: 'bytes=1-3', cookie: 'privado=1' } }), env, async (url, options) => {
     assert.equal(url, arquivo); assert.equal(options.redirect, 'manual');
