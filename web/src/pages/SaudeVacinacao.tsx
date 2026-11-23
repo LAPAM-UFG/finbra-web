@@ -65,7 +65,7 @@ export function SaudeVacinacao() {
   if (!temDados || !fonte) {
     return (
       <>
-        <h2 className="titulo-pagina">{t('Cobertura vacinal', 'Vaccination coverage')}</h2>
+        <h1 className="titulo-pagina">{t('Cobertura vacinal', 'Vaccination coverage')}</h1>
         <p className="vazio">{t('A cobertura vacinal ainda não foi publicada nesta versão dos dados.', 'Vaccination coverage has not been published in this data version yet.')}</p>
       </>
     );
@@ -131,7 +131,7 @@ export function SaudeVacinacao() {
 
   return (
     <>
-      <h2 className="titulo-pagina">{t('Cobertura vacinal', 'Vaccination coverage')}</h2>
+      <h1 className="titulo-pagina">{t('Cobertura vacinal', 'Vaccination coverage')}</h1>
       <p className="subtitulo">{rotulo} · {ref ?? t('fora da cobertura', 'outside coverage')} · {t('calendário nacional, por município de residência', 'national schedule, by municipality of residence')}{' '}
         <Dica rotulo={t('Fonte', 'Source')}>{t('Ministério da Saúde, PNI / InfoMS (cobertura vacinal por residência). Denominador: nascidos vivos do SINASC. Processamento: LAPAM/UFG.', 'Ministry of Health, PNI / InfoMS (coverage by residence). Denominator: SINASC live births. Processing: LAPAM/UFG.')}</Dica></p>
       <BarraFiltros comUltimo ultimoPadrao anosCobertos={cobertos} />

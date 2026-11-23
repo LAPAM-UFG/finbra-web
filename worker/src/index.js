@@ -5,16 +5,19 @@
  */
 import { rotaIa } from './ia.js';
 import { rotaDados } from './dados.js';
+import { cabecalhosSeguros, paginaSite } from './site.js';
 
 const PREFIXOS_PUBLICOS = /^(silver|gold)\//;
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (url.pathname === '/api/dados' || url.pathname.startsWith('/api/dados/')) return rotaDados(request, env, url, servirDados);
-    if (url.pathname.startsWith('/dados/')) return servirDados(request, env, url);
-    if (url.pathname === '/api/ia' || url.pathname.startsWith('/api/ia/')) return rotaIa(request, env, url);
-    return env.ASSETS.fetch(request);
+    let response;
+    if (url.pathname === '/api/dados' || url.pathname.startsWith('/api/dados/')) response = await rotaDados(request, env, url, servirDados);
+    else if (url.pathname.startsWith('/dados/')) response = await servirDados(request, env, url);
+    else if (url.pathname === '/api/ia' || url.pathname.startsWith('/api/ia/')) response = await rotaIa(request, env, url);
+    else response = await paginaSite(request, env, url);
+    return cabecalhosSeguros(response);
   },
 };
 
@@ -39,7 +42,9 @@ async function servirDados(request, env, url) {
     'Content-Type': tipo(chave),
     // o site pede cada arquivo com /v/<data da atualização>/ no caminho, então pode ficar em cache por bastante tempo;
     // o manifesto é sempre revalidado
-    'Cache-Control': chave.endsWith('manifesto.json') ? 'no-cache' : 'public, max-age=86400',
+    // O prefixo /v/<data>/ não é um arquivo congelado: ainda aponta para a
+    // chave atual do R2. Cache de um ano só para nomes por conteúdo imutáveis.
+    'Cache-Control': chave.endsWith('manifesto.json') ? 'no-cache' : /_[a-f0-9]{16,64}\.(?:json(?:\.gz)?|ndjson|parquet|bin|csv(?:\.zip)?|dta|rds)$/.test(chave) ? 'public, max-age=31536000, immutable' : 'public, max-age=86400',
     // a resposta depende do Range pedido: sem isto o navegador reaproveita do disco um trecho (ex.: bytes 0-16383) guardado
     // para outro intervalo sobreposto e entrega bytes que não são os pedidos (rodapé do Parquet ilegível)
     Vary: 'Range',

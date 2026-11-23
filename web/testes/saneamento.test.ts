@@ -22,7 +22,7 @@ test('código inexistente não vira Brasil nem UF',async()=>{const{leitor}=fixtu
 test('referência não escapa do namespace de saneamento',()=>{assert.throws(()=>validarRefSan({caminho:'gold/../segredo.json',bytes:1,sha256:'a'.repeat(64)}));});
 test('ausência de registro e ano fora da fonte são estados distintos',()=>{const{m}=fixture();assert.equal(linhaSan(m,{grupo:'BR',linhas:[]},2024,0)[7],1);assert.equal(linhaSan(m,{grupo:'BR',linhas:[]},2013,0)[7],5);});
 test('empates mantêm posições competitivas nas duas ordens',()=>{const rows:[number,string,string,number,number][]=[[1,'A','GO',100,0],[2,'B','GO',100,0],[3,'C','GO',90,0]];assert.deepEqual(posicoesSan(rows).map(x=>x.pos),[1,1,3]);assert.deepEqual(posicoesSan(rows,true).map(x=>x.pos),[1,2,2]);});
-test('navegação conserva município e tema nos downloads',()=>{const q=new URLSearchParams(buscaParaDownloads('?uf=GO&ente=5208707&ano=2024','saneamento'));assert.equal(q.get('area'),'saneamento');assert.equal(q.get('cod'),'5208707');assert.equal(new URLSearchParams(buscaEntreAreas('?ente=5208707','saneamento','saude')).get('ente'),'5208707');});
+test('navegação conserva município e tema nos downloads',()=>{const q=new URLSearchParams(buscaParaDownloads('?uf=GO&ente=5208707&ano=2024','saneamento'));assert.equal(q.get('area'),'saneamento');assert.equal(q.get('cod'),'5208707');assert.equal(new URLSearchParams(buscaEntreAreas('?ente=5208707','saneamento','saude')).get('cod'),'5208707');});
 
 test('exportação inclui os anos sem registro, preservando condição',()=>{const{m}=fixture();const rows=linhasCompletasSan(m,{grupo:'BR',linhas:[]});assert.equal(rows.length,2);assert.deepEqual(rows.map(l=>l[7]),[5,1]);});
 

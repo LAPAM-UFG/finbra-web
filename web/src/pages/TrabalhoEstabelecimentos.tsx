@@ -140,12 +140,12 @@ export function TrabalhoEstabelecimentos() {
   });
 
   const titulo = t('Estabelecimentos (RAIS)', 'Establishments (RAIS)');
-  if (indice.carregando) return <><h2 className="titulo-pagina">{titulo}</h2><Estado carregando /></>;
-  if (indice.erro) return <><h2 className="titulo-pagina">{titulo}</h2><Estado erro={indice.erro} tentarNovamente={indice.recarregar} /></>;
+  if (indice.carregando) return <><h1 className="titulo-pagina">{titulo}</h1><Estado carregando /></>;
+  if (indice.erro) return <><h1 className="titulo-pagina">{titulo}</h1><Estado erro={indice.erro} tentarNovamente={indice.recarregar} /></>;
   if (!anos.length) {
     return (
       <>
-        <h2 className="titulo-pagina">{titulo}</h2>
+        <h1 className="titulo-pagina">{titulo}</h1>
         <p className="vazio">{t('Os microdados de estabelecimentos da RAIS não estão publicados nesta versão dos dados (o índice dos microdados não tem rais_estab).', 'RAIS establishment microdata are not published in this version of the data (the microdata index has no rais_estab).')}</p>
       </>
     );
@@ -153,7 +153,7 @@ export function TrabalhoEstabelecimentos() {
   const aguardando = !!ano && !semArquivo && !liberado;
   return (
     <>
-      <h2 className="titulo-pagina">{titulo}</h2>
+      <h1 className="titulo-pagina">{titulo}</h1>
       <p className="subtitulo">{rotulo} · RAIS {ano} · {t('estabelecimentos declarantes', 'declaring establishments')} <Dica rotulo={t('Fonte', 'Source')}>{fonteEstab()}</Dica></p>
       <BarraFiltros />
       {f.anoForaDaBase && <p className="aviso" role="status">{t(`A RAIS de ${f.anoForaDaBase} não tem estabelecimentos publicados; a página usa ${ano}.`, `RAIS ${f.anoForaDaBase} has no published establishments; the page uses ${ano}.`)}</p>}

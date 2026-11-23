@@ -1,3 +1,5 @@
+import { ordinal } from '../format';
+import { SeletorLugar, lugaresCadastro } from '../components/SeletorLugar';
 import { useId, useMemo, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import '../assistencia.css';
@@ -18,7 +20,7 @@ import { indicadorHistoricoCadunico, linkHistoricoCadunico } from '../cadunico_h
 /* ============================== básicos ============================== */
 
 const PATH = {
-  painel: '/assistencia', evolucao: '/assistencia/evolucao', rankings: '/assistencia/rankings',
+  painel: '/assistencia', evolucao: '/assistencia/serie', rankings: '/assistencia/rankings',
   tabela: '/assistencia/tabela', metodologia: '/assistencia/metodologia',
   pib: '/assistencia/comparacoes-pagamentos',
 };
@@ -195,75 +197,15 @@ function mesesUniao(meta: MetaSocial): [number, FonteSocial[]][] {
   return [...m.entries()].sort((a, b) => b[0] - a[0]);
 }
 
-function BuscaMunicipio({ ctx, onEscolher }: { ctx: Ctx; onEscolher: (x: TerritorioSocial) => void }) {
-  const id = useId();
-  const [texto, setTexto] = useState<string | null>(null);
-  const [aberto, setAberto] = useState(false);
-  const [ativo, setAtivo] = useState(0);
-  const { meta, f } = ctx;
-  const indice = useMemo(() => meta.territorios.filter(x => x.nivel === 'M' && x.cod_ibge !== 5300108).map(x => ({ x, n: norm(x.nome) })), [meta]);
-  const atualNome = f.terr.nivel === 'M' ? f.terr.nome : '';
-  const q = norm((texto ?? '').trim());
-  const opcoes = useMemo(() => {
-    if (!aberto || texto === null || q.length < (f.ufSel ? 1 : 2)) return [];
-    const digitos = /^\d+$/.test(q);
-    return indice
-      .filter(({ x, n }) => (!f.ufSel || x.uf === f.ufSel) && (digitos ? String(x.cod_ibge).startsWith(q) : n.includes(q)))
-      .sort((a, b) => Number(b.n.startsWith(q)) - Number(a.n.startsWith(q)) || a.n.localeCompare(b.n))
-      .slice(0, 12).map(o => o.x);
-  }, [indice, q, f.ufSel, aberto, texto]);
-  const escolher = (x: TerritorioSocial) => { onEscolher(x); setTexto(null); setAberto(false); };
-  const lista = `${id}-lista`;
-  return (
-    <div className="as-campo as-campo-larga as-combo">
-      <label htmlFor={`${id}-in`}>{t('Município (digite o nome)', 'Municipality (type the name)')}</label>
-      <input id={`${id}-in`} type="text" role="combobox" autoComplete="off" aria-expanded={aberto && texto !== null && q.length > 0}
-        aria-controls={lista} aria-autocomplete="list" aria-activedescendant={opcoes[ativo] ? `${id}-o${ativo}` : undefined}
-        placeholder={f.ufSel ? t('Todos os municípios de ', 'All municipalities in ') + f.ufSel : t('Ex.: Campinas', 'E.g. Campinas')}
-        value={texto ?? atualNome}
-        onChange={e => { setTexto(e.target.value); setAberto(true); setAtivo(0); }}
-        onFocus={e => e.currentTarget.select()}
-        onBlur={() => { setAberto(false); setTexto(null); }}
-        onKeyDown={e => {
-          if (e.key === 'ArrowDown') { e.preventDefault(); setAberto(true); setAtivo(a => Math.min(a + 1, Math.max(opcoes.length - 1, 0))); }
-          else if (e.key === 'ArrowUp') { e.preventDefault(); setAtivo(a => Math.max(a - 1, 0)); }
-          else if (e.key === 'Enter' && opcoes[ativo]) { e.preventDefault(); escolher(opcoes[ativo]); }
-          else if (e.key === 'Escape') { setAberto(false); setTexto(null); }
-        }} />
-      {aberto && texto !== null && q.length >= (f.ufSel ? 1 : 2) && (
-        <ul id={lista} role="listbox" aria-label={t('Municípios encontrados', 'Matching municipalities')}>
-          {opcoes.length === 0 && <li className="as-vazio" role="presentation">{t('Nenhum município encontrado', 'No municipality found')}</li>}
-          {opcoes.map((x, k) => (
-            <li key={x.grupo} id={`${id}-o${k}`} role="option" aria-selected={k === ativo}
-              onMouseDown={e => { e.preventDefault(); escolher(x); }} onMouseEnter={() => setAtivo(k)}>
-              {x.nome}<small>{x.uf}{x.cod_ibge === NORONHA ? ` · ${t('distrito estadual', 'state district')}` : ''}</small>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
 
 function BarraFiltros({ ctx, mes }: { ctx: Ctx; mes: boolean }) {
   const { meta, f, alterar } = ctx;
-  const ufs = useMemo(() => meta.territorios.filter(x => x.nivel === 'UF').sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR')), [meta]);
   const meses = useMemo(() => mesesUniao(meta), [meta]);
   const fora = f.mes && !meses.some(([m]) => m === f.mes);
-  const idUf = useId(); const idMes = useId();
+  const idMes = useId();
   return (
     <form className="as-filtros" role="search" aria-label={t('Recorte do painel', 'Panel filters')} onSubmit={e => e.preventDefault()}>
-      <div className="as-campo">
-        <label htmlFor={idUf}>{t('Brasil ou estado', 'Brazil or state')}</label>
-        <select id={idUf} value={f.ufSel ?? ''} onChange={e => alterar({ uf: e.target.value || null, cod: null })}>
-          <option value="">{t('Brasil', 'Brazil')}</option>
-          {ufs.map(u => <option key={u.grupo} value={u.grupo}>{u.nome} ({u.grupo})</option>)}
-        </select>
-      </div>
-      <BuscaMunicipio ctx={ctx} onEscolher={x => alterar({ uf: x.uf, cod: String(x.cod_ibge) })} />
-      {f.terr.nivel === 'M' && (
-        <button type="button" className="botao-leve" onClick={() => alterar({ cod: null })}>{t('Limpar município', 'Clear municipality')}</button>
-      )}
+      <SeletorLugar lugares={lugaresCadastro(meta.territorios.filter(x=>x.nivel==='M').map(x=>({cod:x.cod_ibge!,nome:x.nome,uf:x.uf??''})))} valor={f.terr.nivel==='M'?f.terr.grupo:f.ufSel??'BR'} escolher={key=>alterar(key==='BR'?{uf:null,cod:null}:/^[A-Z]{2}$/.test(key)?{uf:key,cod:null}:{cod:key,uf:meta.territorios.find(x=>String(x.cod_ibge)===key)?.uf??null})}/>
       {mes && (
         <div className="as-campo">
           <label htmlFor={idMes}>{t('Mês de referência', 'Reference month')}</label>
@@ -279,7 +221,7 @@ function BarraFiltros({ ctx, mes }: { ctx: Ctx; mes: boolean }) {
 }
 
 const ABAS: [keyof typeof PATH, string, string][] = [
-  ['painel', 'Painel', 'Overview'], ['evolucao', 'Evolução', 'Trends'], ['rankings', 'Rankings mensais', 'Monthly rankings'], ['pib', 'Comparações dos pagamentos', 'Payment comparisons'],
+  ['painel', 'Painel', 'Overview'], ['evolucao', 'Série detalhada', 'Detailed series'], ['rankings', 'Rankings mensais', 'Monthly rankings'], ['pib', 'Comparações dos pagamentos', 'Payment comparisons'],
   ['tabela', 'Tabela', 'Table'], ['metodologia', 'Metodologia', 'Methodology'],
 ];
 
@@ -289,7 +231,7 @@ function Casca({ titulo, sub, mes = true, atual, children }: {
   const m = useSocial('meta', obterMetaSocial);
   return (
     <div className="assistencia-painel">
-      <h2 className="titulo-pagina">{titulo}</h2>
+      <h1 className="titulo-pagina">{titulo}</h1>
       <p className="as-sub">{sub}</p>
       {m.carregando && <Estado carregando />}
       {m.erro && <Estado erro={m.erro} mensagem={t('Não foi possível carregar o painel de assistência social.', 'The social assistance panel could not be loaded.')} tentarNovamente={m.recarregar} />}
@@ -1110,7 +1052,7 @@ function RankingsCorpo({ c }: { c: Ctx }) {
                 <tbody>
                   {visiveis.map(x => (
                     <tr key={x.te.grupo} className={x.te.grupo === f.terr.grupo ? 'as-destaque' : undefined}>
-                      <td className="as-num">{x.pos}º</td>
+                      <td className="as-num">{ordinal(x.pos)}</td>
                       <td className="as-txt">{rotuloTerr(x.te)}</td>
                       <td className="as-num"><Val i={ind} v={x.v} cond={x.cond} longo /></td>
                     </tr>

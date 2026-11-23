@@ -71,10 +71,10 @@ export function SaudeRede() {
   // médicos: só a medida por vínculo principal e a de vínculos somam em UF e Brasil; "atuam no município" é por município
   const medicosAtuam = municipio ? noCnes('cnes_medicos_no_municipio') : t('não se soma por UF ou Brasil', 'not summed by state or Brazil');
 
-  if (!temDados) return <><h2 className="titulo-pagina">{t('Rede e acesso ao SUS', 'Network and access to SUS')}</h2><p className="vazio">{t('Os dados de saúde ainda não foram publicados.', 'Health data have not been published yet.')}</p></>;
+  if (!temDados) return <><h1 className="titulo-pagina">{t('Rede e acesso ao SUS', 'Network and access to SUS')}</h1><p className="vazio">{t('Os dados de saúde ainda não foram publicados.', 'Health data have not been published yet.')}</p></>;
   return (
     <>
-      <h2 className="titulo-pagina">{t('Rede e acesso ao SUS', 'Network and access to SUS')}</h2>
+      <h1 className="titulo-pagina">{t('Rede e acesso ao SUS', 'Network and access to SUS')}</h1>
       <p className="subtitulo">{rotulo} · {semAno ? t('último ano de cada fonte', 'latest year of each source') : ano} · SIH: {refSih ?? t('fora da cobertura', 'outside coverage')} · CNES: {refCnes ?? t('fora da cobertura', 'outside coverage')} <Dica rotulo={t('Fonte', 'Source')}>{fonteSaude()}</Dica></p>
       <BarraFiltros comUltimo ultimoPadrao />
       <AvisoAno ano={ano} />

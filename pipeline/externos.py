@@ -29,6 +29,7 @@ VARIAVEIS_PIB = {  # mil reais
     "517": "vab_industria", "6575": "vab_servicos", "525": "vab_adm_publica",
 }
 BCB_IPCA = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.433/dados"
+BCB_IPCA_12 = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.13522/dados"
 
 
 def get_json(url, **params):
@@ -95,6 +96,16 @@ def ipca():
     anual = anual.reset_index(names="exercicio")
     anual["ipca_pct"] = (anual["fator"] - 1) * 100
     anual["completo"] = anual["meses"] == 12
+    # Dezembro da série oficial de 12 meses: evita exibir 5,78% em 2022
+    # por composição de taxas mensais arredondadas. Os fatores de preços
+    # vigentes mantêm sua cadeia mensal, preservando a edição já conferida.
+    oficiais = pd.DataFrame(get_json(BCB_IPCA_12, formato="json", dataInicial="01/01/2006"))
+    oficiais['data'] = pd.to_datetime(oficiais['data'], dayfirst=True)
+    taxas = oficiais.loc[oficiais['data'].dt.month == 12].set_index(oficiais.loc[oficiais['data'].dt.month == 12,'data'].dt.year)['valor'].astype(float)
+    completos = anual.loc[anual['completo'],'exercicio']
+    if not set(completos) <= set(taxas.index):
+        raise ValueError('IPCA anual oficial incompleto; conservar a edição anterior')
+    anual.loc[anual['completo'],'ipca_pct'] = completos.map(taxas).to_numpy()
     # índice acumulado (dez/2005 = 1): deflacionar para a base B é valor * indice[B] / indice[ano]
     anual["indice"] = anual["fator"].cumprod()
     return anual[["exercicio", "ipca_pct", "indice", "completo", "meses"]]

@@ -182,6 +182,10 @@ class Auditor:
                     ipca[periodo] = float(r["V"])
                 except (ValueError, TypeError):
                     pass
+        ipca_anual = dict(duckdb.connect().execute(
+            'SELECT exercicio,fator_real FROM read_parquet(?)',
+            [fontes['gold/ipca.parquet']['local']],
+        ).fetchall())
         social = {
             i["id"]: i
             for i in self.ler(self.rev / "assistencia_base.json")["indicadores"]
@@ -213,7 +217,7 @@ class Auditor:
                 iguais(base, q["d"], (chave, i["id"], "populacao-IBGE"))
                 numerador = q["r"].copy()
                 if i["formato"] == "moeda":
-                    ja_real = (
+                    ja_real = i.get('precos_original') == 'reais' or (
                         cat["area"] == "trabalho"
                         and i["id"] == "massa_real"
                         or cat["area"] == "assistencia"
@@ -223,7 +227,9 @@ class Auditor:
                         ff = np.array(
                             [
                                 (
-                                    ipca[202512]
+                                    (ipca_anual[p] if ipca_anual[p] is not None else np.nan)
+                                    if p <= 10000 and p in ipca_anual
+                                    else ipca[202512]
                                     / ipca[p if p > 10000 else p * 100 + 12]
                                     if (p if p > 10000 else p * 100 + 12) in ipca
                                     else np.nan

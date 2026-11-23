@@ -1,7 +1,7 @@
 import { IndiceSaude } from '../components/IndicePainel';
 export { IndiceSaude } from '../components/IndicePainel';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Link, useLocation, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useApi, type Linha, type Params } from '../api';
 import { Dica } from '../components/Dica';
 import { BotoesExportar, useMetadados } from '../components/Exportar';
@@ -280,6 +280,7 @@ function OutrosPaineis() {
 }
 
 export function SaudeVisaoGeral() {
+  const navegar=useNavigate();
   const { ano, semAno, escopo, rotulo, temDados, meta, fontes } = useSaude();
   const { search } = useLocation();
   const serie = useApi<Linha[]>(temDados ? 'saude_serie' : null, escopo);
@@ -318,10 +319,10 @@ export function SaudeVisaoGeral() {
   const cartoesTema = (tema: string, especiais: Record<string, ReactNode> = {}) => idsDoTema(tema).map((id) => especiais[id]
     ?? <KpiIndicador key={id} ind={indicador(id)} serie={dados} ano={ano} ultimo={semAno} fontes={fontes} />);
 
-  if (!temDados) return <><h2 className="titulo-pagina">{t('Saúde', 'Health')}</h2><SemDados /></>;
+  if (!temDados) return <><h1 className="titulo-pagina">{t('Saúde', 'Health')}</h1><SemDados /></>;
   return (
     <>
-      <h2 className="titulo-pagina">{t('Saúde: visão geral', 'Health: overview')}</h2>
+      <h1 className="titulo-pagina">{t('Saúde: visão geral', 'Health: overview')}</h1>
       <p className="subtitulo">{rotulo} · {semAno ? t('último ano de cada fonte', 'latest year of each source') : ano} · {t('nascimentos, óbitos, internações e rede de saúde', 'births, deaths, admissions and health network')} <Dica rotulo={t('Fonte', 'Source')}>{fonteSaude()}</Dica></p>
       <BarraFiltros comUltimo ultimoPadrao />
       <AvisoAno ano={ano} />
@@ -348,8 +349,9 @@ export function SaudeVisaoGeral() {
           <div className="saude-busca-campos">
             <div className="campo">
               <label htmlFor="saude-tema">{t('Tema', 'Theme')}</label>
-              <select id="saude-tema" value={temaSel} onChange={(e) => setTemaSel(e.target.value)}>
+              <select id="saude-tema" value={temaSel} onChange={e=>e.target.value==='siops'?navegar('/saude/financiamento'+window.location.search):setTemaSel(e.target.value)}>
                 <option value="">{t('Todos os temas', 'All themes')}</option>
+                <option value="siops">{t('Despesa em saúde (SIOPS) · abrir painel','Health expenditure (SIOPS) · open dashboard')}</option>
                 {TEMAS.map((x) => <option key={x.id} value={x.id}>{x.nome()} ({x.indicadores.length})</option>)}
               </select>
             </div>
@@ -570,10 +572,10 @@ export function SaudeTabela() {
   };
   const condDaLinha = (r: Linha) => rotuloCondicao(condicaoDado(ind.numerador, num(r[ind.numerador]), Number(r.ano), fontes));
 
-  if (!temDados) return <><h2 className="titulo-pagina">{t('Saúde: tabela do indicador', 'Health: indicator table')}</h2><SemDados /></>;
+  if (!temDados) return <><h1 className="titulo-pagina">{t('Saúde: tabela do indicador', 'Health: indicator table')}</h1><SemDados /></>;
   return (
     <>
-      <h2 className="titulo-pagina">{t('Saúde: tabela do indicador', 'Health: indicator table')}</h2>
+      <h1 className="titulo-pagina">{t('Saúde: tabela do indicador', 'Health: indicator table')}</h1>
       <p className="subtitulo">{rotulo} <Dica rotulo={t('Fonte', 'Source')}>{fonteCurta(ind)}. {fonteSaude()}</Dica></p>
       <BarraFiltros comUltimo ultimoPadrao />
       <AvisoAno ano={ano} />
@@ -686,10 +688,10 @@ export function SaudeEvolucao() {
   const marcas = ind.id === 'prematuros' && anosS.includes(2011) ? [{ x: '2011', rotulo: t('método', 'method') }] : [];
   const opcao = useMemo(() => linhas(anosS, series, formato, marcas), [principal.dados, refUf.dados, refBr.dados, ind.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!temDados) return <><h2 className="titulo-pagina">{t('Saúde: evolução', 'Health: trends')}</h2><SemDados /></>;
+  if (!temDados) return <><h1 className="titulo-pagina">{t('Saúde: evolução', 'Health: trends')}</h1><SemDados /></>;
   return (
     <>
-      <h2 className="titulo-pagina">{t('Saúde: evolução', 'Health: trends')}</h2>
+      <h1 className="titulo-pagina">{t('Saúde: evolução', 'Health: trends')}</h1>
       <p className="subtitulo">{rotulo} <Dica rotulo={t('Fonte', 'Source')}>{fonteCurta(ind)}. {fonteSaude()}</Dica></p>
       <BarraFiltros semAno />
       <section className="cartao">
@@ -862,10 +864,10 @@ export function SaudeRankings() {
     </div>
   );
 
-  if (!temDados) return <><h2 className="titulo-pagina">{t('Rankings de saúde', 'Health rankings')}</h2><SemDados /></>;
+  if (!temDados) return <><h1 className="titulo-pagina">{t('Rankings de saúde', 'Health rankings')}</h1><SemDados /></>;
   return (
     <>
-      <h2 className="titulo-pagina">{t('Rankings de saúde', 'Health rankings')}</h2>
+      <h1 className="titulo-pagina">{t('Rankings de saúde', 'Health rankings')}</h1>
       <p className="subtitulo">{escopoNome}{vista === 'evolucao' ? '' : ` · ${periodoTexto}`} <Dica rotulo={t('Fonte', 'Source')}>{fonteCurta(ind)}. {fonteSaude()}</Dica></p>
       <BarraFiltros semAno={vista === 'evolucao'} semBuscaEnte={vista === 'evolucao'} anosCobertos={anosInd} semEnte={t('O município escolhido define a UF do ranking e aparece destacado, com a sua posição.', 'The chosen municipality sets the state of the ranking and is highlighted, with its position.')} />
       <AvisoAno ano={ano} />
@@ -1032,7 +1034,7 @@ export function SaudeMetodologia() {
   };
   return (
     <>
-      <h2 className="titulo-pagina">{t('Saúde: fontes e metodologia', 'Health: sources and methodology')}</h2>
+      <h1 className="titulo-pagina">{t('Saúde: fontes e metodologia', 'Health: sources and methodology')}</h1>
       <section className="cartao texto">
         <h3>{t('Fontes', 'Sources')}</h3>
         <ul>

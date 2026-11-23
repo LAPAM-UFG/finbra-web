@@ -15,14 +15,15 @@ function celulaCsv(v: Celula, decimal: string): string {
   const s = String(v);
   // protege o delimitador efetivo (";" com decimal em vírgula, "," com decimal em ponto), ";" sempre, aspas e quebras de linha
   const delimitador = decimal === ',' ? ';' : ',';
-  return /[";\n\r]/.test(s) || s.includes(delimitador) || s.startsWith(' ') ? `"${s.replace(/"/g, '""')}"` : s;
+  return /[";#\n\r]/.test(s) || s.includes(delimitador) || s.startsWith(' ') ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-/** CSV com os metadados no topo, uma linha em branco e a tabela. */
+/** UTF-8 com BOM. Metadados são comentários (#), legíveis sem skiprows. */
 export function paraCsv(t: Tabela, decimal = ','): string {
   const sep = decimal === ',' ? ';' : ',';
   const linhas = [
-    ...t.metadados.map(([k, v]) => [k, v].map((c) => celulaCsv(c, decimal)).join(sep)),
+    ...t.metadados.map(([k, v]) => '# ' + [k, v].map((c) => celulaCsv(c.replace(/[\r\n]+/g,' '), decimal)).join(sep)),
+    '# Precisão / Precision: valores numéricos completos da fonte; arredondamento apenas na tela / full source precision; display rounding only.',
     '',
     t.colunas.map((c) => celulaCsv(c, decimal)).join(sep),
     ...t.linhas.map((l) => l.map((c) => celulaCsv(c, decimal)).join(sep)),

@@ -27,7 +27,10 @@ def gerar(publicado, base, saida, catalogos, areas=('trabalho','gestao','assiste
         rscript=shutil.which('Rscript')
     if not rscript and any(a['formato']=='rds' for a in old['arquivos']):
         raise ValueError('Rscript é necessário para atualizar os RDS junto com os demais formatos')
-    dictionary=json.loads(snapshots.obter(old['dicionario']['caminho'],old['dicionario']).read_bytes())
+    from curadoria_financas import curar
+    dictionary=[curar(d.get('variavel_original',d['variavel']),d) for d in json.loads(snapshots.obter(old['dicionario']['caminho'],old['dicionario']).read_bytes())]
+    from curadoria_catalogos import curar_dicionario
+    dictionary=curar_dicionario(dictionary,base)
     core=next(x for x in old['arquivos'] if x['id']=='painel_brasil_parquet')
     snapshots.obter(core['caminho'],core)
     # Os geradores usam o mesmo catálogo de conceitos do frontend.

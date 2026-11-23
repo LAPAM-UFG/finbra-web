@@ -1,3 +1,4 @@
+import { fonteConsulta, obterFonteConsulta } from '../dados';
 import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactNode, type RefObject } from 'react';
 import { useApi, type Linha } from '../api';
 import { useDados, useFiltros } from '../contexto';
@@ -461,4 +462,13 @@ export const paramsConsulta = (escopo: Record<string, string | number>, recorte:
 export function useAnosConsulta() {
   const { meta } = useDados();
   return ((meta.fontes.rais_micro as { anos?: number[] } | undefined)?.anos ?? []).filter(Number.isInteger);
+}
+
+/** Disponibilidade vem de um JSON pequeno; os microdados só são lidos ao calcular. */
+export function useFonteConsulta(escopo: { ente?: unknown; uf?: unknown }) {
+  const chave=JSON.stringify(escopo);
+  const [pronta,setPronta]=useState<string|null>(null);
+  const [,mudar]=useState(0);
+  useEffect(()=>{let vivo=true;obterFonteConsulta(escopo).then(()=>{if(vivo){setPronta(chave);mudar(x=>x+1);}});return()=>{vivo=false;};},[chave]); // eslint-disable-line react-hooks/exhaustive-deps
+  return {fonte:fonteConsulta(escopo), carregando:pronta!==chave};
 }

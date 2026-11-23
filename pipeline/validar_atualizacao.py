@@ -7,16 +7,16 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
 import duckdb
-from atualizacao_artefatos import Snapshot,referencias,sha
+from atualizacao_artefatos import Snapshot,referencias,sha,caminho_resolvido
 from comparacoes_base import compatibilidade_global
 from publicacao_lote import PONTEIROS,MAPAS,TEMAS
 
 
 def conferir_referencias(base,snap,pending,catalogos,geografia,workers=4):
     """Confere em lotes sem baixar duas vezes a mesma referência."""
-    base=Path(base).resolve();checked={}
+    base=caminho_resolvido(base);checked={}
     def conferir(ref):
-        key=ref['caminho'];local=(base/key).resolve()
+        key=ref['caminho'];local=caminho_resolvido(base/key)
         if not local.is_relative_to(base):raise ValueError('referência fora da candidata: '+key)
         if local.is_file():
             if local.stat().st_size!=ref['bytes']or sha(local)!=ref['sha256']:raise ValueError('candidato corrompido: '+key)
@@ -75,7 +75,8 @@ def gerar(base,publicado,trabalho,caches=()):
     rxold=json.loads((publicado/previous).read_bytes())
     if rx['indicadores']<rxold['indicadores'] or rx['territorios']<rxold['territorios']:raise ValueError('Raio X perdeu informação')
     if rx['fontes']['comparacoes']['sha256']!=sha(base/'gold/comparacoes/manifesto.json'):raise ValueError('Raio X não acompanha comparações')
-    snap=Snapshot(trabalho/'cache',[base,publicado,*caches],copiar_cache=False);pending=[];checked={}
+    cache=trabalho/'cache';cache.mkdir(parents=True,exist_ok=True)
+    snap=Snapshot(cache,[base,publicado,*caches],copiar_cache=False);pending=[];checked={}
     for key in PONTEIROS:
         p=base/key
         if not p.is_file():raise ValueError('manifesto candidato ausente: '+key)

@@ -173,7 +173,7 @@ export function TrabalhoPainel() {
   const opcaoSetoresSerie = useMemo(() => linhas(anos, GRANDES_SETORES.map((k) => ({ nome: nomeSetor(k), valores: s.map((r) => num(r[`empregos_${k}`])) })), (v) => numero(v), marcas), [serie.dados]); // eslint-disable-line react-hooks/exhaustive-deps
   const opcaoSetoresAno = useMemo(() => barras(SETORES().map(([, n]) => n), GRANDES_SETORES.map((k) => rais?.setores[k].n ?? null), (v) => numero(v), true), [rais]);
 
-  if (!temDados) return <><h2 className="titulo-pagina">{t('Mercado de trabalho', 'Labour market')}</h2><SemDados /></>;
+  if (!temDados) return <><h1 className="titulo-pagina">{t('Mercado de trabalho', 'Labour market')}</h1><SemDados /></>;
   const anosTabela = anos.map((a) => (quebrasEntre(a - 1, a).length ? `${a} †` : String(a)));
   const nota = notaComparabilidade(anos);
   const meta2: [string, string][] = [[t('Recorte', 'Scope'), rotulo], [t('Universo', 'Universe'), t('vínculos ativos em 31/12 (todos)', 'jobs active on Dec 31 (all)')],
@@ -196,7 +196,7 @@ export function TrabalhoPainel() {
 
   return (
     <>
-      <h2 className="titulo-pagina">{t('Mercado de trabalho: painel de indicadores', 'Labour market: indicator dashboard')}</h2>
+      <h1 className="titulo-pagina">{t('Mercado de trabalho: painel de indicadores', 'Labour market: indicator dashboard')}</h1>
       <p className="subtitulo">{rotulo} · RAIS {anoRais} <Dica rotulo={t('Fonte', 'Source')}>{fonteRais()}</Dica></p>
       <div className="trabalho-painel-filtros"><BarraFiltros /></div>
       <AvisoAno anoRais={anoRais} />

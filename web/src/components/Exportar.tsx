@@ -77,7 +77,7 @@ export function BotoesExportar({ nome, obter }: { nome: string; obter: () => Pro
   };
   return (
     <div className="exportar" role="group" aria-label={t('Exportar', 'Export')}>
-      <button className="botao-leve" disabled={ocupado} onClick={() => acionar('csv')}>CSV</button>
+      <button className="botao-leve" disabled={ocupado} onClick={() => acionar('csv')} title={t('CSV UTF-8 com BOM. Metadados iniciam com #; em R use comment.char="#", em pandas comment="#". A precisão numérica completa é preservada.','UTF-8 CSV with BOM. Metadata starts with #; in R use comment.char="#", in pandas comment="#". Full numeric precision is preserved.')}>CSV</button>
       <button className="botao-leve" disabled={ocupado} onClick={() => acionar('xlsx')}>Excel</button>
     </div>
   );

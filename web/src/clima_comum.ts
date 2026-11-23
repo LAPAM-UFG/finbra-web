@@ -93,7 +93,7 @@ export function fraseHabitual(anomalia: unknown, relativa: boolean, unidade: str
   if (!numeroValido(anomalia)) return t('sem normal para comparar', 'no normal to compare with');
   const abs = Math.abs(anomalia);
   const quanto = relativa ? `${fmt(abs * 100, 1)}%` : `${fmt(abs, 1)} ${unidadeDiferenca(unidade)}`;
-  if (abs === 0) return t('igual ao habitual', 'same as usual');
+  if (Math.round(abs * (relativa ? 1000 : 10)) === 0) return t('igual ao habitual', 'same as usual');
   return anomalia > 0 ? t(`${quanto} acima do habitual`, `${quanto} above usual`) : t(`${quanto} abaixo do habitual`, `${quanto} below usual`);
 }
 

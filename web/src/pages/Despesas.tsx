@@ -55,7 +55,7 @@ export function DespesasVisaoGeral() {
 
   return (
     <>
-      <h2 className="titulo-pagina">{t('Visão geral das despesas', 'Expenditure overview')}</h2>
+      <h1 className="titulo-pagina">{t('Visão geral das despesas', 'Expenditure overview')}</h1>
       <p className="subtitulo">{f.rotulo} · {f.ano} · {t('DCA Anexo I-E (despesas por função)', 'DCA Annex I-E (expenditure by function)')}</p>
       <BarraFiltros />
       <Cobertura dominio="despesa" />
@@ -69,7 +69,7 @@ export function DespesasVisaoGeral() {
         <Kpi rotulo={t('Intraorçamentárias (empenhadas)', 'Intra-budgetary (committed)')} valor={reais(num(k?.despesa_intra))}
           nota={`${t('total com intra (Anexo I-D)', 'total with intra (Annex I-D)')}: ${reais(num(k?.despesa_empenhada))}`} />
         <Kpi rotulo={t('Empenhada per capita', 'Committed per capita')}
-          valor={reaisExato(div(empenhada, num(k?.populacao_despesa_empenhada_sem_intra)))}
+          valor={reaisExato(div(empenhada, num(k?.populacao_despesa_empenhada_sem_intra)))} populacao={{valor:num(k?.populacao_despesa_empenhada_sem_intra),fonte:'DCA'}}
           dica={f.alvo ? undefined : <Dica rotulo={t('Como é calculado', 'How it is calculated')}>{textoReferencia()}</Dica>} />
         <Kpi rotulo={t('Saúde: participação na despesa', 'Health: share of expenditure')} valor={pct(saude.v)} nota={reais(saude.n)} dica={dicaParticipacao} />
         <Kpi rotulo={t('Educação: participação na despesa', 'Education: share of expenditure')} valor={pct(educacao.v)} nota={reais(educacao.n)} dica={dicaParticipacao} />
@@ -151,7 +151,7 @@ export function DespesasNaturezaVisaoGeral() {
 
   return (
     <>
-      <h2 className="titulo-pagina">{t('Visão geral das despesas orçamentárias', 'Budget expenditure overview')}</h2>
+      <h1 className="titulo-pagina">{t('Visão geral das despesas orçamentárias', 'Budget expenditure overview')}</h1>
       <p className="subtitulo">{f.rotulo} · {f.ano} · {t('DCA Anexo I-D (despesas orçamentárias por natureza)', 'DCA Annex I-D (budget expenditure by economic category)')}</p>
       <BarraFiltros />
       <Cobertura dominio="despesa" />
@@ -163,7 +163,7 @@ export function DespesasNaturezaVisaoGeral() {
         <Kpi rotulo={t('Liquidada', 'Accrued')} valor={reais(num(k?.despesa_liquidada))} nota={t('inclui intra', 'includes intra')} />
         <Kpi rotulo={t('Paga', 'Paid')} valor={reais(num(k?.despesa_paga))} nota={t('inclui intra', 'includes intra')} />
         <Kpi rotulo={t('Empenhada per capita', 'Committed per capita')}
-          valor={reaisExato(div(empenhada, num(k?.populacao_despesa_empenhada)))}
+          valor={reaisExato(div(empenhada, num(k?.populacao_despesa_empenhada)))} populacao={{valor:num(k?.populacao_despesa_empenhada),fonte:'DCA'}}
           dica={f.alvo ? undefined : <Dica rotulo={t('Como é calculado', 'How it is calculated')}>{textoReferencia()}</Dica>} />
         <Kpi rotulo={t('Pessoal: participação na despesa', 'Personnel: share of expenditure')} valor={pct(pessoal.v)} nota={reais(pessoal.n)} dica={dicaParticipacao} />
         <Kpi rotulo={t('Investimentos: participação na despesa', 'Investments: share of expenditure')} valor={pct(investimentos.v)} nota={reais(investimentos.n)} dica={dicaParticipacao} />
@@ -272,7 +272,7 @@ function Evolucao({ c: cl }: { c: Classificacao }) {
 
   return (
     <>
-      <h2 className="titulo-pagina">{cl.titulo()}</h2>
+      <h1 className="titulo-pagina">{cl.titulo()}</h1>
       <p className="subtitulo">{f.rotulo} · {opcoes.find((o) => o.chave === chave)?.descricao.trim()} · {dado(coluna)}</p>
       <BarraFiltros />
       <div className="filtros">

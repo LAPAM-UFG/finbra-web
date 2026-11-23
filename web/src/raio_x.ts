@@ -1,6 +1,7 @@
+import {unidadePublica} from './rotulos_publicos';
 import { BASE_DADOS } from './manifesto';
 import { idioma, local, t } from './idioma';
-import { reaisExato } from './format';
+import { porUnidade } from './format';
 import { condicaoComparacao, formatoComparacao, normComparacao, serieEfetivaComparacao, textoComparacao } from './comparacoes_apresentacao';
 import { obterGrupoComparacao, type AreaComparacao, type CatalogoComparacao, type DefComparacao, type GeografiaComparacao, type ObjetoComparacao, type SerieComparacao } from './comparacoes_dados';
 import { compararReferencia, type AnoReferencia, type BaseReferencia } from './assistencia_referencias';
@@ -18,7 +19,7 @@ export const AREAS_RAIO: { id:AreaComparacao; nome:string; en:string; caminho:st
   {id:'energia',nome:'Energia elétrica e geração',en:'Electricity and generation',caminho:'/energia/comparar'},
   {id:'internet',nome:'Internet e conectividade',en:'Internet and connectivity',caminho:'/internet/comparar'},
   {id:'seguranca',nome:'Segurança pública e violência',en:'Public safety and violence',caminho:'/seguranca/comparar'},
-  {id:'mobilidade',nome:'Mobilidade e trânsito',en:'Mobility and traffic',caminho:'/mobilidade/comparar'},
+  {id:'mobilidade',nome:'Mobilidade e segurança no trânsito',en:'Mobility and road safety',caminho:'/mobilidade/comparar'},
   {id:'agropecuaria',nome:'Agropecuária',en:'Agriculture and livestock',caminho:'/agropecuaria/comparar'},
 ];
 export const REDES_RAIO = ['todas','publica','municipal','estadual','federal','privada'] as const;
@@ -117,7 +118,7 @@ function unidadeOriginalRaio(i:IndicadorRaio) {
     'por 100 mulheres de 25 a 64 anos':'per 100 women aged 25–64','mamografias registradas por 100 mulheres de 50 a 69 anos':'recorded mammograms per 100 women aged 50–69',
     'mamografias registradas por 100 mulheres de 50 a 74 anos':'recorded mammograms per 100 women aged 50–74',
   };
-  return t(pt,en[pt]??pt);
+  return unidadePublica(t(pt,en[pt]??pt));
 }
 export function apresentacaoRaio(i:IndicadorRaio,p:PontoRaio|null,grupo:string,ressalvas=false) {
   const ponto=pontoEfetivoRaio(p,ressalvas);const valor=ponto?.[1]??null;
@@ -134,10 +135,10 @@ export function apresentacaoRaio(i:IndicadorRaio,p:PontoRaio|null,grupo:string,r
   const n=usarOriginal?textoComparacao(i,'nome_original'):textoComparacao(i,'nome');
   const un=usarOriginal?unidadeOriginalRaio(i):textoComparacao(i,'unidade');
   return {nome:n,unidade:un,valor:usarOriginal?original:valor,comparavel:valor,original,individual,
-    texto:i.binario&&individual?formatoComparacao(i,valor,true):usarOriginal&&un==='R$'?reaisExato(original):usarOriginal?(original===null?'—':original.toLocaleString(local(),{maximumFractionDigits:Number.isInteger(original)?0:2})):formatarRaio(i,valor),
-    condicao:condicaoRaio(i,ponto),ponto};
+    texto:i.binario&&individual?formatoComparacao(i,valor,true):usarOriginal?porUnidade(original,un,{variacao:i.id.startsWith('variacao')}):formatarRaio(i,valor),
+    condicao:condicaoRaio(i,ponto,grupo),ponto};
 }
-function condicaoRaio(i:IndicadorRaio,p:PontoRaio|null) {
+function condicaoRaio(i:IndicadorRaio,p:PontoRaio|null,grupo:string) {
   if(!p)return t('Não se aplica a este recorte','Not applicable to this scope');
   if(i.catalogo==='referencias'&&p[1]===null){
     if(['rx_pib','rx_pib_hab'].includes(i.id)&&p[2]===null)return t('PIB indisponível neste ano na base','GDP unavailable for this year in this dataset');
@@ -146,9 +147,15 @@ function condicaoRaio(i:IndicadorRaio,p:PontoRaio|null) {
     if(p[4]===2)return t('Sem pagamentos informados','No reported payments');
     if(p[4]===11)return t('Pagamentos anuais incompletos','Incomplete yearly payments');
   }
-  return condicaoComparacao(p[4]);
+  const condicao=condicaoComparacao(p[4]);
+  const notas=[condicao];
+  if(p[4]===16&&!/^\d{7}$/.test(grupo))notas.push(t('referência calculada com municípios disponíveis; não é total oficial consolidado','benchmark calculated from available municipalities; not an official consolidated total'));
+  if(p[1]!==null && i.area==='saude' && (i.minimo??0)>0 && p[3]!==null && p[3]<(i.minimo??0))notas.push(t('base pequena: taxa muito instável','small denominator: highly unstable rate'));
+  if(p[1]!==null && p[1]>100 && i.area==='saude' && i.id.startsWith('vac_'))notas.push(t('acima de 100%: valor observado, não limitado','above 100%: observed value, not capped'));
+  if(p[1]!==null && p[1]>100 && /estimativa.*pobreza|estimativa.*pobres/.test(i.nome))notas.push(t('Acima de 100%: atendimento observado comparado a uma estimativa de famílias pobres, sujeita a outra referência e atualização; não é percentual limitado.','Above 100%: observed coverage compared with an estimate of poor families, potentially from a different date or update; not a capped percentage.'));
+  return notas.join(' · ');
 }
-export const formatarRaio=(i:DefComparacao,v:number|null)=>i.id==='rx_populacao'?(v===null?'—':v.toLocaleString(local(),{maximumFractionDigits:0})):i.formato==='moeda'?reaisExato(v):formatoComparacao(i,v);
+export const formatarRaio=(i:DefComparacao,v:number|null)=>i.id==='rx_populacao'?(v===null?'—':v.toLocaleString(local(),{maximumFractionDigits:0})):i.formato==='moeda'||/US\$/.test(i.unidade)?porUnidade(v,i.unidade):formatoComparacao(i,v);
 export function buscarIndicadorRaio(i:IndicadorRaio,termo:string) {
   const texto=normComparacao([i.id,i.nome,i.nome_en,i.nome_original,i.descricao,i.tema,i.fonte_nome].join(' '));
   const q=normComparacao(termo.trim());
@@ -163,7 +170,7 @@ export function linkComparacaoRaio(i:IndicadorRaio,grupo:string,g:GeografiaCompa
   if(i.catalogo==='assistencia_cadunico_historico')sp.set('conjunto','cadunico_historico');
   if(i.catalogo==='referencias'){
     if(i.id.startsWith('rx_pbf_')||i.id.startsWith('rx_bpc_')||i.id.startsWith('rx_total_')){const [,medida,base]=i.id.split('_');sp.delete('indicador');sp.delete('periodo');sp.set('medida',medida);sp.set('base_comparacao',base);if(p)sp.set('ano_comparacao',String(p));return '/assistencia/comparacoes-pagamentos?'+sp;}
-    const extra=new URLSearchParams({...((ter.uf??grupo)!=='BR'?{uf:ter.uf??grupo}:{}),...(ter.nivel==='M'?{ente:grupo==='5300108'?'53':grupo}:{}),...(p?{ano:String(p)}:{})});
+    const extra=new URLSearchParams({...((ter.uf??grupo)!=='BR'?{uf:ter.uf??grupo}:{}),...(ter.nivel==='M'?{cod:grupo==='5300108'?'53':grupo}:{}),...(p?{ano:String(p)}:{})});
     return (i.id==='rx_massa_rais'?'/trabalho':'/socioeconomico')+'?'+extra;
   }
   return AREAS_RAIO.find(a=>a.id===i.area)!.caminho+'?'+sp;

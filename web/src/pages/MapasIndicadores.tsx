@@ -1,3 +1,4 @@
+import {SeletorLugar,SeletorPeriodo,lugaresCadastro} from '../components/SeletorLugar';
 import { lazy, Suspense, useEffect, useId, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { obterMalhaMunicipal } from '../geografia_municipal';
@@ -41,16 +42,17 @@ function PaginaMapa({ area }: { area: AreaMapa }) {
   const meta = useSocial(`mapa-catalogo:${area}:${rede}`, () => obterCatalogoMapa(area, rede)); const m = meta.dados;
   const padrao = area === 'trabalho' ? 'por_mil' : area === 'educacao' ? 'integral_pct' : null;
   const indPedido = sp.get('ind'); const i = m?.indicadores.find(x => x.id === indPedido) ?? m?.indicadores.find(x => x.id === padrao) ?? m?.indicadores[0];
+  const anosIndicador = i?.anos_com_valor ?? [];
   const anoPedido = sp.get('ano');
-  const ajustarAno = !!i && sp.has('ano_origem') && sp.get('ano_origem') === anoPedido && !i.anos.includes(Number(anoPedido));
-  const ano = anoPedido && /^\d{4}$/.test(anoPedido) && !ajustarAno ? Number(anoPedido) : i?.anos.at(-1);
+  const ajustarAno = !!i && !!anoPedido && /^\d{4}$/.test(anoPedido) && !anosIndicador.includes(Number(anoPedido));
+  const ano = anoPedido && /^\d{4}$/.test(anoPedido) && !ajustarAno ? Number(anoPedido) : anosIndicador.at(-1);
   const dados = useSocial(m && i && ano ? `mapa:${area}:${rede}:${i.indice.sha256}:${ano}:${uf}` : null, () => obterDadosMapa(m!, i!, ano!, uf));
   const geo = useSocial(tabela ? null : `malha:${uf}`, () => obterMalhaMunicipal(uf));
   useEffect(() => { if (!tabela) void carregarMapa().catch(() => { /* O Suspense trata a falha de carregamento. */ }); }, [tabela]);
   const [procurarIndicador, setProcurarIndicador] = useState(''); const [foco, setFoco] = useState<{ cod: string; n: number } | null>(null);
   const [limite, setLimite] = useState(25);
-  const usaEnte = area === 'saude' || area === 'trabalho';
-  const busca = sp.get('busca') ?? ''; const selecionado = usaEnte ? sp.get('ente') ?? sp.get('cod') : sp.get('cod') ?? sp.get('ente');
+
+  const busca = sp.get('busca') ?? ''; const selecionado=sp.get('cod')??sp.get('ente');
   const ressalvas = sp.get('ressalvas') === '1';
   const mudar = (extra: Record<string, string | null>) => {
     const n = new URLSearchParams(sp);
@@ -60,8 +62,8 @@ function PaginaMapa({ area }: { area: AreaMapa }) {
     setLimite(25); setSp(n, { replace: true });
   };
   const escolher = (cod: string, focar = false) => {
-    mudar({ [usaEnte ? 'ente' : 'cod']: cod });
-    if (focar) { setFoco(p => ({ cod, n: (p?.n ?? 0) + 1 })); if (tabela) mudar({ vista: 'mapa', [usaEnte ? 'ente' : 'cod']: cod }); }
+    mudar({ cod: cod });
+    if (focar) { setFoco(p => ({ cod, n: (p?.n ?? 0) + 1 })); if (tabela) mudar({ vista: 'mapa', cod: cod }); }
   };
   const linhas = dados.dados;
   const filtradas = useMemo(() => buscarMunicipiosMapa(linhas ?? [], busca).slice().sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR') || a.uf.localeCompare(b.uf)), [linhas, busca]);
@@ -75,22 +77,21 @@ function PaginaMapa({ area }: { area: AreaMapa }) {
   const destino = area === 'saude' ? '/datasus' : '/' + area;
   const caminhoSerie = destino + '/comparar';
   const linkMunicipio = (l: LinhaMapaDados, evolucao = false) => {
-    const p = new URLSearchParams({ uf: l.uf, [usaEnte ? 'ente' : 'cod']: String(l.cod), ind: i!.id, ano: String(ano), ...(area === 'educacao' && rede !== 'todas' ? { rede } : {}) });
+    const p = new URLSearchParams({ uf: l.uf, cod: String(l.cod), ind: i!.id, ano: String(ano), ...(area === 'educacao' && rede !== 'todas' ? { rede } : {}) });
     return `${evolucao ? caminhoSerie : destino}?${p}${area === 'educacao' && !evolucao ? '#ed-ind-' + i!.id : ''}`;
   };
   const tab = (): Tabela => ({ colunas: ['cod_ibge', t('Município', 'Municipality'), 'UF', t('Ano', 'Year'), t('Indicador', 'Indicator'), t('Valor', 'Value'), t('Unidade', 'Unit'), t('Condição do dado', 'Data status'), t('Numerador', 'Numerator'), t('Denominador', 'Denominator'), t('Base pequena', 'Small denominator'), ...(['saude', 'educacao'].includes(area) ? [t('Marcador original do Inep', 'Original Inep flag')] : []), ...(area === 'saneamento' ? [t('Condição original SNIS/SINISA (código)', 'Original SNIS/SINISA status (code)')] : []), ...(area === 'trabalho' ? [t('Vínculos com remuneração válida', 'Jobs with valid pay')] : [])],
     linhas: filtradas.map(l => [l.cod, l.nome, l.uf, ano!, nome(i!), l.valor === null ? null : i!.formato === 'fracao' ? 100 * l.valor : l.valor, texto(i!, 'unidade'), condicaoMapa(l), l.numerador, l.denominador, l.denominador === null || i!.minimo <= 0 ? null : l.denominador < i!.minimo ? t('sim', 'yes') : t('não', 'no'), ...(['saude', 'educacao'].includes(area) ? [l.marcador] : []), ...(area === 'saneamento' ? [l.condicao_original ?? null] : []), ...(area === 'trabalho' ? [l.rem_validas ?? null] : [])]),
     metadados: [...(i?.notas_anos?.[String(ano)] ? [[t('Mês de referência','Reference month'),t(...i.notas_anos[String(ano)])] as [string,string]] : []),[t('Definição', 'Definition'), texto(i!, 'descricao')], [t('Fonte', 'Source'), i!.fontes.map(f => `${f.nome}: ${f.url}`).join('; ')], [t('Referência dos dados', 'Data edition'), m!.origem.gerado_em], [t('Rede', 'School sector'), area === 'educacao' ? nomeRede(rede) : '–'], ...(area === 'saneamento' ? [[t('Condição original', 'Original status'), t('0 observado; 1 sem registro; 2 denominador ausente; 3 denominador zero; 4 inconsistência na origem; 5 fora da cobertura; 6 sem resposta ao módulo.', '0 observed; 1 no record; 2 missing denominator; 3 zero denominator; 4 source inconsistency; 5 outside coverage; 6 module not answered.')] as [string, string]] : []), [t('Unidades', 'Units'), t('Percentuais numéricos em pontos percentuais: 20 significa 20%. Valores e marcadores originais, inclusive resultados com ressalva. Ausências permanecem vazias. A busca seleciona municípios, sem mudar o indicador, ano ou rede.', 'Numeric percentages use percentage points: 20 means 20%. Original values and flags, including flagged results. Missing values remain empty. Search selects municipalities without changing indicator, year or school sector.')]] });
   return <div className="mp-pagina">
-    <h2>{t(...titulos[area])}</h2>
+    <h1>{t(...titulos[area])}</h1>
     <p>{t('Escolha o indicador, o ano e o estado. O mapa e a tabela atualizam automaticamente, com os valores municipais já preparados.', 'Choose the indicator, year and state. The map and table update automatically using ready-made municipal figures.')}</p>
     <nav className="mp-nav" aria-label={t('Páginas relacionadas', 'Related pages')}><Link to={`${destino}${sp.size ? '?' + sp : ''}`}>{t('Painel de indicadores', 'Indicator dashboard')}</Link><Link to={`${caminhoSerie}${sp.size ? '?' + sp : ''}`}>{area === 'saneamento' ? t('Séries no painel', 'Dashboard time series') : t('Evolução', 'Trends')}</Link><Link to={`${destino}/mapa?${sp}`} aria-current="page">{t('Mapa', 'Map')}</Link></nav>
     {meta.carregando && <Estado carregando />}{meta.erro && <Estado erro={meta.erro} tentarNovamente={meta.recarregar} />}
     {m && i && <>
       <form className={`cartao mp-filtros${area !== 'educacao' ? ' mp-filtros-saude' : ''}`} aria-label={t('Filtros do mapa', 'Map filters')} onSubmit={e => e.preventDefault()}>
         <div className="mp-filtro-indicador"><label htmlFor={`${id}-buscar-ind`}>{t('Buscar indicador', 'Find an indicator')}</label><input id={`${id}-buscar-ind`} type="search" value={procurarIndicador} onChange={e => setProcurarIndicador(e.target.value)} placeholder={t(...exemplos[area])} /><label htmlFor={`${id}-ind`}>{t('Indicador', 'Indicator')}</label><select id={`${id}-ind`} value={i.id} onChange={e => { const novo=m.indicadores.find(x=>x.id===e.target.value); mudar({ ind:e.target.value, ano:ano&&novo?.anos.includes(ano)?String(ano):null }); }}>{!opcoes.some(x => x.id === i.id) && <option value={i.id}>{nome(i)}</option>}{grupos.map(g => <optgroup key={g} label={g}>{opcoes.filter(x => tema(x) === g).map(x => <option value={x.id} key={x.id}>{nome(x)}{!x.anos_com_valor.length ? t(' · sem valores disponíveis', ' · no available values') : ''}</option>)}</optgroup>)}</select>{!opcoes.length && <small role="status">{t('Nenhum indicador corresponde à busca.', 'No indicator matches the search.')}</small>}</div>
-        <div><label htmlFor={`${id}-ano`}>{t('Ano', 'Year')}</label><select id={`${id}-ano`} value={ajustarAno ? String(ano) : anoPedido && /^\d{4}$/.test(anoPedido) ? anoPedido : ''} onChange={e => mudar({ ano: e.target.value })}><option value="">{t(`Último disponível (${i.anos.at(-1) ?? '–'})`, `Latest available (${i.anos.at(-1) ?? '–'})`)}</option>{anoPedido && !i.anos.includes(Number(anoPedido)) && /^\d{4}$/.test(anoPedido) && <option value={anoPedido}>{anoPedido} · {t('fora da cobertura', 'outside coverage')}</option>}{[...i.anos].reverse().map(y => <option value={y} key={y}>{y}</option>)}</select>
-          <label htmlFor={`${id}-uf`}>{t('Municípios de', 'Municipalities in')}</label><select id={`${id}-uf`} value={uf} onChange={e => mudar({ uf: e.target.value })}><option value="BR">{t('Brasil · todos os estados', 'Brazil · all states')}</option>{Object.entries(UF_NOMES).sort((a, b) => a[1][0].localeCompare(b[1][0], 'pt-BR')).map(([u, [n]]) => <option key={u} value={u}>{n} ({u})</option>)}</select></div>
+        <div><SeletorPeriodo valor={ano??''} opcoes={[{valor:'',nome:t('Último disponível','Latest available')},...[...anosIndicador].reverse().map(y=>({valor:y,nome:String(y)}))]} mudar={v=>mudar({ano:v})}/><SeletorLugar lugares={lugaresCadastro([])} valor={uf} ajuda={false} rotulo={t('Municípios de','Municipalities in')} escolher={v=>mudar({uf:v})}/></div>
         {area === 'educacao' && <div><label htmlFor={`${id}-rede`}>{t('Rede de ensino', 'School sector')}</label><select id={`${id}-rede`} value={rede} onChange={e => mudar({ rede: e.target.value, ind: ajustarIndicadorRede(i.id, e.target.value as typeof rede) })}>{REDES_EDUCACAO.filter(r => r === 'todas' || m.redes?.[r]).map(r => <option value={r} key={r}>{nomeRede(r)}</option>)}</select><p className="mp-nota">{rede === 'todas' ? t('Censo: todas as redes; taxas, Ideb e Saeb: rede pública, salvo indicação no nome.', 'Census: all sectors; rates, Ideb and Saeb: public schools unless stated in the name.') : nomeRede(rede)}</p></div>}
       </form>
       {ajustarAno && <p role="status" className="mp-aviso">{t(`O ano ${anoPedido} veio do painel anterior e não está na cobertura deste indicador. O mapa mostra ${ano}, a última referência disponível.`, `Year ${anoPedido} came from the previous dashboard and is outside this indicator’s coverage. The map shows ${ano}, the latest available reference.`)}</p>}

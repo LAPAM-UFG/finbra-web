@@ -18,7 +18,7 @@ test('série preserva zero e proteção, recusa outro lugar ou ano',()=>{
  assert.throws(()=>validarGrupoAgro({...grupo,condicoes:[[1],[0]]},'5208905',cat));
 });
 test('lugar e ano seguem entre Agropecuária, Saúde e Raio X',()=>{
- assert.equal(buscaEntreAreas('?cod=5208905&uf=GO&ano=2024','agropecuaria','saude'),'?uf=GO&ente=5208905&ano=2024');
+ assert.equal(buscaEntreAreas('?cod=5208905&uf=GO&ano=2024','agropecuaria','saude'),'?uf=GO&ano=2024&cod=5208905');
  assert.equal(buscaEntreAreas('?ente=53&ano=2024','saude','agropecuaria'),'?uf=DF&cod=5300108&ano=2024');
  assert.equal(buscaEntreAreas('?cod=5208905&uf=GO&ano=2024','agropecuaria','raiox'),'?uf=GO&cod=5208905&ano=2024');
  assert.equal(new URLSearchParams(buscaParaDownloads('?cod=5208905&uf=GO','agropecuaria')).get('area'),'agropecuaria');

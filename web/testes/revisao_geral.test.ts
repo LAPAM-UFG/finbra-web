@@ -16,8 +16,8 @@ test('download distingue governo estadual, DF e base municipal',()=>{
  assert.deepEqual(p(buscaParaDownloads('?ente=53','financas')),{area:'financas',uf:'DF',cod:'5300108'});
 });
 test('o lugar escolhido nos downloads volta aos painéis usando o código correto',()=>{
- assert.deepEqual(p(buscaEntreAreas('?area=saude&uf=GO&cod=5208707','downloads','saude')),{uf:'GO',ente:'5208707'});
- assert.deepEqual(p(buscaEntreAreas('?area=educacao&uf=DF&cod=5300108&rede=publica','downloads','financas')),{uf:'DF',ente:'53'});
+ assert.deepEqual(p(buscaEntreAreas('?area=saude&uf=GO&cod=5208707','downloads','saude')),{uf:'GO',cod:'5208707'});
+ assert.deepEqual(p(buscaEntreAreas('?area=educacao&uf=DF&cod=5300108&rede=publica','downloads','financas')),{uf:'DF',cod:'53'});
 });
 test('busca encontra palavras em campos diferentes, ignorando acento e caixa',()=>{
  assert.ok(corresponde('  RACA REMUNERACAO ',['Raça/cor','Remuneração média de dezembro']));

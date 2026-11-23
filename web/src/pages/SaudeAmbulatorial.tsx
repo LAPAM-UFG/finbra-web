@@ -52,10 +52,10 @@ export function SaudeAmbulatorial() {
   const opcaoGrupoValor = useMemo(() => barras(grupos.map((g) => g.nome), grupos.map((g) => g.valor), (v) => reais(v), true), [serie.dados, ref]); // eslint-disable-line react-hooks/exhaustive-deps
   const totalGrupos = grupos.reduce((s, g) => s + (g.qtd ?? 0), 0);
 
-  if (!temDados) return <><h2 className="titulo-pagina">{t('Produção ambulatorial', 'Outpatient output')}</h2><p className="vazio">{t('Os dados de saúde ainda não foram publicados.', 'Health data have not been published yet.')}</p></>;
+  if (!temDados) return <><h1 className="titulo-pagina">{t('Produção ambulatorial', 'Outpatient output')}</h1><p className="vazio">{t('Os dados de saúde ainda não foram publicados.', 'Health data have not been published yet.')}</p></>;
   return (
     <>
-      <h2 className="titulo-pagina">{t('Produção ambulatorial do SUS', 'SUS outpatient output')}</h2>
+      <h1 className="titulo-pagina">{t('Produção ambulatorial do SUS', 'SUS outpatient output')}</h1>
       <p className="subtitulo">{rotulo} · SIA {ref ?? t('fora da cobertura', 'outside coverage')} · {t('procedimentos aprovados, pelo município do estabelecimento', 'approved procedures, by municipality of the facility')} <Dica rotulo={t('Fonte', 'Source')}>{fonteSaude()}</Dica></p>
       <BarraFiltros comUltimo ultimoPadrao anosCobertos={cobertos} />
       <AvisoAno ano={ano} />

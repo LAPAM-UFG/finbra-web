@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Linha } from '../api';
 import { barras, CartaoGrafico, Grafico, linhas } from '../components/Grafico';
 import { Estado, Kpi } from '../components/Kpi';
@@ -19,7 +19,7 @@ const CAMPOS = [
  */
 const programaDoAno = (ano: number) =>
   ano <= 2020 ? 'Bolsa Família'
-    : ano === 2021 ? t('Bolsa Família (jan–nov) + Auxílio Brasil (nov–dez)', 'Bolsa Família (Jan–Nov) + Auxílio Brasil (Nov–Dec)')
+    : ano === 2021 ? t('Bolsa Família (jan–out) + Auxílio Brasil (nov–dez)', 'Bolsa Família (Jan–Oct) + Auxílio Brasil (Nov–Dec)')
       : ano === 2022 ? 'Auxílio Brasil'
         : ano === 2023 ? t('Auxílio Brasil (jan–fev) + Novo Bolsa Família', 'Auxílio Brasil (Jan–Feb) + New Bolsa Família')
           : t('Novo Bolsa Família', 'New Bolsa Família');
@@ -36,6 +36,7 @@ export function Socioeconomico() {
   const anosSetor = s.filter((r) => r.vab_servicos !== null).map((r) => r.exercicio as number);
   const anosFamilias = s.filter((r) => r.bolsa_familia_valor !== null || r.inss_beneficios !== null).map((r) => r.exercicio as number);
   const ultimoPib = anosPib.at(-1);
+  useEffect(()=>{if(f.semAnoUrl&&ultimoPib)f.definir({ano:ultimoPib});},[f.semAnoUrl,ultimoPib]);
   const anoPib = modo === 'ultimo' && ultimoPib ? ultimoPib : f.ano;
   const a = doAno(s, anoPib);
   const temPib = !!a && a.pib !== null;
@@ -67,9 +68,10 @@ export function Socioeconomico() {
 
   return (
     <>
-      <h2 className="titulo-pagina">{t('Contexto socioeconômico', 'Socioeconomic context')}</h2>
+      <h1 className="titulo-pagina">{t('Contexto socioeconômico', 'Socioeconomic context')}</h1>
       <p className="subtitulo">{f.rotulo} · {t('PIB municipal (IBGE), Bolsa Família (Portal da Transparência) e INSS (Ministério da Previdência)', 'Municipal GDP (IBGE), Bolsa Família (Transparency Portal) and INSS (Ministry of Social Security)')}</p>
       <BarraFiltros />
+      <p className="nota-base">{t('O IBGE não publicou a abertura setorial do VAB municipal para 2022–2023, durante a reformulação das Contas Nacionais. O PIB total permanece disponível; a série setorial termina em 2021.','IBGE did not publish the municipal sector breakdown of GVA for 2022–2023 during the National Accounts reform. Total GDP is available; sector series end in 2021.')} <a href="https://www.ibge.gov.br/estatisticas/economicas/contas-nacionais/9088-produto-interno-bruto-dos-municipios.html" target="_blank" rel="noreferrer">IBGE</a></p>
       <div className="filtros">
         <div className="campo">
           <label htmlFor="modo-ano">{t('Ano dos indicadores', 'Year of the indicators')}</label>

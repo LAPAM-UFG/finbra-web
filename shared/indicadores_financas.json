@@ -1,0 +1,338 @@
+{
+  "fin_populacao_ibge": {
+    "nome": "População IBGE de referência das finanças",
+    "nome_en": "IBGE reference population for finances",
+    "fonte": "IBGE",
+    "url": "https://sidra.ibge.gov.br/tabela/6579"
+  },
+  "fin_populacao_ibge_ano": {
+    "nome": "Ano da população IBGE de referência das finanças",
+    "nome_en": "Year of the IBGE reference population for finances",
+    "fonte": "IBGE",
+    "url": "https://sidra.ibge.gov.br/tabela/6579"
+  },
+  "fin_fpm": {
+    "nome": "Cota-parte do FPM",
+    "nome_en": "Municipal Participation Fund (FPM) transfers",
+    "fonte": "SICONFI/DCA",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "fin_icms": {
+    "nome": "Cota-parte do ICMS",
+    "nome_en": "ICMS transfers",
+    "fonte": "SICONFI/DCA",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "fin_ipva": {
+    "nome": "Cota-parte do IPVA",
+    "nome_en": "IPVA transfers",
+    "fonte": "SICONFI/DCA",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "fin_iptu": {
+    "nome": "Arrecadação de IPTU",
+    "nome_en": "IPTU property tax revenue",
+    "fonte": "SICONFI/DCA",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "fin_iss": {
+    "nome": "Arrecadação de ISS",
+    "nome_en": "ISS service tax revenue",
+    "fonte": "SICONFI/DCA",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "fin_itbi": {
+    "nome": "Arrecadação de ITBI",
+    "nome_en": "ITBI property transfer tax revenue",
+    "fonte": "SICONFI/DCA",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "fin_receita_bruta": {
+    "nome": "Receita bruta",
+    "nome_en": "Gross revenue",
+    "fonte": "SICONFI/DCA",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "fin_receita_liquida": {
+    "nome": "Receita líquida",
+    "nome_en": "Net revenue",
+    "fonte": "SICONFI/DCA",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "fin_receita_corrente": {
+    "nome": "Receita corrente",
+    "nome_en": "Current revenue",
+    "fonte": "SICONFI/DCA",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "fin_receita_capital": {
+    "nome": "Receitas de capital",
+    "nome_en": "Capital revenue",
+    "fonte": "SICONFI/DCA",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "fin_receita_impostos_taxas": {
+    "nome": "Receita de impostos e taxas",
+    "nome_en": "Tax and fee revenue",
+    "fonte": "SICONFI/DCA",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "fin_transferencias_correntes": {
+    "nome": "Transferências correntes",
+    "nome_en": "Current transfers",
+    "fonte": "SICONFI/DCA",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "fin_despesa_empenhada": {
+    "nome": "Despesa empenhada",
+    "nome_en": "Committed expenditure",
+    "fonte": "SICONFI/DCA",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "fin_despesa_liquidada": {
+    "nome": "Despesa liquidada",
+    "nome_en": "Accrued expenditure",
+    "fonte": "SICONFI/DCA",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "fin_despesa_paga": {
+    "nome": "Despesa paga",
+    "nome_en": "Paid expenditure",
+    "fonte": "SICONFI/DCA",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "fin_despesa_corrente": {
+    "nome": "Despesa corrente",
+    "nome_en": "Current expenditure",
+    "fonte": "SICONFI/DCA",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "fin_despesa_capital": {
+    "nome": "Despesas de capital",
+    "nome_en": "Capital expenditure",
+    "fonte": "SICONFI/DCA",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "fin_despesa_pessoal": {
+    "nome": "Despesa com pessoal",
+    "nome_en": "Personnel expenditure",
+    "fonte": "SICONFI/DCA",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "fin_investimentos": {
+    "nome": "Investimentos",
+    "nome_en": "Investment",
+    "fonte": "SICONFI/DCA",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "fin_despesa_saude_liquidada": {
+    "nome": "Despesa liquidada em saúde",
+    "nome_en": "Accrued health expenditure",
+    "fonte": "SICONFI/DCA",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "fin_despesa_educacao_liquidada": {
+    "nome": "Despesa liquidada em educação",
+    "nome_en": "Accrued education expenditure",
+    "fonte": "SICONFI/DCA",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "fin_despesa_adm_liquidada": {
+    "nome": "Despesa liquidada em administração",
+    "nome_en": "Accrued administration expenditure",
+    "fonte": "SICONFI/DCA",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "fin_ativo": {
+    "nome": "Ativo",
+    "nome_en": "Assets",
+    "fonte": "SICONFI/DCA",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "fin_patrimonio_liquido": {
+    "nome": "Patrimônio líquido",
+    "nome_en": "Net assets",
+    "fonte": "SICONFI/DCA",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "ibge_pib": {
+    "nome": "Produto Interno Bruto (PIB)",
+    "nome_en": "Gross domestic product (GDP)",
+    "fonte": "IBGE",
+    "url": "https://www.ibge.gov.br/estatisticas/economicas/contas-nacionais/9088-produto-interno-bruto-dos-municipios.html"
+  },
+  "ibge_vab_agropecuaria": {
+    "nome": "Valor adicionado da agropecuária",
+    "nome_en": "Agriculture gross value added",
+    "fonte": "IBGE",
+    "url": "https://www.ibge.gov.br/estatisticas/economicas/contas-nacionais/9088-produto-interno-bruto-dos-municipios.html"
+  },
+  "ibge_vab_industria": {
+    "nome": "Valor adicionado da indústria",
+    "nome_en": "Industry gross value added",
+    "fonte": "IBGE",
+    "url": "https://www.ibge.gov.br/estatisticas/economicas/contas-nacionais/9088-produto-interno-bruto-dos-municipios.html"
+  },
+  "ibge_vab_servicos": {
+    "nome": "Valor adicionado dos serviços",
+    "nome_en": "Services gross value added",
+    "fonte": "IBGE",
+    "url": "https://www.ibge.gov.br/estatisticas/economicas/contas-nacionais/9088-produto-interno-bruto-dos-municipios.html"
+  },
+  "ibge_vab_adm_publica": {
+    "nome": "Valor adicionado da administração pública",
+    "nome_en": "Public administration gross value added",
+    "fonte": "IBGE",
+    "url": "https://www.ibge.gov.br/estatisticas/economicas/contas-nacionais/9088-produto-interno-bruto-dos-municipios.html"
+  },
+  "fin_pib_per_capita": {
+    "nome": "PIB por habitante · razão municipal PIB/população",
+    "nome_en": "GDP per resident · municipal GDP/population ratio",
+    "fonte": "IBGE · PIB e população; cálculo LAPAM/UFG",
+    "url": "https://sidra.ibge.gov.br/tabela/5938"
+  },
+  "lrf_rreo_tipo": {
+    "nome": "Modalidade de declaração do RREO",
+    "nome_en": "RREO reporting format",
+    "fonte": "SICONFI/RREO e RGF",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "lrf_rgf_tipo": {
+    "nome": "Modalidade de declaração do RGF",
+    "nome_en": "RGF reporting format",
+    "fonte": "SICONFI/RREO e RGF",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "lrf_rcl": {
+    "nome": "Receita corrente líquida (LRF)",
+    "nome_en": "Net current revenue (LRF)",
+    "fonte": "SICONFI/RREO e RGF",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "lrf_rcl_ajustada": {
+    "nome": "Receita corrente líquida ajustada (LRF)",
+    "nome_en": "Adjusted net current revenue (LRF)",
+    "fonte": "SICONFI/RREO e RGF",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "lrf_pessoal_rcl_pct": {
+    "nome": "Despesa com pessoal / RCL",
+    "nome_en": "Personnel expenditure / net current revenue",
+    "fonte": "SICONFI/RREO e RGF",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "lrf_pessoal_limite_pct": {
+    "nome": "Limite de pessoal informado na LRF",
+    "nome_en": "Reported personnel expenditure ceiling",
+    "fonte": "SICONFI/RREO e RGF",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "lrf_dcl": {
+    "nome": "Dívida consolidada líquida",
+    "nome_en": "Net consolidated debt",
+    "fonte": "SICONFI/RREO e RGF",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "lrf_dcl_rcl_pct": {
+    "nome": "Dívida consolidada líquida / RCL",
+    "nome_en": "Net consolidated debt / net current revenue",
+    "fonte": "SICONFI/RREO e RGF",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "lrf_resultado_primario": {
+    "nome": "Resultado primário",
+    "nome_en": "Primary balance",
+    "fonte": "SICONFI/RREO e RGF",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "lrf_resultado_nominal": {
+    "nome": "Resultado nominal",
+    "nome_en": "Nominal balance",
+    "fonte": "SICONFI/RREO e RGF",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "se_mde_pct": {
+    "nome": "Aplicação em manutenção e desenvolvimento do ensino",
+    "nome_en": "Education maintenance and development spending",
+    "fonte": "FNDE · SIOPE",
+    "url": "https://www.fnde.gov.br/siope/indicadoresFinanceirosEEducacionais.do"
+  },
+  "se_fundeb_remuneracao_pct": {
+    "nome": "Fundeb aplicado na remuneração dos profissionais",
+    "nome_en": "FUNDEB spent on education professionals’ pay",
+    "fonte": "FNDE · SIOPE",
+    "url": "https://www.fnde.gov.br/siope/indicadoresFinanceirosEEducacionais.do"
+  },
+  "se_aluno_basica": {
+    "nome": "Investimento educacional por aluno da educação básica",
+    "nome_en": "Education expenditure per basic education pupil",
+    "fonte": "FNDE · SIOPE",
+    "url": "https://www.fnde.gov.br/siope/indicadoresFinanceirosEEducacionais.do"
+  },
+  "se_aluno_infantil": {
+    "nome": "Investimento educacional por aluno da educação infantil",
+    "nome_en": "Education expenditure per early childhood pupil",
+    "fonte": "FNDE · SIOPE",
+    "url": "https://www.fnde.gov.br/siope/indicadoresFinanceirosEEducacionais.do"
+  },
+  "se_aluno_fundamental": {
+    "nome": "Investimento educacional por aluno do ensino fundamental",
+    "nome_en": "Education expenditure per primary/lower secondary pupil",
+    "fonte": "FNDE · SIOPE",
+    "url": "https://www.fnde.gov.br/siope/indicadoresFinanceirosEEducacionais.do"
+  },
+  "se_saude_pct": {
+    "nome": "Aplicação em saúde (SIOPS)",
+    "nome_en": "Health spending share (SIOPS)",
+    "fonte": "Ministério da Saúde · SIOPS",
+    "url": "https://www.gov.br/saude/pt-br/acesso-a-informacao/siops"
+  },
+  "se_saude_hab": {
+    "nome": "Despesa total em saúde por habitante",
+    "nome_en": "Total health expenditure per resident",
+    "fonte": "Ministério da Saúde · SIOPS",
+    "url": "https://www.gov.br/saude/pt-br/acesso-a-informacao/siops"
+  },
+  "se_saude_proprios_hab": {
+    "nome": "Despesa própria em saúde por habitante",
+    "nome_en": "Own-source health expenditure per resident",
+    "fonte": "Ministério da Saúde · SIOPS",
+    "url": "https://www.gov.br/saude/pt-br/acesso-a-informacao/siops"
+  },
+  "se_sus_hab": {
+    "nome": "Transferências recebidas do SUS por habitante",
+    "nome_en": "SUS transfers received per resident",
+    "fonte": "Ministério da Saúde · SIOPS",
+    "url": "https://www.gov.br/saude/pt-br/acesso-a-informacao/siops"
+  },
+  "se_saude_total": {
+    "nome": "Despesa total em saúde",
+    "nome_en": "Total health expenditure",
+    "fonte": "Ministério da Saúde · SIOPS",
+    "url": "https://www.gov.br/saude/pt-br/acesso-a-informacao/siops"
+  },
+  "se_saude_proprios": {
+    "nome": "Despesa própria em saúde",
+    "nome_en": "Own-source health expenditure",
+    "fonte": "Ministério da Saúde · SIOPS",
+    "url": "https://www.gov.br/saude/pt-br/acesso-a-informacao/siops"
+  },
+  "se_sus_receita": {
+    "nome": "Receita de transferências do SUS",
+    "nome_en": "SUS transfers received",
+    "fonte": "Ministério da Saúde · SIOPS",
+    "url": "https://www.gov.br/saude/pt-br/acesso-a-informacao/siops"
+  },
+  "fin_alerta_receita_exclui": {
+    "nome": "Alerta de receita: exclui",
+    "nome_en": "Confirmed revenue quality exclusion flag",
+    "fonte": "LAPAM/UFG — qualidade DCA",
+    "url": "https://siconfi.tesouro.gov.br/"
+  },
+  "fin_alerta_despesa_exclui": {
+    "nome": "Alerta de despesa: exclui",
+    "nome_en": "Confirmed expenditure quality exclusion flag",
+    "fonte": "LAPAM/UFG — qualidade DCA",
+    "url": "https://siconfi.tesouro.gov.br/"
+  }
+}

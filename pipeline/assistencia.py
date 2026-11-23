@@ -79,7 +79,7 @@ PBF_NOMES={
  'valor_regra_protecao':('Valor informado para a Regra de Proteção','Reported amount for the Protection Rule'),
  'valor_medio_planilha':('Benefício médio informado na planilha','Average benefit reported in the worksheet'),
  'beneficio_medio_regra_protecao':('Benefício médio informado da Regra de Proteção','Reported average benefit under the Protection Rule'),
- 'cobertura_planilha':('Atendimento / estimativa de pobreza da planilha','Covered families / worksheet poverty estimate'),
+ 'cobertura_planilha':('Atendimento em relação à estimativa de famílias pobres','Covered families relative to the estimated number of poor families'),
  'qtd_beneficios_renda_cidadania':('Benefícios Renda de Cidadania: quantidade','Citizenship Income benefits: count'),
  'qtd_beneficios_complementares':('Benefícios Complementares: quantidade','Complementary benefits: count'),
  'qtd_beneficios_primeira_infancia':('Benefícios Primeira Infância: quantidade','Early Childhood benefits: count'),

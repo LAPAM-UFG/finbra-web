@@ -1,3 +1,5 @@
+import { ordinal } from '../format';
+import { SeletorLugar, lugaresCadastro } from '../components/SeletorLugar';
 import { normalizarBusca } from '../explorar_painel';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -12,7 +14,7 @@ import type { ResumoClimaFonte } from '../dados';
 import { numero } from '../format';
 import { t } from '../idioma';
 import {
-  MEDIDAS, NORMAL_CLIMA, UFS_CLIMA, acumulados, anomaliaDoResumo, anomaliaParcial, anosCompletos, anosDaLacuna, buscaClima, buscarMunicipios, comUnidade, comparacaoTxt,
+  MEDIDAS, NORMAL_CLIMA, UFS_CLIMA, acumulados, anomaliaDoResumo, anomaliaParcial, anosCompletos, anosDaLacuna, buscaClima, comUnidade, comparacaoTxt,
   diferencaTxt, faixaMeses, fraseHabitual, lerEscolhaClima, lerResumo, medidaDe, mesAnoTxt, mesCurto, mesLongo, montarMapaCalor, num, periodoDoAcumulado, posicoesCompetitivas,
   resolverAno, semUnidade, serieAnualContinua, tabelaAnualClima, tabelaMensalClima, tomDe, unidadeDiferenca, variacaoTxt, type EscolhaClima, type Medida, type ResumoClima, type Territorio,
 } from '../clima_comum';
@@ -114,34 +116,8 @@ function SemRecorte({ titulo, texto: corpo, uf, definir }: { titulo: string; tex
 // ---------------- filtros: UF e busca de município pelo nome ----------------
 
 function Filtros({ escolha, territorios, definir }: { escolha: EscolhaClima; territorios: Territorio[] | null; definir: (m: Record<string, string | null>) => void }) {
-  const [busca, setBusca] = useState('');
-  const sugestoes = useMemo(() => (territorios ? buscarMunicipios(territorios, busca, escolha.uf) : []), [territorios, busca, escolha.uf]);
-  return (
-    <section className="cartao cl-filtros">
-      <div className="filtros">
-        <div className="campo">
-          <label htmlFor="cl-uf">UF</label>
-          <select id="cl-uf" value={escolha.uf} onChange={(e) => definir({ uf: e.target.value || null, cod: escolha.municipio && escolha.municipio.uf === e.target.value ? texto(escolha.cod) : null })}>
-            <option value="">{t('Brasil', 'Brazil')}</option>{UFS_CLIMA.map((u) => <option key={u} value={u}>{u}</option>)}
-          </select>
-        </div>
-        <div className="campo mp-busca">
-          <label htmlFor="cl-mun">{t('Município', 'Municipality')}</label>
-          <input id="cl-mun" value={busca} autoComplete="off" onChange={(e) => setBusca(e.target.value)} disabled={!territorios}
-            placeholder={escolha.municipio ? `${escolha.municipio.nome} (${escolha.municipio.uf})` : escolha.uf ? t(`digite o nome (em ${escolha.uf})`, `type the name (in ${escolha.uf})`) : t('digite o nome', 'type the name')} />
-          {busca.trim().length >= 2 && (
-            <ul className="mp-sugestoes" aria-label={t('Municípios encontrados', 'Matching municipalities')}>
-              {sugestoes.map((m) => (
-                <li key={m.cod}><button type="button" onClick={() => { definir({ cod: String(m.cod), uf: m.uf }); setBusca(''); }}>{m.nome} ({m.uf})</button></li>
-              ))}
-              {!sugestoes.length && <li className="mp-sem">{t('Nenhum município com esse nome.', 'No municipality with that name.')}</li>}
-            </ul>
-          )}
-          {escolha.cod !== null && <button type="button" className="limpar" onClick={() => definir({ cod: null })}>{escolha.uf ? t('ver a UF inteira', 'see the whole state') : t('ver o Brasil', 'see Brazil')}</button>}
-        </div>
-      </div>
-    </section>
-  );
+ const lugares=useMemo(()=>lugaresCadastro((territorios??[]).map(x=>({cod:x.cod,nome:x.nome,uf:x.uf}))),[territorios]);
+ return <section className="cartao cl-filtros"><SeletorLugar lugares={lugares} valor={escolha.cod?String(escolha.cod):escolha.uf||'BR'} carregando={!territorios} escolher={key=>definir(key==='BR'?{cod:null,uf:null}:/^[A-Z]{2}$/.test(key)?{cod:null,uf:key}:{cod:key,uf:territorios?.find(x=>String(x.cod)===key)?.uf??null})}/></section>;
 }
 
 // ---------------- cartões das seis medidas ----------------
@@ -416,12 +392,12 @@ export function ClimaVisaoGeral() {
   const escopo = municipio ? `${municipio.nome} (${municipio.uf})` : escolha.uf ? t(`Estado ${escolha.uf}`, `State ${escolha.uf}`) : t('Brasil', 'Brazil');
   const detalhe = medidaDe(escolha.variavel) ?? MEDIDAS[0];
 
-  if (carregandoMeta || erroMeta) return <><h2 className="titulo-pagina">{t('Clima', 'Climate')}</h2><Estado carregando={carregandoMeta} erro={erroMeta} tentarNovamente={recarregarMeta} /></>;
-  if (!publicado) return <><h2 className="titulo-pagina">{t('Clima', 'Climate')}</h2><SemDados /></>;
+  if (carregandoMeta || erroMeta) return <><h1 className="titulo-pagina">{t('Clima', 'Climate')}</h1><Estado carregando={carregandoMeta} erro={erroMeta} tentarNovamente={recarregarMeta} /></>;
+  if (!publicado) return <><h1 className="titulo-pagina">{t('Clima', 'Climate')}</h1><SemDados /></>;
   const ref = porVar.get('chuva_mm') ?? [...porVar.values()][0];
   return (
     <>
-      <h2 className="titulo-pagina">{t('Clima: o que mudou em relação ao habitual', 'Climate: how it compares with the usual')}</h2>
+      <h1 className="titulo-pagina">{t('Clima: o que mudou em relação ao habitual', 'Climate: how it compares with the usual')}</h1>
       <p className="subtitulo">{escopo} · {t('habitual = média de', 'usual = average of')} {periodo[0]}–{periodo[1]} · {t('estimativas de grade (satélite e reanálise), não medições de estação', 'grid estimates (satellite and reanalysis), not station measurements')}</p>
       <Filtros escolha={escolha} territorios={terr.lista} definir={definir} />
       <Avisos escolha={escolha} definir={definir} />
@@ -495,14 +471,14 @@ export function ClimaRankings() {
     maior: t('Maior valor no ano', 'Highest value in the year'), menor: t('Menor valor no ano', 'Lowest value in the year'),
     acima: t('Mais acima do habitual', 'Furthest above usual'), abaixo: t('Mais abaixo do habitual', 'Furthest below usual'),
   };
-  if (carregandoMeta || erroMeta) return <><h2 className="titulo-pagina">{t('Clima: rankings', 'Climate: rankings')}</h2><Estado carregando={carregandoMeta} erro={erroMeta} tentarNovamente={recarregarMeta} /></>;
-  if (!publicado) return <><h2 className="titulo-pagina">{t('Clima: rankings', 'Climate: rankings')}</h2><SemDados /></>;
+  if (carregandoMeta || erroMeta) return <><h1 className="titulo-pagina">{t('Clima: rankings', 'Climate: rankings')}</h1><Estado carregando={carregandoMeta} erro={erroMeta} tentarNovamente={recarregarMeta} /></>;
+  if (!publicado) return <><h1 className="titulo-pagina">{t('Clima: rankings', 'Climate: rankings')}</h1><SemDados /></>;
   const fonte = fonteDe(m);
   const colunaAnomalia = m.relativa ? t('Variação', 'Change') : t('Diferença', 'Difference');
   const linkMun = (r: Linha) => `/clima${buscaClima(sp, { cod: texto(r.cod), uf: texto(r.uf), variavel: m.codigo === 'chuva_mm' ? null : m.codigo, ano: sel.ano })}`;
   return (
     <>
-      <h2 className="titulo-pagina">{t('Clima: rankings de municípios', 'Climate: municipality rankings')}</h2>
+      <h1 className="titulo-pagina">{t('Clima: rankings de municípios', 'Climate: municipality rankings')}</h1>
       <p className="subtitulo">{m.nome()} {m.soma ? t('por município (soma do ano)', 'by municipality (sum for the year)') : t('por município (média do ano)', 'by municipality (mean for the year)')} <Dica rotulo={t('Fonte', 'Source')}>{fonte}</Dica></p>
       <section className="cartao">
         <div className="filtros">
@@ -559,7 +535,7 @@ export function ClimaRankings() {
             })} /></ProvedorDados>
           </div>
           <div className="filtros"><div className="campo" style={{flex:1}}><label htmlFor="cl-r-busca">{t('Encontrar município no ranking','Find a municipality in the ranking')}</label><input id="cl-r-busca" type="search" value={buscaRanking} onChange={e=>setBuscaRanking(e.target.value)} placeholder={t('Nome ou código IBGE','Name or IBGE code')}/></div>{buscaRanking&&<button className="botao-leve" onClick={()=>setBuscaRanking('')}>{t('Limpar busca','Clear search')}</button>}</div>
-          {selecionado&&<p className="ranking-selecionado"><strong>{texto(selecionado.r.nome)}</strong> · {numero(selecionado.pos)}º {t('de','of')} {numero(lista.length)} · {semUnidade(num(selecionado.r.valor),m.unidade)} {m.unidade} <button className="botao-leve" onClick={()=>setBuscaRanking(texto(selecionado.r.cod))}>{t('Localizar na tabela','Find in table')}</button></p>}
+          {selecionado&&<p className="ranking-selecionado"><strong>{texto(selecionado.r.nome)}</strong> · {ordinal(selecionado.pos)} {t('de','of')} {numero(lista.length)} · {semUnidade(num(selecionado.r.valor),m.unidade)} {m.unidade} <button className="botao-leve" onClick={()=>setBuscaRanking(texto(selecionado.r.cod))}>{t('Localizar na tabela','Find in table')}</button></p>}
           <p role="status">{t(`${numero(filtrada.length)} encontrados de ${numero(lista.length)}; posições preservadas no ranking completo.`,`${numero(filtrada.length)} found out of ${numero(lista.length)}; positions remain those of the full ranking.`)}</p>
           <div className="paginacao-ranking"><button className="botao-leve" disabled={atual===1} onClick={()=>setPagina(atual-1)}>{t('Anterior','Previous')}</button><span>{t(`Página ${atual} de ${paginas}`,`Page ${atual} of ${paginas}`)}</span><button className="botao-leve" disabled={atual===paginas} onClick={()=>setPagina(atual+1)}>{t('Próxima','Next')}</button></div>
           {!topo.length&&<p className="vazio">{t('Nenhum município encontrado. Tente parte do nome ou limpe a busca.','No municipality found. Try part of the name or clear the search.')}</p>}
@@ -588,7 +564,7 @@ export function ClimaMetodologia() {
   const [sp] = useSearchParams();
   return (
     <>
-      <h2 className="titulo-pagina">{t('Clima: fontes e metodologia', 'Climate: sources and methodology')}</h2>
+      <h1 className="titulo-pagina">{t('Clima: fontes e metodologia', 'Climate: sources and methodology')}</h1>
       <section className="cartao texto">
         <h3>{t('Fontes', 'Sources')}</h3>
         <ul>

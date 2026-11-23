@@ -23,7 +23,7 @@ const fonteSiops = () => t(
   'SIOPS/DATASUS (série histórica de indicadores municipais): declaração anual do município sobre receitas e despesas com saúde. Indicadores como calculados pelo SIOPS. O DF e os estados não estão nesta série.',
   'SIOPS/DATASUS (municipal indicator series): each municipality’s annual return on health revenue and spending. Indicators as computed by SIOPS. The Federal District and the states are not in this series.',
 );
-const notaReais = (base: number) => t(`R$ de ${base}, corrigidos pelo IPCA`, `${base} R$, IPCA-adjusted`);
+const notaReais = (base: number) => t(`R$ de dez/${base} (IPCA)`, `Dec/${base} R$ (IPCA)`);
 
 const formulas = {
   mde: () => t(
@@ -35,8 +35,8 @@ const formulas = {
     'Share of FUNDEB spent on pay: teaching staff until 2020 (minimum 60%) and education professionals since 2021 (minimum 70%, Law 14,113/2020).',
   ),
   aluno: () => t(
-    'Investimento educacional por aluno, como calculado pelo SIOPE: despesa da etapa ÷ matrículas da rede no Censo Escolar.',
-    'Education spending per pupil, as computed by SIOPE: spending on the stage ÷ enrolments in the network (School Census).',
+    'Indicador publicado pelo SIOPE/FNDE para a etapa. O painel aplica somente o IPCA: não divide este valor pelas matrículas de todas as redes do Censo Escolar. O universo do indicador é o definido pelo SIOPE; ele não permite deduzir a participação da despesa com professores sem confirmar que numeradores e denominadores são os mesmos.',
+    'Indicator published by SIOPE/FNDE for the education stage. The dashboard only applies IPCA: it does not divide this value by School Census enrolments across all networks. The indicator uses SIOPE’s own scope; teacher spending shares cannot be inferred without confirming matching numerators and denominators.',
   ),
   educacaoHab: () => t(
     'Despesa liquidada em educação declarada no SIOPE ÷ população informada na declaração. Em grupos: soma ÷ soma, só dos entes com os dois valores.',
@@ -81,7 +81,7 @@ function Pagina({ titulo, fonte, sigla, soMunicipios, ente, grupo }: {
   if (!dados) {
     return (
       <>
-        <h2 className="titulo-pagina">{titulo}</h2>
+        <h1 className="titulo-pagina">{titulo}</h1>
         <p className="vazio">{t(`Os dados do ${nome} ainda não foram publicados.`, `${nome} data have not been published yet.`)}</p>
       </>
     );
@@ -89,7 +89,7 @@ function Pagina({ titulo, fonte, sigla, soMunicipios, ente, grupo }: {
   const esferaGrupo = soMunicipios || f.uf ? 'M' : esfera;
   return (
     <>
-      <h2 className="titulo-pagina">{titulo}</h2>
+      <h1 className="titulo-pagina">{titulo}</h1>
       <p className="subtitulo">
         {f.alvo ? f.rotulo : esferaGrupo === 'E' ? t('Estados', 'States') : f.uf ? t(`Municípios de ${f.uf}`, `Municipalities in ${f.uf}`) : t('Municípios do Brasil', 'Municipalities in Brazil')}
         {' · '}{nome} <Dica rotulo={t('Fonte', 'Source')}>{fonte}</Dica>
@@ -248,9 +248,9 @@ function EducacaoEnte({ cod }: { cod: number }) {
               nota={t('despesas de todas as áreas', 'spending across all areas')} />
             <Kpi rotulo={t('Investimento por aluno (educação básica)', 'Spending per pupil (basic education)')} valor={reais(num(a.aluno_basica))}
               nota={reaisBase} dica={<Dica rotulo={t('Fórmula', 'Formula')}>{formulas.aluno()}</Dica>} />
-            <Kpi rotulo={t('Despesa com professores por aluno', 'Teacher spending per pupil')} valor={reais(num(a.professores_aluno))} nota={reaisBase} />
+            <Kpi rotulo={t('Despesa com professores por aluno', 'Teacher spending per pupil')} valor={reais(num(a.professores_aluno))} nota={reaisBase} dica={<Dica rotulo={t('Método SIOPE: despesa com professores por aluno', 'SIOPE method: teacher spending per pupil')}>{formulas.aluno()}</Dica>} />
             <Kpi rotulo={t('Despesa com educação por habitante', 'Education spending per inhabitant')}
-              valor={reais(porHab(a.educacao_liquidada, a.populacao_siope))} nota={reaisBase}
+              valor={reais(porHab(a.educacao_liquidada, a.populacao_siope))} nota={reaisBase} populacao={{valor:num(a.populacao_siope),fonte:'SIOPE'}}
               dica={<Dica rotulo={t('Fórmula', 'Formula')}>{formulas.educacaoHab()}</Dica>} />
           </div>
         </>
@@ -427,10 +427,10 @@ function SaudeEnte({ cod }: { cod: number }) {
             <Kpi rotulo={t('Receita própria aplicada em saúde', 'Own revenue spent on health')} valor={pct(fr(a.saude_pct))}
               nota={`${t('Mínimo', 'Minimum')} 15% · ${frenteAoMinimo(num(a.saude_pct), 15)}`}
               dica={<Dica rotulo={t('Fórmula', 'Formula')}>{formulas.saude()}</Dica>} />
-            <Kpi rotulo={t('Despesa total com saúde por habitante', 'Total health spending per inhabitant')} valor={reais(num(a.saude_hab))}
+            <Kpi rotulo={t('Despesa total com saúde por habitante', 'Total health spending per inhabitant')} valor={reais(num(a.saude_hab))} populacao={{valor:num(a.populacao_siops),fonte:'SIOPS'}}
               nota={reaisBase} dica={<Dica rotulo={t('Fórmula', 'Formula')}>{formulas.saudeHab()}</Dica>} />
-            <Kpi rotulo={t('Recursos próprios por habitante', 'Own resources per inhabitant')} valor={reais(num(a.saude_proprios_hab))} nota={reaisBase} />
-            <Kpi rotulo={t('Transferências do SUS por habitante', 'SUS transfers per inhabitant')} valor={reais(num(a.sus_hab))} nota={reaisBase} />
+            <Kpi rotulo={t('Recursos próprios por habitante', 'Own resources per inhabitant')} valor={reais(num(a.saude_proprios_hab))} populacao={{valor:num(a.populacao_siops),fonte:'SIOPS'}} nota={reaisBase} />
+            <Kpi rotulo={t('Transferências do SUS por habitante', 'SUS transfers per inhabitant')} valor={reais(num(a.sus_hab))} populacao={{valor:num(a.populacao_siops),fonte:'SIOPS'}} nota={reaisBase} />
             <Kpi rotulo={t('Pessoal na despesa com saúde', 'Personnel in health spending')} valor={pct(fr(a.saude_pessoal_pct))} />
             <Kpi rotulo={t('Despesa total com saúde', 'Total health spending')} valor={reais(num(a.saude_total))} nota={reaisBase} />
           </div>
@@ -623,7 +623,7 @@ export function RemuneracaoEducacao() {
 
   return (
     <>
-      <h2 className="titulo-pagina">{t('Profissionais da educação', 'Education staff')}</h2>
+      <h1 className="titulo-pagina">{t('Profissionais da educação', 'Education staff')}</h1>
       <p className="subtitulo">
         {rotuloEscopo} · {t('remuneração declarada no SIOPE, dezembro', 'pay reported in SIOPE, December')}{' '}
         <Dica rotulo={t('Fonte', 'Source')}>{notaRemuneracao()}</Dica>

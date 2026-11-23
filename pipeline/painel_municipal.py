@@ -137,6 +137,8 @@ class Painel:
   assert set(actual)=={'cod_ibge','ano',*columns},(name,set(actual)-{'cod_ibge','ano',*columns})
   years=self.db.execute(f'SELECT min(ano),max(ano),count(*) FROM {qi(name)}').fetchone()
   for key,meta in columns.items():
+   from curadoria_financas import curar
+   meta=curar(key,meta)
    self.dictionary.append({'variavel':key,**meta,'area':area,'tabela':'painel' if principal else name,'ano_de':meta.get('ano_de',years[0]),'ano_ate':meta.get('ano_ate',years[1])})
   if principal:self.tables.append((name,area,list(columns)))
   self.cache[name]=signature
@@ -443,7 +445,7 @@ class Painel:
   descriptor=self.objeto(dicpath,'dicionario_json','dicionario',None,'Dicionário de variáveis','json',len(self.dictionary))
   csvpath=self.work/'dicionario.csv'
   with csvpath.open('w',encoding='utf-8-sig',newline='') as f:
-   fields=['variavel','nome','descricao','area','fonte','unidade','tipo','regra_anual','ano_de','ano_ate','tabela','observacao'];w=csv.DictWriter(f,fieldnames=fields,delimiter=';');w.writeheader();w.writerows(self.dictionary)
+   fields=['variavel','nome','nome_en','descricao','area','fonte','unidade','tipo','regra_anual','ano_de','ano_ate','tabela','observacao'];w=csv.DictWriter(f,fieldnames=fields,delimiter=';');w.writeheader();w.writerows(self.dictionary)
   path=self.dest/'dicionario.csv.zip'
   with zipfile.ZipFile(path,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=6) as z:z.write(csvpath,'dicionario.csv')
   self.objeto(path,'dicionario_csv','dicionario',None,'Dicionário de variáveis','csv.zip',len(self.dictionary))

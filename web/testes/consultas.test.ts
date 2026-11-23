@@ -451,12 +451,12 @@ describe('exportação e busca', () => {
   test('CSV: o delimitador efetivo é protegido nos dois idiomas, com aspas duplicadas e decimal só nos números', () => {
     const t2 = { colunas: ['a', 'b', 'c'], linhas: [['CLT, urban, open-ended', 'diz "oi"; tchau', 0.5], ['sem separador', 'a,b', null]], metadados: [['Nota', 'x, y'] as [string, string]] };
     const en = paraCsv(t2, '.').split('\r\n');
-    assert.equal(en[0], '﻿Nota,"x, y"'); // BOM + metadado com vírgula protegida
-    assert.equal(en[3], '"CLT, urban, open-ended","diz ""oi""; tchau",0.5'); // vírgula do texto protegida; ponto decimal
-    assert.equal(en[4], 'sem separador,"a,b",');
+    assert.equal(en[0], '﻿# Nota,"x, y"'); // BOM + metadado com vírgula protegida
+    assert.equal(en[4], '"CLT, urban, open-ended","diz ""oi""; tchau",0.5'); // vírgula do texto protegida; ponto decimal
+    assert.equal(en[5], 'sem separador,"a,b",');
     const pt = paraCsv(t2, ',').split('\r\n');
-    assert.equal(pt[3], 'CLT, urban, open-ended;"diz ""oi""; tchau";0,5'); // em PT a vírgula do texto não separa campos
-    assert.equal(pt[4], 'sem separador;a,b;');
+    assert.equal(pt[4], 'CLT, urban, open-ended;"diz ""oi""; tchau";0,5'); // em PT a vírgula do texto não separa campos
+    assert.equal(pt[5], 'sem separador;a,b;');
   });
 
   test('XLSX: zip válido com CRC correto', () => {

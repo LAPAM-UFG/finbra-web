@@ -100,6 +100,7 @@ export function criarAbertura(dep: Dependencias) {
   const avisar = dep.avisar ?? ((m: string, e?: unknown) => console.warn(m, e));
   let indice: Promise<IndiceLido | null> | null = null;
   let estado: 'indefinido' | 'rapido' | 'motor' = 'indefinido';
+  const trechos = new Map<string, Promise<LinhaResumo[]>>();
 
   async function carregarIndice(): Promise<IndiceLido | null> {
     const manifesto = await dep.manifesto();
@@ -134,6 +135,17 @@ export function criarAbertura(dep: Dependencias) {
   }
 
   async function trecho(l: IndiceLido, grupo: string): Promise<LinhaResumo[]> {
+    const chave = `${l.indice.snapshot}:${grupo}`;
+    let p = trechos.get(chave);
+    if (!p) {
+      p = lerTrecho(l, grupo);
+      trechos.set(chave, p);
+      p.catch(() => { if (trechos.get(chave) === p) trechos.delete(chave); });
+      if (trechos.size > 60) trechos.delete(trechos.keys().next().value!);
+    }
+    return p;
+  }
+  async function lerTrecho(l: IndiceLido, grupo: string): Promise<LinhaResumo[]> {
     const pos = l.deslocamentos.get(grupo);
     if (!pos) return []; // grupo fora do pacote (ex.: município que a grade não cobre): sem dados, nunca zeros
     const [ini, n] = pos;

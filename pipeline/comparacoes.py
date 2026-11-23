@@ -8,6 +8,7 @@ import argparse, json, math
 from pathlib import Path
 import duckdb, numpy as np
 from comparacoes_base import Quadro, Territorios, Gravador, por_base, sha, compacto
+from curadoria_financas import curar as curar_financa, fontes as fontes_financa, rotulo_preco
 
 
 class Comparacoes:
@@ -135,12 +136,20 @@ class Comparacoes:
                     self.ipca[periodo] = v
         self.base_ipca = self.ler("global_base.json")["base_ipca"]
         assert self.base_ipca * 100 + 12 in self.ipca
+        # Anos usam exatamente o fator exibido em /deflatores e nos painéis.
+        # A razão do índice mensal arredondado pode divergir alguns milionésimos.
+        self.ipca_anual = dict(self.con.execute(
+            'SELECT exercicio, fator_real FROM read_parquet(?)',
+            [str(self.arquivo('gold/ipca.parquet'))],
+        ).fetchall())
 
     def fatores(self, periodos):
         return np.array(
             [
                 (
-                    self.ipca[self.base_ipca * 100 + 12]
+                    (self.ipca_anual[p] if self.ipca_anual[p] is not None else np.nan)
+                    if p <= 10000 and p in self.ipca_anual
+                    else self.ipca[self.base_ipca * 100 + 12]
                     / self.ipca[p if p > 10000 else p * 100 + 12]
                     if (p if p > 10000 else p * 100 + 12) in self.ipca
                     else np.nan
@@ -284,13 +293,13 @@ class Comparacoes:
                 i.update(
                     precos="reais",
                     base_ipca=self.base_ipca,
-                    nome=i["nome"].replace(" (nominal)", "")
-                    + f" (IPCA dez/{self.base_ipca})",
-                    nome_en=i["nome_en"].replace(" (nominal)", "")
-                    + f" (Dec/{self.base_ipca} IPCA)",
+                    nome=rotulo_preco(i["nome"].replace(" (nominal)", ""),self.base_ipca),
+                    nome_en=rotulo_preco(i["nome_en"].replace(" (nominal)", ""),self.base_ipca,True),
                 )
                 qout = self.densidade(i, periodos, v, c, monetario=True)
-                qout.originais = orig
+                qout.originais = v.copy()
+                qout.definicao['precos_original'] = 'reais'
+                qout.definicao.update(nome_original=i['nome'],nome_original_en=i['nome_en'],unidade_original=f'R$ de dez/{self.base_ipca}',unidade_original_en=f'Dec/{self.base_ipca} R$')
                 vagas = quadros["empregos"]["v"]
                 validas = vagas - quadros["sem_rem"]["v"]
                 eleg = (
@@ -385,8 +394,8 @@ class Comparacoes:
                 qout.numeradores = n * fat[:, None]
                 qout.condicoes[np.isfinite(v) & ~np.isfinite(qout.valores)] = 21
                 i.update(
-                    nome=i["nome"] + f" (IPCA dez/{self.base_ipca})",
-                    nome_en=i["nome_en"] + f" (Dec/{self.base_ipca} IPCA)",
+                    nome=rotulo_preco(i["nome"], self.base_ipca),
+                    nome_en=rotulo_preco(i["nome_en"], self.base_ipca, True),
                     precos="reais",
                     base_ipca=self.base_ipca,
                 )
@@ -400,8 +409,8 @@ class Comparacoes:
                 i.update(
                     precos="reais",
                     base_ipca=self.base_ipca,
-                    nome=i["nome"] + f" (IPCA dez/{self.base_ipca})",
-                    nome_en=i["nome_en"] + f" (Dec/{self.base_ipca} IPCA)",
+                    nome=rotulo_preco(i["nome"], self.base_ipca),
+                    nome_en=rotulo_preco(i["nome_en"], self.base_ipca, True),
                 )
                 i[
                     "descricao"
@@ -462,7 +471,7 @@ class Comparacoes:
         # inclusive nos sinalizadores, sem atribuir valor zero às observações.
         df = df.astype(object).where(df.notna(), None)
         for campo in cols:
-            desc = defs[campo]
+            desc = curar_financa(campo, defs[campo])
             v = np.full(shape, np.nan)
             c = np.full(shape, 2, dtype=np.uint8)
             for r in df[
@@ -518,10 +527,7 @@ class Comparacoes:
                 unidade_en=desc["unidade"],
                 formato="numero",
                 fonte_nome=desc["fonte"],
-                fontes=[
-                    dict(nome="STN · Siconfi", url="https://siconfi.tesouro.gov.br/"),
-                    dict(nome="IBGE · SIDRA", url="https://sidra.ibge.gov.br/"),
-                ],
+                fontes=fontes_financa(campo),
                 tema="Finanças e economia",
                 tema_en="Finance and economy",
                 frequencia="anual",
@@ -545,9 +551,13 @@ class Comparacoes:
                     formato="moeda",
                     precos="reais",
                     base_ipca=self.base_ipca,
-                    nome=i["nome"] + f" (IPCA dez/{self.base_ipca})",
-                    nome_en=i["nome_en"] + f" (Dec/{self.base_ipca} IPCA)",
+                    unidade=desc['unidade'].replace('R$ nominais', f'R$ de dez/{self.base_ipca}'),
+                    unidade_en=desc['unidade'].replace('R$ nominais por habitante', f'Dec/{self.base_ipca} R$ per resident').replace('R$ nominais por aluno', f'Dec/{self.base_ipca} R$ per pupil').replace('R$ nominais', f'Dec/{self.base_ipca} R$'),
+                    nome=rotulo_preco(i["nome"], self.base_ipca),
+                    nome_en=rotulo_preco(i["nome_en"], self.base_ipca, True),
                 )
+                i['descricao']+=f' No painel: valor nominal da fonte × fator IPCA para R$ de dezembro de {self.base_ipca}. O arquivo de origem preserva os valores nominais.'
+                i['descricao_en']+=f' Dashboard measure: nominal source value × IPCA factor to December {self.base_ipca} R$. The source file retains nominal values.'
             else:
                 orig = v.copy()
                 i.update(formato="percentual", unidade="%", unidade_en="%")
@@ -570,7 +580,12 @@ class Comparacoes:
             else:
                 i.update(unidade="R$", unidade_en="R$")
                 q = self.densidade(i, anos, v, c, monetario=True)
-                q.originais = orig
+                # O nome deste total já informa a base IPCA. O total e sua
+                # densidade precisam manter os mesmos preços, sem exibir o
+                # nominal sob o rótulo de valor real. A fonte nominal permanece
+                # intacta no download usado como entrada.
+                q.originais = v.copy()
+                q.definicao['precos_original'] = 'reais'
                 out.append(q)
         self.writer.area(
             "financas",
@@ -707,8 +722,8 @@ class Comparacoes:
                 i.update(
                     precos="reais",
                     base_ipca=self.base_ipca,
-                    nome=i["nome"] + f" (IPCA dez/{self.base_ipca})",
-                    nome_en=i["nome_en"] + f" (Dec/{self.base_ipca} IPCA)",
+                    nome=rotulo_preco(i["nome"], self.base_ipca),
+                    nome_en=rotulo_preco(i["nome_en"], self.base_ipca, True),
                 )
             if unit == "moeda" and i["acumulavel"]:
                 qout = self.densidade(i, pp, v, c, monetario=True)

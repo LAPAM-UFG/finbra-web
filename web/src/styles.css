@@ -129,6 +129,8 @@ button, input, select { font: inherit; color: inherit; }
 .areas a:focus-visible, .menu a:focus-visible { outline-offset: -2px; }
 
 .casca { display: grid; grid-template-columns: 240px 1fr; min-height: calc(100vh - var(--altura-topo, 60px)); }
+.pagina-naoencontrada { max-width:760px; margin:3rem auto; padding:1.5rem; line-height:1.6; }
+@media(pointer:coarse){main button,main .limpar{min-height:24px;min-width:24px;}main a{display:inline-flex;align-items:center;min-height:24px;max-width:100%;overflow-wrap:anywhere;}}
 /* a lateral acompanha a rolagem no computador; a faixa clara de fundo é da própria casca, para ir até o fim da página */
 .casca:not(.casca-ia) { background: linear-gradient(to right, var(--superficie) 240px, var(--borda) 240px, var(--borda) 241px, transparent 241px); }
 .menu { padding: 12px 10px 24px; position: sticky; top: var(--altura-topo, 60px); align-self: start; max-height: calc(100vh - var(--altura-topo, 60px)); overflow-y: auto; }
@@ -147,9 +149,23 @@ main { padding: 24px 28px 48px; min-width: 0; }
   .topo { flex-wrap: wrap; padding: 8px 12px; }
   .areas { order: 3; flex: 1 1 100%; }
 }
-@media (min-width:801px) and (max-width:1500px) {
-  .areas { flex-wrap:wrap; overflow-x:visible; }
+@media (min-width:801px) {
+  .topo { flex-wrap:nowrap; min-height:58px; padding:8px 16px; }
+  .areas { order:0; flex:1 1 auto; flex-wrap:nowrap; overflow-x:auto; }
 }
+.seletor-lugar { position:relative; flex:1 1 280px; min-width:0; max-width:100%; }
+.seletor-lugar>label { display:block; color:var(--tinta-2); font-size:12px; margin-bottom:5px; }
+.seletor-lugar>input { width:100%; box-sizing:border-box; min-height:38px; padding:8px 10px; border:1px solid var(--borda-campo); border-radius:7px; background:var(--superficie); color:var(--tinta); font:inherit; }
+.seletor-lugar>.rx-ajuda { display:block; margin:4px 0 0; font-size:11px; color:var(--tinta-3); }
+.seletor-lugar .rx-opcoes { position:absolute; z-index:45; top:calc(100% - 12px); left:0; right:0; max-height:320px; overflow:auto; background:var(--superficie); border:1px solid var(--borda-campo); border-radius:7px; box-shadow:0 6px 16px #0002; padding:4px; }
+.seletor-lugar .rx-opcoes button { display:flex; width:100%; flex-wrap:wrap; justify-content:space-between; gap:4px 12px; min-height:36px; padding:8px; border:0; background:var(--superficie); color:var(--tinta); text-align:left; font:inherit; white-space:normal; }
+.seletor-lugar .rx-opcoes button:hover,.seletor-lugar .rx-opcoes button[aria-selected=true] { background:var(--acao-suave); }
+.seletor-lugar .rx-opcoes small { color:var(--tinta-3); }
+.seletor-periodo { flex:0 1 240px; min-width:180px; }
+.filtros-compartilhados { align-items:flex-start; }
+.sem-valor { color:var(--tinta-3); }
+h1.titulo-pagina { font-size:24px; line-height:1.3; margin:0 0 8px; }
+@media(max-width:600px){h1.titulo-pagina{font-size:21px;}.seletor-lugar,.seletor-periodo{flex-basis:100%;width:100%;min-width:0;}}
 @media (max-width: 800px) {
   .casca { grid-template-columns: 1fr; }
   .casca:not(.casca-ia) { background: none; }
@@ -238,8 +254,8 @@ main:focus { outline: none; }
 /* ---------- ajuda (Dica) ---------- */
 .dica-caixa { position: relative; display: inline-block; vertical-align: middle; }
 .dica-botao {
-  width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--eixo); background: var(--superficie-2);
-  color: var(--tinta-2); font-size: 11px; line-height: 16px; padding: 0; cursor: pointer; margin-left: 4px; text-transform: none;
+  width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--eixo); background: var(--superficie-2);
+  color: var(--tinta-2); font-size: 11px; line-height: 22px; padding: 0; cursor: pointer; margin-left: 4px; text-transform: none;
 }
 .dica-botao[aria-expanded='true'] { background: var(--acao); color: var(--acao-tinta); border-color: var(--acao); }
 .dica-texto {
@@ -1399,3 +1415,6 @@ button.ia-historico-importar:focus-visible { outline: 2px solid var(--foco); out
  .indice-select select{width:100%;min-width:0;min-height:42px;padding:8px 10px;border-radius:8px;border:1px solid var(--borda-campo);background:var(--superficie);color:var(--tinta);font:inherit;}
  .trabalho-painel-filtros .filtros > .campo:nth-child(-n+2){width:calc(50% - 5px);}
 }
+.territorio-fixo { position:sticky;left:0;z-index:2;background:var(--superficie);min-width:160px;max-width:260px;white-space:normal;box-shadow:1px 0 0 var(--borda); }
+thead .territorio-fixo {z-index:3;}
+@media(max-width:600px){.territorio-fixo{min-width:130px;max-width:170px;}}

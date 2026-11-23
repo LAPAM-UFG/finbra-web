@@ -1,4 +1,6 @@
-import { useId, useMemo, useState } from "react";
+import { ordinal } from '../format';
+import { SeletorLugar, lugaresCadastro } from '../components/SeletorLugar';
+import { useState } from "react";
 import type { LineSeriesOption } from 'echarts/charts';
 import { Link, useSearchParams } from "react-router-dom";
 import { useSocial } from "../assistencia_dados";
@@ -37,6 +39,7 @@ import {
   variacaoComparacao,
   periodosComparaveis,
   rupturaComparacao,
+  notaCenso,
   pontePontilhadaRais,
 } from "../comparacoes_apresentacao";
 import "../comparacoes.css";
@@ -70,7 +73,7 @@ const titulos: Record<AreaComparacao, [string, string]> = {
   energia: ["Energia elétrica e geração","Electricity and generation"],
   internet: ["Internet e conectividade","Internet and connectivity"],
   seguranca: ["Segurança pública e violência", "Public safety and violence"],
-  mobilidade: ["Mobilidade e trânsito", "Mobility and traffic"],
+  mobilidade: ["Mobilidade e trânsito", "Mobility and road safety"],
   agropecuaria: ["Agropecuária", "Agriculture and livestock"],
 };
 const padroes: Record<AreaComparacao, string> = {
@@ -96,128 +99,7 @@ const anterior = (pp: number[], fim: number) =>
   pp.filter((p) => p < fim).at(-1) ??
   fim;
 
-function BuscaMunicipio({
-  g,
-  atual,
-  mudar,
-}: {
-  g: GeografiaComparacao;
-  atual: string | null;
-  mudar: (cod: string) => void;
-}) {
-  const id = useId(),
-    [busca, setBusca] = useState<string | null>(null),
-    [aberta, setAberta] = useState(false),
-    [ativo, setAtivo] = useState(0);
-  const opcoes = useMemo(() => {
-    const q = normComparacao(busca?.trim() ?? "");
-    if (q.length < 2) return [];
-    return g.municipios
-      .filter(
-        (x) => normComparacao(x[1]).includes(q) || String(x[0]).startsWith(q),
-      )
-      .sort(
-        (a, b) =>
-          Number(normComparacao(b[1]).startsWith(q)) -
-            Number(normComparacao(a[1]).startsWith(q)) ||
-          a[1].localeCompare(b[1], "pt-BR"),
-      )
-      .slice(0, 12);
-  }, [g, busca]);
-  const escolher = (cod: string) => {
-    mudar(cod);
-    setBusca(null);
-    setAberta(false);
-    setAtivo(0);
-  };
-  return (
-    <div className="cp-busca">
-      <label htmlFor={id}>
-        {t(
-          "Município — busque em todo o Brasil",
-          "Municipality — search across Brazil",
-        )}
-      </label>
-      <input
-        id={id}
-        role="combobox"
-        aria-autocomplete="list"
-        aria-expanded={aberta && opcoes.length > 0}
-        aria-controls={`${id}-lista`}
-        aria-activedescendant={
-          aberta && opcoes[ativo] ? `${id}-${ativo}` : undefined
-        }
-        value={
-          busca ??
-          (atual && g.territorios[atual]
-            ? nomeTerritorioComparacao(g, atual)
-            : "")
-        }
-        placeholder={t(
-          "Nome ou código IBGE; não precisa escolher estado",
-          "Name or IBGE code; no state selection needed",
-        )}
-        onFocus={() => setAberta(true)}
-        onChange={(e) => {
-          setBusca(e.target.value);
-          setAberta(true);
-          setAtivo(0);
-        }}
-        onBlur={() => setAberta(false)}
-        onKeyDown={(e) => {
-          if (e.key === "ArrowDown") {
-            e.preventDefault();
-            setAberta(true);
-            setAtivo((a) => Math.min(a + 1, opcoes.length - 1));
-          }
-          if (e.key === "ArrowUp") {
-            e.preventDefault();
-            setAtivo((a) => Math.max(a - 1, 0));
-          }
-          if (e.key === "Escape") {
-            setAberta(false);
-            setBusca(null);
-          }
-          if (e.key === "Enter" && aberta && opcoes[ativo]) {
-            e.preventDefault();
-            escolher(String(opcoes[ativo][0]));
-          }
-        }}
-      />
-      {aberta && busca !== null && (
-        <div
-          className="cp-opcoes"
-          id={`${id}-lista`}
-          role="listbox"
-          aria-label={t("Municípios encontrados", "Municipality results")}
-        >
-          {opcoes.length ? (
-            opcoes.map(([cod, n, uf], k) => (
-              <button
-                type="button"
-                role="option"
-                id={`${id}-${k}`}
-                aria-selected={ativo === k}
-                key={cod}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => escolher(String(cod))}
-              >
-                {n} ({uf}) · {cod}
-              </button>
-            ))
-          ) : (
-            <p>
-              {t(
-                "Digite ao menos duas letras; nenhum resultado nesta busca.",
-                "Type at least two letters; no results for this search.",
-              )}
-            </p>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
+
 function Baixar({
   tabela,
   nomeArquivo,
@@ -308,10 +190,10 @@ export function Comparacoes({
   });
   return (
     <>
-      <h2 className="titulo-pagina">
+      <h1 className="titulo-pagina">
         {t(...titulos[area])}:{" "}
         {t("comparações e evolução", "comparisons and trends")}
-      </h2>
+      </h1>
       <p className="cp-intro">
         {t(
           "Compare lugares de tamanhos diferentes com taxas, proporções ou valores por habitante. Veja a evolução no tempo e as referências da sua região. Os números já estão prontos.",
@@ -538,50 +420,7 @@ function Conteudo({
           {codValido && estado !== 'BR' && <button type="button" className="botao-leve" onClick={() => mudar({cod:null,ente:null,uf:estado,indicador:null,ind:null,conjunto:'cadunico_historico',inicio:null,periodo:null,ano:null,mes:null})}>{t('Ver histórico do estado', 'View state history')}</button>}
         </aside>}
         <div className="cp-filtros">
-          <div>
-            <label htmlFor="cp-estado">
-              {estadual
-                ? t("Governo estadual", "State government")
-                : t("Brasil ou estado", "Brazil or state")}
-            </label>
-            <select
-              id="cp-estado"
-              value={estado}
-              onChange={(e) =>
-                mudar({
-                  uf: e.target.value === "BR" ? null : e.target.value,
-                  cod: null,
-                  recorte: null,
-                  comparar: null,
-                })
-              }
-            >
-              <option value="BR">
-                {estadual
-                  ? t("Todos os governos estaduais", "All state governments")
-                  : t("Brasil · todos os estados", "Brazil · all states")}
-              </option>
-              {Object.entries(UF_NOMES).map(([uf, [n]]) => (
-                <option key={uf} value={uf}>
-                  {n} ({uf})
-                </option>
-              ))}
-            </select>
-          </div>
-          {!estadual && (
-            <BuscaMunicipio
-              g={g}
-              atual={codValido}
-              mudar={(c) =>
-                mudar({
-                  cod: c,
-                  uf: g.territorios[c].uf,
-                  recorte: null,
-                  comparar: null,
-                })
-              }
-            />
-          )}
+          <SeletorLugar lugares={lugaresCadastro(g.municipios.map(([cod,nome,uf])=>({cod,nome,uf}))).filter(x=>!estadual||x.tipo!=='M')} valor={codValido??estado} escolher={key=>mudar(key==='BR'?{uf:null,cod:null,recorte:null,comparar:null}:/^[A-Z]{2}$/.test(key)?{uf:key,cod:null,recorte:null,comparar:null}:{cod:key,uf:g.territorios[key].uf,recorte:null,comparar:null})}/>
           {!estadual && itensRegiao.length > 0 && (
             <div>
               <label htmlFor="cp-recorte">
@@ -807,7 +646,7 @@ function Conteudo({
       </section>
       <section className="cartao">
         <h3>{nome(i)}</h3>
-        {area === 'seguranca' ? <details><summary>{t('Entenda o indicador e a cobertura','Understand the indicator and coverage')}</summary><p>{textoComparacao(i, 'descricao')}</p></details> : <p>{textoComparacao(i, "descricao")}</p>}
+        {area === 'seguranca' ? <details><summary>{t('Entenda o indicador e a cobertura','Understand the indicator and coverage')}</summary><p>{textoComparacao(i, 'descricao')}</p></details> : <p>{textoComparacao(i, "descricao")}{notaCenso(i)&&<span className="cp-aviso" role="note">{notaCenso(i)}</span>}</p>}
         <p className="cp-nota">
           <strong>{textoComparacao(i, "unidade")}</strong>
           {i.base_ipca
@@ -1215,6 +1054,7 @@ function Serie({
     );
   };
   const metadata: [string, string][] = [
+    [t("Quebra demográfica","Demographic break"),notaCenso(i)],
     [t("Indicador", "Indicator"), nome(i)],
     [t("Unidade", "Unit"), textoComparacao(i, "unidade")],
     [t("Método", "Method"), textoComparacao(i, "normalizacao")],
@@ -1713,7 +1553,7 @@ function Lista({
                   <thead>
                     <tr>
                       <th>{t("Posição", "Rank")}</th>
-                      <th>{t("Território", "Territory")}</th>
+                      <th className="territorio-fixo">{t("Território", "Territory")}</th>
                       <th>{periodoComparacao(fim)}</th>
                       {inicio !== fim && (
                         <>
@@ -1741,8 +1581,8 @@ function Lista({
                             String(x.cod) === grupo ? "true" : undefined
                           }
                         >
-                          <td>{x.posicao}º</td>
-                          <th>
+                          <td>{ordinal(x.posicao)}</td>
+                          <th className="territorio-fixo">
                             <Link
                               to={{
                                 pathname: `${RAIZES_COMPARACAO[m.area]}/comparar`,
@@ -1807,7 +1647,7 @@ function Lista({
                   <table>
                     <thead>
                       <tr>
-                        <th>{t("Território", "Territory")}</th>
+                        <th className="territorio-fixo">{t("Território", "Territory")}</th>
                         <th>{t("Condição", "Status")}</th>
                         <th>{t("Valor original", "Original value")}</th>
                       </tr>

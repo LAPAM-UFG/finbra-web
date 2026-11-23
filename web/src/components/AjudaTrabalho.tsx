@@ -4,7 +4,7 @@ import { t } from '../idioma';
 
 /** Leva o foco ao filtro de UF da barra de filtros (o município se escolhe logo ao lado). */
 export function focarLocal() {
-  const el = document.getElementById('f-uf');
+  const el = document.querySelector('.filtros-compartilhados [role="combobox"]') ?? document.getElementById('f-uf');
   if (!el) return;
   el.scrollIntoView({ block: 'center', behavior: 'smooth' });
   (el as HTMLElement).focus({ preventScroll: true });
@@ -20,7 +20,8 @@ export function BotaoEscolherLocal({ rotulo }: { rotulo?: string }) {
 }
 
 /** Resumo de uma linha do que a página oferece neste território, com os detalhes completos sob demanda. */
-export function CapacidadeTrabalho({ micro, resumo, detalhe, rotulo }: { micro: boolean; resumo: ReactNode; detalhe: ReactNode; rotulo: string }) {
+export function CapacidadeTrabalho({ micro, resumo, detalhe, rotulo, carregando = false }: { micro: boolean; resumo: ReactNode; detalhe: ReactNode; rotulo: string; carregando?: boolean }) {
+  if (carregando) return <p role="status">{t('Conferindo os recortes disponíveis…', 'Checking available breakdowns…')}</p>;
   return (
     <div className={`cobertura capacidade trabalho-capacidade ${micro ? '' : 'limitada'}`} role="note">
       <p>

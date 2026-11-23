@@ -33,11 +33,11 @@ test('território acompanha a navegação entre Saúde e Educação',()=>{
   const q=new URLSearchParams(buscaEntreAreas('?uf=GO&ente=5208707&ano=2024','saude','educacao'));
   assert.equal(q.get('cod'),'5208707');assert.equal(q.get('uf'),'GO');assert.equal(q.get('ano'),'2024');
   const r=new URLSearchParams(buscaEntreAreas('?uf=GO&cod=5208707&ind=mat_total','educacao','saude'));
-  assert.equal(r.get('ente'),'5208707');assert.equal(r.get('ind'),null);
+  assert.equal(r.get('cod'),'5208707');assert.equal(r.get('ind'),null);
 });
 test('SIOPE mantém os códigos do contexto financeiro e o DF',()=>{
-  assert.equal(new URLSearchParams(buscaEntreAreas('?uf=DF&cod=5300108','educacao','financas')).get('ente'),'53');
-  assert.equal(new URLSearchParams(buscaEntreAreas('?ente=5208707','educacao','educacao')).get('ente'),'5208707');
+  assert.equal(new URLSearchParams(buscaEntreAreas('?uf=DF&cod=5300108','educacao','financas')).get('cod'),'53');
+  assert.equal(new URLSearchParams(buscaEntreAreas('?ente=5208707','educacao','educacao')).get('cod'),'5208707');
 });
 
 test('calendário distingue ano sem edição de resultado municipal não publicado',()=>{
@@ -87,5 +87,5 @@ test('navegar dentro da Educação conserva rede e indicador; trocar de área le
  const segundo=new URLSearchParams(buscaEntreAreas(primeiro,'educacao','educacao'));
  assert.equal(segundo.get('rede'),'municipal');assert.equal(segundo.get('ind'),'saeb_lp_ai');
  const saude=new URLSearchParams(buscaEntreAreas(primeiro,'educacao','saude'));
- assert.equal(saude.get('rede'),null);assert.equal(saude.get('ind'),null);assert.equal(saude.get('ente'),'5208707');
+ assert.equal(saude.get('rede'),null);assert.equal(saude.get('ind'),null);assert.equal(saude.get('cod'),'5208707');
 });

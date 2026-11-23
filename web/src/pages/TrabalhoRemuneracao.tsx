@@ -6,9 +6,9 @@ import { Dica } from '../components/Dica';
 import { BotoesExportar, type Tabela } from '../components/Exportar';
 import { barras, CartaoGrafico, Grafico } from '../components/Grafico';
 import { Estado, Kpi } from '../components/Kpi';
-import { EtiquetasRecorte, paramsConsulta, useAnosConsulta, useTerritorioTrabalho } from '../components/RecorteTrabalho';
+import { EtiquetasRecorte, paramsConsulta, useAnosConsulta, useFonteConsulta, useTerritorioTrabalho } from '../components/RecorteTrabalho';
 import { BarraFiltros, useDados } from '../contexto';
-import { cancelarConsultasTrabalho, fonteConsulta, gruposDaFonte } from '../dados';
+import { cancelarConsultasTrabalho, gruposDaFonte } from '../dados';
 import { div, numero, pct, reaisCurto, reaisExato } from '../format';
 import { num } from '../hooks';
 import { t } from '../idioma';
@@ -33,7 +33,7 @@ export function TrabalhoRemuneracao() {
   const ano = anos.includes(f.ano) ? f.ano : ([...anos].reverse().find((a) => a <= f.ano) ?? anos.at(-1));
   const { recorte, definir } = useRecorte();
   const { search } = useLocation();
-  const fonte = fonteConsulta(escopo);
+  const { fonte, carregando: capacidadeCarregando } = useFonteConsulta(escopo);
   const micro = fonte === 'micro';
   const disponiveis = gruposDaFonte(fonte);
   const dimensoes = DIMENSOES().filter((d) => disponiveis.includes(d.id));
@@ -47,7 +47,7 @@ export function TrabalhoRemuneracao() {
   const p = ano && dimEscolhida ? paramsConsulta(escopo, rec, { ano }) : null;
   // consulta pesada (microdados de uma UF) só depois de Calcular; as tabelas pré-somadas (Brasil, cubo) são leves e rodam direto
   const chave = JSON.stringify([dimEscolhida?.id, p]);
-  const liberado = !!p && !incompativel && (!micro || pedido === chave);
+  const liberado = !capacidadeCarregando && !!p && !incompativel && (!micro || pedido === chave);
   const grupos = useApi<ResultadoConsulta>(liberado ? 'trab_consulta' : null, { ...p, agrupar: dimEscolhida?.id ?? 'sexo' });
   const dados = liberado ? grupos.dados : undefined;
 
@@ -98,23 +98,23 @@ export function TrabalhoRemuneracao() {
     };
   };
 
-  if (!anos.length) return <><h2 className="titulo-pagina">{t('Remuneração e desigualdades', 'Pay and inequality')}</h2><p className="vazio">{t('Os microdados da RAIS ainda não foram publicados.', 'RAIS microdata have not been published yet.')}</p></>;
-  const aguardando = micro && !!p && !incompativel && pedido !== chave;
+  if (!anos.length) return <><h1 className="titulo-pagina">{t('Remuneração e desigualdades', 'Pay and inequality')}</h1><p className="vazio">{t('Os microdados da RAIS ainda não foram publicados.', 'RAIS microdata have not been published yet.')}</p></>;
+  const aguardando = !capacidadeCarregando && micro && !!p && !incompativel && pedido !== chave;
 
   return (
     <>
-      <h2 className="titulo-pagina">{t('Remuneração e desigualdades (RAIS)', 'Pay and inequality (RAIS)')}</h2>
+      <h1 className="titulo-pagina">{t('Remuneração e desigualdades (RAIS)', 'Pay and inequality (RAIS)')}</h1>
       <p className="subtitulo">{rotulo} · RAIS {ano} · {t('vínculos ativos em 31/12', 'jobs active on Dec 31')} <Dica rotulo={t('Fonte', 'Source')}>{notaFonte()}</Dica></p>
       <BarraFiltros />
       {f.anoForaDaBase && <p className="aviso" role="status">{t(`A RAIS de ${f.anoForaDaBase} ainda não foi publicada; a página usa ${ano}.`, `RAIS ${f.anoForaDaBase} has not been published yet; the page uses ${ano}.`)}</p>}
-      <CapacidadeTrabalho micro={micro} rotulo={t('O que esta página oferece aqui', 'What this page offers here')}
+      {capacidadeCarregando ? <p role="status">{t('Conferindo os recortes disponíveis…','Checking available breakdowns…')}</p> : <CapacidadeTrabalho micro={micro} rotulo={t('O que esta página oferece aqui', 'What this page offers here')}
         resumo={micro ? t(`compara a remuneração de dezembro por sexo, raça/cor, escolaridade ou idade, com média, mediana, P10 e P90. Escolha a comparação e clique em Calcular.`, `compares December pay by sex, race/colour, education or age, with average, median, P10 and P90. Choose the comparison and click Calculate.`)
           : t('só a divisão por sexo e a média de dezembro; o resto precisa dos microdados de uma UF ou município.', 'only the split by sex and the December average; the rest needs the microdata of a state or municipality.')}
         detalhe={micro
           ? t(`microdados de ${rotulo}: sexo, raça/cor, escolaridade e idade, com média, mediana, P10 e P90. A leitura é pesada (SP, MG e RJ podem levar minutos): ela só começa em Calcular.`,
             `microdata for ${rotulo}: sex, race/colour, education and age, with average, median, P10 and P90. Reading is heavy (SP, MG and RJ may take minutes): it only starts on Calculate.`)
           : t('tabelas pré-somadas deste recorte: só a divisão por sexo e a média de dezembro; raça/cor, escolaridade, idade, mediana e percentis precisam dos microdados, que não estão disponíveis para este recorte.',
-            'pre-aggregated tables for this scope: only the split by sex and the December average; race/colour, education, age, median and percentiles need the microdata, which are not available for this scope.')} />
+            'pre-aggregated tables for this scope: only the split by sex and the December average; race/colour, education, age, median and percentiles need the microdata, which are not available for this scope.')} />}
       <AjudaTrabalho foco="remuneracao" />
       <section className="cartao formulario-recorte">
         <div className="filtros">

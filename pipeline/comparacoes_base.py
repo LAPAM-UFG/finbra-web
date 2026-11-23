@@ -334,6 +334,8 @@ class Gravador:
         return dict(caminho="gold/comparacoes/" + p.name, bytes=len(b), sha256=h)
 
     def area(self, area, quadros, origem, rede="todas", grupos=None, dimensao=None):
+        from curadoria_catalogos import curar_definicao
+        for q in quadros:q.definicao=curar_definicao(q.definicao)
         for q in quadros:
             q.validar(dimensao or len(self.geo.municipios))
         prefixo = area + "_" + rede

@@ -52,6 +52,14 @@ export function pontoExatoDestaque(s: SerieRaio, periodo: number): PontoRaio | n
 }
 
 type Dependencias = { retrato: typeof leitorRaio.retrato; serie: typeof obterSerieRaio };
+/** Razão das somas em três anos completos; nunca média das taxas anuais. */
+export function trienioDestaque(s:SerieRaio,fim:number,ressalvas=false):PontoRaio|null {
+  const pp=[fim-2,fim-1,fim].map(y=>pontoEfetivoRaio(pontoExatoDestaque(s,y),ressalvas));
+  if(pp.some(p=>!p||p[2]===null||p[3]===null||p[3]!<0||![0,1,6,16].includes(p[4])))return null;
+  const ns=pp as PontoRaio[],n=ns.reduce((v,p)=>v+p[2]!,0),d=ns.reduce((v,p)=>v+p[3]!,0);
+  if(d<=0)return null;
+  return [fim,n/d*1000,n,d,ns.some(p=>p[4]===16)?16:ns.some(p=>p[4]===6)?6:n===0?1:0,Math.min(...ns.map(p=>p[5])),null];
+}
 export async function referenciasDestaques(
   m: MetaRaio, c: CatalogoRaio, g: GeografiaComparacao, r: RetratoRaio, itens: DestaqueRaio[],
   dep: Dependencias = { retrato: leitorRaio.retrato, serie: obterSerieRaio },
@@ -59,6 +67,11 @@ export async function referenciasDestaques(
   const grupos = gruposReferenciaDestaques(g, r.grupo);
   const pontos: Record<string, Record<string, PontoRaio|null>> = {};
   const falhas: string[] = [];
+  const locais:Record<string,PontoRaio>={},trienios:Record<string,number>={},trieniosSemBase:Record<string,number>={};
+  await Promise.all(itens.filter(({i,k})=>i.id==='mortalidade_infantil'&&r.linhas[k]?.[3]!==null&&(r.linhas[k]?.[3]??Infinity)<(i.minimo??1000)).map(async({i,k})=>{
+    const p=r.linhas[k];if(!p)return;
+    try {const tri=trienioDestaque(await dep.serie(c,g,r.grupo,i),p[0]);if(tri){locais[chaveRaio(i)]=tri;trienios[chaveRaio(i)]=p[0];}else trieniosSemBase[chaveRaio(i)]=p[0];}catch{falhas.push('trienio:'+r.grupo);}
+  }));
   await Promise.all(grupos.map(async grupo => {
     pontos[grupo] = {};
     let retrato: RetratoRaio;
@@ -69,13 +82,14 @@ export async function referenciasDestaques(
       const key = chaveRaio(i);
       // Observações fora da cobertura não disparam leituras de séries inteiras.
       if (!p || !i.periodos.includes(p[0])) { pontos[grupo][key] = null; return; }
+      if(trienios[key]){try{pontos[grupo][key]=trienioDestaque(await dep.serie(c,g,grupo,i),trienios[key]);}catch{pontos[grupo][key]=null;falhas.push(grupo+':'+key);}return;}
       const pronto = retrato.linhas[k];
       if (!pronto || pronto[0] === p[0]) { pontos[grupo][key] = pronto; return; }
       try { pontos[grupo][key] = pontoExatoDestaque(await dep.serie(c, g, grupo, i), p[0]); }
       catch { pontos[grupo][key] = null; falhas.push(`${grupo}:${key}`); }
     }));
   }));
-  return { pontos, falhas };
+  return { pontos, falhas, locais, trienios, trieniosSemBase };
 }
 
 export function apresentacaoDestaque(item: DestaqueRaio, p: PontoRaio|null, grupo: string, ressalvas: boolean) {

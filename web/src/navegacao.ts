@@ -5,6 +5,8 @@ export type Area = 'financas' | 'trabalho' | 'saude' | 'educacao' | 'munic' | 'c
 const ufPorCodigo = new Map(Object.entries(COD_UF).map(([uf, cod]) => [String(cod), uf]));
 const query = (p: URLSearchParams) => { const s = p.toString(); return s ? `?${s}` : ''; };
 
+const queryCanonica=(p:URLSearchParams)=>{if(!p.has('cod')&&p.has('ente'))p.set('cod',p.get('ente')!);p.delete('ente');return query(p);};
+
 /**
  * O lugar acompanha a troca de área, traduzindo cod (Clima/MUNIC) e ente (demais painéis).
  * Ano de edição da MUNIC/ESTADIC não é exercício nem ano de observação: só vale nessa área.
@@ -18,7 +20,7 @@ export function buscaEntreAreas(search: string, origem: Area, destino: Exclude<A
     const chaves = origem === 'comex' ? ['uf','cod','ano','ind','fluxo'] : origem === 'raiox' ? ['uf','cod','ano','tema','rede'] : origem === 'munic' ? ['pesq', 'uf', 'cod', 'ano'] : origem === 'clima' ? ['uf', 'cod', 'ano', 'variavel'] : origem === 'educacao' ? ['uf', 'cod', 'ente', 'ano', 'ind', 'rede'] : ['saneamento','agropecuaria','mobilidade','seguranca','internet','energia','comex'].includes(origem) ? ['uf','cod','ente','ano','ind','ordem'] : origem === 'assistencia' ? ['uf', 'cod', 'mes', 'ano', 'ano_pib', 'medida'] : ['uf', 'ente', 'ano'];
     for (const k of chaves) if (atual.get(k)) saida.set(k, atual.get(k)!);
     if (['financas', 'trabalho', 'saude'].includes(origem) && atual.get('cod') && !saida.has('ente')) saida.set('ente', atual.get('cod') === '5300108' ? '53' : atual.get('cod')!);
-    return query(saida);
+    return queryCanonica(saida);
   }
   const porCod = origem === 'clima' || origem === 'munic' || origem === 'assistencia' || origem === 'educacao' || origem === 'saneamento' || (origem === 'agropecuaria' || origem === 'mobilidade' || origem === 'seguranca' || origem === 'internet' || (origem === 'energia' || origem === 'comex'));
   const codigoPedido = (atual.get('cod') ?? atual.get(porCod ? 'cod' : 'ente') ?? atual.get('ente'))?.trim() ?? '';
@@ -48,15 +50,15 @@ export function buscaEntreAreas(search: string, origem: Area, destino: Exclude<A
   }
 
   const ano = atual.get('ano');
-  if (ano && origem !== 'munic' && destino !== 'munic' && /^\d{4}$/.test(ano)) saida.set('ano', ano);
-  return query(saida);
+  if (ano && origem !== 'munic' && destino !== 'munic' && /^\d{4}$/.test(ano) && Number(ano)>=2013 && Number(ano)<=new Date().getFullYear()) saida.set('ano', ano);
+  return queryCanonica(saida);
 }
 
 /** Links antigos da IA mantêm a conversa e o recorte, que a própria página explica antes de aplicar. */
 export function buscaIaLegada(search: string, tema?: string): string {
   const p = new URLSearchParams(search);
   if (tema) p.set('paineis', tema);
-  return query(p);
+  return queryCanonica(p);
 }
 
 /** Downloads municipais: mantém tema/UF, explicando à parte os governos estaduais. */

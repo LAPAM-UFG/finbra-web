@@ -166,14 +166,14 @@ export function TrabalhoEvolucao() {
     { nome: t('Remuneração mulheres ÷ homens', 'Women ÷ men pay'), valores: s.map((r) => div(num(r.remuneracao_mulheres), num(r.remuneracao_homens))) },
   ], (v) => pct(v, 0), marcas), [serie.dados]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!temDados) return <><h2 className="titulo-pagina">{t('Mercado de trabalho', 'Labour market')}</h2><SemDados /></>;
+  if (!temDados) return <><h1 className="titulo-pagina">{t('Mercado de trabalho', 'Labour market')}</h1><SemDados /></>;
   const nota = notaComparabilidade(anos);
   const meta2: [string, string][] = [[t('Recorte', 'Scope'), rotulo], [t('Universo', 'Universe'), t('vínculos ativos em 31/12 (todos)', 'jobs active on Dec 31 (all)')],
     [t('Fonte', 'Source'), fonteRais()], ...(nota ? [[t('Comparabilidade', 'Comparability'), nota] as [string, string]] : [])];
   const anosTabela = anos.map((a) => (quebrasEntre(a - 1, a).length ? `${a} †` : String(a)));
   return (
     <>
-      <h2 className="titulo-pagina">{t('Mercado de trabalho: evolução', 'Labour market: trends')}</h2>
+      <h1 className="titulo-pagina">{t('Mercado de trabalho: evolução', 'Labour market: trends')}</h1>
       <p className="subtitulo">{rotulo} · RAIS {periodo} <Dica rotulo={t('Fonte', 'Source')}>{fonteRais()}</Dica></p>
       <BarraFiltros semAno />
       <NotaQuebra anos={anos} />
@@ -320,13 +320,13 @@ export function TrabalhoCaged() {
   const { recorte } = useRecorte();
   const cagedCbo = useDados().meta.fontes.caged_cbo;
 
-  if (!caged) return <><h2 className="titulo-pagina">{t('Novo CAGED', 'New CAGED')}</h2><SemDados /></>;
+  if (!caged) return <><h1 className="titulo-pagina">{t('Novo CAGED', 'New CAGED')}</h1><SemDados /></>;
   const metaC: [string, string][] = [[t('Recorte', 'Scope'), rotulo], [t('Universo', 'Universe'), t('movimentações de empregos celetistas (não inclui estatutários)', 'movements of CLT jobs (statutory jobs not included)')],
     [t('Fonte', 'Source'), fonteCaged()], [t('Última competência carregada', 'Latest month loaded'), caged.ate ? mesAno(caged.ate) : ''],
     [t('Processado em', 'Processed on'), caged.processado_em ?? '']];
   return (
     <>
-      <h2 className="titulo-pagina">{t('Empregos formais mês a mês (Novo CAGED)', 'Formal jobs month by month (New CAGED)')}</h2>
+      <h1 className="titulo-pagina">{t('Empregos formais mês a mês (Novo CAGED)', 'Formal jobs month by month (New CAGED)')}</h1>
       <p className="subtitulo">{rotulo} · {caged.de && caged.ate ? `${mesAno(caged.de)}–${mesAno(caged.ate)}` : ''} <Dica rotulo={t('Fonte', 'Source')}>{fonteCaged()}</Dica></p>
       <BarraFiltros semAno />
       <p className="cobertura" role="note">
@@ -488,10 +488,10 @@ export function TrabalhoRankings() {
     return v.length ? (v.length % 2 ? v[(v.length - 1) / 2] : (v[v.length / 2 - 1] + v[v.length / 2]) / 2) : null;
   };
 
-  if (!temDados) return <><h2 className="titulo-pagina">{t('Rankings do mercado de trabalho', 'Labour market rankings')}</h2><SemDados /></>;
+  if (!temDados) return <><h1 className="titulo-pagina">{t('Rankings do mercado de trabalho', 'Labour market rankings')}</h1><SemDados /></>;
   return (
     <>
-      <h2 className="titulo-pagina">{t('Rankings do mercado de trabalho', 'Labour market rankings')}</h2>
+      <h1 className="titulo-pagina">{t('Rankings do mercado de trabalho', 'Labour market rankings')}</h1>
       <p className="subtitulo">{escopo} · {vista === 'evolucao' ? t('RAIS, vários anos', 'RAIS, several years') : `RAIS ${anoRais}`} <Dica rotulo={t('Fonte', 'Source')}>{fonteRais()} {fonteCaged()}</Dica></p>
       <BarraFiltros semAno={vista === 'evolucao'} semBuscaEnte={vista === 'evolucao'} semEnte={t('O município escolhido define a UF do ranking e aparece destacado, com a sua posição.', 'The chosen municipality sets the state of the ranking and is highlighted, with its position.')} />
       <AvisoAno anoRais={anoRais} />

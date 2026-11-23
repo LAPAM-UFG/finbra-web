@@ -53,7 +53,7 @@ export function AssistenciaPibRankings() {
   });
   const paginas=(s:string)=><nav className="as-ranking-pib-paginacao" aria-label={t(`Paginação ${s}`,`Pagination ${s}`)}><button className="botao-leve" disabled={pagina===0} onClick={()=>mudar({pagina:String(pagina)})}>{t('Anterior','Previous')}</button><span>{t(`Página ${pagina+1} de ${Math.max(1,Math.ceil(filtradas.length/tamanho))}`,`Page ${pagina+1} of ${Math.max(1,Math.ceil(filtradas.length/tamanho))}`)}</span><button className="botao-leve" disabled={(pagina+1)*tamanho>=filtradas.length} onClick={()=>mudar({pagina:String(pagina+2)})}>{t('Próxima','Next')}</button></nav>;
   return <div className="assistencia-painel">
-    <h2 className="titulo-pagina">{t('Pagamentos: compare os municípios','Payments: compare municipalities')}</h2>
+    <h1 className="titulo-pagina">{t('Pagamentos: compare os municípios','Payments: compare municipalities')}</h1>
     <p className="as-sub">{t('Bolsa Família e BPC por habitante, em relação à massa salarial formal estimada ou ao PIB. Ranking e mapa usam os mesmos filtros e números prontos.','Bolsa Família and BPC per resident, relative to estimated formal payroll or GDP. Ranking and map share filters and ready-made figures.')}</p>
     <nav className="as-nav" aria-label={t('Seções de assistência social','Social assistance sections')}><Link to={retorno}>{t('Painel','Overview')}</Link><Link to={`/assistencia/rankings${uf!=='BR'?`?uf=${uf}`:''}`}>{t('Rankings mensais','Monthly rankings')}</Link><Link to={`/assistencia/comparacoes-pagamentos?${sp}`} aria-current="page">{t('Comparações dos pagamentos','Payment comparisons')}</Link></nav>
     {meta.carregando&&<Estado carregando/>}{meta.erro&&<Estado erro={meta.erro} tentarNovamente={meta.recarregar}/>}

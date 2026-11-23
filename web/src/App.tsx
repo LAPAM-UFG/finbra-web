@@ -9,6 +9,8 @@ import { contextoMunic, edicoesCuradas, type Destino } from './munic_painel';
 import { CURADORIA } from './munic_curadoria';
 import { PARAMS_TRABALHO } from './trabalho_comum';
 import { buscaEntreAreas, buscaIaLegada, buscaParaDownloads, type Area } from './navegacao';
+import { rotaConhecida, ALIASES, TITULOS } from '../../shared/rotas_site.mjs';
+import { PaginaNaoEncontrada } from './components/PaginaNaoEncontrada';
 // Pausa temporária: reativar junto de IA_HABILITADA em worker/wrangler.jsonc.
 const IA_HABILITADA = false;
 const Comex = pagina(() => import('./pages/Comex').then(m => ({default:m.Comex})));
@@ -97,7 +99,7 @@ const menu = (): [string, [string, string][]][] => [
   [t('Saúde e educação', 'Health and education'), [
     ['/educacao/financiamento', t('Educação (SIOPE)', 'Education (SIOPE)')],
     ['/educacao/profissionais', t('Profissionais da educação', 'Education staff')],
-    ['/saude', t('Saúde (SIOPS)', 'Health (SIOPS)')],
+    ['/saude/financiamento', t('Saúde · financiamento (SIOPS)', 'Health · financing (SIOPS)')],
   ]],
   [t('Análises', 'Analysis'), [
     ['/demonstrativos', t('Demonstrativos (7 anexos)', 'Financial statements (7 annexes)')],
@@ -123,7 +125,7 @@ const menuSaude = (): [string, [string, string][]][] => [
     ['/datasus/mapa', t('Mapa de indicadores', 'Indicator map')], ['/datasus/rankings', 'Rankings'], ['/datasus/rede', t('Rede e acesso', 'Network and access')],
     ['/datasus/ambulatorial', t('Produção ambulatorial', 'Outpatient output')],
     ['/datasus/vacinacao', t('Vacinação', 'Vaccination')],
-    ['/datasus/financiamento', t('Financiamento federal', 'Federal funding')]]],
+    ['/saude/financiamento', t('Despesa em saúde (SIOPS)', 'Health expenditure (SIOPS)')], ['/datasus/financiamento', t('Financiamento federal', 'Federal funding')]]],
   [t('Metodologia', 'Methodology'), [['/datasus/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
 ];
 
@@ -151,7 +153,7 @@ const menuIa = (): [string, [string, string][]][] => [];
 
 const menuAssistencia = (): [string, [string, string][]][] => [
   [t('Assistência social', 'Social assistance'), [['/assistencia', t('Painel de indicadores', 'Indicator dashboard')]]],
-  [t('Explorar os dados', 'Explore the data'), [['/assistencia/evolucao', t('Evolução', 'Trends')], ['/assistencia/rankings', t('Rankings mensais', 'Monthly rankings')], ['/assistencia/comparacoes-pagamentos', t('Comparações dos pagamentos', 'Payment comparisons')], ['/assistencia/tabela', t('Tabela e exportações', 'Table and downloads')]]],
+  [t('Explorar os dados', 'Explore the data'), [['/assistencia/serie', t('Série detalhada', 'Detailed series')], ['/assistencia/rankings', t('Rankings mensais', 'Monthly rankings')], ['/assistencia/comparacoes-pagamentos', t('Comparações dos pagamentos', 'Payment comparisons')], ['/assistencia/tabela', t('Tabela e exportações', 'Table and downloads')]]],
   [t('Metodologia', 'Methodology'), [['/assistencia/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
 ];
 
@@ -162,13 +164,13 @@ const menuDownloads = (): [string, [string, string][]][] => [
 
 const menuEducacao = (): [string, [string, string][]][] => [
   [t('Educação', 'Education'), [['/educacao', t('Painel de indicadores', 'Indicator dashboard')]]],
-  [t('Explorar os dados', 'Explore the data'), [['/educacao/evolucao', t('Evolução', 'Trends')], ['/educacao/mapa', t('Mapa de indicadores', 'Indicator map')], ['/educacao/rankings', 'Rankings'], ['/educacao/tabela', t('Tabela e exportações', 'Table and downloads')]]],
+  [t('Explorar os dados', 'Explore the data'), [['/educacao/serie', t('Série detalhada', 'Detailed series')], ['/educacao/mapa', t('Mapa de indicadores', 'Indicator map')], ['/educacao/rankings', 'Rankings'], ['/educacao/tabela', t('Tabela e exportações', 'Table and downloads')]]],
   [t('Financiamento', 'Funding'), [['/educacao/financiamento', t('Gastos e aplicação · SIOPE', 'Expenditure and allocation · SIOPE')], ['/educacao/profissionais', t('Profissionais da educação', 'Education staff')]]],
   [t('Metodologia', 'Methodology'), [['/educacao/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
 ];
 
 const areaDe = (pathname: string): Area => (pathname.startsWith('/comex') ? 'comex' : pathname.startsWith('/energia') ? 'energia' : pathname.startsWith('/internet') ? 'internet' : pathname.startsWith('/seguranca') ? 'seguranca' : pathname.startsWith('/mobilidade') ? 'mobilidade' : pathname.startsWith('/agropecuaria') ? 'agropecuaria' : pathname === '/raio-x' ? 'raiox' : pathname.startsWith('/saneamento') ? 'saneamento' : pathname === '/ia' ? 'ia' : pathname === '/downloads' || pathname.startsWith('/downloads/') ? 'downloads' : pathname.startsWith('/trabalho') ? 'trabalho'
-  : pathname.startsWith('/datasus') ? 'saude' : pathname.startsWith('/educacao') ? 'educacao' : pathname.startsWith('/munic') ? 'munic' : pathname.startsWith('/clima') ? 'clima' : pathname.startsWith('/assistencia') ? 'assistencia' : 'financas');
+  : (pathname.startsWith('/datasus') || pathname.startsWith('/saude/')) ? 'saude' : pathname.startsWith('/educacao') ? 'educacao' : pathname.startsWith('/munic') ? 'munic' : pathname.startsWith('/clima') ? 'clima' : pathname.startsWith('/assistencia') ? 'assistencia' : 'financas');
 
 function lerTema(): string | null {
   try {
@@ -269,8 +271,8 @@ export function App() {
   const atuais = new URLSearchParams(search);
   const filtros = new URLSearchParams();
   // o painel da MUNIC tem escolhas próprias (ano é a edição): nada dele vai para os outros painéis, nem o contrário
-  for (const k of ['ano', 'uf', 'ente']) if (area !== 'munic' && area !== 'clima' && atuais.get(k)) filtros.set(k, atuais.get(k)!);
-  if (atuais.get('cod') && ['financas', 'trabalho', 'saude'].includes(area)) filtros.set('ente', atuais.get('cod')!);
+  for (const k of ['ano', 'uf', 'cod']) if (area !== 'munic' && area !== 'clima' && atuais.get(k)) filtros.set(k, atuais.get(k)!);
+  if (atuais.get('cod') && ['financas', 'trabalho', 'saude'].includes(area)) filtros.set('cod', atuais.get('cod')!);
   // dentro da área de trabalho o recorte (ocupação, atividade, perfil, agrupamentos) segue entre as páginas
   const dentro = new URLSearchParams(filtros);
   if (['saude', 'trabalho', 'saneamento'].includes(area) && atuais.get('ind')) dentro.set('ind', atuais.get('ind')!);
@@ -283,7 +285,7 @@ export function App() {
   if (area !== 'ia' && area !== 'munic' && area !== 'clima' && area !== 'downloads' && area !== 'raiox' && area !== 'agropecuaria' && area !== 'mobilidade' && area !== 'seguranca' && area !== 'internet' && area !== 'energia' && area !== 'comex') filtrosIa.set('paineis', area);
   const buscaIa = `?${filtrosIa}`;
 
-  const gruposMenu = ({ comex:()=>[[t('Comércio exterior','Foreign trade'),[['/comex',t('Painel de indicadores','Indicator dashboard')],['/comex/mapa',t('Mapa de indicadores','Indicator map')],['/comex/rankings',t('Rankings relativos','Relative rankings')]]]] as [string,[string,string][]][], energia:()=>[[t('Energia elétrica e geração','Electricity and generation'),[['/energia',t('Painel de indicadores','Indicator dashboard')],['/energia/mapa',t('Mapa de indicadores','Indicator map')],['/energia/rankings',t('Rankings relativos','Relative rankings')]]]] as [string,[string,string][]][], internet:()=>[[t('Internet e conectividade','Internet and connectivity'),[['/internet',t('Painel de indicadores','Indicator dashboard')],['/internet/mapa',t('Mapa de indicadores','Indicator map')],['/internet/rankings',t('Rankings relativos','Relative rankings')]]]] as [string,[string,string][]][], seguranca:()=>[[t('Segurança pública','Public safety'),[['/seguranca',t('Painel de indicadores','Indicator dashboard')],['/seguranca/mapa',t('Mapa de indicadores','Indicator map')],['/seguranca/rankings',t('Rankings relativos','Relative rankings')]]]] as [string,[string,string][]][], mobilidade:()=>[[t('Mobilidade e trânsito','Mobility and traffic'),[['/mobilidade',t('Painel de indicadores','Indicator dashboard')],['/mobilidade/mapa',t('Mapa de indicadores','Indicator map')],['/mobilidade/rankings',t('Rankings relativos','Relative rankings')]]]] as [string,[string,string][]][], agropecuaria:()=>[[t('Agropecuária','Agriculture and livestock'),[['/agropecuaria',t('Painel de indicadores','Indicator dashboard')],['/agropecuaria/mapa',t('Mapa de indicadores','Indicator map')],['/agropecuaria/rankings',t('Rankings relativos','Relative rankings')]]]] as [string,[string,string][]][], raiox:()=>[] as [string,[string,string][]][], saneamento:()=>[[t('Saneamento','Sanitation'),[['/saneamento',t('Painel de indicadores','Indicator dashboard')],['/saneamento/mapa',t('Mapa de indicadores','Indicator map')],['/saneamento/rankings',t('Comparar municípios','Compare municipalities')],['/saneamento/metodologia',t('Fontes e metodologia','Sources and methodology')]]]] as [string,[string,string][]][], financas: menu, trabalho: menuTrabalho, saude: menuSaude, educacao: menuEducacao, munic: menuMunic, clima: menuClima, assistencia: menuAssistencia, downloads: menuDownloads, ia: menuIa }[area])();
+  const gruposMenu = ({ comex:()=>[[t('Comércio exterior','Foreign trade'),[['/comex',t('Painel de indicadores','Indicator dashboard')],['/comex/mapa',t('Mapa de indicadores','Indicator map')],['/comex/rankings',t('Rankings relativos','Relative rankings')]]]] as [string,[string,string][]][], energia:()=>[[t('Energia elétrica e geração','Electricity and generation'),[['/energia',t('Painel de indicadores','Indicator dashboard')],['/energia/mapa',t('Mapa de indicadores','Indicator map')],['/energia/rankings',t('Rankings relativos','Relative rankings')]]]] as [string,[string,string][]][], internet:()=>[[t('Internet e conectividade','Internet and connectivity'),[['/internet',t('Painel de indicadores','Indicator dashboard')],['/internet/mapa',t('Mapa de indicadores','Indicator map')],['/internet/rankings',t('Rankings relativos','Relative rankings')]]]] as [string,[string,string][]][], seguranca:()=>[[t('Segurança pública','Public safety'),[['/seguranca',t('Painel de indicadores','Indicator dashboard')],['/seguranca/mapa',t('Mapa de indicadores','Indicator map')],['/seguranca/rankings',t('Rankings relativos','Relative rankings')]]]] as [string,[string,string][]][], mobilidade:()=>[[t('Mobilidade e segurança no trânsito','Mobility and road safety'),[['/mobilidade',t('Painel de indicadores','Indicator dashboard')],['/mobilidade/mapa',t('Mapa de indicadores','Indicator map')],['/mobilidade/rankings',t('Rankings relativos','Relative rankings')]]]] as [string,[string,string][]][], agropecuaria:()=>[[t('Agropecuária','Agriculture and livestock'),[['/agropecuaria',t('Painel de indicadores','Indicator dashboard')],['/agropecuaria/mapa',t('Mapa de indicadores','Indicator map')],['/agropecuaria/rankings',t('Rankings relativos','Relative rankings')]]]] as [string,[string,string][]][], raiox:()=>[] as [string,[string,string][]][], saneamento:()=>[[t('Saneamento','Sanitation'),[['/saneamento',t('Painel de indicadores','Indicator dashboard')],['/saneamento/mapa',t('Mapa de indicadores','Indicator map')],['/saneamento/rankings',t('Comparar municípios','Compare municipalities')],['/saneamento/metodologia',t('Fontes e metodologia','Sources and methodology')]]]] as [string,[string,string][]][], financas: menu, trabalho: menuTrabalho, saude: menuSaude, educacao: menuEducacao, munic: menuMunic, clima: menuClima, assistencia: menuAssistencia, downloads: menuDownloads, ia: menuIa }[area])();
   if (area !== 'downloads' && area !== 'ia' && area !== 'raiox') {
     const raizComparacao = ({ financas: '', trabalho: '/trabalho', saude: '/datasus', educacao: '/educacao', munic: '/munic', clima: '/clima', assistencia: '/assistencia', saneamento: '/saneamento', agropecuaria: '/agropecuaria', comex: '/comex', energia: '/energia', internet: '/internet', seguranca: '/seguranca', mobilidade: '/mobilidade' })[area];
     gruposMenu.unshift([t('Comparações', 'Comparisons'), [[`${raizComparacao}/comparar`, t('Regiões e evolução', 'Regions and trends')]]]);
@@ -316,7 +318,7 @@ export function App() {
     {id:'energia',nome:t('Energia','Energy'),caminho:'/energia',busca:paraArea('energia')},
     {id:'internet',nome:t('Internet','Internet'),caminho:'/internet',busca:paraArea('internet')},
     {id:'seguranca',nome:t('Segurança pública','Public safety'),caminho:'/seguranca',busca:paraArea('seguranca')},
-    {id:'mobilidade',nome:t('Mobilidade e trânsito','Mobility and traffic'),caminho:'/mobilidade',busca:paraArea('mobilidade')},
+    {id:'mobilidade',nome:t('Mobilidade e segurança no trânsito','Mobility and road safety'),caminho:'/mobilidade',busca:paraArea('mobilidade')},
     {id:'agropecuaria',nome:t('Agropecuária','Agriculture and livestock'),caminho:'/agropecuaria',busca:paraArea('agropecuaria')},
     {id:'saneamento',nome:t('Saneamento','Sanitation'),caminho:'/saneamento',busca:paraArea('saneamento')},
     {id:'munic',nome:t('Gestão pública','Public management'),caminho:'/munic',busca:paraArea('munic')},
@@ -325,43 +327,30 @@ export function App() {
     {id:'downloads',nome:t('Baixar dados','Download data'),caminho:'/downloads',busca:buscaParaDownloads(search,area)},
   ];
   useEffect(()=>{
-    const nome=areas.find(a=>a.id===area)?.nome??'LAPAM';
-    const pagina=gruposMenu.flatMap(([,itens])=>itens).find(([p])=>p===caminhoMenu)?.[1];
-    document.title=`LAPAM · ${nome}${pagina?' · '+pagina:''}`;
+    if(!rotaConhecida(pathname)){document.title=t('Página não encontrada · LAPAM','Page not found · LAPAM');return;}
+    const titulo=TITULOS[pathname.replace(/\/+$/, '')||'/'];
+    document.title=titulo?`LAPAM · ${t(titulo[0],titulo[1])}`:'LAPAM';
   },[caminhoMenu,idioma,area]);
 
 
 
+  const canonicos=new URLSearchParams(search);
+  if(!canonicos.has('cod')&&canonicos.get('ente'))canonicos.set('cod',canonicos.get('ente')!);
+  canonicos.delete('ente');
+  const canonico=ALIASES[pathname as keyof typeof ALIASES];
+  if(canonico||canonicos.toString()!==new URLSearchParams(search).toString())return <Navigate to={{pathname:canonico??pathname,search:canonicos.toString()?'?'+canonicos:'',hash}} replace/>;
+  if(!rotaConhecida(pathname))return <PaginaNaoEncontrada/>;
   return (
     <>
       <a className="pular" href="#conteudo">{t('Pular para o conteúdo', 'Skip to content')}</a>
       <header className="topo">
         <img className="logo" src="/logo_lapam.png" alt="LAPAM" />
-        <h1 className="sr-only">{{
-          financas: `${t('Finanças municipais', 'Municipal finances')} · SICONFI`,
-          trabalho: t('Mercado de trabalho · RAIS e CAGED', 'Labour market · RAIS and CAGED'),
-          saude: t('Saúde · DATASUS', 'Health · DATASUS'),
-          educacao: t('Educação · Inep e SIOPE', 'Education · Inep and SIOPE'),
-          comex: t('Comércio exterior','Foreign trade'),
-          energia: t('Energia elétrica e geração','Electricity and generation'),
-          internet: t('Internet e conectividade','Internet and connectivity'),
-          seguranca: t('Segurança pública e violência','Public safety and violence'),
-          mobilidade: t('Mobilidade e segurança no trânsito','Mobility and road safety'),
-          agropecuaria: t('Agropecuária · PAM, PPM e PEVS','Agriculture and livestock · PAM, PPM and PEVS'),
-          saneamento: t('Saneamento · SNIS e SINISA', 'Sanitation · SNIS and SINISA'),
-          munic: t('Gestão pública · MUNIC e ESTADIC', 'Public management · MUNIC and ESTADIC'),
-          clima: t('Clima · CHIRPS e ERA5-Land', 'Climate · CHIRPS and ERA5-Land'),
-          assistencia: t('Assistência social · CadÚnico, Bolsa Família e BPC', 'Social assistance · Cadastro Único, Bolsa Família and BPC'),
-          downloads: t('Baixar dados municipais', 'Download municipal data'),
-          ia: t('Pergunte aos dados · LAPAM/UFG', 'Ask the data · LAPAM/UFG'),
-          raiox: t('Raio X do território · LAPAM/UFG', 'Territory X-ray · LAPAM/UFG'),
-        }[area]}</h1>
         <nav className="areas" aria-label={t('Áreas', 'Areas')}>
           {areas.filter(a=>a.id!=='downloads').map(a=><Link key={a.id} to={{pathname:a.caminho,search:a.busca}} className={area===a.id?'ativo':''} aria-current={area===a.id?'page':undefined}>{a.nome}</Link>)}
         </nav>
         <div className="areas-mobile">
           <label className="sr-only" htmlFor="area-painel">{t('Área do painel','Dashboard area')}</label>
-          <select id="area-painel" value={area} onChange={e=>{const a=areas.find(a=>a.id===e.target.value)!;navegar({pathname:a.caminho,search:a.busca});}}>
+          <select id="area-painel" value={area} onChange={e=>{const a=areas.find(a=>a.id===e.target.value);if(a)navegar({pathname:a.caminho,search:a.busca});}}>
             {areas.map(a=><option key={a.id} value={a.id}>{a.nome}</option>)}
           </select>
         </div>
@@ -398,11 +387,15 @@ export function App() {
         </nav>}
         {/* a chave refaz as páginas ao trocar o idioma: gráficos e textos memorizados são recalculados */}
         <main key={idioma} id="conteudo" tabIndex={-1}>
-          {!['ia', 'downloads', 'raiox'].includes(area) && /^\/(receitas|despesas|despesas-orcamentarias|socioeconomico|trabalho|datasus|educacao|saneamento|assistencia|munic|clima|rankings)\/?$/.test(pathname) && <aside className="atalho-comparacoes"><Link to={linkPagina(`${({ financas: '', trabalho: '/trabalho', saude: '/datasus', educacao: '/educacao', munic: '/munic', clima: '/clima', assistencia: '/assistencia', saneamento: '/saneamento', agropecuaria: '/agropecuaria', comex: '/comex', energia: '/energia', internet: '/internet', seguranca: '/seguranca', mobilidade: '/mobilidade', ia: '', downloads: '', raiox: '' })[area]}/comparar`)}>{t('Comparar com regiões e acompanhar no tempo →', 'Compare with regions and track changes over time →')}</Link><span>{t('Taxas, proporções e valores por habitante; totais nas tabelas originais.', 'Rates, shares and values per inhabitant; totals in the original tables.')}</span></aside>}
-          <Suspense fallback={<p className="carregando" role="status">{t('Abrindo o painel…', 'Opening the dashboard…')}</p>}><ProvedorDados>
+          {!['ia', 'downloads', 'raiox'].includes(area) && /^\/(receitas|despesas|despesas-orcamentarias|socioeconomico|trabalho|datasus|educacao|saneamento|assistencia|munic|clima|rankings|comex|energia|internet|seguranca|mobilidade|agropecuaria)\/?$/.test(pathname) && <aside className="atalho-comparacoes"><Link to={linkPagina(`${({ financas: '', trabalho: '/trabalho', saude: '/datasus', educacao: '/educacao', munic: '/munic', clima: '/clima', assistencia: '/assistencia', saneamento: '/saneamento', agropecuaria: '/agropecuaria', comex: '/comex', energia: '/energia', internet: '/internet', seguranca: '/seguranca', mobilidade: '/mobilidade', ia: '', downloads: '', raiox: '' })[area]}/comparar`)}>{t('Comparar com regiões e acompanhar no tempo →', 'Compare with regions and track changes over time →')}</Link><span>{t('Taxas, proporções e valores por habitante; totais nas tabelas originais.', 'Rates, shares and values per inhabitant; totals in the original tables.')}</span></aside>}
+          <Suspense fallback={<p className="carregando" role="status">{t('Abrindo o painel…', 'Opening the dashboard…')}</p>}><ProvedorDados>{area==='munic'&&idioma==='en'&&<p className="nota-base">Original IBGE wording: questionnaire text and source answer labels are retained in Portuguese. Dashboard explanations and curated indicators are translated.</p>}{atuais.get('ano_pedido')&&<p className="aviso" role="status">{t(`O período ${atuais.get('ano_pedido')} não está disponível neste recorte; mostrando ${atuais.get('ano')??'a última referência disponível'}.`,`Period ${atuais.get('ano_pedido')} is unavailable for this scope; showing ${atuais.get('ano')??'the latest available reference'}.`)}</p>}
             <Routes>
               <Route path="/" element={<Navigate to={{ pathname: IA_HABILITADA && search ? '/ia' : '/raio-x', search: IA_HABILITADA ? buscaIaLegada(search) : buscaEntreAreas(search, 'ia', 'raiox'), hash }} replace />} />
               <Route path="/raio-x" element={<RaioX />} />
+              <Route path="/financiamento" element={<Navigate to={{pathname:'/datasus/financiamento',search}} replace/>}/>
+              <Route path="/profissionais" element={<Navigate to={{pathname:'/educacao/profissionais',search}} replace/>}/>
+              <Route path="/mapa" element={<Navigate to={{pathname:'/datasus/mapa',search}} replace/>}/>
+              <Route path="/saude/financiamento" element={<Saude/>}/>
               <Route path="/receitas" element={<ReceitasVisaoGeral />} />
               <Route path="/receitas/evolucao" element={<ReceitasEvolucao />} />
               <Route path="/fpm" element={<Fpm />} />

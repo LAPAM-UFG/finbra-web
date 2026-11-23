@@ -11,6 +11,17 @@ import requests
 PUBLICO='https://finbra-web.luanviniciusbernardelli.workers.dev/dados/'
 
 
+def caminho_resolvido(path):
+    """Resolve links e normaliza aliases do mesmo volume no Windows (\\\\?\\)."""
+    resolved=Path(path).resolve()
+    value=str(resolved)
+    if os.name=='nt'and value.startswith('\\\\?\\'):
+        value=value[4:]
+        if value.startswith('UNC\\'):value='\\\\'+value[4:]
+        resolved=Path(value)
+    return resolved
+
+
 def sha(path):
     with Path(path).open('rb') as f:return hashlib.file_digest(f,'sha256').hexdigest()
 
@@ -32,14 +43,14 @@ def referencias(obj):
 
 class Snapshot:
     def __init__(self,raiz,caches=(),url=PUBLICO,copiar_cache=True):
-        self.raiz=Path(raiz).resolve();self.caches=list(map(Path,caches));self.url=url;self.proveniencia={};self.copiar_cache=copiar_cache
+        self.raiz=caminho_resolvido(raiz);self.caches=list(map(Path,caches));self.url=url;self.proveniencia={};self.copiar_cache=copiar_cache
 
     def obter(self,chave,ref=None):
         key=Path(chave)
         if not key.parts or key.is_absolute() or '..' in key.parts or key.parts[0] not in ['gold','silver']:
             raise ValueError('chave de entrada inválida: '+chave)
-        target=(self.raiz/key).resolve()
-        if not target.is_relative_to(self.raiz):raise ValueError('entrada redirecionada')
+        target=caminho_resolvido(self.raiz/key)
+        if not target.is_relative_to(self.raiz):raise ValueError('entrada redirecionada: '+str(target)+' fora de '+str(self.raiz))
         if ref:
             expected=ref['sha256'];size=ref['bytes'];etag=None
         else:
@@ -76,7 +87,7 @@ class Snapshot:
         """Captura nomes mutáveis pelo ETag S3, inclusive uploads multipart."""
         key=Path(chave)
         if not key.parts or key.is_absolute() or '..' in key.parts or key.parts[0] not in ['gold','silver']:raise ValueError('chave de entrada inválida')
-        target=(self.raiz/key).resolve()
+        target=caminho_resolvido(self.raiz/key)
         if not target.is_relative_to(self.raiz):raise ValueError('entrada redirecionada')
         head=client.head_object(Bucket=bucket,Key=chave)
         if head['ETag']!=ref['etag'] or head['ContentLength']!=ref['bytes']:raise ValueError('origem mudou: '+chave)

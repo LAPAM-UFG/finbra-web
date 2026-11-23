@@ -1,8 +1,5 @@
-import { executarAberturaPaineis } from './abertura_paineis';
 import { useEffect, useState } from 'react';
 import { USAR_MOTOR } from './clima_abertura';
-import { executarInicialClima, executarInicialSaude } from './aberturas_iniciais';
-import { executarInicialEducacaoFinanceira, fallbackEducacaoFinanceira } from './educacao_financeira';
 
 export type Meta = {
   anos: number[]; anexos: Record<string, string[]>; baseIpca: number; geradoEm: string;
@@ -39,11 +36,21 @@ export function buscar<T>(caminho: string, params: Params = {}): Promise<T> {
   if (!cache.has(u)) {
     // clima_meta, clima_territorios e clima_painel (Clima) e saude_meta, saude_entes, saude_colunas, saude_serie e saude_siops (Saúde) abrem sem o
     // motor (pacotes de abertura); se não houver pacote ou falhar, o motor responde
-    const p = executarAberturaPaineis(caminho,params)
-      .then(r=>r===USAR_MOTOR?executarInicialEducacaoFinanceira(caminho,params):r)
-      .then(r=>r===USAR_MOTOR?executarInicialClima(caminho,params):r)
-      .then((r) => (r === USAR_MOTOR ? executarInicialSaude(caminho, params) : r))
-      .then((r) => (r === USAR_MOTOR ? import('./dados').then(m=>m.executar(fallbackEducacaoFinanceira(caminho),caminho.startsWith('educacao_fin_')?{...params,inclui_df:1}:params)) : r));
+    const p = (async () => {
+      let r:unknown=USAR_MOTOR;
+      if (['entes','trab_serie','trab_caged','trab_setores','trab_perfis','munic_territorios','munic_painel','agregado','cobertura'].includes(caminho))
+        r=await import('./abertura_paineis').then(m=>m.executarAberturaPaineis(caminho,params));
+      if (r===USAR_MOTOR && caminho.startsWith('educacao_fin_')) {
+        const m=await import('./educacao_financeira');
+        r=await m.executarInicialEducacaoFinanceira(caminho,params);
+        if(r===USAR_MOTOR)return import('./dados').then(d=>d.executar(m.fallbackEducacaoFinanceira(caminho),{...params,inclui_df:1}));
+      }
+      if (r===USAR_MOTOR && ['clima_meta','clima_territorios','clima_painel'].includes(caminho))
+        r=await import('./aberturas_iniciais').then(m=>m.executarInicialClima(caminho,params));
+      if (r===USAR_MOTOR && ['meta','colunas','entes','saude_meta','saude_entes','saude_colunas','saude_serie','saude_siops'].includes(caminho))
+        r=await import('./aberturas_iniciais').then(m=>m.executarInicialSaude(caminho,params));
+      return r===USAR_MOTOR?import('./dados').then(m=>m.executar(caminho,params)):r;
+    })();
     p.catch(() => cache.delete(u));
     cache.set(u, p);
   }

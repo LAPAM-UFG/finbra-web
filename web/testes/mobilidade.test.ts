@@ -32,7 +32,7 @@ test('zero de óbitos registrado não preenche SIM fora da cobertura',()=>{
 });
 test('município, DF, ano e tema acompanham a navegação',()=>{
  assert.equal(buscaEntreAreas('?ente=53&ano=2024','saude','mobilidade'),'?uf=DF&cod=5300108&ano=2024');
- assert.equal(buscaEntreAreas('?cod=5208905&uf=GO&ano=2024','mobilidade','saude'),'?uf=GO&ente=5208905&ano=2024');
+ assert.equal(buscaEntreAreas('?cod=5208905&uf=GO&ano=2024','mobilidade','saude'),'?uf=GO&ano=2024&cod=5208905');
  assert.equal(new URLSearchParams(buscaParaDownloads('?cod=5208905&uf=GO','mobilidade')).get('area'),'mobilidade');
 });
 test('contagem original abre Mobilidade e não uma comparação absoluta',()=>{

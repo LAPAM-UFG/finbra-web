@@ -25,7 +25,7 @@ export function Deflatores() {
   const r = useApi<Ipca[]>('ipca');
   return (
     <>
-      <h2 className="titulo-pagina">{t('Deflatores', 'Deflators')}</h2>
+      <h1 className="titulo-pagina">{t('Deflatores', 'Deflators')}</h1>
       <p className="subtitulo">
         {t(
           `Valores reais em R$ de dezembro de ${meta.baseIpca} (último ano completo do IPCA).`,
@@ -36,9 +36,10 @@ export function Deflatores() {
         <h3>{t('Método', 'Method')}</h3>
         <ul>
           <li>{t('Fonte: IPCA mensal do IBGE, pela série SGS 433 do Banco Central.', 'Source: IBGE monthly IPCA, through Central Bank of Brazil SGS series 433.')}</li>
+          <li>{t('A variação anual dos anos fechados é a série oficial do IBGE distribuída pelo BCB (SGS 13522), observada em dezembro. Os fatores de correção vigentes conservam a cadeia mensal já publicada (SGS 433).','Annual changes for complete years use the official IBGE series distributed by BCB (SGS 13522), observed in December. Existing adjustment factors retain the published monthly chain (SGS 433).')}</li>
           <li>{t(
-            'Índice acumulado: produto de (1 + IPCA mensal) desde janeiro de 2010. O índice do ano é o acumulado até dezembro (ou até o último mês divulgado, em ano parcial).',
-            'Cumulative index: product of (1 + monthly IPCA) since January 2010. The year’s index is the cumulative value through December (or through the latest published month, in a partial year).',
+            'Índice acumulado: produto de (1 + IPCA mensal) desde janeiro de 2006. O índice do ano é o acumulado até dezembro (ou até o último mês divulgado, em ano parcial).',
+            'Cumulative index: product of (1 + monthly IPCA) since January 2006. The year’s index is the cumulative value through December (or through the latest published month, in a partial year).',
           )}</li>
           <li>{t(
             `Fator do exercício = índice de dez/${meta.baseIpca} ÷ índice do exercício. Valor real = valor nominal × fator.`,
@@ -138,7 +139,7 @@ export function Qualidade() {
 
   return (
     <>
-      <h2 className="titulo-pagina">{t('Qualidade dos dados e fontes', 'Data quality and sources')}</h2>
+      <h1 className="titulo-pagina">{t('Qualidade dos dados e fontes', 'Data quality and sources')}</h1>
       <p className="subtitulo">{t('Testes que o pipeline roda a cada atualização.', 'Tests the pipeline runs on every update.')} {t('Dados processados em', 'Data processed on')} {data(meta.geradoEm)}.</p>
       <section className="cartao">
         <h3>{t('Fontes', 'Sources')}</h3>

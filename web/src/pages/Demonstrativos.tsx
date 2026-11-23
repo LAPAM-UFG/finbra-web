@@ -26,7 +26,7 @@ export function Demonstrativos() {
 
   return (
     <>
-      <h2 className="titulo-pagina">{t('Demonstrativos da DCA', 'DCA financial statements')}</h2>
+      <h1 className="titulo-pagina">{t('Demonstrativos da DCA', 'DCA financial statements')}</h1>
       <p className="subtitulo">{f.rotulo} · {f.ano} · {t('Anexo', 'Annex')} {anexo} — {nomes[anexo]}</p>
       <BarraFiltros />
       <Cobertura dominio={anexo === 'I-C' ? 'receita' : anexo === 'I-AB' || anexo === 'I-HI' ? 'patrimonio' : 'despesa'} />

@@ -198,6 +198,8 @@ def gerar(fontes, destino, edicao=None):
         for j,i in enumerate(ec['indicadores']):
             cx_defs.append(dict(id=i['id'],nome=i['nome'],nome_en=i['nome_en'],descricao=i['descricao'],descricao_en=i['descricao_en'],tema={'resumo':'Balança comercial','exp':'Exportações','imp':'Importações','comparavel':'Mesmos meses','bases':'Bases de cálculo','diversidade':'Produtos e mercados','variacao':'Variações comparáveis'}[i['familia']],tema_en={'resumo':'Trade balance','exp':'Exports','imp':'Imports','comparavel':'Same months','bases':'Calculation bases','diversidade':'Products and markets','variacao':'Comparable changes'}[i['familia']],unidade=i['unidade'],unidade_en=i['unidade_en'],formato='percentual'if i['unidade']=='%'else'numero',periodos=i['anos'],frequencia='anual',metodo_referencia='razao',normalizacao='Bens por domicílio fiscal; confira os meses disponíveis. Concentração deve ser recalculada nos registros reunidos, sem média municipal.',normalizacao_en='Goods by fiscal domicile; inspect available months. Concentration must be recomputed from pooled records, not averaged across municipalities.',fator=1,ranking=False,fonte_nome=i['fonte_nome'],fontes=[dict(nome=i['fonte_nome'],url=i['fonte_url'])],area='comex',rede='todas',catalogo='comex_original',indice=j,notas_anos=i.get('notas_anos',{})))
         defs+=cx_defs
+    from curadoria_catalogos import diferenciar_raiox
+    defs=diferenciar_raiox(defs)
     saida=destino/'gold/raiox';saida.mkdir(parents=True)
     def objeto(nome,body,ext='json'):
         key=f'gold/raiox/{nome}_{sha(body)[:16]}.{ext}';(destino/key).write_bytes(body)

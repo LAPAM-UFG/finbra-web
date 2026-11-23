@@ -79,7 +79,7 @@ function iniciar() {
   pronto ??= (async () => {
     const manifesto = await manifestoCompartilhado();
     const arquivos = Promise.all(
-      Object.entries(TABELAS_EM_MEMORIA).map(async ([nome, caminho]) => [nome, await baixar(caminho)] as const),
+      Object.entries(TABELAS_EM_MEMORIA).filter(([nome]) => nome === 'entes' || nome === 'ipca').map(async ([nome, caminho]) => [nome, await baixar(caminho)] as const),
     );
     // o .wasm (~33 MB) vem da CDN jsDelivr, na mesma versão do pacote npm
     const pacote = await duckdb.selectBundle(duckdb.getJsDelivrBundles());
@@ -104,11 +104,34 @@ function iniciar() {
     }
     // valores reais em qualquer ano-base completo (ex.: 2021 com fatores referenciados a 2025), sem montar razões à mão
     await con.query(SQL_IPCA_BASE);
-    await carregarIndiceMicro();
     return { con, manifesto };
   })();
   pronto.catch(() => (pronto = null));
   return pronto;
+}
+
+// Os painéis setoriais não precisam das tabelas fiscais. Cada tabela é registrada
+// uma vez e apenas quando uma consulta fiscal a pede; o motor e o IPCA são comuns.
+const fiscaisProntas = new Map<string, Promise<void>>();
+async function prepararFiscal() {
+  if (lerLocal) return; // o motor de testes já recebe as tabelas carregadas
+  const { con } = await iniciar();
+  await Promise.all(Object.entries(TABELAS_EM_MEMORIA).filter(([n]) => n !== 'entes' && n !== 'ipca').map(([nome,caminho]) => {
+    let p = fiscaisProntas.get(nome);
+    if (!p) {
+      p = (async () => {
+        if(nome==='indicadores'){
+          await con.query(`CREATE VIEW IF NOT EXISTS indicadores AS SELECT * FROM read_parquet(${arq(caminho)})`);
+          return;
+        }
+        await db.registerFileBuffer(`${nome}.parquet`, await baixar(caminho));
+        await con.query(`CREATE TABLE IF NOT EXISTS ${nome} AS SELECT * FROM read_parquet('${nome}.parquet')`);
+      })();
+      fiscaisProntas.set(nome,p);
+      p.catch(() => fiscaisProntas.delete(nome));
+    }
+    return p;
+  }));
 }
 
 /** O manifesto único da sessão (o mesmo do caminho rápido do clima) e a versão dos URLs que sai dele. */
@@ -171,7 +194,18 @@ const normalizar = (v: unknown): Valor => (typeof v === 'bigint' ? Number(v) : (
 
 /** SQL com parâmetros nomeados ($nome), executado como consulta preparada. */
 async function consultar(sql: string, params: Record<string, Valor> = {}): Promise<Linha[]> {
-  const { con } = await iniciar();
+  const { con, manifesto } = await iniciar();
+  if(/\b(indicadores|escopos|alertas|faixas)\b/.test(sql))await prepararFiscal();
+  if(!lerLocal&&/\bindicadores\b/.test(sql)) {
+    const codigo=String(params.ente??'');
+    const uf=typeof params.uf==='string'?params.uf:codigo?((await consultar('SELECT uf FROM entes WHERE cod_ibge=$cod',{cod:Number(codigo)}))[0]?.uf as string|undefined):undefined;
+    const ref=uf?manifesto.particoes_financas?.ufs[uf]:undefined;
+    if(ref&&/^[A-Z]{2}$/.test(uf!)&&/^gold\/financas\/uf_[A-Z]{2}_[a-f0-9]{16}\.parquet$/.test(ref.caminho)){
+      const nome='indicadores_'+uf;
+      await con.query(`CREATE VIEW IF NOT EXISTS ${nome} AS SELECT * FROM read_parquet(${arq(ref.caminho)})`);
+      sql=sql.replace(/\bindicadores\b/g,nome);
+    }
+  }
   const args: Valor[] = [];
   const texto = sql.replace(/\$([a-z_][a-z_0-9]*)/gi, (_, nome: string) => {
     if (!(nome in params)) throw new Error(`parâmetro ausente: ${nome}`);
@@ -2187,7 +2221,7 @@ async function carregarIndiceMicro() {
   if (env?.VITE_MICRODADOS === '0' || lerLocal) return; // nos testes, quem decide é usarMicrodadosNoTeste
   // O catálogo de disponibilidade não precisa de DuckDB. Compartilha a leitura com iniciar()
   // quando a primeira consulta acontece; uma falha permite nova tentativa nessa ocasião.
-  promessaIndiceMicro ??= baixar('silver/trabalho/micro/indice.json')
+  promessaIndiceMicro ??= manifestoCompartilhado().then(() => baixar('silver/trabalho/micro/indice.json'))
     .then((b) => { indiceMicro = JSON.parse(new TextDecoder().decode(b)) as IndiceMicro; })
     .catch(() => { indiceMicro = null; promessaIndiceMicro = null; });
   await promessaIndiceMicro;
@@ -2202,6 +2236,11 @@ export function usarMicrodadosNoTeste(v: boolean) {
 export function fonteConsulta(escopo: { ente?: unknown; uf?: unknown }): FonteConsulta {
   if (temMicro() && (escopo.ente || escopo.uf)) return 'micro';
   return escopo.ente ? 'cubo_mun' : 'cubo_uf';
+}
+/** Só lê o catálogo de disponibilidade (JSON), nunca os microdados ou o motor. */
+export async function obterFonteConsulta(escopo: { ente?: unknown; uf?: unknown }) {
+  await carregarIndiceMicro();
+  return fonteConsulta(escopo);
 }
 
 /** Colunas de CNAE e CBO em cada fonte e o maior prefixo que cada uma aceita. */
@@ -3019,5 +3058,7 @@ export async function executar(caminho: string, params: Params): Promise<unknown
   const rota = rotas[caminho] ?? rotasLrf[caminho] ?? rotasSaudeEducacao[caminho] ?? rotasTrabalho[caminho] ?? rotasConsulta[caminho] ?? rotasSaude[caminho] ?? rotasVacinacao[caminho] ?? rotasFns[caminho] ?? rotasMunic[caminho] ?? rotasClima[caminho]
     ?? rotasPosicoes[caminho];
   if (!rota) throw new Error(`rota desconhecida: ${caminho}`);
+  if (caminho in rotas || (caminho in rotasPosicoes && (params.dominio??params.area??'financas')==='financas')) await prepararFiscal();
+  if (caminho in rotasConsulta) await carregarIndiceMicro();
   return rota(params);
 }

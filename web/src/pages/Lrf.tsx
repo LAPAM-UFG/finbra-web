@@ -51,7 +51,7 @@ const formulas = {
 
 /** Situação em relação ao limite (máximo) ou ao mínimo legal. */
 function situacao(v: number | null, ref: number | null, tipo: 'max' | 'min') {
-  if (v === null || ref === null) return '';
+  if (v === null || ref === null) return t('sem valor identificado neste relatório','no value identified in this report');
   if (tipo === 'max') {
     if (v > ref) return t('acima do limite', 'above the limit');
     if (v > 0.95 * ref) return t('acima do prudencial', 'above the prudential limit');
@@ -108,14 +108,14 @@ export function LrfIndicadores() {
   if (!fonte) {
     return (
       <>
-        <h2 className="titulo-pagina">{t('Responsabilidade fiscal (LRF)', 'Fiscal responsibility (LRF)')}</h2>
+        <h1 className="titulo-pagina">{t('Responsabilidade fiscal (LRF)', 'Fiscal responsibility (LRF)')}</h1>
         <p className="vazio">{t('Os dados do RREO e do RGF ainda não foram publicados.', 'RREO and RGF data have not been published yet.')}</p>
       </>
     );
   }
   return (
     <>
-      <h2 className="titulo-pagina">{t('Responsabilidade fiscal (LRF)', 'Fiscal responsibility (LRF)')}</h2>
+      <h1 className="titulo-pagina">{t('Responsabilidade fiscal (LRF)', 'Fiscal responsibility (LRF)')}</h1>
       <p className="subtitulo">
         {f.alvo ? f.rotulo : esfera === 'E' ? t('Estados', 'States') : f.uf ? t(`Municípios de ${f.uf}`, `Municipalities in ${f.uf}`) : t('Municípios do Brasil', 'Municipalities in Brazil')}
         {' · '}{t('RREO e RGF, fechamento do exercício', 'RREO and RGF, year-end')} <Dica rotulo={t('Fonte', 'Source')}>{fonteLrf()}</Dica>
@@ -162,6 +162,7 @@ function LrfEnte({ cod }: { cod: number }) {
           <p className="nota-base">
             {t('Entregue', 'Filed')}: {a.rreo_tipo ?? t('RREO não entregue', 'RREO not filed')} · {a.rgf_tipo ?? t('RGF não entregue', 'RGF not filed')}
           </p>
+          {['saude_pct','mde_pct','fundeb_pct'].some(k=>num(a[k])===null)&&<p className="aviso">{t('Na base RREO deste painel, os percentuais de Saúde, MDE ou FUNDEB não foram todos identificados. O traço não representa zero nem comprova cumprimento. Confira as fontes próprias:','In this dashboard’s RREO data, not all Health, MDE or FUNDEB percentages were identified. A dash means neither zero nor compliance. Check the dedicated sources:')} <Link to={'/saude/financiamento?'+new URLSearchParams({cod:String(cod),ano:String(f.ano)})}>SIOPS · {t('Saúde','Health')}</Link>{' · '}<Link to={'/educacao/financiamento?'+new URLSearchParams({cod:String(cod),ano:String(f.ano)})}>SIOPE · {t('Educação','Education')}</Link>.</p>}
           <div className="kpis">
             <Kpi rotulo={t('Despesa com pessoal ÷ RCL', 'Personnel expenditure ÷ RCL')} valor={pct(fr(a.pessoal_rcl_pct))}
               nota={<>{`${t('Limite', 'Limit')} ${pct(fr(a.pessoal_limite_pct))} · ${situacao(num(a.pessoal_rcl_pct), num(a.pessoal_limite_pct), 'max')}`} · <VerDemonstrativo ente={cod} ano={f.ano} chave="pessoal" /></>}
@@ -485,7 +486,7 @@ export function LrfDemonstrativos() {
 
   return (
     <>
-      <h2 className="titulo-pagina">{t('Demonstrativos RREO e RGF', 'RREO and RGF statements')}</h2>
+      <h1 className="titulo-pagina">{t('Demonstrativos RREO e RGF', 'RREO and RGF statements')}</h1>
       <p className="subtitulo">
         {f.alvo ? f.rotulo : t('Escolha um ente', 'Choose a government')} · {t('fechamento do exercício, como entregue ao SICONFI', 'year-end, as filed with SICONFI')}
         {' '}<Dica rotulo={t('Fonte', 'Source')}>{fonteLrf()}</Dica>

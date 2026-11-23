@@ -65,7 +65,7 @@ export function Fpm() {
 
   return (
     <>
-      <h2 className="titulo-pagina">{t('Fundo de Participação dos Municípios', 'Municipal Participation Fund (FPM)')}</h2>
+      <h1 className="titulo-pagina">{t('Fundo de Participação dos Municípios', 'Municipal Participation Fund (FPM)')}</h1>
       <p className="subtitulo">{f.rotulo} · {t('FPM bruto', 'Gross FPM')} <Dica rotulo={t('O que é o FPM bruto', 'What gross FPM is')}>{textoFpmBruto()}</Dica></p>
       <BarraFiltros />
       <Cobertura dominio="receita" />
@@ -155,7 +155,7 @@ export function FpmFaixas() {
 
   return (
     <>
-      <h2 className="titulo-pagina">{t('FPM por faixa populacional', 'FPM by population bracket')}</h2>
+      <h1 className="titulo-pagina">{t('FPM por faixa populacional', 'FPM by population bracket')}</h1>
       <p className="subtitulo">{escopoTabela} · {f.ano}</p>
       <BarraFiltros semEnte={t(
         'Nesta página o município selecionado não restringe os resultados: a faixa dele é destacada (◆) e a UF dele define o recorte da tabela por faixa.',
@@ -167,7 +167,7 @@ export function FpmFaixas() {
           'Brackets are analytical population groups (cut-offs at 5, 10, 20, 30, 50, 80, 100, 150, 200, 300, 400, 500 and 750 thousand, 1, 1.5, 2 and 3 million inhabitants), chosen to compare municipalities of similar size. They are not the FPM coefficient brackets (Decree-Law No. 1,881/1981), which treat state capitals, the interior and the reserve differently; the coefficient applied to each municipality is set yearly by the Federal Court of Accounts (TCU) and may differ from the theoretical one.',
         )}
       </p>
-      {f.ente?.esfera === 'M' && (
+      {f.ente?.esfera === 'M' && !faixas.carregando && !porFaixa.carregando && !faixas.erro && !porFaixa.erro && (
         <p className="nota-base" role="status">
           {faixaEnte
             ? t(`${f.ente.nome} (${f.ente.uf}) está na faixa ${faixa(linhasFaixa.find((l) => l.grupo === faixaEnte)?.faixa ?? '')} em ${f.ano} (◆).`,
@@ -199,7 +199,7 @@ export function FpmFaixas() {
             <thead>
               <tr>
                 <th>{t('Grupo', 'Group')}</th><th>{t('Habitantes', 'Inhabitants')}</th><th>{t('Municípios com FPM', 'Municipalities with FPM')}</th>
-                <th>{t('População', 'Population')}</th><th>FPM</th><th>{t('FPM per capita', 'FPM per capita')}</th>{colDependencia}
+                <th>{t('População declarada na DCA', 'DCA reported population')}</th><th>FPM</th><th>{t('FPM per capita', 'FPM per capita')}</th>{colDependencia}
               </tr>
             </thead>
             <tbody>

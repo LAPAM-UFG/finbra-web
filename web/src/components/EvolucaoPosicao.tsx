@@ -1,3 +1,4 @@
+import { ordinal } from '../format';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { EChartsCoreOption } from 'echarts/core';
@@ -229,7 +230,7 @@ export function EvolucaoPosicao(p: Props) {
           if (!x || pos(x) == null) return `${marca}<b>${nomeDe(cod)}</b>: ${valor}<br/>&nbsp;&nbsp;&nbsp;${t('sem posição', 'unranked')} (${textoMotivo(x?.motivo)})`;
           const rel = posicaoRelativa(pos(x), tot(x));
           return `${marca}<b>${x.nome} (${x.uf})</b>: ${valor}`
-            + `<br/>&nbsp;&nbsp;&nbsp;${numero(pos(x))}º ${t('de', 'of')} ${numero(tot(x))}${rel == null ? '' : ` · ${t('posição relativa', 'relative position')} ${numero1(rel)}`}`;
+            + `<br/>&nbsp;&nbsp;&nbsp;${ordinal(pos(x))} ${t('de', 'of')} ${numero(tot(x))}${rel == null ? '' : ` · ${t('posição relativa', 'relative position')} ${numero1(rel)}`}`;
         });
         return `<b>${ano}</b> · ${escopoNome}<br/>${linhas.join('<br/>')}<br/>${t('Elegíveis no ano', 'Eligible in the year')}: ${numero(porAno.get(ano) ?? null)}`;
       },
@@ -255,7 +256,7 @@ export function EvolucaoPosicao(p: Props) {
         ? { type: 'value', min: 0, max: 100, name: t('posição relativa (100 = 1º)', 'relative position (100 = 1st)'), nameTextStyle: { color: tk.tinta3, align: 'left' },
           axisLabel: { color: tk.tinta3 }, splitLine: { lineStyle: { color: tk.grade } } }
         : { type: 'value', inverse: true, min: lo, max: hi, minInterval: 1, name: t('posição (1º no alto)', 'position (1st at the top)'), nameLocation: 'start', nameTextStyle: { color: tk.tinta3, align: 'left' },
-          axisLabel: { color: tk.tinta3, formatter: (v: number) => `${numero(v)}º` }, splitLine: { lineStyle: { color: tk.grade } } },
+          axisLabel: { color: tk.tinta3, formatter: (v: number) => `${ordinal(v)}` }, splitLine: { lineStyle: { color: tk.grade } } },
       series: [...series, ...ultimo],
     };
   }, [d, pontos, faixaPosicoes, e.escala, e.entes.join(','), ufEscopo, real]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -452,7 +453,7 @@ export function EvolucaoPosicao(p: Props) {
               <p className="nota-base">
                 {e.grafico === 'posicao'
                   ? (e.escala === 'percentil' ? t('Posição relativa: 100 = 1º lugar, 0 = último.', 'Relative position: 100 = 1st place, 0 = last.')
-                    : t(`1º lugar no alto; a linha tracejada é o último lugar de cada ano${faixaPosicoes.lo > 1 ? `; eixo ampliado, começa no ${numero(faixaPosicoes.lo)}º` : ''}.`, `1st place at the top; the dashed line is the last place in each year${faixaPosicoes.lo > 1 ? `; zoomed axis, starts at ${numero(faixaPosicoes.lo)}th` : ''}.`))
+                    : t(`1º lugar no alto; a linha tracejada é o último lugar de cada ano${faixaPosicoes.lo > 1 ? `; eixo ampliado, começa no ${ordinal(faixaPosicoes.lo)}` : ''}.`, `1st place at the top; the dashed line is the last place in each year${faixaPosicoes.lo > 1 ? `; zoomed axis, starts at ${numero(faixaPosicoes.lo)}th` : ''}.`))
                   : t('O valor aparece em todo ano com registro, mesmo quando o município ficou sem posição.', 'The value appears in every year with a record, even when the municipality was unranked.')}
                 {pontos.some((x) => !x.p || pos(x.p) == null) && ` ${t('Anos sem posição', 'Unranked years')}: ${pontos.filter((x) => !x.p || pos(x.p) == null)
                   .map((x) => `${nomeDe(x.cod)} ${x.ano} (${textoMotivo(x.p?.motivo)})`).join('; ')}.`}
@@ -539,8 +540,8 @@ export function EvolucaoPosicao(p: Props) {
                           <td>{m.nome}{ufEscopo ? '' : ` (${m.uf})`}</td><td>{m.cod_ibge}</td>
                           <td>{ri == null ? '–' : p.formato(ri)}</td><td>{rf == null ? '–' : p.formato(rf)}</td>
                           <td>{varInd}</td>
-                          <td>{m.pos_ini == null ? '–' : `${numero(m.pos_ini)}º ${t('de', 'of')} ${numero(m.total_ini)}`}</td>
-                          <td>{m.pos_fim == null ? '–' : `${numero(m.pos_fim)}º ${t('de', 'of')} ${numero(m.total_fim)}`}</td>
+                          <td>{m.pos_ini == null ? '–' : `${ordinal(m.pos_ini)} ${t('de', 'of')} ${numero(m.total_ini)}`}</td>
+                          <td>{m.pos_fim == null ? '–' : `${ordinal(m.pos_fim)} ${t('de', 'of')} ${numero(m.total_fim)}`}</td>
                           <td>{sinal(variacaoPosicao(m.pos_ini, m.pos_fim))}</td>
                         </tr>
                       );

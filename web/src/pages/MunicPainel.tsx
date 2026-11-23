@@ -1,5 +1,6 @@
+import {SeletorLugar,SeletorPeriodo,lugaresCadastro,usePeriodoUrl} from '../components/SeletorLugar';
 import { BuscaPainel, corresponde, TemaPainel, useExplorarPainel } from '../explorar_painel';
-import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { useMemo, useRef, type ReactNode } from 'react';
 import { Link, Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import { useApi, type Linha } from '../api';
 import { Dica } from '../components/Dica';
@@ -9,9 +10,9 @@ import { useDados } from '../contexto';
 import { numero, numero1, pct } from '../format';
 import { idioma, t } from '../idioma';
 import { CURADORIA } from '../munic_curadoria';
-import { fonteMunic, nomePesquisa, notaSemResposta, semAcento, siglaPesquisa, territorioNome, type Pesquisa } from '../munic_comum';
+import { fonteMunic, nomePesquisa, notaSemResposta, siglaPesquisa, territorioNome, type Pesquisa } from '../munic_comum';
 import {
-  BLOCOS_MUNIC, cobertura, COLUNAS_EXPORTACAO, condicaoDoCartao, contextoDoIndicador, contextoMunic, edicoesCuradas, ehLinkDoExplorador, lerEscolhas, linhasExportacao, montarCartoes, selecionar, UFS_MUNIC,
+  BLOCOS_MUNIC, cobertura, COLUNAS_EXPORTACAO, condicaoDoCartao, contextoDoIndicador, contextoMunic, edicoesCuradas, ehLinkDoExplorador, lerEscolhas, linhasExportacao, montarCartoes, selecionar,
   type BlocoMunic, type CartaoMunic, type DadosPainel, type Escolhas, type Escopo, type ResumoBinario, type ResumoNumerico,
 } from '../munic_painel';
 import { IndiceSaude } from '../components/IndicePainel';
@@ -83,7 +84,6 @@ export function MunicPainel() {
   const edicoes = useMemo(() => edicoesCuradas(CURADORIA), []);
   const esc = lerEscolhas(sp, edicoes);
   const raiz = useRef<HTMLDivElement>(null);
-  const [busca, setBusca] = useState('');
   const explorar = useExplorarPainel(BLOCOS_MUNIC.map(b=>'munic-'+b));
   const definir = (mudancas: Record<string, string | null>) => {
     const novo = new URLSearchParams(sp);
@@ -111,18 +111,19 @@ export function MunicPainel() {
     [dados, esc.ok ? esc.pesquisa : '', esc.ok ? JSON.stringify([esc.modo, esc.escopo]) : '', naoAchou, ufDoMunicipio]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const ufSel = esc.ok ? (esc.escopo.tipo === 'uf' ? esc.escopo.uf : esc.escopo.tipo === 'territorio' ? texto(esc.escopo.uf ?? ufDoMunicipio) : '') : '';
-  const sugestoes = useSugestoes(lugares.dados ?? [], busca, ufSel);
+
+  usePeriodoUrl(edicoes[pesquisa],esc.ok&&esc.modo.tipo==='edicao'?esc.modo.ano:'');
   const titulo = t('Gestão pública: painel automático', 'Public management: automatic dashboard');
   if (!esc.ok) {
     return (
       <>
-        <h2 className="titulo-pagina">{titulo}</h2>
+        <h1 className="titulo-pagina">{titulo}</h1>
         <div className="aviso" role="alert"><p>{erroTexto(esc)} {t('Nada foi trocado por outro recorte.', 'Nothing was replaced by another scope.')}</p>
           <p><Link to={{ pathname: '/munic', search: '' }}>{t('Abrir o painel do Brasil', 'Open the Brazil dashboard')}</Link></p></div>
       </>
     );
   }
-  if (!temFonte) return <><h2 className="titulo-pagina">{titulo}</h2><p className="vazio">{t('Os dados da MUNIC e da ESTADIC ainda não foram publicados.', 'MUNIC and ESTADIC data have not been published yet.')}</p></>;
+  if (!temFonte) return <><h1 className="titulo-pagina">{titulo}</h1><p className="vazio">{t('Os dados da MUNIC e da ESTADIC ainda não foram publicados.', 'MUNIC and ESTADIC data have not been published yet.')}</p></>;
 
   const ehMunic = pesquisa === 'munic';
   const escopo = esc.escopo;
@@ -157,56 +158,27 @@ export function MunicPainel() {
 
   return (
     <>
-      <h2 className="titulo-pagina">{titulo}</h2>
+      <h1 className="titulo-pagina">{titulo}</h1>
       <p className="subtitulo">{nomePesquisa(pesquisa)} · {rotuloRecorte} <Dica rotulo={t('Fonte', 'Source')}>{fonteMunic()}</Dica></p>
       <section className="cartao mp-filtros" aria-label={t('Escolhas do painel', 'Dashboard choices')}>
         <div className="filtros">
           <div className="campo">
             <label htmlFor="mp-pesq">{t('Pesquisa', 'Survey')}</label>
-            <select id="mp-pesq" value={pesquisa} onChange={(e) => { setBusca(''); definir({ pesq: e.target.value === 'munic' ? null : e.target.value, ano: null, uf: null, cod: null }); }}>
+            <select id="mp-pesq" value={pesquisa} onChange={(e) => { definir({ pesq: e.target.value === 'munic' ? null : e.target.value, ano: null, uf: null, cod: null }); }}>
               <option value="munic">{t('MUNIC · municípios', 'MUNIC · municipalities')}</option>
               <option value="estadic">{t('ESTADIC · estados', 'ESTADIC · states')}</option>
             </select>
           </div>
-          <div className="campo">
-            <label htmlFor="mp-ed">{t('Edição', 'Edition')}</label>
-            <select id="mp-ed" value={esc.modo.tipo === 'edicao' ? String(esc.modo.ano) : ''} onChange={(e) => definir({ ano: e.target.value || null })}>
-              <option value="">{t('Última informação de cada tema', 'Latest information for each topic')}</option>
-              {edicoes[pesquisa].map((a) => <option key={a} value={a}>{t(`Só a edição ${a}`, `${a} edition only`)} ({selecionar(CURADORIA, pesquisa, { tipo: 'edicao', ano: a }).filter((s) => s.fonte).length})</option>)}
-            </select>
-          </div>
-          <div className="campo">
-            <label htmlFor="mp-uf">{ehMunic ? 'UF' : t('Governo estadual', 'State government')}</label>
-            <select id="mp-uf" value={ufSel} onChange={(e) => { setBusca(''); definir({ uf: e.target.value || null, cod: null }); }}>
-              <option value="">{ehMunic ? t('Brasil (todas as UFs)', 'Brazil (all states)') : t('Todos os governos estaduais', 'All state governments')}</option>
-              {UFS_MUNIC.map((u) => <option key={u} value={u}>{u}</option>)}
-            </select>
-          </div>
-          {ehMunic && (
-            <div className="campo mp-busca">
-              <label htmlFor="mp-mun">{t('Município', 'Municipality')}</label>
-              <input id="mp-mun" value={busca} autoComplete="off" onChange={(e) => setBusca(e.target.value)}
-                placeholder={territorio ? `${texto(territorio.nome)} (${texto(territorio.uf)})` : t('digite o nome', 'type the name')} />
-              {busca.trim().length >= 2 && (
-                <ul className="mp-sugestoes" aria-label={t('Municípios encontrados', 'Matching municipalities')}>
-                  {sugestoes.map((r) => (
-                    <li key={texto(r.cod)}>
-                      <button type="button" onClick={() => { definir({ cod: texto(r.cod), uf: texto(r.uf) }); setBusca(''); }}>{texto(r.nome)} ({texto(r.uf)})</button>
-                    </li>
-                  ))}
-                  {!sugestoes.length && !lugares.carregando && <li className="mp-sem">{t('Nenhum município com esse nome.', 'No municipality with that name.')}</li>}
-                </ul>
-              )}
-              {escopo.tipo === 'territorio' && <button type="button" className="limpar" onClick={() => definir({ cod: null })}>{t('ver a UF inteira', 'see the whole state')}</button>}
-            </div>
-          )}
+          <SeletorLugar lugares={lugaresCadastro(ehMunic?(lugares.dados??[]).map(x=>({cod:String(x.cod),nome:String(x.nome),uf:String(x.uf)})):[])} valor={ehMunic&&escopo.tipo==='territorio'?String(escopo.cod):ufSel||'BR'} escolher={key=>definir(key==='BR'?{cod:null,uf:null}:/^[A-Z]{2}$/.test(key)?{cod:null,uf:key}:{cod:key,uf:String((lugares.dados??[]).find(x=>String(x.cod)===key)?.uf??'')})}/>
+          <SeletorPeriodo rotulo={t('Edição da pesquisa','Survey edition')} valor={esc.modo.tipo==='edicao'?esc.modo.ano:''} opcoes={[{valor:'',nome:t('Última informação de cada tema','Latest information for each topic')},...edicoes[pesquisa].map(a=>({valor:a,nome:t(`Edição ${a}: ${selecionar(CURADORIA,pesquisa,{tipo:'edicao',ano:a}).filter(x=>x.fonte).length} indicadores pesquisados`,`${a} edition: ${selecionar(CURADORIA,pesquisa,{tipo:'edicao',ano:a}).filter(x=>x.fonte).length} surveyed indicators`)}))]} mudar={v=>definir({ano:v||null})}/>
+
         </div>
       </section>
       <div className="aviso" role="note">
         <p>{t('Estes números vêm das respostas dos gestores ao IBGE. Mostram se uma estrutura, norma ou serviço existe, não se funciona bem: não são nota, ranking nem medida de qualidade da gestão.',
           'These figures come from managers’ answers to IBGE. They show whether a structure, rule or service exists, not whether it works well: they are not a score, a ranking or a measure of management quality.')}</p>
         {esc.modo.tipo === 'ultima' && <p><strong>{t('Cada tema foi pesquisado em um ano.', 'Each topic was surveyed in a given year.')}</strong>{' '}
-          {t('O ano da pesquisa está em todos os cartões.', 'The survey year is shown on every card.')}{porEdicao.length > 0 && ` ${t('Cartões por edição', 'Cards by edition')}: ${porEdicao.map(([a, n]) => `${a} (${n})`).join(' · ')}.`}</p>}
+          {t('O ano da pesquisa está em todos os cartões.', 'The survey year is shown on every card.')}{porEdicao.length > 0 && ` ${t('Última edição utilizada nos cartões (cada tema conta uma vez)', 'Latest edition used by the cards (each topic counts once)')}: ${porEdicao.map(([a, n]) => `${a} (${n})`).join(' · ')}.`}</p>}
         {esc.modo.tipo === 'edicao' && <p>{t(`Só os indicadores da edição ${esc.modo.ano}; os demais constam como “não disponível nesta edição”, sem valor.`, `Only ${esc.modo.ano} edition indicators; the others appear as “not available in this edition”, with no value.`)}</p>}
       </div>
 
@@ -260,16 +232,6 @@ export function MunicPainel() {
 }
 
 /** Municípios cujo nome contém o texto digitado (sem acento), dentro da UF escolhida; no máximo 8, sem consulta nova. */
-function useSugestoes(lista: Linha[], busca: string, uf: string): Linha[] {
-  return useMemo(() => {
-    const termo = semAcento(busca.trim());
-    if (termo.length < 2) return [];
-    const achados = lista.filter((r) => (!uf || r.uf === uf) && semAcento(texto(r.nome)).includes(termo));
-    // quem começa pelo texto vem antes
-    return achados.sort((a, b) => Number(semAcento(texto(b.nome)).startsWith(termo)) - Number(semAcento(texto(a.nome)).startsWith(termo))).slice(0, 8);
-  }, [lista, busca, uf]);
-}
-
 // ---------------- cartão de um indicador ----------------
 
 const unidadePais = (p: Pesquisa) => territorioNome(p);
@@ -350,11 +312,11 @@ function CorpoTerritorio({ c }: { c: CartaoMunic }) {
   const tr = c.territorio!;
   const ind = c.ind;
   let principal: ReactNode;
-  if (tr.estado === 'sim' || tr.estado === 'nao') principal = <p className={`mp-resposta ${tr.estado === 'sim' ? 'mp-sim' : 'mp-nao'}`}><strong>{tr.estado === 'sim' ? t('Sim', 'Yes') : t('Não', 'No')}</strong>{tr.texto !== 'Sim' && tr.texto !== 'Não' ? <small> {tr.texto}</small> : null}</p>;
+  if (tr.estado === 'sim' || tr.estado === 'nao') principal = <p className={`mp-resposta ${tr.estado === 'sim' ? 'mp-sim' : 'mp-nao'}`}><strong>{tr.estado === 'sim' ? t('Sim', 'Yes') : t('Não', 'No')}</strong>{tr.texto !== 'Sim' && tr.texto !== 'Não' ? <small> {t('Texto original do IBGE: ','Original IBGE wording: ')}{tr.texto}</small> : null}</p>;
   else if (tr.estado === 'valor') principal = <p className="mp-valor"><strong>{numero(tr.valor)}</strong> <span>{ind.unidade ? (idioma() === 'en' ? ind.unidade.en : ind.unidade.pt) : ''}</span></p>;
-  else if (tr.estado === 'sem_resposta') principal = <p className="mp-resposta mp-sem-resp"><strong>{t('Sem resposta válida', 'No valid answer')}</strong><small> {tr.texto}</small></p>;
+  else if (tr.estado === 'sem_resposta') principal = <p className="mp-resposta mp-sem-resp"><strong>{t('Sem resposta válida', 'No valid answer')}</strong><small> {t('Texto original do IBGE: ','Original IBGE wording: ')}{tr.texto}</small></p>;
   else if (tr.estado === 'sem_registro') principal = <p className="mp-resposta mp-sem-resp"><strong>{t('Sem resposta registrada', 'No answer recorded')}</strong></p>;
-  else principal = <p className="mp-resposta mp-sem-resp"><strong>{t('Resposta fora do previsto', 'Unexpected answer')}</strong><small> {tr.texto}</small></p>;
+  else principal = <p className="mp-resposta mp-sem-resp"><strong>{t('Resposta fora do previsto', 'Unexpected answer')}</strong><small> {t('Texto original do IBGE: ','Original IBGE wording: ')}{tr.texto}</small></p>;
   const comp = (r: ResumoBinario | ResumoNumerico | null, rotulo: string) => {
     if (!r) return null;
     if ('pct' in r) return r.pct === null ? null : <p className="mp-comp">{rotulo}: {pct(r.pct)} {t('responderam Sim', 'answered Yes')} ({numero(r.sim)} {t('de', 'of')} {numero(r.base)})</p>;

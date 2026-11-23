@@ -58,7 +58,14 @@ def gerar_extras(fontes,saida,db,g,grupos,ufs,anos,meta,classes,objeto):
    nrows+=csvrefs[uf]['linhas']
  p,ref=fechar(temp,'mensal_br');csvrefs['BR']={**ref,'linhas':nrows,'variaveis':18,'formato':'csv','tipo':'mensal','uf':'BR','area':'comex'};assert nrows==len(g['municipios'])*len(periodos)
  dictionary=[]
- for id in KEYS:dictionary.append(dict(variavel=id,descricao='Identificação territorial e ano; mesmo cadastro da base municipal anual.',unidade='identificador'))
+ descriptions={
+  'cod_ibge':'Código IBGE de sete dígitos do município. Brasília usa 5300108; Fernando de Noronha é distrito estadual.',
+  'municipio':'Nome oficial do município ou distrito estadual no cadastro territorial utilizado.',
+  'uf':'Sigla de duas letras da unidade da Federação do município.',
+  'regiao':'Grande Região do IBGE: Norte, Nordeste, Sudeste, Sul ou Centro-Oeste; não é região imediata ou intermediária.',
+  'tipo_territorio':'Classificação do território no cadastro municipal; distingue município, Distrito Federal e distrito estadual.',
+  'ano':'Ano civil de registro da operação de comércio exterior; o mês é informado em coluna própria.'}
+ for id in KEYS:dictionary.append(dict(variavel=id,descricao=descriptions[id],unidade='ano'if id=='ano'else'identificador'))
  dictionary += [dict(variavel='mes',descricao='Mês do registro, de 1 a 12.',unidade='mês'),dict(variavel='periodo',descricao='Ano e mês no formato numérico AAAAMM. No Stata, crie a data mensal com ym(ano,mes).',unidade='AAAAMM')]
  for id in MENSAL:
   dictionary.append(dict(variavel=id,descricao='Importações de bens.'if'_imp_'in id else'Exportações menos importações de bens.'if'_saldo_'in id else'Exportações de bens.',unidade='kg de peso líquido declarado'if id.endswith('_kg')else'US$ FOB correntes'));dictionary.append(dict(variavel=id+'_cond',descricao='0: registrado com valor diferente de zero; 1: zero ou sem registro de operações no arquivo, dentro da cobertura publicada. Meses futuros ou fora da cobertura não são gerados.',unidade='código'))

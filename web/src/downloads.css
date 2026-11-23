@@ -1,6 +1,6 @@
 /* Central de downloads: tudo prefixado com .dl-* ou escopado em .downloads-painel; só tokens do tema (claro e escuro). */
 .downloads-painel { min-width: 0; max-width: 1100px; }
-.downloads-painel > h2 { margin: 0 0 6px; }
+.downloads-painel > h1 { margin: 0 0 6px; font-size:24px; }
 .dl-sub-titulo { margin: 0 0 16px; color: var(--tinta-2); max-width: 70ch; font-size: 15px; }
 
 
@@ -152,3 +152,8 @@
  .dl-amostra { font-size: 12px; }
  .dl-amostra th, .dl-amostra td { padding: 6px 4px; }
 }
+.dl-acoes { display:flex; flex-wrap:wrap; align-items:center; gap:12px; }
+.dl-campo { min-width:0; }
+.dl-campo select { width:100%; min-height:38px; }
+@media(min-width:801px){.dl-campo:first-child{min-width:300px;flex:2 1 340px;}}
+@media(max-width:600px){.dl-campo{flex-basis:100%;width:100%;}}

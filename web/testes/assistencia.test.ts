@@ -34,7 +34,7 @@ test('Mês explícito não usa folha antiga nem inventa um zero', () => {
 test('Navegação traduz território e mantém o mês só dentro da assistência', () => {
   assert.equal(buscaEntreAreas('?uf=GO&ente=5208707&ano=2024','saude','assistencia'), '?uf=GO&cod=5208707&ano=2024');
   assert.equal(buscaEntreAreas('?uf=GO&cod=5208707&mes=202609&indicador=abc','assistencia','assistencia'), '?uf=GO&cod=5208707&mes=202609');
-  assert.equal(buscaEntreAreas('?uf=GO&cod=5208707&mes=202609','assistencia','trabalho'), '?uf=GO&ente=5208707');
+  assert.equal(buscaEntreAreas('?uf=GO&cod=5208707&mes=202609','assistencia','trabalho'), '?uf=GO&cod=5208707');
 });
 
 const bytes = (x: unknown) => new TextEncoder().encode(JSON.stringify(x));

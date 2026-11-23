@@ -52,6 +52,7 @@ export type DefComparacao = {
   nome_original?: string;
   nome_original_en?: string;
   unidade_original?: string;
+  unidade_original_en?: string;
   fonte_nome: string;
   fontes: { nome: string; url: string }[];
   alerta?: string;

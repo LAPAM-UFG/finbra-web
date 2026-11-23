@@ -7,20 +7,24 @@ import type {
 } from "./comparacoes_dados";
 import { idioma, local, t } from "./idioma";
 import { nomeDaUf } from "./ufs";
+import { decimalLocal, porUnidade } from './format';
+import { unidadePublica } from './rotulos_publicos';
 
 export const normComparacao = (s: string) =>
   s
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
-export const textoComparacao = (i: DefComparacao, campo: string) =>
-  String(
+export const textoComparacao = (i: DefComparacao, campo: string) => {
+  const valor=String(
     (i as unknown as Record<string, unknown>)[
       campo + (idioma() === "en" ? "_en" : "")
     ] ??
       (i as unknown as Record<string, unknown>)[campo] ??
       "",
   );
+  return campo.startsWith('unidade')?unidadePublica(valor):valor;
+};
 export const periodoComparacao = (p: number) =>
   !p
     ? t("sem período disponível", "no available period")
@@ -41,15 +45,11 @@ export function formatoComparacao(
   if (percentual && v > 100 && v < 100.01) return ">100%";
   if (v !== 0 && Math.abs(v) < (i.formato === "indice" ? 0.001 : 0.01))
     return (
-      v.toLocaleString(local(), { maximumSignificantDigits: 2 }) +
+      decimalLocal(v, { maximumSignificantDigits: 2 }) +
       (percentual ? "%" : "")
     );
-  return (
-    v.toLocaleString(local(), {
-      minimumFractionDigits: i.formato === "indice" ? 3 : 1,
-      maximumFractionDigits: i.formato === "indice" ? 3 : 2,
-    }) + (i.formato === "percentual" || i.unidade === "%" ? "%" : "")
-  );
+  const unidade = percentual ? '%' : i.unidade;
+  return porUnidade(v, unidade, {casas:i.formato==='indice'?(/0[–-]10(?!\d)/.test(unidade)?1:2):undefined,variacao:/(?:^|_)(?:variacao|var|anomalia)(?:_|$)/.test(i.id)});
 }
 const condicoes: Record<number, [string, string]> = {
   23: ["Zero publicado em toda a UF; cobertura não confirmada", "State-wide all-zero series; reporting completeness unconfirmed"],
@@ -225,6 +225,7 @@ export function rupturaComparacao(
     (parcial || !periodosComparaveis(i, antes, depois))
   )
     return "parcial";
+  if(usaPopulacaoIbge(i)&&(antes>10000?Math.floor(antes/100):antes)<2022&&(depois>10000?Math.floor(depois/100):depois)>=2022)return 'metodo';
   if (
     (area === "saneamento" && antes <= 2022 && depois >= 2023) ||
     (area === "trabalho" &&
@@ -233,6 +234,12 @@ export function rupturaComparacao(
   )
     return "metodo";
   return null;
+}
+export function usaPopulacaoIbge(i:DefComparacao) {
+  return i.id==='rx_populacao'||i.id==='rx_pib_hab'||i.id==='fin_pib_per_capita'||/popula(?:ção|tion).*IBGE|IBGE.*(?:popula|resident)/i.test(i.normalizacao+' '+i.normalizacao_en)||(i.metodo_referencia!=='mediana'&&/habitante|resident|inhabitant/i.test(i.unidade+' '+i.unidade_en)&&/IBGE|SVS/i.test(i.fonte_nome+' '+i.fontes.map(f=>f.nome).join(' ')));
+}
+export function notaCenso(i:DefComparacao) {
+  return usaPopulacaoIbge(i)?t('Quebra demográfica em 2022: as estimativas anteriores passam ao Censo 2022. A diferença não representa apenas crescimento ou queda da população e também afeta razões por habitante.','Demographic break in 2022: earlier estimates switch to the 2022 Census. The difference does not measure population change alone and also affects per-resident ratios.'):'';
 }
 /** Liga apenas observações existentes em anos vizinhos nas mudanças da RAIS. */
 export function pontePontilhadaRais(antes: number, depois: number, a: number | null, b: number | null): boolean {

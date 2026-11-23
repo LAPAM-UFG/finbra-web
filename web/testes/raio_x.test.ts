@@ -129,7 +129,7 @@ test('navegação mantém município e distingue DF governo de Brasília',()=>{
 });
 test('atalhos das referências abrem o painel e os filtros correspondentes',()=>{
   const ref={...indicador,catalogo:'referencias',id:'rx_massa_rais'};
-  assert.equal(linkComparacaoRaio(ref,'5208905',geo,2025),'/trabalho?uf=GO&ente=5208905&ano=2025');
+  assert.equal(linkComparacaoRaio(ref,'5208905',geo,2025),'/trabalho?uf=GO&cod=5208905&ano=2025');
   const u=new URL('https://exemplo'+linkComparacaoRaio({...ref,id:'rx_bpc_rais'},'5208905',geo,2025));
   assert.equal(u.pathname,'/assistencia/comparacoes-pagamentos');assert.equal(u.searchParams.get('base_comparacao'),'rais');assert.equal(u.searchParams.get('medida'),'bpc');assert.equal(u.searchParams.get('ano_comparacao'),'2025');assert.equal(u.searchParams.has('indicador'),false);
 });

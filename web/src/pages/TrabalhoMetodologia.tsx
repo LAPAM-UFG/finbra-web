@@ -13,7 +13,7 @@ export function TrabalhoMetodologia() {
   const micro = meta.fontes.rais_micro as { anos?: number[]; processado_em?: string } | undefined;
   return (
     <>
-      <h2 className="titulo-pagina">{t('Mercado de trabalho: fontes e metodologia', 'Labour market: sources and methodology')}</h2>
+      <h1 className="titulo-pagina">{t('Mercado de trabalho: fontes e metodologia', 'Labour market: sources and methodology')}</h1>
       <section className="cartao">
         <h3>{t('Fontes', 'Sources')}</h3>
         <ul>

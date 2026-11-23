@@ -9,6 +9,7 @@ export type ManifestoBruto = {
   fontes?: Record<string, Record<string, unknown>>;
   /** Ponteiros técnicos de pacotes de abertura (sem motor), amarrados ao gerado_em deste manifesto; não são fontes de dados. */
   aberturas?: Record<string, unknown>;
+  particoes_financas?: { versao:number;origem_sha256:string;ufs:Record<string,{caminho:string;bytes:number;sha256:string}> };
   mapa_indicadores?: Record<string, Record<string, unknown>[]>;
   politica_alertas?: Record<string, unknown>;
 };

@@ -85,7 +85,7 @@ export function MunicVisaoGeral() {
   const universo = num(pergunta?.n_territorios);
   const respondentes = num(pergunta?.n_respostas);
 
-  if (!anosMeta.length && !temas.carregando) return <><h2 className="titulo-pagina">{t('Gestão pública: MUNIC e ESTADIC', 'Public management: MUNIC and ESTADIC')}</h2><SemDados /></>;
+  if (!anosMeta.length && !temas.carregando) return <><h1 className="titulo-pagina">{t('Gestão pública: MUNIC e ESTADIC', 'Public management: MUNIC and ESTADIC')}</h1><SemDados /></>;
 
   const tabelaExportar = () => ({
     colunas: [t('Recorte', 'Group'), t('Território(s) com resposta válida', 'Territories with a valid answer'), ...(numerica
@@ -105,7 +105,7 @@ export function MunicVisaoGeral() {
 
   return (
     <>
-      <h2 className="titulo-pagina">{t('Gestão pública: explorar por pergunta', 'Public management: explore by question')}</h2>
+      <h1 className="titulo-pagina">{t('Gestão pública: explorar por pergunta', 'Public management: explore by question')}</h1>
       <p className="subtitulo">{nomePesquisa(pesquisa)} <Dica rotulo={t('Fonte', 'Source')}>{fonteMunic()}</Dica></p>
       <p className="nota-base"><Link to={{ pathname: '/munic', search: contextoMunic(`?${sp}`, 'painel', EDICOES_PAINEL) }}>← {t('Voltar ao painel automático', 'Back to the automatic dashboard')}</Link></p>
       <section className="cartao">
@@ -252,10 +252,10 @@ export function MunicEvolucao() {
     : respostas.map((r) => ({ nome: r.slice(0, 50), valores: porAno.map((p) => (p.total ? (p.validas.find((v) => v.valor_txt === r)?.n as number | undefined ?? 0) / p.total : null)) }));
   const formato = numerica ? (v: number) => (estat === 'media' ? numero1(v) : numero(v)) : (v: number) => pctTxt(v);
 
-  if (!anosMeta.length) return <><h2 className="titulo-pagina">{t('Evolução entre edições', 'Change across editions')}</h2><SemDados /></>;
+  if (!anosMeta.length) return <><h1 className="titulo-pagina">{t('Evolução entre edições', 'Change across editions')}</h1><SemDados /></>;
   return (
     <>
-      <h2 className="titulo-pagina">{t('Evolução entre edições', 'Change across editions')}</h2>
+      <h1 className="titulo-pagina">{t('Evolução entre edições', 'Change across editions')}</h1>
       <p className="subtitulo">{nomePesquisa(pesquisa)} · {t('Brasil', 'Brazil')} <Dica rotulo={t('Fonte', 'Source')}>{fonteMunic()}</Dica></p>
       <p className="aviso" role="note">{avisoComparacao()}</p>
       <section className="cartao">
@@ -340,10 +340,10 @@ export function MunicTerritorio() {
     .sort((a, b) => texto(a.aba).localeCompare(texto(b.aba), 'pt-BR') || compararVar(texto(a.var), texto(b.var))), [ficha.dados, termo]);
   const resposta = (r: Linha) => (r.valor_txt !== null ? texto(r.valor_txt) : (num(r.valor_num) ?? 0).toLocaleString(local(), { maximumFractionDigits: 2 }));
 
-  if (!anosMeta.length) return <><h2 className="titulo-pagina">{t('Ficha do território', 'Territory profile')}</h2><SemDados /></>;
+  if (!anosMeta.length) return <><h1 className="titulo-pagina">{t('Ficha do território', 'Territory profile')}</h1><SemDados /></>;
   return (
     <>
-      <h2 className="titulo-pagina">{t('Ficha do território', 'Territory profile')}</h2>
+      <h1 className="titulo-pagina">{t('Ficha do território', 'Territory profile')}</h1>
       <p className="subtitulo">{nomePesquisa(pesquisa)} <Dica rotulo={t('Fonte', 'Source')}>{fonteMunic()}</Dica></p>
       <section className="cartao">
         <div className="filtros">
@@ -426,7 +426,7 @@ export function MunicMetodologia() {
   }, [temas.dados]);
   return (
     <>
-      <h2 className="titulo-pagina">{t('MUNIC e ESTADIC: fontes e metodologia', 'MUNIC and ESTADIC: sources and methodology')}</h2>
+      <h1 className="titulo-pagina">{t('MUNIC e ESTADIC: fontes e metodologia', 'MUNIC and ESTADIC: sources and methodology')}</h1>
       <section className="cartao texto">
         <h3>{t('Fontes', 'Sources')}</h3>
         <ul>

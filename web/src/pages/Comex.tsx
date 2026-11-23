@@ -1,3 +1,6 @@
+import {apresentarCatalogo} from '../rotulos_publicos';
+import {SeletorPeriodo} from '../components/SeletorLugar';
+import { porUnidade } from '../format';
 import {useState} from 'react';
 import {Link,useSearchParams} from 'react-router-dom';
 import {obterMetaComex,obterGrupoComex,obterMensalComex,obterPerfilComex,useComex,type IndicadorComex,type CalculadoComex} from '../comex_dados';
@@ -9,7 +12,7 @@ import {SerieAgro} from '../components/SerieAgro';
 import {BotoesExportar} from '../components/Exportar';
 import {numeroAgro as numero} from '../agropecuaria_apresentacao';
 import {normComparacao,condicaoComparacao} from '../comparacoes_apresentacao';
-import {t,useIdioma,local} from '../idioma';
+import {t,useIdioma} from '../idioma';
 import '../raio_x.css';
 import '../agropecuaria.css';
 
@@ -17,12 +20,12 @@ type Medida={id:string;nome:string;nome_en:string;unidade:string;unidade_en?:str
 const nome=(v:Medida)=>t(v.nome,v.nome_en);
 const meses=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
 const months=['January','February','March','April','May','June','July','August','September','October','November','December'];
-const formatar=(v:number|null)=>v===null?'—':Math.abs(v)>0&&Math.abs(v)<.01?v.toLocaleString(local(),{maximumSignificantDigits:3}):numero(v);
+const formatar=(v:number|null)=>v===null?'—':numero(v,Math.abs(v)>=1e6);
 const condicao=(n:number)=>n===1?t('Zero / sem registro de operações','Zero / no registered trade'):n===4?t('Indefinido: base zero','Undefined: zero base'):condicaoComparacao(n);
 
 export function Comex(){
  useIdioma();const[sp,setSp]=useSearchParams(),[busca,setBusca]=useState(''),[buscaPerfil,setBuscaPerfil]=useState(''),[todos,setTodos]=useState(false),[mensalInd,setMensalInd]=useState(0);
- const meta=useComex(obterMetaComex,'meta'),base=meta.dados,c=base?.c,uf=(sp.get('uf')??'').toUpperCase(),cod=sp.get('cod')??sp.get('ente'),grupo=cod==='53'?'5300108':cod||uf||'BR';
+ const meta=useComex(obterMetaComex,'meta'),base=meta.dados,c=base?apresentarCatalogo(base.c):undefined,uf=(sp.get('uf')??'').toUpperCase(),cod=sp.get('cod')??sp.get('ente'),grupo=cod==='53'?'5300108':cod||uf||'BR';
  const carga=useComex(()=>obterGrupoComex(grupo),grupo),d=carga.dados,pronto=!!base&&!!d&&d.grupo===grupo;
  const ultimo=c?.anos.at(-1)??2026,ano=c?.anos.includes(Number(sp.get('ano')))?Number(sp.get('ano')):ultimo,fluxo=sp.get('fluxo')==='imp'?'imp':'exp';
  const mensal=useComex(()=>obterMensalComex(grupo),grupo),perfil=useComex(()=>obterPerfilComex(grupo,ano),grupo+':'+ano);
@@ -32,11 +35,11 @@ export function Comex(){
  const mudar=(extra:Record<string,string|null>)=>{const p=new URLSearchParams(window.location.search);for(const[k,v]of Object.entries(extra))if(v===null||v==='')p.delete(k);else p.set(k,v);setSp(p);};
  const escolher=(key:string)=>{const ter=base!.g.territorios[key];mudar({cod:ter.nivel==='M'?key:null,ente:null,uf:ter.uf??null});setBuscaPerfil('');setTodos(false);};
  const ponto=(v:Medida,y=ano)=>{const k=c!.anos.indexOf(y);return{valor:v.calc?d!.derivados[k][v.j]:d!.valores[k][v.j],condicao:v.calc?d!.condicoes_derivados[k][v.j]:d!.condicoes[k][v.j]};};
- const texto=(v:Medida,y=ano)=>formatar(ponto(v,y).valor)+(v.unidade==='%'&&ponto(v,y).valor!==null?'%':'');
+ const texto=(v:Medida,y=ano)=>porUnidade(ponto(v,y).valor,v.unidade,{variacao:/(?:^|_)var(?:_|$)/.test(v.id)});
  const unidade=(v:Medida)=>t(v.unidade,v.unidade_en??v.unidade);
  const epoca=(v:Medida,y=ano)=>{const ns=v.raw?.notas_anos??v.calc?.notas_anos;return ns?.[String(y)]?t(ns[String(y)][0],ns[String(y)][1]):String(y);};
  const ajuda=(v:Medida)=><Dica rotulo={t('Entenda: ','Understand: ')+nome(v)}><p>{v.raw?t(v.raw.descricao,v.raw.descricao_en):t(v.calc!.descricao,v.calc!.descricao_en)}</p>{v.calc&&<p>{v.calc.numerador_nome} ÷ {v.calc.denominador_nome} × {v.calc.fator}.</p>}</Dica>;
- const card=(id:string,label?:string)=>{const v=medidas.find(v=>v.id===id);if(!v)return null;const p=ponto(v);return <Kpi key={id} rotulo={<>{label??nome(v)}{ajuda(v)}</>} valor={texto(v)} nota={<>{epoca(v)} · {unidade(v)}{![0,1].includes(p.condicao)&&<> · {condicao(p.condicao)}</>}{' · '}<button className="ag-link" onClick={()=>{mudar({ind:id,indicador:null});document.getElementById('cex-serie')?.scrollIntoView({behavior:'smooth',block:'start'});}}>{t('Ver evolução','View evolution')}</button></>}/>;};
+ const card=(id:string,label?:string)=>{const v=medidas.find(v=>v.id===id);if(!v)return null;const p=ponto(v);return <Kpi key={id} rotulo={<>{label??nome(v)}{ajuda(v)}</>} valor={texto(v)} valorCompleto={p.valor} unidade={unidade(v)} nota={<>{epoca(v)} · {unidade(v)}{![0,1].includes(p.condicao)&&<> · {condicao(p.condicao)}</>}{' · '}<button className="ag-link" onClick={()=>{mudar({ind:id,indicador:null});document.getElementById('cex-serie')?.scrollIntoView({behavior:'smooth',block:'start'});}}>{t('Ver evolução','View evolution')}</button></>}/>;};
  const links=(v:Medida)=>new URLSearchParams({...(base!.g.territorios[grupo].uf?{uf:base!.g.territorios[grupo].uf!}:{}),...(grupo.length===7?{cod:grupo}:{}),indicador:v.id,ano:String(ano),periodo:String(ano)});
  const tabela=(lista:Medida[])=> <div className="ag-tabela"><table><thead><tr><th>{t('Indicador','Indicator')}</th><th>{t('Valor','Value')}</th><th>{t('Referência','Reference')}</th><th>{t('Condição','Status')}</th></tr></thead><tbody>{lista.map(v=><tr key={v.id}><th scope="row">{nome(v)}{ajuda(v)}</th><td data-label={t('Valor','Value')}>{texto(v)}<small>{unidade(v)}</small></td><td data-label={t('Referência','Reference')}>{epoca(v)}</td><td data-label={t('Condição','Status')}>{condicao(ponto(v).condicao)}</td></tr>)}</tbody></table></div>;
  const metadados:[string,string][]=[[t('Fonte','Source'),'MDIC/Secex · Comex Stat; IBGE'],[t('Interpretação','Interpretation'),t('Bens, pelo domicílio fiscal da empresa declarante. Dólares correntes FOB e peso líquido declarado. Não mede produção local, faturamento ou número de empresas.','Goods, by the declaring company’s fiscal domicile. Current US dollars FOB and reported net weight. Does not measure local production, revenue or company counts.')],[t('Recorte','Scope'),base?nomeTerritorioRaio(base.g,grupo):grupo]];
@@ -52,9 +55,9 @@ export function Comex(){
   return <div key={tipo}><h4>{tipo==='produtos'?t('O que é comercializado?','What is traded?'):t('Com quais mercados?','With which markets?')}</h4><p className="ag-nota">{t(`${rows.length} categorias com operações no período; ${lista.length} correspondem à busca.`,`${rows.length} categories with trade in this period; ${lista.length} match the search.`)}</p><div className="ag-tabela"><table><thead><tr><th>{label}</th><th>US$ FOB</th><th>{t('Participação','Share')}</th><th>{t('Peso líquido (kg)','Net weight (kg)')}</th></tr></thead><tbody>{shown.map(r=><tr key={r[0]}><th scope="row">{nomeLinha(r)}<small>{r[0]}</small></th><td data-label="US$ FOB">{formatar(r[1])}</td><td data-label={t('Participação','Share')}>{total>0?formatar(r[1]/total*100)+'%':'—'}</td><td data-label="kg">{formatar(r[2])}</td></tr>)}</tbody></table></div>{!rows.length&&<p>{t('Sem registro de operações neste fluxo e período.','No registered trade for this flow and period.')}</p>}<p>{t('Baixar o perfil completo, sem limitar à busca:','Download the complete profile, without the search filter:')}</p><BotoesExportar nome={`comex_${grupo}_${ano}_${fluxo}_${tipo}`} obter={obter}/></div>;
  };
  const downloadUF=base?.g.territorios[grupo]?.uf??'BR';
- return <div className="ag-painel cex-pagina"><header><h2>{t('Comércio exterior','Foreign trade')}</h2><p>{t('Exportações, importações, produtos e mercados parceiros. Os números já estão prontos: escolha o lugar e explore.','Exports, imports, products and partner markets. Figures are ready: choose a place and explore.')}</p></header>
+ return <div className="ag-painel cex-pagina"><header><h1>{t('Comércio exterior','Foreign trade')}</h1><p>{t('Exportações, importações, produtos e mercados parceiros. Os números já estão prontos: escolha o lugar e explore.','Exports, imports, products and partner markets. Figures are ready: choose a place and explore.')}</p></header>
  <nav className="ag-indice" aria-label={t('Nesta página','On this page')}>{[['cex-resumo','Panorama','Overview'],['cex-perfil','Produtos e mercados','Products and markets'],['cex-comparar','Comparar lugares','Compare places'],['cex-serie','Evolução anual','Annual evolution'],['cex-mensal','Mês a mês','Month by month'],['cex-fontes','Fontes e downloads','Sources and downloads']].map(([id,pt,en])=><a href={'#'+id} key={id}>{t(pt,en)}</a>)}</nav>
- <section className="cartao ag-filtros" aria-label={t('Escolher lugar e ano','Choose place and year')}>{base&&<BuscaRaioX g={base.g} grupo={grupo} escolher={escolher}/>}<label>{t('Ano','Year')}<select aria-label={t('Ano','Year')} value={ano} onChange={e=>mudar({ano:e.target.value})}>{(c?.anos??[]).slice().reverse().map(y=><option key={y} value={y}>{y}{base!.m.periodos[String(y)]<12?t(' · parcial',' · partial'):''}</option>)}</select></label></section>
+ <section className="cartao ag-filtros" aria-label={t('Escolher lugar e ano','Choose place and year')}>{base&&<BuscaRaioX g={base.g} grupo={grupo} escolher={escolher}/>}<SeletorPeriodo valor={ano} opcoes={(c?.anos??[]).slice().reverse().map(y=>({valor:y,nome:String(y)+(base!.m.periodos[String(y)]<12?t(' · parcial',' · partial'):'')}))} mudar={v=>mudar({ano:v})}/></section>
  {sp.get('ano')&&c&&!c.anos.includes(Number(sp.get('ano')))&&<p className="ag-nota">{t(`Ano fora da cobertura. Mostrando ${ultimo}.`,`Year outside coverage. Showing ${ultimo}.`)}</p>}
  <Estado carregando={!meta.erro&&!carga.erro&&!pronto} erro={meta.erro??carga.erro} tentarNovamente={()=>{meta.recarregar();carga.recarregar();}}/>
  {pronto&&<><p className="ag-recorte"><strong>{nomeTerritorioRaio(base.g,grupo)}</strong> · {medidas.length} {t('medidas disponíveis','available measures')} · {ano}: {janAte(mesAte)} · MDIC {base.m.datas.comex.split('-').reverse().join('/')}</p>

@@ -1,3 +1,5 @@
+import {type FonteChave} from './saude_anos';
+export {CHAVES_FONTES,anosSaude,type FonteChave} from './saude_anos';
 /**
  * Indicadores do painel de saúde (SIM, SINASC e população da SVS/MS), calculados no navegador a partir das
  * contagens de gold/saude/municipios.parquet. Em qualquer agregado (UF, Brasil, série), a taxa é a razão das
@@ -90,10 +92,10 @@ export const INDICADORES: Indicador[] = [
       'Deaths aged 30–69 from circulatory diseases (I00–I99), cancer (C00–C97), chronic respiratory diseases (J30–J98) and diabetes (E10–E14) ÷ population aged 30–69 × 100,000. Crude rate (the NCD Plan indicator is usually age-standardised).'),
   },
   {
-    id: 'homicidios', grupo: G_CAUSAS, nome: () => t('Homicídios', 'Homicides'),
+    id: 'homicidios', grupo: G_CAUSAS, nome: () => t('Homicídios (agressões + intervenção legal)', 'Homicides (assault + legal intervention)'),
     unidade: () => t('por 100 mil habitantes', 'per 100,000 inhabitants'), numerador: 'homicidios', denominador: 'populacao', fator: 100000, tipo: 'taxa', minimo: 20000,
-    nota: () => t('Óbitos por agressão (X85–Y09) e intervenção legal (Y35–Y36), pela causa básica, ÷ população × 100.000. Não inclui as mortes por intenção indeterminada (Y10–Y34), parte das quais são homicídios.',
-      'Deaths from assault (X85–Y09) and legal intervention (Y35–Y36), by underlying cause, ÷ population × 100,000. Excludes deaths of undetermined intent (Y10–Y34), some of which are homicides.'),
+    nota: () => t('Óbitos por agressão (X85–Y09) e intervenção legal (Y35–Y36), pela causa básica, ÷ população × 100.000. Y35–Y36 também inclui operações de guerra. Segurança mostra agressões (X85–Y09) separadamente; os totais diferem. Não inclui intenção indeterminada (Y10–Y34).',
+      'Deaths from assault (X85–Y09) and legal intervention (Y35–Y36), by underlying cause, ÷ population × 100,000. Y35–Y36 also includes operations of war. Public safety reports assaults (X85–Y09) separately; totals differ. Excludes undetermined intent (Y10–Y34).'),
   },
   {
     id: 'suicidios', grupo: G_CAUSAS, nome: () => t('Suicídios', 'Suicides'),
@@ -388,7 +390,7 @@ export const nomeContagem = (c: string): string => ({
   nascidos: t('Nascidos vivos', 'Live births'), obitos: t('Óbitos', 'Deaths'), infantis: t('Óbitos infantis', 'Infant deaths'),
   neonatais: t('Óbitos neonatais', 'Neonatal deaths'), pos_neonatais: t('Óbitos pós-neonatais', 'Post-neonatal deaths'),
   menores_5: t('Óbitos de menores de 5', 'Deaths under 5'), maternos: t('Óbitos maternos', 'Maternal deaths'),
-  dcnt_30_69: t('Óbitos por DCNT (30–69)', 'NCD deaths (30–69)'), homicidios: t('Homicídios', 'Homicides'), suicidios: t('Suicídios', 'Suicides'),
+  dcnt_30_69: t('Óbitos por DCNT (30–69)', 'NCD deaths (30–69)'), homicidios: t('Homicídios (agressões + intervenção legal)', 'Homicides (assaults + legal intervention)'), suicidios: t('Suicídios', 'Suicides'),
   transito: t('Mortes no trânsito', 'Road deaths'), mal_definidas: t('Óbitos mal definidos', 'Ill-defined deaths'),
   baixo_peso: t('Nascidos com baixo peso', 'Low-weight births'), peso_informado: t('Nascidos com peso informado', 'Births with weight recorded'),
   prematuros: t('Nascidos prematuros', 'Preterm births'), gestacao_informada: t('Nascidos com gestação informada', 'Births with gestation recorded'),
@@ -454,7 +456,6 @@ export const CAPITULOS = (): [string, string][] => [
 
 // ---------------- disponibilidade, fontes e metadados compartilhados ----------------
 
-export type FonteChave = 'sim' | 'sinasc' | 'populacao_svs' | 'sih' | 'icsap' | 'sia' | 'cnes' | 'sinan' | 'siscan' | 'oncologia' | 'resp' | 'aps' | 'fns';
 /** O que o manifesto dos dados informa de cada fonte (gold/manifesto.json, fontes.*). */
 export type FonteMeta = {
   anos?: number[];
@@ -476,7 +477,6 @@ export type FonteMeta = {
 };
 export type FontesMeta = Record<string, FonteMeta | undefined>;
 
-export const CHAVES_FONTES: FonteChave[] = ['sim', 'sinasc', 'populacao_svs', 'sih', 'icsap', 'sia', 'cnes', 'sinan', 'siscan', 'oncologia', 'resp', 'aps', 'fns'];
 
 export const NOME_FONTE: Record<FonteChave, () => string> = {
   sim: () => 'SIM', sinasc: () => 'SINASC', sih: () => 'SIH', icsap: () => t('ICSAP (SIH)', 'ICSAP (SIH)'), sia: () => 'SIA', cnes: () => 'CNES', sinan: () => 'SINAN', siscan: () => 'SISCAN',
@@ -546,8 +546,7 @@ export function anosDoIndicador(ind: Indicador, fontes: FontesMeta): number[] {
 }
 
 /** Todos os anos de qualquer fonte de saúde: o que os seletores de ano da área oferecem. */
-export const anosSaude = (fontes: FontesMeta): number[] =>
-  [...new Set(CHAVES_FONTES.flatMap((k) => fontes[k]?.anos ?? []))].sort((a, b) => a - b);
+
 
 export const faixaAnos = (a: number[]) => (a.length ? (a.length === 1 ? String(a[0]) : `${a[0]}–${a.at(-1)}`) : '–');
 

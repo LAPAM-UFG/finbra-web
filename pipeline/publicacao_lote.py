@@ -10,7 +10,7 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from atualizacao_artefatos import referencias
+from atualizacao_artefatos import referencias,caminho_resolvido
 
 TEMAS=('educacao','saneamento','agropecuaria','mobilidade','seguranca','internet','energia','comex')
 MAPAS=('trabalho','saude',*TEMAS)
@@ -50,7 +50,7 @@ def inventario(client,bucket):
 
 
 def arquivos(raiz):
-    raiz=Path(raiz).resolve();selected={};pending=[];expected={}
+    raiz=caminho_resolvido(raiz);selected={};pending=[];expected={}
     for key in PONTEIROS:
         path=raiz/key
         if not path.is_file():raise ValueError('ponteiro candidato ausente: '+key)
@@ -64,7 +64,7 @@ def arquivos(raiz):
             ref=expected.get(key)
             if ref and (selected[key]['bytes'],selected[key]['sha256'])!=ref:raise ValueError('referência local divergente: '+key)
             continue
-        path=(raiz/key).resolve()
+        path=caminho_resolvido(raiz/key)
         if not path.is_relative_to(raiz):raise ValueError('artefato fora da candidata')
         if not path.exists():continue  # Referência a um objeto já publicado, preservado.
         if '.parte' in key or 'temporario' in key:raise ValueError('artefato incompleto: '+key)

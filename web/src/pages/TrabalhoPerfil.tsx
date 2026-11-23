@@ -6,9 +6,9 @@ import { Dica } from '../components/Dica';
 import { BotoesExportar, type Tabela } from '../components/Exportar';
 import { CartaoGrafico, Grafico, linhas as graficoLinhas } from '../components/Grafico';
 import { Estado } from '../components/Kpi';
-import { FormularioRecorte, paramsConsulta, useAnosConsulta, useTerritorioTrabalho } from '../components/RecorteTrabalho';
+import { FormularioRecorte, paramsConsulta, useAnosConsulta, useFonteConsulta, useTerritorioTrabalho } from '../components/RecorteTrabalho';
 import { BarraFiltros, useDados } from '../contexto';
-import { cancelarConsultasTrabalho, fonteConsulta } from '../dados';
+import { cancelarConsultasTrabalho } from '../dados';
 import { baixarArquivo, nomeArquivo, paraXlsxAbas, type Celula } from '../exportar';
 import { div, numero, pct, reaisCurto, reaisExato } from '../format';
 import { num } from '../hooks';
@@ -47,7 +47,7 @@ function linhasDistribuicao(lista: Linha[], total: Linha | undefined, fator: num
 }
 const COLUNAS_DIST = () => [t('Código', 'Code'), t('Nome', 'Name'), t('Vínculos ativos', 'Active jobs'), t('Participação', 'Share'),
   t('Rem. dezembro (média)', 'December pay (avg)'), t('Rem. dezembro (mediana)', 'December pay (median)'), t('Com valor (rem.)', 'With pay value'),
-  t('% sem valor (zero na média)', '% without pay (zero in the average)'), t('% mulheres', '% women')];
+  t('% sem valor (fora da média)', '% without pay (excluded from the average)'), t('% mulheres', '% women')];
 
 function TabelaDistribuicao({ linhas, total, fator, micro, nmin }: { linhas: Linha[]; total: Linha | undefined; fator: number; micro: boolean; nmin: number }) {
   const m = (v: unknown) => (num(v) === null ? null : num(v)! * fator);
@@ -91,7 +91,7 @@ export function TrabalhoPerfil() {
   const { f, escopo, rotulo, tipo } = useTerritorioTrabalho();
   const anos = useAnosConsulta();
   const { recorte, definir } = useRecorte();
-  const fonte = fonteConsulta(escopo);
+  const { fonte, carregando: capacidadeCarregando } = useFonteConsulta(escopo);
   const micro = fonte === 'micro';
   const ate = recorte.ate && anos.includes(recorte.ate) ? recorte.ate : (anos.includes(f.ano) ? f.ano : anos.at(-1)!);
   const de = recorte.de && anos.includes(recorte.de) && recorte.de <= ate ? recorte.de : anos[0];
@@ -100,7 +100,7 @@ export function TrabalhoPerfil() {
   const rec: Recorte = { ...recorte, situacao: 'ativos' };
   const pronto = !!recorte.cbo;
   const dimensoes = TABELAS(tipo).flatMap((x) => x.dims.map(([d]) => d));
-  const p = pronto ? paramsConsulta(escopo, rec) : null;
+  const p = !capacidadeCarregando && pronto ? paramsConsulta(escopo, rec) : null;
   const serie = useApi<Serie>(p ? 'trab_consulta_serie' : null, { ...p, de, ate, agrupar: 'total' });
   const universo = useApi<Serie>(p ? 'trab_consulta_serie' : null, { ...escopo, situacao: 'ativos', de, ate, agrupar: 'total' });
   const perfil = useApi<Perfil>(p ? 'trab_perfil' : null, { ...p, ano: ate, dimensoes: dimensoes.join(',') });
@@ -134,7 +134,7 @@ export function TrabalhoPerfil() {
   });
   const tabela2 = (): Tabela => ({
     colunas: [t('Ano', 'Year'), t('Rem. dezembro, média nominal', 'December pay, nominal average'), t(`Rem. dezembro, média real (R$ dez/${meta.baseIpca})`, `December pay, real average (Dec/${meta.baseIpca} R$)`),
-      t('Mediana nominal', 'Nominal median'), t('Mediana real', 'Real median'), t('Com valor informado', 'With pay reported'), t('Ativos sem valor (zero na média)', 'Active jobs without pay (zero in the average)'), t('% sem valor', '% without pay'),
+      t('Mediana nominal', 'Nominal median'), t('Mediana real', 'Real median'), t('Com valor informado', 'With pay reported'), t('Ativos sem valor (fora da média)', 'Active jobs without pay (excluded from the average)'), t('% sem valor', '% without pay'),
       t('Fator IPCA (dez/ano-base ÷ dez/ano)', 'IPCA factor (Dec base ÷ Dec year)')],
     linhas: porAno.map((x) => {
       const fora = (num(x.r.ativos) ?? 0) - (num(x.r.n_rem_dez) ?? 0);
@@ -195,10 +195,10 @@ export function TrabalhoPerfil() {
 
   return (
     <>
-      <h2 className="titulo-pagina">{t('Perfil da ocupação', 'Occupation profile')}</h2>
+      <h1 className="titulo-pagina">{t('Perfil da ocupação', 'Occupation profile')}</h1>
       <p className="subtitulo">{rotulo} · RAIS {de}–{ate} · {t('vínculos ativos em 31/12', 'jobs active on Dec 31')} <Dica rotulo={t('Fonte', 'Source')}>{notaFonte()}</Dica></p>
       <BarraFiltros semAno />
-      <CapacidadeTrabalho micro={micro} rotulo={t('Como funciona', 'How it works')}
+      <CapacidadeTrabalho micro={micro} carregando={capacidadeCarregando} rotulo={t('Como funciona', 'How it works')}
         resumo={t('digite uma profissão (ex.: enfermeiro, motorista), escolha o resultado e gere sete tabelas: série histórica, remuneração, atividades e perfil de quem trabalha.', 'type an occupation (e.g. nurse, driver), choose the result and build seven tables: time series, pay, activities and worker profile.')}
         detalhe={<>{t(
         'Diagnóstico padronizado de uma ocupação ou família da CBO: sete tabelas, cada uma exportável, e o conjunto completo em Excel ou em pacote de pesquisa. A CBO é a ocupação exercida no vínculo, não a formação nem o registro profissional.',

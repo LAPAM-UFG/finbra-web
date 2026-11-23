@@ -1,3 +1,4 @@
+import { SeletorLugar, SeletorPeriodo, lugaresCadastro, usePeriodoUrl, type LugarOpcao } from './components/SeletorLugar';
 import { createContext, useContext, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { useApi, type Ente, type Meta, type Params } from './api';
@@ -5,7 +6,8 @@ import { Dica } from './components/Dica';
 import { Estado } from './components/Kpi';
 import { numero, pct, reais } from './format';
 import { dado, local, t } from './idioma';
-import { anosSaude, type FontesMeta } from './saude_comum';
+import { anosSaude } from './saude_anos';
+import type {FontesMeta} from './saude_comum';
 import { cadastroEfetivoSaude, COD_NORONHA, ENTE_NORONHA, focoValido, lerFiltros, rolagemParaOpcao, teclaBusca, tipoDeEnte, UFS_BR, type AvisoUrl } from './filtros_url';
 
 type Contexto = { meta: Meta; entes: Ente[]; porCodigo: Map<number, Ente> };
@@ -24,7 +26,7 @@ export function ProvedorDados({ children, sobDemanda = false, silencioso = false
   const comparacaoPronta = /^(\/comparar|\/(datasus|trabalho|educacao|saneamento|assistencia|munic|clima)\/comparar|\/(trabalho|educacao|saneamento|assistencia)\/rankings|\/(educacao|assistencia)\/evolucao)\/?$/.test(caminho);
   const mapaPronto = comparacaoPronta || /^\/(datasus|trabalho)\/mapa\/?$/.test(caminho);
   const educacaoPronta = caminho.startsWith('/educacao') && !['/educacao/financiamento', '/educacao/profissionais'].includes(caminho.replace(/\/+$/, ''));
-  const precisa = sobDemanda || !(mapaPronto || educacaoPronta || caminho === '/raio-x' || caminho.startsWith('/comex') || caminho.startsWith('/energia') || caminho.startsWith('/internet') || caminho.startsWith('/agropecuaria') || caminho.startsWith('/mobilidade') || caminho.startsWith('/saneamento') || caminho === '/clima' || caminho.startsWith('/clima/') || caminho === '/assistencia' || caminho.startsWith('/assistencia/') || caminho === '/downloads' || caminho.startsWith('/downloads/'));
+  const precisa = sobDemanda || !(mapaPronto || educacaoPronta || caminho === '/raio-x' || caminho.startsWith('/comex') || caminho.startsWith('/energia') || caminho.startsWith('/internet') || caminho.startsWith('/seguranca') || caminho.startsWith('/agropecuaria') || caminho.startsWith('/mobilidade') || caminho.startsWith('/saneamento') || caminho === '/clima' || caminho.startsWith('/clima/') || caminho === '/assistencia' || caminho.startsWith('/assistencia/') || caminho === '/downloads' || caminho.startsWith('/downloads/'));
   // /datasus: contexto completo pelo pacote de abertura da saúde (saude_meta e saude_entes devolvem o mesmo que meta e entes; sem pacote, o motor responde)
   const saude = !sobDemanda && !mapaPronto && (caminho === '/datasus' || caminho.startsWith('/datasus/'));
   const financeiroEducacao=['/educacao/financiamento','/educacao/profissionais'].includes(caminho.replace(/\/+$/,''));
@@ -85,7 +87,7 @@ export function useFiltros() {
   // leitura única e tolerante do endereço (filtros_url.ts): UF em qualquer caixa, Brasília = DF, ano nunca vira NaN; o que não vale
   // volta em `avisos` (BarraFiltros mostra), e o recorte exibido segue o mesmo de antes (ente > UF > Brasil)
   const lidos = lerFiltros(
-    { ano: busca.get('ano'), uf: busca.get('uf'), ente: busca.get('ente') },
+    { ano: busca.get('ano'), uf: busca.get('uf'), ente: busca.get('cod') ?? busca.get('ente') },
     // trabalho e saúde já avisam sozinhas de um ano numérico fora da base (anoForaDaBase)
     { anos, aceitaUltimo: saude, avisoProprioDeAnoNumerico: trabalho || saude },
     // /datasus: o cadastro efetivo inclui Fernando de Noronha (dados no FNS); as demais áreas usam o cadastro publicado
@@ -99,15 +101,18 @@ export function useFiltros() {
 
   const definir = (novo: { ano?: number | 'ultimo' | null; uf?: string | null; ente?: number | null }) => {
     const p = new URLSearchParams(busca);
+    if (Object.hasOwn(novo, 'ano')) p.delete('ano_pedido');
     for (const [k, v] of Object.entries(novo)) {
-      if (v === null || v === undefined || v === '') p.delete(k);
-      else p.set(k, String(v));
+      const chave = k === 'ente' ? 'cod' : k;
+      if (k === 'ente') p.delete('ente');
+      if (v === null || v === undefined || v === '') p.delete(chave);
+      else p.set(chave, String(v));
     }
     setBusca(p, { replace: true });
   };
   const limpar = () => {
     const p = new URLSearchParams(busca);
-    for (const k of ['ano', 'uf', 'ente']) p.delete(k);
+    for (const k of ['ano', 'uf', 'ente', 'cod', 'ano_pedido']) p.delete(k);
     setBusca(p, { replace: true });
   };
 
@@ -133,7 +138,7 @@ export function useFiltros() {
   return {
     ano, uf, ente, alvo, definir, limpar, escopo, rotulo, rotuloComparador, escopoComparador, tratamento, anos, anoForaDaBase, ultimo, semAnoUrl,
     avisosUrl: lidos.avisos,
-    temFiltros: !!(busca.get('ano') || busca.get('uf') || busca.get('ente')),
+    temFiltros: !!(busca.get('ano') || busca.get('uf') || busca.get('cod') || busca.get('ente')),
   };
 }
 
@@ -171,7 +176,7 @@ export function BarraFiltros(opcoes: Opcoes = {}) {
   const f = useFiltros();
   // as sinalizações são das declarações do SICONFI: não valem para as áreas de mercado de trabalho e de saúde
   const caminho = useLocation().pathname;
-  const financas = !caminho.startsWith('/trabalho') && !caminho.startsWith('/datasus') && !caminho.startsWith('/educacao');
+  const financas = !caminho.startsWith('/trabalho') && !caminho.startsWith('/datasus') && !caminho.startsWith('/educacao') && !caminho.startsWith('/saude');
   const alertas = useApi<Alerta[]>(f.alvo && financas ? 'alertas' : null, { ente: f.alvo?.cod_ibge });
   const doAno = (alertas.dados ?? []).filter((a) => a.exercicio === f.ano);
   return (
@@ -261,44 +266,25 @@ function AvisosUrl({ semAno }: { semAno?: boolean }) {
 }
 
 function Filtros({ semAno, semEnte, semBuscaEnte, comUltimo, ultimoPadrao, anosCobertos }: Opcoes) {
-  const { entes } = useDados();
-  const f = useFiltros();
-  const caminho = useLocation().pathname;
-  const trabalho = caminho.startsWith('/trabalho');
-  const saude = caminho.startsWith('/datasus');
-  const entesBusca = useMemo(() => (saude ? cadastroEfetivoSaude(entes, NORONHA) : entes), [saude, entes]);
-  return (
-    <div className="filtros">
-      {!semAno && (
-        <div className="campo">
-          <label htmlFor="f-ano">{trabalho ? t('Ano da RAIS', 'RAIS year') : saude ? t('Ano', 'Year') : t('Exercício', 'Fiscal year')}</label>
-          <select id="f-ano" value={comUltimo && (f.ultimo || (ultimoPadrao && f.semAnoUrl)) ? 'ultimo' : f.ano}
-            onChange={(e) => f.definir({ ano: e.target.value === 'ultimo' ? 'ultimo' : Number(e.target.value) })}>
-            {comUltimo && <option value="ultimo">{t('Último ano de cada fonte', 'Latest year of each source')}</option>}
-            {[...f.anos].reverse().map((a) => (
-              <option key={a} value={a}>{anosCobertos && !anosCobertos.includes(a) ? `${a} (${t('fora da cobertura', 'outside coverage')})` : a}</option>
-            ))}
-          </select>
-        </div>
-      )}
-      <div className="campo">
-        <label htmlFor="f-uf">{t('UF', 'State')}</label>
-        <select id="f-uf" value={f.uf ?? ''} onChange={(e) => f.definir({ uf: e.target.value || null, ente: null })}>
-          <option value="">{t('Brasil', 'Brazil')}</option>
-          {UFS.map((u) => (
-            <option key={u} value={u}>{u === 'DF' ? t('DF (Distrito Federal)', 'DF (Federal District)') : u}</option>
-          ))}
-        </select>
-      </div>
-      {!semBuscaEnte && (
-        <BuscaEnte entes={entesBusca} uf={f.uf} atual={f.ente} explicacao={semEnte}
-          aoEscolher={(e) => f.definir({ ente: e?.cod_ibge ?? null, uf: e?.uf ?? f.uf })} />
-      )}
-      {f.temFiltros && (
-        <button className="limpar limpar-tudo" onClick={f.limpar}>{t('Limpar todos os filtros', 'Clear all filters')}</button>
-      )}
-    </div>
-  );
+  const { entes } = useDados(), f = useFiltros(), caminho = useLocation().pathname;
+  const saude = caminho.startsWith('/datasus'), trabalho=caminho.startsWith('/trabalho');
+  const cadastro=useMemo(()=>saude?cadastroEfetivoSaude(entes,NORONHA):entes,[saude,entes]);
+  const lugares=useMemo<LugarOpcao[]>(()=>[
+    ...lugaresCadastro(semBuscaEnte?[]:cadastro.filter(x=>x.esfera==='M').map(x=>({cod:x.cod_ibge,nome:x.nome,uf:x.uf}))),
+    ...(!semBuscaEnte?cadastro.filter(x=>x.esfera==='E').map(x=>({grupo:String(x.cod_ibge),nome:x.nome+' · '+t('governo estadual','state government'),uf:x.uf,tipo:'UF' as const})):[]),
+  ],[cadastro,semBuscaEnte]);
+  const anos=anosCobertos?.length?f.anos.filter(y=>anosCobertos.includes(y)):f.anos;
+  const ultimo=!!comUltimo&&(f.ultimo||!!ultimoPadrao&&f.semAnoUrl);
+  const ano=anos.includes(f.ano)?f.ano:anos.at(-1)??f.ano;
+  usePeriodoUrl(semAno?[]:anos,ultimo?'ultimo':ano);
+  return <div className="filtros filtros-compartilhados">
+    <SeletorLugar lugares={lugares} valor={f.alvo?.esfera==='D'?'DF':f.ente?String(f.ente.cod_ibge):f.uf??'BR'} ajuda={!semBuscaEnte} rotulo={semEnte}
+      escolher={v=>f.definir(v==='BR'?{uf:null,ente:null}:/^[A-Z]{2}$/.test(v)?{uf:v,ente:null}:{ente:Number(v),uf:cadastro.find(x=>x.cod_ibge===Number(v))?.uf??null})}/>
+    {!semAno&&<SeletorPeriodo valor={ultimo?'ultimo':ano} rotulo={trabalho?t('Ano da RAIS','RAIS year'):t('Período','Period')}
+      opcoes={[...(comUltimo?[{valor:'ultimo',nome:t('Último ano de cada fonte','Latest year of each source')}]:[]),...[...anos].reverse().map(a=>({valor:a,nome:String(a)}))]}
+      mudar={v=>f.definir({ano:v==='ultimo'?'ultimo':Number(v)})}/>}
+    {f.temFiltros&&<button className="limpar limpar-tudo" onClick={f.limpar}>{t('Limpar todos os filtros','Clear all filters')}</button>}
+  </div>;
 }
 
 function normalizar(s: string) {
@@ -382,8 +368,8 @@ export function BuscaEnte({ entes, uf, atual, aoEscolher, explicacao, rotulo, id
         aria-autocomplete="list"
         aria-describedby={atual ? idAtual : undefined}
         aria-activedescendant={aberto && opcoes[ativo] ? idOpcao(opcoes[ativo].cod_ibge) : undefined}
-        placeholder={atual ? descreverEnte(atual) : t('Buscar por nome ou código IBGE…', 'Search by name or IBGE code…')}
-        value={texto}
+        placeholder={t('Buscar por nome ou código IBGE…', 'Search by name or IBGE code…')}
+        value={aberto ? texto : atual ? descreverEnte(atual) : texto}
         onFocus={() => setAberto(true)}
         onBlur={() => setTimeout(() => setAberto(false), 150)}
         onChange={(e) => {

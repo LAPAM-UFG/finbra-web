@@ -13,8 +13,8 @@ import { codigoConta } from '../calculos';
 
 export const textoReferencia = () =>
   t(
-    'Referência de UF ou Brasil: soma dos valores ÷ soma da população dos municípios com dados no exercício (quociente agregado, não média dos per capita municipais). O município selecionado faz parte da referência da sua UF.',
-    'State or national reference: sum of values ÷ sum of the population of municipalities with data in the year (aggregate ratio, not the average of municipal per capita values). The selected municipality is part of its state’s reference.',
+    'Referência de UF ou Brasil: soma dos valores ÷ soma da população declarada na DCA dos municípios com dados no exercício (quociente agregado, não média dos per capita municipais). O município selecionado faz parte da referência da sua UF.',
+    'State or national reference: sum of values ÷ sum of the DCA reported population of municipalities with data in the year (aggregate ratio, not the average of municipal per capita values). The selected municipality is part of its state’s reference.',
   );
 
 export function ReceitasVisaoGeral() {
@@ -29,7 +29,7 @@ export function ReceitasVisaoGeral() {
 
   return (
     <>
-      <h2 className="titulo-pagina">{t('Visão geral das receitas', 'Revenue overview')}</h2>
+      <h1 className="titulo-pagina">{t('Visão geral das receitas', 'Revenue overview')}</h1>
       <p className="subtitulo">{f.rotulo} · {f.ano} · {t('DCA Anexo I-C (receitas orçamentárias)', 'DCA Annex I-C (budget revenue)')}</p>
       <BarraFiltros />
       <Cobertura dominio="receita" />
@@ -46,7 +46,7 @@ export function ReceitasVisaoGeral() {
               'Net revenue = gross revenue collected − deductions reported in the deduction columns of Annex I-C (FUNDEB, constitutional transfers and others). Deductions are taken as absolute values: some governments report them with a negative sign. It is not the Fiscal Responsibility Law’s Net Current Revenue (RCL), which uses only current revenue, other deductions and 12 months.',
             )}
           </Dica>} />
-        <Kpi rotulo={t('Receita bruta per capita', 'Gross revenue per capita')} valor={reaisExato(div(num(k?.receita_bruta), pop))}
+        <Kpi rotulo={t('Receita bruta per capita', 'Gross revenue per capita')} valor={reaisExato(div(num(k?.receita_bruta), pop))} populacao={{valor:pop,fonte:'DCA'}}
           dica={f.alvo ? undefined : <Dica rotulo={t('Como é calculado', 'How it is calculated')}>{textoReferencia()}</Dica>} />
         <Kpi rotulo={t('População', 'Population')} valor={numero(pop)}
           nota={f.alvo ? t('declarada na DCA', 'reported in the DCA') : `${numero(num(k?.entes_receita_bruta))} ${t('entes com receita · declarada na DCA', 'governments with revenue · reported in the DCA')}`} />
@@ -120,7 +120,7 @@ export function ReceitasEvolucao() {
 
   return (
     <>
-      <h2 className="titulo-pagina">{t('Evolução das receitas', 'Revenue trends')}</h2>
+      <h1 className="titulo-pagina">{t('Evolução das receitas', 'Revenue trends')}</h1>
       <p className="subtitulo">{f.rotulo} · {nomeConta}</p>
       <BarraFiltros />
       <div className="filtros">

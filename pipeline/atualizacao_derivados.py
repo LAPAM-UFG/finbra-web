@@ -70,6 +70,8 @@ def aberturas(base, trabalho):
     curadoria=Path(__file__).resolve().parent.parent/'web/src/munic_curadoria.ts'
     for nome,gerar in [('munic',lambda out:munic_painel_dados.gerar(base,out,curadoria)),('clima_painel',lambda out:clima_painel.gerar(base,out)),('clima_abertura',lambda out:clima_abertura.gerar(base,out)),('saude',lambda out:saude_abertura.gerar(base,out)),('paineis',lambda out:abertura_paineis.gerar(base,out))]:
         out=trabalho/nome;gerar(out);instalar_overlay(out,base,('gold',));print('Abertura preparada: '+nome,flush=True)
+    from financas_particoes import gerar as particionar
+    out=trabalho/'financas_particoes';particionar(base,out);instalar_overlay(out,base,('gold',))
 
 
 def mapas(publicado,base,trabalho,saida,caches=()):

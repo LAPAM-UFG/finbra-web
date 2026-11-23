@@ -1,15 +1,24 @@
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { aoMudarEtapa, etapaAtual } from '../consulta_estado';
 import { t } from '../idioma';
+import { SemValor } from './SemValor';
+import { decimalLocal, numero } from '../format';
 
-export function Kpi({ rotulo, valor, nota, dica }: { rotulo: ReactNode; valor: string; nota?: ReactNode; dica?: ReactNode }) {
+export function Kpi({ rotulo, valor, nota, dica, populacao, valorCompleto, unidade }: { rotulo: ReactNode; valor: string; nota?: ReactNode; dica?: ReactNode; populacao?:{valor:number|null|undefined;fonte:string}; valorCompleto?:number|null; unidade?:string }) {
+  const semValor=/^(?:—|–|indisponível.*|sem dado.*|sem registro.*|não divulgado.*|indefinid[ao].*|unavailable.*|no data.*|no record.*|not published.*|undefined.*)$/i.test(valor.trim());
+  const motivo=semValor&&!/^[—–]$/.test(valor.trim())?valor:undefined;
   return (
     <div className="kpi">
       <div className="rotulo">{rotulo}{dica}</div>
-      <div className="valor">{valor}</div>
+      <div className="valor" title={valorCompleto!=null&&Number.isFinite(valorCompleto)?decimalLocal(valorCompleto,{maximumFractionDigits:10})+(unidade?' · '+unidade:''):undefined}>{semValor?<SemValor motivo={motivo}/>:valor}</div>
+      {motivo&&<div className="nota">{motivo}</div>}
       {nota && <div className="nota">{nota}</div>}
+      {populacao&&<div className="nota"><ReferenciaPopulacao {...populacao}/></div>}
     </div>
   );
+}
+export function ReferenciaPopulacao({valor,fonte}:{valor:number|null|undefined;fonte:string}) {
+  return <span>{t('População usada','Population used')}: {numero(valor)} {t('habitantes','residents')} · {fonte}</span>;
 }
 
 /** Mensagem do erro sem detalhes de implementação; o detalhe técnico fica recolhido. */

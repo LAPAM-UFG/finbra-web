@@ -4,9 +4,9 @@ import { AjudaTrabalho, BotaoEscolherLocal, CapacidadeTrabalho } from '../compon
 import { Dica } from '../components/Dica';
 import { BotoesExportar, type Tabela } from '../components/Exportar';
 import { Estado, Kpi } from '../components/Kpi';
-import { FormularioRecorte, paramsConsulta, SITUACOES, useAnosConsulta, useTerritorioTrabalho } from '../components/RecorteTrabalho';
+import { FormularioRecorte, paramsConsulta, SITUACOES, useAnosConsulta, useFonteConsulta, useTerritorioTrabalho } from '../components/RecorteTrabalho';
 import { BarraFiltros, useDados } from '../contexto';
-import { cancelarConsultasTrabalho, fonteConsulta, gruposDaFonte, LIMITES_CONSULTA } from '../dados';
+import { cancelarConsultasTrabalho, gruposDaFonte, LIMITES_CONSULTA } from '../dados';
 import { div, numero, numero1, pct, reaisExato } from '../format';
 import { num } from '../hooks';
 import { idioma, t } from '../idioma';
@@ -75,7 +75,7 @@ export function colunasConsulta(fator: number): Coluna[] {
     { id: 'dias', titulo: t('Dias de afast. (média)', 'Days of leave (avg)'), valor: (r) => num(r.dias_afastamento_medio), formato: numero, n: (r) => num(r.afastados) },
     { id: 'rem_dez', titulo: t('Rem. dezembro (média)', 'December pay (avg)'), dinheiro: true, valor: (r) => m(r.rem_dez_media), formato: r$, n: (r) => num(r.n_rem_dez), padrao: true },
     { id: 'n_rem_dez', titulo: t('Com valor (rem. dez.)', 'With value (Dec pay)'), valor: (r) => num(r.n_rem_dez), formato: numero, padrao: true },
-    { id: 'fora', titulo: t('% dos ativos sem valor (zero na média)', '% of active jobs without pay (zero in the average)'), valor: (r) => div((num(r.ativos) ?? 0) - (num(r.n_rem_dez) ?? 0), num(r.ativos)), formato: (v) => pct(v), padrao: true },
+    { id: 'fora', titulo: t('% dos ativos sem remuneração válida', '% of active jobs without valid pay'), valor: (r) => div((num(r.ativos) ?? 0) - (num(r.n_rem_dez) ?? 0), num(r.ativos)), formato: (v) => pct(v), padrao: true },
     { id: 'rem_dez_med', titulo: t('Rem. dezembro (mediana)', 'December pay (median)'), dinheiro: true, valor: (r) => m(r.rem_dez_mediana), formato: r$, n: (r) => num(r.n_rem_dez), padrao: true, soMicro: true },
     { id: 'p10', titulo: 'P10', dinheiro: true, valor: (r) => m(r.rem_dez_p10), formato: r$, n: (r) => num(r.n_rem_dez), soMicro: true },
     { id: 'p25', titulo: 'P25', dinheiro: true, valor: (r) => m(r.rem_dez_p25), formato: r$, n: (r) => num(r.n_rem_dez), soMicro: true },
@@ -113,7 +113,7 @@ export function metadadosConsulta(o: {
       [t('N vínculos no recorte', 'N jobs in the recorte'), String(num(tot.vinculos))],
       [t('N ativos em 31/12', 'N active on Dec 31'), String(num(tot.ativos))],
       [t('Ativos com remuneração de dezembro informada', 'Active jobs with December pay reported'), String(num(tot.n_rem_dez))],
-      [t('Ativos sem remuneração de dezembro (zero na média)', 'Active jobs without December pay (zero in the average)'), `${fora}${num(tot.rem_dez_ausente) !== null ? ` (${t('ausente', 'missing')} ${num(tot.rem_dez_ausente)}; ${t('zero', 'zero')} ${num(tot.rem_dez_zero)}; ${t('negativa', 'negative')} ${num(tot.rem_dez_negativa)})` : ''}`],
+      [t('Ativos sem remuneração válida de dezembro (fora da média)', 'Active jobs without valid December pay (excluded from the average)'), `${fora}${num(tot.rem_dez_ausente) !== null ? ` (${t('ausente', 'missing')} ${num(tot.rem_dez_ausente)}; ${t('zero', 'zero')} ${num(tot.rem_dez_zero)}; ${t('negativa', 'negative')} ${num(tot.rem_dez_negativa)})` : ''}`],
     ] as [string, string][] : []),
     [t('Definições e fórmulas', 'Definitions and formulas'), notaDefinicoes()],
     [t('Versão da base (manifesto)', 'Data version (manifest)'), o.geradoEm],
@@ -198,7 +198,7 @@ export function TrabalhoConsulta() {
   const anos = useAnosConsulta();
   const ano = anos.includes(f.ano) ? f.ano : ([...anos].reverse().find((a) => a <= f.ano) ?? anos.at(-1));
   const { recorte, definir } = useRecorte();
-  const fonte = fonteConsulta(escopo);
+  const { fonte, carregando: capacidadeCarregando } = useFonteConsulta(escopo);
   const micro = fonte === 'micro';
   const limites = LIMITES_CONSULTA[fonte];
   const disponiveis = gruposDaFonte(fonte);
@@ -217,7 +217,7 @@ export function TrabalhoConsulta() {
   const [busca, setBusca] = useState('');
   const [ordem, setOrdem] = useState<{ id: string; desc: boolean } | null>(null);
 
-  const params = aplicada && ano ? paramsConsulta(escopo, recorte, { ano }) : null;
+  const params = !capacidadeCarregando && aplicada && ano ? paramsConsulta(escopo, recorte, { ano }) : null;
   const total = useApi<ResultadoConsulta>(params ? 'trab_consulta' : null, { ...params, agrupar: 'total' });
   const grupos = useApi<ResultadoConsulta>(params && agrupar !== 'total' ? 'trab_consulta' : null, { ...params, agrupar, agrupar2: agrupar2 || undefined });
   const tot = total.dados?.linhas[0];
@@ -261,7 +261,7 @@ export function TrabalhoConsulta() {
   if (!anos.length) {
     return (
       <>
-        <h2 className="titulo-pagina">{t('Consulta personalizada', 'Custom query')}</h2>
+        <h1 className="titulo-pagina">{t('Consulta personalizada', 'Custom query')}</h1>
         <p className="vazio">{t('Os microdados da RAIS ainda não foram publicados.', 'RAIS microdata have not been published yet.')}</p>
       </>
     );
@@ -301,18 +301,18 @@ export function TrabalhoConsulta() {
 
   return (
     <>
-      <h2 className="titulo-pagina">{t('Consulta personalizada (RAIS)', 'Custom query (RAIS)')}</h2>
+      <h1 className="titulo-pagina">{t('Consulta personalizada (RAIS)', 'Custom query (RAIS)')}</h1>
       <p className="subtitulo">{rotulo} · RAIS {ano} <Dica rotulo={t('Fonte', 'Source')}>{notaFonte()}</Dica></p>
       <BarraFiltros />
       {f.anoForaDaBase && <p className="aviso" role="status">{t(`A RAIS de ${f.anoForaDaBase} ainda não foi publicada; a consulta usa ${ano}.`, `RAIS ${f.anoForaDaBase} has not been published yet; the query uses ${ano}.`)}</p>}
-      <CapacidadeTrabalho micro={micro} rotulo={t('O que esta consulta oferece aqui', 'What this query offers here')}
+      {capacidadeCarregando ? <p role="status">{t('Conferindo os recortes disponíveis…', 'Checking available breakdowns…')}</p> : <CapacidadeTrabalho micro={micro} rotulo={t('O que esta consulta oferece aqui', 'What this query offers here')}
         resumo={micro ? t(`dados completos de ${rotulo}: você pode explorar todos os cortes e filtros e ver quanto se ganha no valor do meio e nas faixas de remuneração.`, `full data for ${rotulo}: you can explore every cut and filter and see what people earn at the middle value and across pay ranges.`)
           : t('versão resumida: dá para ver totais, sexo e grandes grupos de profissões; os outros cortes e filtros precisam de uma UF ou município.', 'summary version: you can see totals, sex and broad occupation groups; the other cuts and filters need a state or municipality.')}
         detalhe={micro
           ? t(`microdados de ${rotulo} (um registro por vínculo): todos os agrupamentos e filtros, medianas, percentis e remuneração por hora. UFs grandes (SP, MG, RJ) podem levar alguns minutos.`,
             `microdata for ${rotulo} (one record per job): every grouping and filter, medians, percentiles and pay per hour. Large states (SP, MG, RJ) may take a few minutes.`)
           : t(`tabelas pré-somadas (${tipo === 'brasil' ? 'Brasil' : 'município'}): CNAE até ${limites.cnae} dígitos, CBO até ${limites.cbo} dígito(s), sexo e situação; sem medianas, percentis e filtros avançados, que precisam dos microdados de uma UF ou município.`,
-            `pre-aggregated tables (${tipo === 'brasil' ? 'Brazil' : 'municipality'}): CNAE up to ${limites.cnae} digits, CBO up to ${limites.cbo} digit(s), sex and status; no medians, percentiles or advanced filters, which need the microdata of a state or municipality.`)} />
+            `pre-aggregated tables (${tipo === 'brasil' ? 'Brazil' : 'municipality'}): CNAE up to ${limites.cnae} digits, CBO up to ${limites.cbo} digit(s), sex and status; no medians, percentiles or advanced filters, which need the microdata of a state or municipality.`)} />}
       <FormularioRecorte recorte={recorte} definir={(n) => { cancelarConsultasTrabalho(); definir(n); }} micro={micro}
         sincronizar={chaveUrl} aplicarExtra={{ agr: par.agr, agr2: par.agr2 || null }}
         resumoExtra={`${t('ver por', 'view by')} ${nomeRasc}${par.agr2 ? ` ${t('comparando com', 'compared with')} ${nomeRasc2}` : ''}`}
@@ -353,7 +353,7 @@ export function TrabalhoConsulta() {
               </li>
             ))}
           </ul>
-          {!micro && <p className="nota-base">{t('Outros cortes (raça/cor, escolaridade, idade, jornada…) precisam dos microdados: ', 'Other cuts (race/colour, education, age, hours…) need the microdata: ')}<BotaoEscolherLocal /></p>}
+          {!capacidadeCarregando && !micro && <p className="nota-base">{t('Outros cortes (raça/cor, escolaridade, idade, jornada…) precisam dos microdados: ', 'Other cuts (race/colour, education, age, hours…) need the microdata: ')}<BotaoEscolherLocal /></p>}
         </section>
       )}
       {aplicada && (

@@ -76,7 +76,8 @@ def metadado(d, original, novo, ano):
   x['nome']=x['descricao']=f'Cobertura vacinal: {vaccine} — {method}'
  if original=='cli_umid_solo_pct_anomalia':x['unidade']='pontos percentuais'
  if original=='cod_ibge':x['tipo']='inteiro';x['observacao']='Código numérico de sete dígitos; identificador do painel no Stata.'
- return x
+ from curadoria_financas import curar
+ return curar(original,x)
 
 
 def preparar_stata(frame, dictionary):

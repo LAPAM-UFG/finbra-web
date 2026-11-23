@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useSocial } from '../assistencia_dados';
 import { periodoComparacao, textoComparacao } from '../comparacoes_apresentacao';
 import type { GeografiaComparacao } from '../comparacoes_dados';
-import { t } from '../idioma';
+import { local, t } from '../idioma';
 import { chaveRaio, formatarRaio, type CatalogoRaio, type IndicadorRaio, type MetaRaio, type RetratoRaio } from '../raio_x';
 import { apresentacaoDestaque, destaquesRaio, gruposReferenciaDestaques, referenciaDestaque, referenciasDestaques } from '../raio_x_destaques';
 
@@ -21,15 +21,19 @@ export function DestaquesRaioX({ m, c, g, r, rede, ressalvas, focar }: {
     {(refs.erro || !!refs.dados?.falhas.length) && <p className="rx-ajuda" role="status">{t('Algumas referências não carregaram. Os indicadores do lugar continuam disponíveis.', 'Some benchmarks did not load. The place’s indicators remain available.')} <button type="button" className="botao-leve" onClick={refs.recarregar}>{t('Tentar novamente', 'Retry')}</button></p>}
     <div className="rx-destaques">
       {itens.map(item => {
-        const { i, k } = item, key = chaveRaio(i), ponto = r.linhas[k];
+        const { i, k } = item, key = chaveRaio(i), ponto = refs.dados?.locais[key]??r.linhas[k];
+        const trienio=refs.dados?.trienios[key];
+        const trienioSemBase=refs.dados?.trieniosSemBase[key];
         const a = apresentacaoDestaque(item, ponto, r.grupo, ressalvas);
         const populacao = i.catalogo === 'referencias' && i.id === 'rx_populacao';
         const unidadeComparavel = textoComparacao(i, 'unidade');
         const outraUnidade = a.unidade !== unidadeComparavel && !populacao && !i.binario;
         const legenda = populacao ? t('Participação na população', 'Share of the population') : i.metodo_referencia === 'mediana' ? t('Mediana dos municípios', 'Municipal median') : i.binario ? t('Municípios com resposta “Sim”', 'Municipalities answering “Yes”') : i.metodo_referencia === 'area' ? t('Média ponderada pela área', 'Area-weighted average') : outraUnidade ? unidadeComparavel : t('No mesmo período', 'At the same date');
         return <button type="button" key={key} data-indicador={key} className="rx-destaque" onClick={() => focar(i)}>
-          <span>{i.area === 'trabalho' && i.id === 'mulheres' ? t('Mulheres nos vínculos formais', 'Women in formal jobs') : a.nome}</span><strong>{a.texto}</strong>
-          <small>{a.unidade} · {a.ponto ? periodoComparacao(a.ponto[0]) : '—'}</small>
+          <span>{i.area === 'trabalho' && i.id === 'mulheres' ? t('Mulheres nos vínculos formais', 'Women in formal jobs') : a.nome}</span><strong title={a.valor===null?undefined:a.valor.toLocaleString(local(),{maximumFractionDigits:2})+' · '+a.unidade}>{a.texto}</strong>
+          <small>{a.unidade==='%'?'':a.unidade+' · '}{trienio?`${trienio-2}–${trienio} · ${t('triênio','three-year period')}`:a.ponto?periodoComparacao(a.ponto[0]):'—'}</small>
+          {trienio&&<small>{t('Destaque: óbitos ÷ nascidos vivos no triênio. A série anual continua no detalhe.','Highlight: deaths ÷ live births over three years. Annual values remain in the detail.')}</small>}
+          {trienioSemBase&&<small>{t(`Triênio ${trienioSemBase-2}–${trienioSemBase} indisponível: faltam componentes completos. Exibe-se a taxa anual com aviso de instabilidade.`,`The ${trienioSemBase-2}–${trienioSemBase} three-year rate is unavailable: complete components are missing. The annual rate is shown with an instability warning.`)}</small>}
           {(grupos.length > 0 || outraUnidade || g.territorios[r.grupo].nivel !== 'M' && ['mediana', 'area', 'resposta'].includes(i.metodo_referencia)) && <span className="rx-destaque-comparacao">
             <small className="rx-comparacao-legenda">{legenda}</small>
             {outraUnidade && <small className="rx-comparacao-linha"><span>{t('Neste recorte', 'This scope')}</span><b>{formatarRaio(i, a.comparavel)}</b></small>}

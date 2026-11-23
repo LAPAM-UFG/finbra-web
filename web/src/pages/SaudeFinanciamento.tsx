@@ -75,10 +75,10 @@ export function SaudeFinanciamento() {
     [t('Versão da base', 'Data version'), meta.geradoEm],
   ];
 
-  if (!temDados) return <><h2 className="titulo-pagina">{t('Financiamento federal', 'Federal funding')}</h2><p className="vazio">{t('Os dados de saúde ainda não foram publicados.', 'Health data have not been published yet.')}</p></>;
+  if (!temDados) return <><h1 className="titulo-pagina">{t('Financiamento federal', 'Federal funding')}</h1><p className="vazio">{t('Os dados de saúde ainda não foram publicados.', 'Health data have not been published yet.')}</p></>;
   return (
     <>
-      <h2 className="titulo-pagina">{t('Financiamento federal da saúde (FNS)', 'Federal health funding (FNS)')}</h2>
+      <h1 className="titulo-pagina">{t('Financiamento federal da saúde (FNS)', 'Federal health funding (FNS)')}</h1>
       <p className="subtitulo">
         {rotulo} · FNS {ref ?? t('fora da cobertura', 'outside coverage')} · {t('repasses fundo a fundo da União, por ano do arquivo', 'fund-to-fund transfers from the Union, by file year')}{' '}
         <Dica rotulo={t('Fonte', 'Source')}>{fonteFns()}</Dica>

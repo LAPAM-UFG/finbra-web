@@ -1,3 +1,4 @@
+import { ordinal } from '../format';
 import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { buscar, useApi } from '../api';
@@ -92,7 +93,7 @@ export function Rankings() {
   const destaque = r.dados?.ente;
   const fmt = perCapita ? reaisExato : reais;
   const opcao = useMemo(
-    () => barras((top.dados?.itens ?? []).map((i) => `${i.posicao_br}º ${i.nome} (${i.uf})`), (top.dados?.itens ?? []).map((i) => i.indicador), reaisCurto),
+    () => barras((top.dados?.itens ?? []).map((i) => `${ordinal(i.posicao_br)} ${i.nome} (${i.uf})`), (top.dados?.itens ?? []).map((i) => i.indicador), reaisCurto),
     [top.dados],
   );
   const total = r.dados?.elegiveis ?? 0;
@@ -104,7 +105,7 @@ export function Rankings() {
 
   return (
     <>
-      <h2 className="titulo-pagina">{t('Rankings de municípios', 'Municipal rankings')}</h2>
+      <h1 className="titulo-pagina">{t('Rankings de municípios', 'Municipal rankings')}</h1>
       <p className="subtitulo">
         {uf ? t(`Municípios de ${uf}`, `Municipalities in ${uf}`) : t('Municípios com dados no Brasil', 'Municipalities with data in Brazil')}{vista === 'evolucao' ? '' : ` · ${f.ano}`}
       </p>
@@ -156,8 +157,8 @@ export function Rankings() {
         <p className="nota-base destaque-ente" role="status">
           {destaque
             ? <>
-              <strong>{f.ente.nome} ({f.ente.uf})</strong>: {t('posição', 'position')} {numero(destaque.posicao_br)}º {t('de', 'of')} {numero(destaque.total_br)} {t('no Brasil', 'in Brazil')};{' '}
-              {numero(destaque.posicao_uf)}º {t('de', 'of')} {numero(destaque.total_uf)} {t('em', 'in')} {destaque.uf} · {fmt(destaque.indicador)}{' '}
+              <strong>{f.ente.nome} ({f.ente.uf})</strong>: {t('posição', 'position')} {ordinal(destaque.posicao_br)} {t('de', 'of')} {numero(destaque.total_br)} {t('no Brasil', 'in Brazil')};{' '}
+              {ordinal(destaque.posicao_uf)} {t('de', 'of')} {numero(destaque.total_uf)} {t('em', 'in')} {destaque.uf} · {fmt(destaque.indicador)}{' '}
               {(!uf || destaque.uf === uf) && <button className="limpar" onClick={() => irPara(destaque)}>{t('ir para a posição na tabela', 'go to its row in the table')}</button>}
             </>
             : t(`${f.ente.nome} não é elegível neste ranking (sem o valor, sem população ou sinalizado).`, `${f.ente.nome} is not eligible for this ranking (no value, no population or flagged).`)}
@@ -198,15 +199,15 @@ export function Rankings() {
                 <tr>
                   <th>{uf ? t('Posição na UF', 'State position') : t('Posição', 'Position')}</th>
                   {uf && <th>{t('Posição nacional', 'National position')}</th>}
-                  <th>{t('Município', 'Municipality')}</th><th>{t('UF', 'State')}</th><th>{t('População', 'Population')}</th>
+                  <th className="territorio-fixo">{t('Município', 'Municipality')}</th><th>{t('UF', 'State')}</th><th>{t('População declarada na DCA', 'DCA reported population')}</th>
                   <th>{t('Valor', 'Value')}</th><th>Per capita</th>
                 </tr>
               </thead>
               <tbody>
                 {itens.map((i) => (
                   <tr key={i.cod_ibge} className={i.cod_ibge === f.ente?.cod_ibge ? 'destaque' : undefined}>
-                    <td>{numero(posicao(i))}º</td>{uf && <td>{numero(i.posicao_br)}º</td>}
-                    <td>{i.nome}</td><td>{i.uf}</td><td>{numero(i.populacao)}</td><td>{reais(i.valor)}</td>
+                    <td>{ordinal(posicao(i))}</td>{uf && <td>{ordinal(i.posicao_br)}</td>}
+                    <td className="territorio-fixo">{i.nome}</td><td>{i.uf}</td><td>{numero(i.populacao)}</td><td>{reais(i.valor)}</td>
                     <td>{i.populacao ? reaisExato(i.valor / i.populacao) : '–'}</td>
                   </tr>
                 ))}

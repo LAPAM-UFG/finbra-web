@@ -4,6 +4,7 @@ Lê somente o cache auditado. Escreve exclusivamente em uma candidata isolada.
 Unidades vêm da API SIDRA; valores monetários são convertidos de mil R$ para R$.
 Não soma espécies, produtos com unidades diferentes nem categorias sobrepostas.
 """
+from curadoria_catalogos import curar_agro
 import argparse, copy, gzip, hashlib, json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -190,7 +191,7 @@ def gerar(fontes,saida):
         ref=dict(caminho=target.relative_to(saida).as_posix(),bytes=target.stat().st_size,sha256=digest)
         indices[uf]=objeto('agropecuaria','indice_'+uf.lower(),dict(versao=1,arquivo=ref,grupos=entries))
     geo=objeto('agropecuaria','geografia',g,True)
-    catalogo=objeto('agropecuaria','catalogo',dict(versao=1,anos=ANOS,produtos=produtos,indicadores=inds,derivados=[dict(q.definicao,periodos=ANOS)for q in quadros],condicoes=CONDICOES),True)
+    catalogo=objeto('agropecuaria','catalogo',curar_agro(dict(versao=1,anos=ANOS,produtos=produtos,indicadores=inds,derivados=[dict(q.definicao,periodos=ANOS)for q in quadros],condicoes=CONDICOES)),True)
     manifesto=dict(versao=1,gerado_em=datetime.now(timezone.utc).isoformat(),anos=ANOS,catalogo=catalogo,geografia=geo,indices=indices,
         fonte='IBGE · PAM, PPM e PEVS',
         fontes=[dict(nome='SIDRA '+t,url='https://sidra.ibge.gov.br/tabela/'+t)for t in TABELAS],

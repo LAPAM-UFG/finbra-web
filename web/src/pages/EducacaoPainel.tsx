@@ -1,5 +1,7 @@
+import {ordinal} from '../format';
+import { SeletorLugar, SeletorPeriodo, lugaresCadastro } from '../components/SeletorLugar';
 import {ajustarIndicadorRede} from '../educacao_rede';
-import { useEffect, useId, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import '../educacao.css';
 import { Grafico, barras, linhas } from '../components/Grafico';
@@ -9,7 +11,7 @@ import { idioma, local, t } from '../idioma';
 import { buscaEntreAreas } from '../navegacao';
 import {
   obterMetaEducacao, obterMunicipiosEducacao, obterGrupoEducacao, obterRankingEducacao, linhaEducacao, useEducacao,
-  obterBuscaMunicipiosEducacao, filtrarMunicipiosEducacao, municipioExatoEducacao, ufMunicipioEducacao,
+  obterBuscaMunicipiosEducacao, ufMunicipioEducacao,
   REDES_EDUCACAO, redeEducacaoValida, normalizarBuscaEducacao, avaliacaoEducacao, anoSemEdicaoEducacao, posicoesEducacao,
   type RedeEducacao,
   type MetaEducacao, type GrupoEducacao, type IndicadorEducacao, type TerritorioEducacao,
@@ -49,24 +51,11 @@ function Carregando({ erro, tentar }: { erro?: string; tentar: () => void }) {
   return <Estado erro={erro} carregando={!erro} mensagem={erro ? t('Não foi possível carregar os indicadores de educação.', 'Could not load education indicators.') : t('Carregando os indicadores de educação…', 'Loading education indicators…')} tentarNovamente={tentar} />;
 }
 function BuscaMunicipio({uf,cod,items,onEscolher}:{uf:string;cod:string;items?:TerritorioEducacao[];onEscolher:(codigo:string)=>void}) {
-  const id=useId(),[busca,setBusca]=useState(''),query=busca.trim(),ativa=query.length>=2;
-  const nacional=useEducacao(ativa ? 'busca-municipios' : null,obterBuscaMunicipiosEducacao);
-  const matches=useMemo(()=>filtrarMunicipiosEducacao(ativa ? nacional.dados ?? [] : query ? [] : items ?? [],query),[ativa,nacional.dados,items,query]);
-  const visiveis=ativa ? matches.slice(0,100) : matches;
-  const escolher=(code:string)=>{setBusca('');onEscolher(code);};
-  return <div className="ed-campo-municipio"><label htmlFor={id}>{t('Município','Municipality')}</label>
-    <input id={id} type="search" aria-label={t('Buscar município','Search municipality')} placeholder={t('Nome ou código IBGE, em qualquer estado…','Name or IBGE code, in any state…')} value={busca} onChange={e=>setBusca(e.target.value)} onKeyDown={e=>{
-      if(e.key==='Escape')setBusca('');
-      if(e.key==='Enter' && ativa){e.preventDefault();const match=municipioExatoEducacao(matches,query);if(match)escolher(match.grupo);}
-    }} />
-    <select aria-label={t('Município','Municipality')} value={query ? '' : cod} onChange={e=>escolher(e.target.value)}>
-      <option value="">{ativa ? t('Selecione um dos municípios encontrados','Select a matching municipality') : uf ? t('Todos os municípios do estado','All municipalities in the state') : t('Brasil · todos os municípios','Brazil · all municipalities')}</option>
-      {visiveis.map(x=><option key={x.grupo} value={x.grupo}>{x.nome} · {x.uf} · {x.grupo}{x.grupo==='2605459' ? t(' (distrito estadual)',' (state district)') : ''}</option>)}
-    </select>
-    <small className="ed-busca-ajuda" role="status">{ativa && !nacional.dados && !nacional.erro ? t('Carregando a busca nacional…','Loading national search…') : nacional.erro ? t('A busca não carregou. Tente novamente ou escolha um estado.','Search could not load. Retry or choose a state.') : ativa && !matches.length ? t('Nenhum município encontrado. Confira o nome ou código.','No matching municipality. Check the name or code.') : ativa ? t(`${matches.length} município(s) encontrado(s)${matches.length>100 ? '; mostrando os primeiros 100. Refine a busca.' : '. Escolha na lista ou pressione Enter para um resultado exato.'}`,`${matches.length} matching municipalities${matches.length>100 ? '; showing the first 100. Refine your search.' : '. Choose from the list or press Enter for an exact match.'}`) : t('Busque em todo o Brasil; o estado é opcional. Use ao menos dois caracteres.','Search across Brazil; the state is optional. Type at least two characters.')}</small>
-    {ativa && nacional.erro && <button type="button" onClick={nacional.recarregar}>{t('Repetir busca','Retry search')}</button>}
-  </div>;
+  const [abrir,setAbrir]=useState(false),nacional=useEducacao(abrir?'busca-municipios':null,obterBuscaMunicipiosEducacao);
+  const lugares=useMemo(()=>lugaresCadastro((nacional.dados??items??[]).map(x=>({cod:x.grupo,nome:x.nome,uf:x.uf??''}))),[nacional.dados,items]);
+  return <><SeletorLugar lugares={lugares} valor={cod||uf||'BR'} escolher={onEscolher} aoAbrir={()=>setAbrir(true)} carregando={abrir&&!nacional.dados&&!nacional.erro}/>{nacional.erro&&<button onClick={nacional.recarregar}>{t('Repetir busca','Retry search')}</button>}</>;
 }
+
 function EducacaoBase({ pagina, historico = false, children }: { pagina: string; historico?: boolean; children: (c: Ctx) => ReactNode }) {
   const [sp,setSp] = useSearchParams();
   const redeRaw=sp.get('rede')??'todas',rede=redeEducacaoValida(redeRaw)?redeRaw:'todas';
@@ -96,17 +85,13 @@ function EducacaoBase({ pagina, historico = false, children }: { pagina: string;
   if (!meta.dados) return <Carregando erro={meta.erro} tentar={meta.recarregar} />;
   const m = meta.dados;
   return <div className="ed-painel">
-    <h2>{pagina}</h2>
+    <h1>{pagina}</h1>
     <p className="ed-intro">{t('Matrículas, escolas, trajetória e aprendizagem. Os números já estão prontos: escolha o lugar e explore.', 'Enrolments, schools, student progression and learning. The figures are ready: choose a place and explore.')}</p>
     <div className="ed-filtros" aria-label={t('Filtros de educação','Education filters')}>
-      <label>{t('Estado (opcional)','State (optional)')}<select aria-label={t('Estado','State')} value={uf in m.municipios ? uf : ''} onChange={e => mudar({uf:e.target.value,cod:null})}>
-        <option value="">{t('Brasil · todos os estados','Brazil · all states')}</option>{m.territorios.filter(x=>x.nivel==='UF').map(x=><option value={x.grupo} key={x.grupo}>{x.nome}</option>)}
-      </select></label>
-      <BuscaMunicipio key={uf} uf={uf} cod={cod} items={municipios.dados} onEscolher={code=>mudar({cod:code || null,...(code ? {uf:ufMunicipioEducacao(code) ?? null} : {})})} />
+      <BuscaMunicipio key={uf} uf={uf} cod={cod} items={municipios.dados} onEscolher={key=>mudar(key==='BR'?{uf:null,cod:null}:/^[A-Z]{2}$/.test(key)?{uf:key,cod:null}:{cod:key,uf:ufMunicipioEducacao(key)??null})}/>
       <label>{t('Rede de ensino','School sector')}<select aria-label={t('Rede de ensino','School sector')} value={rede} onChange={e=>{const r=e.target.value as RedeEducacao;mudar({rede:r==='todas'?null:r,ind:ajustarIndicadorRede(sp.get('ind'),r)});}}>{REDES_EDUCACAO.filter(r=>r==='todas'||m.redes?.[r]).map(r=><option key={r} value={r}>{nomeRede(r)}</option>)}</select></label>
-      {!historico && <label>{t('Ano de referência','Reference year')}<select aria-label={t('Ano de referência','Reference year')} value={pedido ?? ''} onChange={e=>mudar({ano:e.target.value})}>
-        <option value="">{t('Último ano de cada indicador','Latest year for each indicator')}</option>{foraDaBase && <option value={anoPedido!}>{anoPedido}</option>}{[...m.anos].reverse().map(y=><option value={y} key={y}>{y}</option>)}
-      </select></label>}
+      {!historico&&<SeletorPeriodo valor={ano??''} opcoes={[{valor:'',nome:t('Último ano de cada indicador','Latest year for each indicator')},...[...m.anos].reverse().map(y=>({valor:y,nome:String(y)}))]} mudar={v=>mudar({ano:v||null})}/>}
+
     </div>
     {erroFiltro ? <div className="ed-nota" role="alert">{t('O território ou ano do endereço é inválido. Ajuste os filtros para continuar.','The territory or year in the link is invalid. Adjust the filters to continue.')} <button onClick={()=>setSp({})}>{t('Mostrar Brasil','Show Brazil')}</button></div>
       : !territorio || !grupo.dados ? <Carregando erro={municipios.erro ?? grupo.erro} tentar={()=>{municipios.recarregar();grupo.recarregar();}} />
@@ -260,9 +245,9 @@ function Ranking({c}:{c:Ctx}) {
     {semEdicao?<AvisoEdicao c={{...c,ano:year}} i={i}/>:!dados.dados?<Carregando erro={dados.erro} tentar={dados.recarregar}/>:<>
       {i.fonte==='saeb'&&<div className="ed-nota"><label><input type="checkbox" checked={incluirRessalvas} onChange={e=>{setIncluirRessalvas(e.target.checked);setLimite(25);}}/>{t(' Incluir resultados com ressalva do Inep',' Include results flagged by Inep')}</label><p>{t(`${ressalvados} resultados com ressalva neste recorte. Por padrão, ficam fora do ranking regular; as notas continuam disponíveis nas séries e nos arquivos.`,`${ressalvados} flagged results in this scope. By default they are outside the regular ranking; scores remain available in series and files.`)}</p></div>}
       <p>{year} · {rows.length.toLocaleString(local())} {t('municípios com valor divulgado','municipalities with published values')}</p>
-      {c.territorio.nivel==='M' && <div className="ed-posicao" role="status"><strong>{c.territorio.nome}</strong>{own>=0?<><span>{fmt(i,rows[own][index+3] as number|null)} · {t(`${positions[own]}º de ${rows.length}`,`${positions[own]} of ${rows.length}`)}</span><Comparacoes c={c} i={i} ano={year!}/></>:<span>{propriaMarcada&&!incluirRessalvas?t('Resultado com ressalva do Inep: fora do ranking regular. Ative a opção acima para incluí-lo.','Result flagged by Inep: outside the regular ranking. Enable the option above to include it.'):t('Sem resultado divulgado neste ano e rede; não há posição atribuída.','No published result for this year and sector; no position assigned.')}</span>}</div>}
+      {c.territorio.nivel==='M' && <div className="ed-posicao" role="status"><strong>{c.territorio.nome}</strong>{own>=0?<><span>{fmt(i,rows[own][index+3] as number|null)} · {`${ordinal(positions[own])} ${t('de','of')} ${rows.length.toLocaleString(local())}`}</span><Comparacoes c={c} i={i} ano={year!}/></>:<span>{propriaMarcada&&!incluirRessalvas?t('Resultado com ressalva do Inep: fora do ranking regular. Ative a opção acima para incluí-lo.','Result flagged by Inep: outside the regular ranking. Enable the option above to include it.'):t('Sem resultado divulgado neste ano e rede; não há posição atribuída.','No published result for this year and sector; no position assigned.')}</span>}</div>}
       {!rows.length?<p className="ed-nota">{t('Não há resultados publicados para este recorte e rede. Confira os anos disponíveis e a metodologia da fonte.','No published results for this scope and sector. Check available years and source methodology.')}</p>:<><div className="ed-escolha"><label>{t('Encontrar município no ranking','Find a municipality in the ranking')}<input type="search" value={busca} placeholder={t('Nome ou código IBGE','Name or IBGE code')} onChange={e=>{setBusca(e.target.value);setLimite(25);}} /></label><button onClick={baixar}>{t('Baixar ranking · CSV','Download ranking · CSV')}</button></div>
-      <div className="ed-tabela" tabIndex={0}><table><caption>{nome(i)} · {nomeRede(c.rede)} · {year}</caption><thead><tr><th>#</th><th>{t('Município','Municipality')}</th><th>{t('Valor','Value')}</th></tr></thead><tbody>{visible.slice(0,limite).map(({r,pos})=><tr key={r[0]} className={String(r[0])===c.territorio.grupo?'ed-linha-selecionada':undefined}><td>{pos}</td><td><Link to={`/educacao?uf=${r[2]}&cod=${r[0]}&ano=${year}&rede=${c.rede}&ind=${i.id}#ed-ind-${i.id}`}>{r[1]} · {r[2]}</Link></td><td>{fmt(i,r[index+3] as number|null)}{statusIndex>=0&&[1,2].includes((r[statusIndex+3] as number|null)??0)&&'*'}</td></tr>)}</tbody></table></div>
+      <div className="ed-tabela" tabIndex={0}><table><caption>{nome(i)} · {nomeRede(c.rede)} · {year}</caption><thead><tr><th>#</th><th className="territorio-fixo">{t('Município','Municipality')}</th><th>{t('Valor','Value')}</th></tr></thead><tbody>{visible.slice(0,limite).map(({r,pos})=><tr key={r[0]} className={String(r[0])===c.territorio.grupo?'ed-linha-selecionada':undefined}><td>{pos}</td><td className="territorio-fixo"><Link to={`/educacao?uf=${r[2]}&cod=${r[0]}&ano=${year}&rede=${c.rede}&ind=${i.id}#ed-ind-${i.id}`}>{r[1]} · {r[2]}</Link></td><td>{fmt(i,r[index+3] as number|null)}{statusIndex>=0&&[1,2].includes((r[statusIndex+3] as number|null)??0)&&'*'}</td></tr>)}</tbody></table></div>
       {!visible.length && <p role="status">{t('Nenhum município corresponde à busca.','No matching municipalities.')}</p>}{visible.length>limite&&<button onClick={()=>setLimite(v=>v+50)}>{t('Mostrar mais 50','Show 50 more')}</button>}
       {i.fonte==='saeb'&&<p className="ed-ref">{t('* Resultado com ressalva do Inep: avaliação estadual substituta ou participação inferior a 50% por extravio de provas. Consulte a condição na tabela ou no CSV.','* Result flagged by Inep: substituted state assessment or participation below 50% following lost tests. Check the status in the table or CSV.')}</p>}</>}
     </>}</>}
