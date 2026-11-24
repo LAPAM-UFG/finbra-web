@@ -1,6 +1,6 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { pagina } from './carregar_pagina';
-import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useNavigationType } from 'react-router-dom';
+import { Link, Navigate, Route, Routes, useLocation, useNavigate, useNavigationType } from 'react-router-dom';
 const HistoricoIa = pagina(() => import('./components/HistoricoIa').then(m => ({default:m.HistoricoIa})));
 import { ProvedorDados } from './contexto';
 import { definirIdioma, t, useIdioma } from './idioma';
@@ -11,6 +11,8 @@ import { PARAMS_TRABALHO } from './trabalho_comum';
 import { buscaEntreAreas, buscaIaLegada, buscaParaDownloads, type Area } from './navegacao';
 import { rotaConhecida, ALIASES, TITULOS } from '../../shared/rotas_site.mjs';
 import { PaginaNaoEncontrada } from './components/PaginaNaoEncontrada';
+import { MenuPainel } from './components/MenuPainel';
+import { menuDoPainel } from './menus_paineis';
 // Pausa temporária: reativar junto de IA_HABILITADA em worker/wrangler.jsonc.
 const IA_HABILITADA = false;
 const Comex = pagina(() => import('./pages/Comex').then(m => ({default:m.Comex})));
@@ -90,84 +92,9 @@ const TrabalhoRemuneracao = pagina(() => import('./pages/TrabalhoRemuneracao').t
 const TrabalhoMetodologia = pagina(() => import('./pages/TrabalhoMetodologia').then(m => ({default:m.TrabalhoMetodologia})));
 const TrabalhoPerfil = pagina(() => import('./pages/TrabalhoPerfil').then(m => ({default:m.TrabalhoPerfil})));
 
-const menu = (): [string, [string, string][]][] => [
-  [t('Receitas', 'Revenue'), [['/receitas', t('Visão geral', 'Overview')], ['/receitas/evolucao', t('Evolução', 'Trends')]]],
-  ['FPM', [['/fpm', t('Evolução e dependência', 'Trends and dependency')], ['/fpm/faixas', t('Faixas populacionais', 'Population brackets')]]],
-  [t('Despesas orçamentárias', 'Budget expenditure'), [['/despesas-orcamentarias', t('Visão geral', 'Overview')], ['/despesas-orcamentarias/evolucao', t('Evolução', 'Trends')]]],
-  [t('Despesas por função', 'Expenditure by function'), [['/despesas', t('Visão geral', 'Overview')], ['/despesas/evolucao', t('Evolução', 'Trends')]]],
-  [t('Responsabilidade fiscal', 'Fiscal responsibility'), [['/lrf', t('Indicadores da LRF', 'LRF indicators')], ['/lrf/demonstrativos', t('Demonstrativos RREO e RGF', 'RREO and RGF statements')]]],
-  [t('Saúde e educação', 'Health and education'), [
-    ['/educacao/financiamento', t('Educação (SIOPE)', 'Education (SIOPE)')],
-    ['/educacao/profissionais', t('Profissionais da educação', 'Education staff')],
-    ['/saude/financiamento', t('Saúde · financiamento (SIOPS)', 'Health · financing (SIOPS)')],
-  ]],
-  [t('Análises', 'Analysis'), [
-    ['/demonstrativos', t('Demonstrativos (7 anexos)', 'Financial statements (7 annexes)')],
-    ['/socioeconomico', t('Socioeconômico', 'Socioeconomic')],
-    ['/rankings', 'Rankings'],
-  ]],
-  [t('Metodologia', 'Methodology'), [['/deflatores', t('Deflatores', 'Deflators')], ['/qualidade', t('Qualidade e fontes', 'Quality and sources')]]],
-];
-
-/** Área de mercado de trabalho (RAIS e Novo CAGED), em /trabalho. */
-const menuTrabalho = (): [string, [string, string][]][] => [
-  [t('Painel', 'Dashboard'), [['/trabalho', t('Painel de indicadores', 'Indicator dashboard')], ['/trabalho/mapa', t('Mapa de indicadores', 'Indicator map')]]],
-  [t('Exploração avançada', 'Advanced exploration'), [['/trabalho/evolucao', t('Evolução', 'Trends')], ['/trabalho/rankings', 'Rankings'],
-    ['/trabalho/estabelecimentos', t('Estabelecimentos', 'Establishments')], ['/trabalho/consulta', t('Consulta personalizada', 'Custom query')],
-    ['/trabalho/perfil', t('Perfil do recorte', 'Scope profile')], ['/trabalho/remuneracao', t('Remuneração e desigualdades', 'Pay and inequality')],
-    ['/trabalho/caged', t('CAGED mês a mês', 'CAGED month by month')]]],
-  [t('Metodologia', 'Methodology'), [['/trabalho/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
-];
-
-/** Área de saúde (SIM, SINASC e população da SVS/MS), em /datasus; o /saude das finanças é o SIOPS. */
-const menuSaude = (): [string, [string, string][]][] => [
-  [t('Indicadores de saúde', 'Health indicators'), [['/datasus', t('Visão geral', 'Overview')], ['/datasus/evolucao', t('Evolução', 'Trends')], ['/datasus/tabela', t('Tabela e exportações', 'Table and downloads')],
-    ['/datasus/mapa', t('Mapa de indicadores', 'Indicator map')], ['/datasus/rankings', 'Rankings'], ['/datasus/rede', t('Rede e acesso', 'Network and access')],
-    ['/datasus/ambulatorial', t('Produção ambulatorial', 'Outpatient output')],
-    ['/datasus/vacinacao', t('Vacinação', 'Vaccination')],
-    ['/saude/financiamento', t('Despesa em saúde (SIOPS)', 'Health expenditure (SIOPS)')], ['/datasus/financiamento', t('Financiamento federal', 'Federal funding')]]],
-  [t('Metodologia', 'Methodology'), [['/datasus/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
-];
-
-/** Menu da área MUNIC: só pesq, uf, cod e ano (válidos) acompanham de página em página; a escolha de pergunta do explorador (aba, var, grupo) não. */
+// A edição da MUNIC acompanha apenas os destinos compatíveis da própria pesquisa.
 const EDICOES_MUNIC = edicoesCuradas(CURADORIA);
 const DESTINO_MUNIC: Record<string, Destino> = { '/munic': 'painel', '/munic/territorio': 'ficha' };
-
-/** Área de gestão pública (MUNIC e ESTADIC, do IBGE), em /munic. */
-const menuMunic = (): [string, [string, string][]][] => [
-  [t('Gestão pública', 'Public management'), [['/munic', t('Painel automático', 'Automatic dashboard')]]],
-  [t('Exploração avançada', 'Advanced exploration'), [['/munic/perguntas', t('Explorar por pergunta', 'Explore by question')], ['/munic/evolucao', t('Evolução entre edições', 'Change across editions')],
-    ['/munic/territorio', t('Ficha do município ou estado', 'Municipality or state profile')]]],
-  [t('Metodologia', 'Methodology'), [['/munic/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
-];
-
-/** Área de clima (chuva do CHIRPS; temperatura e outras variáveis do ERA5-Land; por município e mês), em /clima. */
-const menuClima = (): [string, [string, string][]][] => [
-  [t('Variáveis climáticas', 'Climate variables'), [['/clima', t('Visão geral', 'Overview')], ['/clima/rankings', 'Rankings']]],
-  [t('Metodologia', 'Methodology'), [['/clima/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
-];
-
-/** Aba geral da IA (/ia), que consulta os painéis marcados na página. */
-// a aba da IA tem uma página só: a lateral fica para o histórico de conversas (o nome já está no topo e nas abas)
-const menuIa = (): [string, [string, string][]][] => [];
-
-const menuAssistencia = (): [string, [string, string][]][] => [
-  [t('Assistência social', 'Social assistance'), [['/assistencia', t('Painel de indicadores', 'Indicator dashboard')]]],
-  [t('Explorar os dados', 'Explore the data'), [['/assistencia/serie', t('Série detalhada', 'Detailed series')], ['/assistencia/rankings', t('Rankings mensais', 'Monthly rankings')], ['/assistencia/comparacoes-pagamentos', t('Comparações dos pagamentos', 'Payment comparisons')], ['/assistencia/tabela', t('Tabela e exportações', 'Table and downloads')]]],
-  [t('Metodologia', 'Methodology'), [['/assistencia/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
-];
-
-/** Central de downloads (/downloads): só metadados na abertura, sem filtros globais nem motor de consultas. */
-const menuDownloads = (): [string, [string, string][]][] => [
-  [t('Dados abertos', 'Open data'), [['/downloads', t('Baixar dados municipais', 'Download municipal data')]]],
-];
-
-const menuEducacao = (): [string, [string, string][]][] => [
-  [t('Educação', 'Education'), [['/educacao', t('Painel de indicadores', 'Indicator dashboard')]]],
-  [t('Explorar os dados', 'Explore the data'), [['/educacao/serie', t('Série detalhada', 'Detailed series')], ['/educacao/mapa', t('Mapa de indicadores', 'Indicator map')], ['/educacao/rankings', 'Rankings'], ['/educacao/tabela', t('Tabela e exportações', 'Table and downloads')]]],
-  [t('Financiamento', 'Funding'), [['/educacao/financiamento', t('Gastos e aplicação · SIOPE', 'Expenditure and allocation · SIOPE')], ['/educacao/profissionais', t('Profissionais da educação', 'Education staff')]]],
-  [t('Metodologia', 'Methodology'), [['/educacao/metodologia', t('Fontes e metodologia', 'Sources and methodology')]]],
-];
 
 const areaDe = (pathname: string): Area => (pathname.startsWith('/comex') ? 'comex' : pathname.startsWith('/energia') ? 'energia' : pathname.startsWith('/internet') ? 'internet' : pathname.startsWith('/seguranca') ? 'seguranca' : pathname.startsWith('/mobilidade') ? 'mobilidade' : pathname.startsWith('/agropecuaria') ? 'agropecuaria' : pathname === '/raio-x' ? 'raiox' : pathname.startsWith('/saneamento') ? 'saneamento' : pathname === '/ia' ? 'ia' : pathname === '/downloads' || pathname.startsWith('/downloads/') ? 'downloads' : pathname.startsWith('/trabalho') ? 'trabalho'
   : (pathname.startsWith('/datasus') || pathname.startsWith('/saude/')) ? 'saude' : pathname.startsWith('/educacao') ? 'educacao' : pathname.startsWith('/munic') ? 'munic' : pathname.startsWith('/clima') ? 'clima' : pathname.startsWith('/assistencia') ? 'assistencia' : 'financas');
@@ -232,7 +159,7 @@ export function App() {
   const { search, pathname, hash } = useLocation();
   const navegacao = useNavigationType();
   const area = areaDe(pathname);
-  const caminhoMenu = pathname === '/assistencia/rankings-pib' ? '/assistencia/comparacoes-pagamentos' : pathname;
+  const caminhoMenu = pathname.replace(/\/+$/, '') || '/';
   // ao ir para outra página, ela abre no início; mudar só os filtros (mesmo caminho), seguir uma âncora (#...) e Voltar/Avançar
   // (POP, em que o navegador restaura a posição) não mexem na rolagem
   const caminhoAnterior = useRef(pathname);
@@ -275,11 +202,7 @@ export function App() {
   if (area !== 'ia' && area !== 'munic' && area !== 'clima' && area !== 'downloads' && area !== 'raiox' && area !== 'agropecuaria' && area !== 'mobilidade' && area !== 'seguranca' && area !== 'internet' && area !== 'energia' && area !== 'comex') filtrosIa.set('paineis', area);
   const buscaIa = `?${filtrosIa}`;
 
-  const gruposMenu = ({ comex:()=>[[t('Comércio exterior','Foreign trade'),[['/comex',t('Painel de indicadores','Indicator dashboard')],['/comex/mapa',t('Mapa de indicadores','Indicator map')],['/comex/rankings',t('Rankings relativos','Relative rankings')]]]] as [string,[string,string][]][], energia:()=>[[t('Energia elétrica e geração','Electricity and generation'),[['/energia',t('Painel de indicadores','Indicator dashboard')],['/energia/mapa',t('Mapa de indicadores','Indicator map')],['/energia/rankings',t('Rankings relativos','Relative rankings')]]]] as [string,[string,string][]][], internet:()=>[[t('Internet e conectividade','Internet and connectivity'),[['/internet',t('Painel de indicadores','Indicator dashboard')],['/internet/mapa',t('Mapa de indicadores','Indicator map')],['/internet/rankings',t('Rankings relativos','Relative rankings')]]]] as [string,[string,string][]][], seguranca:()=>[[t('Segurança pública','Public safety'),[['/seguranca',t('Painel de indicadores','Indicator dashboard')],['/seguranca/mapa',t('Mapa de indicadores','Indicator map')],['/seguranca/rankings',t('Rankings relativos','Relative rankings')]]]] as [string,[string,string][]][], mobilidade:()=>[[t('Mobilidade e segurança no trânsito','Mobility and road safety'),[['/mobilidade',t('Painel de indicadores','Indicator dashboard')],['/mobilidade/mapa',t('Mapa de indicadores','Indicator map')],['/mobilidade/rankings',t('Rankings relativos','Relative rankings')]]]] as [string,[string,string][]][], agropecuaria:()=>[[t('Agropecuária','Agriculture and livestock'),[['/agropecuaria',t('Painel de indicadores','Indicator dashboard')],['/agropecuaria/mapa',t('Mapa de indicadores','Indicator map')],['/agropecuaria/rankings',t('Rankings relativos','Relative rankings')]]]] as [string,[string,string][]][], raiox:()=>[] as [string,[string,string][]][], saneamento:()=>[[t('Saneamento','Sanitation'),[['/saneamento',t('Painel de indicadores','Indicator dashboard')],['/saneamento/mapa',t('Mapa de indicadores','Indicator map')],['/saneamento/rankings',t('Comparar municípios','Compare municipalities')],['/saneamento/metodologia',t('Fontes e metodologia','Sources and methodology')]]]] as [string,[string,string][]][], financas: menu, trabalho: menuTrabalho, saude: menuSaude, educacao: menuEducacao, munic: menuMunic, clima: menuClima, assistencia: menuAssistencia, downloads: menuDownloads, ia: menuIa }[area])();
-  if (area !== 'downloads' && area !== 'ia' && area !== 'raiox') {
-    const raizComparacao = ({ financas: '', trabalho: '/trabalho', saude: '/datasus', educacao: '/educacao', munic: '/munic', clima: '/clima', assistencia: '/assistencia', saneamento: '/saneamento', agropecuaria: '/agropecuaria', comex: '/comex', energia: '/energia', internet: '/internet', seguranca: '/seguranca', mobilidade: '/mobilidade' })[area];
-    gruposMenu.unshift([t('Comparações', 'Comparisons'), [[`${raizComparacao}/comparar`, t('Regiões e evolução', 'Regions and trends')]]]);
-  }
+  const gruposMenu = menuDoPainel(area, t);
   const filtrosSaneamento = new URLSearchParams(buscaEntreAreas(search,'saneamento','saneamento'));
   if (area === 'saneamento' && atuais.get('ind')) filtrosSaneamento.set('ind', atuais.get('ind')!);
   const linkPagina = (para: string) => {
@@ -365,27 +288,9 @@ export function App() {
         </div>
       </header>
       <div className={`casca${area === 'ia' ? ' casca-ia' : area === 'raiox' ? ' casca-raiox' : ''}`}>
-        {area !== 'raiox' && <nav className={`menu${area === 'ia' ? ' menu-ia' : ''}`} aria-label={t('Páginas', 'Pages')}>
-          {area !== 'ia' && <div className="menu-mobile">
-            <label className="sr-only" htmlFor="pagina-painel">{t('Página do painel','Dashboard page')}</label>
-            <select id="pagina-painel" value={gruposMenu.some(([,xs])=>xs.some(([p])=>p===caminhoMenu))?caminhoMenu:''} onChange={e=>navegar(linkPagina(e.target.value))}>
-              {!gruposMenu.some(([,xs])=>xs.some(([p])=>p===caminhoMenu)) && <option value="" disabled>{t('Escolha uma página','Choose a page')}</option>}
-              {gruposMenu.map(([grupo,xs])=><optgroup key={grupo} label={grupo}>{xs.map(([para,rotulo])=><option key={para} value={para}>{area==='financas'?`${grupo} · ${rotulo}`:rotulo}</option>)}</optgroup>)}
-            </select>
-          </div>}
-          <div className="menu-grupos">{gruposMenu.map(([grupo, itens]) => (
-            <div key={grupo} style={{ display: 'contents' }}>
-              <h4>{grupo}</h4>
-              {itens.map(([para, rotulo]) => (
-                <NavLink key={para} to={linkPagina(para)} end aria-current={para===caminhoMenu?'page':undefined} className={({ isActive }) => (isActive || para===caminhoMenu ? 'ativo' : '')}>
-                  {rotulo}
-                </NavLink>
-              ))}
-            </div>
-          ))}
-          </div>
-          {IA_HABILITADA && area === 'ia' && <Suspense fallback={null}><HistoricoIa /></Suspense>}
-        </nav>}
+        {area !== 'raiox' && (area === 'ia' ? <nav className="menu menu-ia" aria-label={t('Histórico de conversas', 'Chat history')}>
+          {IA_HABILITADA && <Suspense fallback={null}><HistoricoIa /></Suspense>}
+        </nav> : <MenuPainel key={area} nome={areas.find(a => a.id === area)!.nome} grupos={gruposMenu} caminho={caminhoMenu} linkPagina={linkPagina} />)}
         {/* a chave refaz as páginas ao trocar o idioma: gráficos e textos memorizados são recalculados */}
         <main key={idioma} id="conteudo" tabIndex={-1}>
           {!['ia', 'downloads', 'raiox'].includes(area) && /^\/(receitas|despesas|despesas-orcamentarias|socioeconomico|trabalho|datasus|educacao|saneamento|assistencia|munic|clima|rankings|comex|energia|internet|seguranca|mobilidade|agropecuaria)\/?$/.test(pathname) && <aside className="atalho-comparacoes"><Link to={linkPagina(`${({ financas: '', trabalho: '/trabalho', saude: '/datasus', educacao: '/educacao', munic: '/munic', clima: '/clima', assistencia: '/assistencia', saneamento: '/saneamento', agropecuaria: '/agropecuaria', comex: '/comex', energia: '/energia', internet: '/internet', seguranca: '/seguranca', mobilidade: '/mobilidade', ia: '', downloads: '', raiox: '' })[area]}/comparar`)}>{t('Comparar com regiões e acompanhar no tempo →', 'Compare with regions and track changes over time →')}</Link><span>{t('Taxas, proporções e valores por habitante; totais nas tabelas originais.', 'Rates, shares and values per inhabitant; totals in the original tables.')}</span></aside>}
