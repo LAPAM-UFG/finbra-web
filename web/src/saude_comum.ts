@@ -255,9 +255,14 @@ export const INDICADORES: Indicador[] = [
     nota: () => t(`Dengue grave (classificação 12, ou FHD e SCD nos anos antigos) ÷ casos confirmados. ${RESSALVA_SINAN()}`, `Severe dengue (classification 12, or DHF and DSS in old years) ÷ confirmed cases. ${RESSALVA_SINAN()}`),
   },
   {
+    id: 'chik_incidencia_prov', grupo: G_AGRAVOS, nome: () => t('Chikungunya: casos prováveis', 'Chikungunya: probable cases'),
+    unidade: () => t('por 100 mil habitantes', 'per 100,000 inhabitants'), numerador: 'sinan_chik_provaveis', denominador: 'populacao', fator: 100000, tipo: 'taxa', minimo: 5000,
+    nota: () => t(`Notificações de chikungunya, exceto as descartadas, ÷ população residente × 100.000. Inclui os confirmados e os registros sem confirmação final. Descartados: códigos 2 da ficha antiga e 5 da ficha atual; cobertura desde 2014, pelo ano do arquivo DATASUS e município de residência, sem equivaler ao ano epidemiológico de início dos sintomas dos boletins. ${RESSALVA_SINAN()}`, `Chikungunya notifications, excluding discarded cases, ÷ resident population × 100,000. Includes confirmed cases and records without final confirmation. Discarded codes: 2 in the old form and 5 in the current form; coverage from 2014, by DATASUS file year and municipality of residence, distinct from the epidemiological year of symptom onset used in bulletins. ${RESSALVA_SINAN()}`),
+  },
+  {
     id: 'chik_incidencia', grupo: G_AGRAVOS, nome: () => t('Chikungunya: casos confirmados', 'Chikungunya: confirmed cases'),
     unidade: () => t('por 100 mil habitantes', 'per 100,000 inhabitants'), numerador: 'sinan_chik_confirmados', denominador: 'populacao', fator: 100000, tipo: 'taxa', minimo: 5000,
-    nota: () => t(`Casos de chikungunya com classificação final confirmada ÷ população residente × 100.000 (de 2014 em diante). ${RESSALVA_SINAN()}`, `Chikungunya cases with a confirmed final classification ÷ resident population × 100,000 (from 2014). ${RESSALVA_SINAN()}`),
+    nota: () => t(`Casos confirmados de chikungunya (classificação final 1 na ficha antiga ou 13 na atual) ÷ população residente × 100.000, desde 2014. Série pelo ano do arquivo DATASUS e município de residência. Os casos prováveis incluem também notificações não descartadas sem confirmação final e aparecem separadamente. ${RESSALVA_SINAN()}`, `Confirmed chikungunya cases (final classification 1 in the old form or 13 in the current form) ÷ resident population × 100,000, from 2014. Series by DATASUS file year and municipality of residence. Probable cases also include non-discarded notifications without final confirmation and are shown separately. ${RESSALVA_SINAN()}`),
   },
   {
     id: 'tb_incidencia', grupo: G_AGRAVOS, alerta: () => t('série até 2019, com a definição restrita (só a entrada "caso novo")', 'series up to 2019, with the narrower definition (only the "new case" entry)'), nome: () => t('Tuberculose: casos novos', 'Tuberculosis: new cases'),
@@ -407,6 +412,9 @@ export const nomeContagem = (c: string): string => ({
   cnes_enfermeiros: t('Enfermeiros', 'Nurses'), cnes_estab: t('Estabelecimentos', 'Facilities'),
   sinan_dengue_provaveis: t('Casos prováveis de dengue', 'Probable dengue cases'), sinan_dengue_confirmados: t('Casos confirmados de dengue', 'Confirmed dengue cases'),
   sinan_dengue_graves: t('Casos graves de dengue', 'Severe dengue cases'), sinan_dengue_obitos: t('Óbitos por dengue (confirmados)', 'Dengue deaths (confirmed)'),
+  sinan_chik_notificacoes: t('Notificações de chikungunya', 'Chikungunya notifications'),
+  sinan_chik_provaveis: t('Casos prováveis de chikungunya', 'Probable chikungunya cases'),
+  sinan_chik_descartados: t('Casos descartados de chikungunya', 'Discarded chikungunya cases'),
   sinan_chik_confirmados: t('Casos confirmados de chikungunya', 'Confirmed chikungunya cases'), sinan_tb_casos_novos: t('Casos novos de tuberculose', 'New tuberculosis cases'),
   sinan_hans_casos_novos: t('Casos novos de hanseníase', 'New leprosy cases'), sinan_viol_notificacoes: t('Notificações de violência', 'Violence notifications'),
   pop_mulheres_25_64: t('Mulheres de 25 a 64 anos', 'Women aged 25–64'), pop_mulheres_50_69: t('Mulheres de 50 a 69 anos', 'Women aged 50–69'),

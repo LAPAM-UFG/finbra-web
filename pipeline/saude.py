@@ -77,6 +77,7 @@ import pyarrow as pa
 
 from config import GOLD, SILVER
 from icsap import agregar_icsap
+from chikungunya import sql_chikungunya
 
 GOLD_S = GOLD / "saude"
 ANO_FECHADO = datetime.now(ZoneInfo('America/Sao_Paulo')).year - 1
@@ -408,7 +409,7 @@ SINAN_AGRAVOS = {
 }
 # dengue: os arquivos públicos já trazem só os casos não descartados (casos prováveis). Confirmados: dengue clássica, com complicações,
 # FHD e SCD (1 a 4, anos antigos) e dengue, com sinais de alarme e grave (10 a 12). Graves: FHD, SCD e dengue grave (3, 4, 12).
-# Óbito: EVOLUCAO = 2 (óbito pelo agravo) entre os confirmados. Chikungunya: 13 = confirmado (os arquivos trazem também os descartados).
+# Óbito: EVOLUCAO = 2 entre os confirmados. Chikungunya: fichas antigas 1/2 e atuais 13/5; ver chikungunya.py.
 # Tuberculose: TRATAMENTO = 1 (caso novo, sem recidiva, reingresso, transferência nem pós-óbito). Hanseníase: MODOENTR = 1 (caso novo).
 SINAN_CONF_DENGUE = "('1', '2', '3', '4', '10', '11', '12')"
 
@@ -432,8 +433,7 @@ def sinan(con, micro: Path):
                    count(*) FILTER (WHERE CLASSI_FIN IN {conf} AND EVOLUCAO = '2') AS sinan_dengue_obitos
             FROM ({ler('DENG', ', CLASSI_FIN, EVOLUCAO')}) GROUP BY ano, municipio),
         chik AS (
-            SELECT ano, municipio, count(*) AS sinan_chik_notificacoes, count(*) FILTER (WHERE CLASSI_FIN = '13') AS sinan_chik_confirmados
-            FROM ({ler('CHIK', ', CLASSI_FIN')}) GROUP BY ano, municipio),
+            {sql_chikungunya(ler('CHIK', ', CLASSI_FIN'))}),
         tube AS (
             SELECT ano, municipio, count(*) FILTER (WHERE TRATAMENTO = '1') AS sinan_tb_casos_novos
             FROM ({ler('TUBE', ', TRATAMENTO')}) GROUP BY ano, municipio),
@@ -460,7 +460,7 @@ def sinan(con, micro: Path):
             WHERE k.municipio IS NOT NULL AND k.ano BETWEEN 2000 AND {ANO_FECHADO})
         -- agravo ausente do ano (arquivo inexistente ou sem a coluna) fica nulo, nunca zero: sem nenhum registro no país, não há dado
         SELECT ano, municipio, uf,
-               {', '.join(f"CASE WHEN sum({c}) OVER (PARTITION BY ano) > 0 THEN {c} END AS {c}" for c in SINAN_COLUNAS)}
+               {', '.join(f"CASE WHEN sum({'sinan_chik_notificacoes' if c.startswith('sinan_chik_') else c}) OVER (PARTITION BY ano) > 0 THEN {c} END AS {c}" for c in SINAN_COLUNAS)}
         FROM j ORDER BY ano, municipio""")
     con.execute(f"COPY sinan TO '{GOLD_S / 'sinan.parquet'}' (FORMAT parquet, COMPRESSION zstd)")
     print("sinan:", con.sql("""SELECT ano, sum(sinan_dengue_provaveis), sum(sinan_dengue_confirmados), sum(sinan_dengue_obitos), sum(sinan_tb_casos_novos),
@@ -468,7 +468,8 @@ def sinan(con, micro: Path):
 
 
 SINAN_COLUNAS = ["sinan_dengue_provaveis", "sinan_dengue_confirmados", "sinan_dengue_graves", "sinan_dengue_obitos",
-                 "sinan_chik_notificacoes", "sinan_chik_confirmados", "sinan_tb_casos_novos", "sinan_tb_casos_novos_dx", "sinan_hans_casos_novos", "sinan_viol_notificacoes"]
+                 "sinan_chik_notificacoes", "sinan_chik_confirmados", "sinan_tb_casos_novos", "sinan_tb_casos_novos_dx", "sinan_hans_casos_novos", "sinan_viol_notificacoes",
+                 "sinan_chik_provaveis", "sinan_chik_descartados"]
 
 
 SISCAN_COLUNAS = ["siscan_cito", "siscan_cito_25_64", "siscan_cito_alterados", "siscan_mamografias", "siscan_mamo_50_69", "siscan_mamo_50_74",

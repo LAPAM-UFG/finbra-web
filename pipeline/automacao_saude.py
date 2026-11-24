@@ -128,7 +128,7 @@ def saude(ctx):
     finally:ftp.quit()
     # Sem MDTM, sempre baixa: tamanho igual não comprova mesma versão.
     evidence=selected if all(r.get('modificado')for rows in selected.values()for r in rows)else dict(arquivos=selected,consulta=datetime.now().isoformat())
-    changed=ctx.mudou(evidence,codigo=('automacao_saude.py','saude.py','icsap.py','mobilidade_sim.py','seguranca_sim.py'))
+    changed=ctx.mudou(evidence,codigo=('automacao_saude.py','saude.py','chikungunya.py','icsap.py','mobilidade_sim.py','seguranca_sim.py'))
     if not changed:guardar(ctx,[str(p.relative_to(ctx.fontes))for p in ctx.fontes.glob('*.json')]+[str(p.relative_to(ctx.fontes))for p in ctx.fontes.glob('*.parquet')]);return False
     from saude_baixar import baixar
     raw=ctx.raiz/'brutos/saude';micro=ctx.raiz/'micro'

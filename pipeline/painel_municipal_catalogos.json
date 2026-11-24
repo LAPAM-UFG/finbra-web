@@ -1,6 +1,6 @@
 {
   "versao": 1,
-  "base_gerado_em": "2026-11-14T15:13:37+00:00",
+  "base_gerado_em": "2026-11-24T23:09:42+00:00",
   "capitulos_cid": {
     "cap01": "I. Infecciosas e parasitárias",
     "cap02": "II. Neoplasias (tumores)",
@@ -3953,7 +3953,7 @@
     },
     {
       "campo": "sinan_chik_notificacoes",
-      "nome": "sinan_chik_notificacoes",
+      "nome": "Notificações de chikungunya",
       "fonte": "sinan",
       "anos": [
         2014,
@@ -5642,6 +5642,44 @@
         2024,
         2025
       ]
+    },
+    {
+      "campo": "sinan_chik_provaveis",
+      "nome": "Casos prováveis de chikungunya",
+      "fonte": "sinan",
+      "anos": [
+        2014,
+        2015,
+        2016,
+        2017,
+        2018,
+        2019,
+        2020,
+        2021,
+        2022,
+        2023,
+        2024,
+        2025
+      ]
+    },
+    {
+      "campo": "sinan_chik_descartados",
+      "nome": "Casos descartados de chikungunya",
+      "fonte": "sinan",
+      "anos": [
+        2014,
+        2015,
+        2016,
+        2017,
+        2018,
+        2019,
+        2020,
+        2021,
+        2022,
+        2023,
+        2024,
+        2025
+      ]
     }
   ],
   "saude_indicadores": [
@@ -6959,9 +6997,34 @@
       ]
     },
     {
+      "id": "chik_incidencia_prov",
+      "nome": "Chikungunya: casos prováveis",
+      "descricao": "Notificações de chikungunya, exceto as descartadas, ÷ população residente × 100.000. Inclui os confirmados e os registros sem confirmação final. Descartados: códigos 2 da ficha antiga e 5 da ficha atual; cobertura desde 2014, pelo ano do arquivo DATASUS e município de residência, sem equivaler ao ano epidemiológico de início dos sintomas dos boletins. Notificação depende da vigilância local: onde se notifica menos, aparece menos (subnotificação), e surtos fazem os números oscilar muito de um ano para outro. Pode diferir dos boletins do Ministério, que aplicam exclusões e atualizações próprias.",
+      "unidade": "por 100 mil habitantes",
+      "numerador": "sinan_chik_provaveis",
+      "denominador": "populacao",
+      "fator": 100000,
+      "tipo": "taxa",
+      "fonte": "SINAN (chikungunya) e população da SVS/MS",
+      "anos": [
+        2014,
+        2015,
+        2016,
+        2017,
+        2018,
+        2019,
+        2020,
+        2021,
+        2022,
+        2023,
+        2024,
+        2025
+      ]
+    },
+    {
       "id": "chik_incidencia",
       "nome": "Chikungunya: casos confirmados",
-      "descricao": "Casos de chikungunya com classificação final confirmada ÷ população residente × 100.000 (de 2014 em diante). Notificação depende da vigilância local: onde se notifica menos, aparece menos (subnotificação), e surtos fazem os números oscilar muito de um ano para outro. Pode diferir dos boletins do Ministério, que aplicam exclusões e atualizações próprias.",
+      "descricao": "Casos confirmados de chikungunya (classificação final 1 na ficha antiga ou 13 na atual) ÷ população residente × 100.000, desde 2014. Série pelo ano do arquivo DATASUS e município de residência. Os casos prováveis incluem também notificações não descartadas sem confirmação final e aparecem separadamente. Notificação depende da vigilância local: onde se notifica menos, aparece menos (subnotificação), e surtos fazem os números oscilar muito de um ano para outro. Pode diferir dos boletins do Ministério, que aplicam exclusões e atualizações próprias.",
       "unidade": "por 100 mil habitantes",
       "numerador": "sinan_chik_confirmados",
       "denominador": "populacao",

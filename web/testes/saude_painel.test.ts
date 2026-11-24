@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Linha } from '../src/api';
-import { INDICADORES, indicador, type FontesMeta } from '../src/saude_comum';
+import { INDICADORES, indicador, calcular, disponivelNosDados, type FontesMeta } from '../src/saude_comum';
 import {
   condicaoTexto, filtrarIndicadores, normalizarBusca, notaSemValor, resumirIndicador, tabelaResumo, TEMAS, temColunasDoIndicador, valorExportado,
 } from '../src/saude_painel';
@@ -20,6 +20,18 @@ const serie = (r: Record<string, number | null> = {}): Linha[] => {
   const base = (ano: number) => ({ ano, ...Object.fromEntries([...colunasDe()].map((c) => [c, 100])) });
   return [base(2022), { ...base(2023), ...r }];
 };
+
+test('chikungunya: prováveis e confirmados têm numeradores distintos; notificações não substituem prováveis', () => {
+  const prov = indicador('chik_incidencia_prov'), conf = indicador('chik_incidencia');
+  const row = { populacao: 10000, sinan_chik_provaveis: 12, sinan_chik_confirmados: 4, sinan_chik_notificacoes: 20 };
+  assert.ok(Math.abs(calcular(prov, row)! - 120) < 1e-10);
+  assert.ok(Math.abs(calcular(conf, row)! - 40) < 1e-10);
+  assert.equal(calcular(prov, { ...row, sinan_chik_provaveis: 0 }), 0);
+  assert.equal(calcular(prov, { populacao: 10000, sinan_chik_notificacoes: 20 }), null);
+  const antigas = new Set(['populacao', 'sinan_chik_confirmados', 'sinan_chik_notificacoes']);
+  assert.equal(disponivelNosDados(prov, antigas), false);
+  assert.equal(disponivelNosDados(conf, antigas), true);
+});
 
 test('cada um dos indicadores do catálogo está em exatamente um tema, e todo tema só cita indicadores existentes', () => {
   const todos = TEMAS.flatMap((x) => x.indicadores);

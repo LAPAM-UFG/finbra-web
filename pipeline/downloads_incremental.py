@@ -13,13 +13,13 @@ import pandas as pd
 import pyarrow.parquet as pq
 from assistencia_utils import destino_isolado, salvar_json
 from atualizacao_artefatos import Snapshot
-from downloads_enxuto import Enxuto, preparar_stata
+from downloads_enxuto import Enxuto, preparar_stata, metadado
 from downloads_navegacao import previa, referencia, registrar, pacote
 from painel_municipal import Painel, KEYS, qi, qs, sha
 from curadoria_catalogos import nome_tema
 
 
-def gerar(publicado, base, saida, catalogos, areas=('trabalho','gestao','assistencia','clima'), stata=None,rscript=None,caches=(),tabelas=None,chaves_extras=()):
+def gerar(publicado, base, saida, catalogos, areas=('trabalho','gestao','assistencia','clima'), stata=None,rscript=None,caches=(),tabelas=None,chaves_extras=(),adicionar=()):
     publicado,base=Path(publicado).resolve(),Path(base).resolve()
     saida=destino_isolado(Path(saida),publicado);destino_isolado(saida,base)
     snapshots=Snapshot(publicado,caches)
@@ -54,6 +54,19 @@ def gerar(publicado, base, saida, catalogos, areas=('trabalho','gestao','assiste
             if name in columns:raise ValueError('coluna duplicada: '+name)
             columns[name]=table
         joins.append('LEFT JOIN '+qi(table)+' ON '+qi(table)+'.cod_ibge=cast(o.cod_ibge AS VARCHAR) AND '+qi(table)+'.ano=o.ano')
+    # Ampliações explícitas usam a seleção curada; nunca inferem novas variáveis
+    # nem retiram colunas da edição publicada. O restante do painel é preservado.
+    selection={r['origem']:r['variavel'] for r in json.loads(Path(__file__).with_name('downloads_selecao.json').read_bytes())['variaveis']}
+    for original in adicionar:
+        if original not in selection or original not in columns:raise ValueError('Nova variável fora da seleção ou da fonte: '+original)
+        name=selection[original]
+        if any(d['variavel']==name for d in dictionary):raise ValueError('Nova variável já existe: '+name)
+        d=next((d for d in p.dictionary if d['variavel']==original and d['area'] in areas),None)
+        if d is None:raise ValueError('Nova variável sem metadados: '+original)
+        entry=metadado(d,original,name,2013);entry['arquivo_principal']=True;dictionary.append(entry)
+    source='read_parquet('+qs((publicado/core['caminho']).as_posix())+')'
+    schema=p.schema('SELECT * FROM '+source)
+    append=[]
     changed=[]
     for d in dictionary:
         name=d['variavel'];original=d.get('variavel_original',name)
@@ -61,10 +74,9 @@ def gerar(publicado, base, saida, catalogos, areas=('trabalho','gestao','assiste
             if original not in columns:
                 if original.startswith(('inss_','as_')):continue  # fontes anuais não modificadas nesta carga mensal
                 raise ValueError('variável da edição publicada ausente: '+original)
-            select.append(qi(columns[original])+'.'+qi(original)+' AS '+qi(name));changed.append(name)
+            expr=qi(columns[original])+'.'+qi(original)+' AS '+qi(name)
+            (select if name in schema else append).append(expr);changed.append(name)
     if not changed and not chaves_extras:raise ValueError('nenhuma variável selecionada para atualização')
-    source='read_parquet('+qs((publicado/core['caminho']).as_posix())+')'
-    schema=p.schema('SELECT * FROM '+source)
     union=' UNION '.join('SELECT cod_ibge,ano FROM '+qi(table) for table,_,_ in p.tables)
     extras=[]
     for name,typ in schema.items():
@@ -72,6 +84,7 @@ def gerar(publicado, base, saida, catalogos, areas=('trabalho','gestao','assiste
         extras.append('cast('+value+' AS '+typ+') AS '+qi(name))
     p.db.execute('CREATE OR REPLACE TABLE ancora AS SELECT * FROM '+source+' UNION ALL SELECT '+','.join(extras)+' FROM ('+union+') n JOIN territorios t USING(cod_ibge) ANTI JOIN (SELECT cast(cod_ibge AS VARCHAR) cod_ibge,ano FROM '+source+') old USING(cod_ibge,ano) WHERE n.ano>=2013')
     projection='o.* REPLACE('+','.join(select)+')' if select else 'o.*'
+    if append:projection+=','+','.join(append)
     p.db.execute('CREATE OR REPLACE TABLE atualizado AS SELECT '+projection+' FROM ancora o '+' '.join(joins))
     # O conjunto de municípios/anos e cada coluna fora do lote permanecem iguais.
     names=list(p.schema('SELECT * FROM atualizado'));keep=[n for n in names if n not in changed]
@@ -118,14 +131,16 @@ def gerar(publicado, base, saida, catalogos, areas=('trabalho','gestao','assiste
             novos=[int(y) for y, in years if int(y)>=2013 and 'munic_'+str(y) not in known]
             return '(SELECT * FROM '+sql+' WHERE ano IN ('+','.join(map(str,novos))+'))' if novos else '(SELECT * FROM '+sql+' WHERE false)'
         return sql
-    p.fonte=fonte;p.files=[];before=len(p.dictionary);p.detalhes_munic()
+    p.fonte=fonte;p.files=[];before=len(p.dictionary)
+    if 'gestao' in areas:p.detalhes_munic()
     new_advanced=p.dictionary[before:];advanced+=new_advanced
     for f in p.files:
         source=preparation/f['caminho'];target=saida/f['caminho'];target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(source,target);updated_files.append({**f,'escopo':'detalhado'})
     m=copy.deepcopy(old);m.update(gerado_em=datetime.now(timezone.utc).isoformat(),base_gerado_em=p.manifest['gerado_em'],base_sha256=sha(base/'gold/manifesto.json'),base_ipca=p.manifest['base_ipca'])
     m['stata']['painel_declarado']=bool(stata)
     n,cities,first,last=p.db.execute('SELECT count(*),count(DISTINCT cod_ibge),min(ano),max(ano) FROM atualizado').fetchall()[0]
-    m['resumo'].update(linhas=n,municipios=cities,ano_de=first,ano_ate=last)
+    m['resumo'].update(linhas=n,municipios=cities,ano_de=first,ano_ate=last,variaveis=len(names)-len(KEYS))
+    m['notas']=[f'Base enxuta: {len(names)-len(KEYS)} variáveis principais, além dos seis identificadores, somente desde 2013.' if note.startswith('Base enxuta:') else note for note in m.get('notas',[])]
     m['resumo']['variaveis_detalhadas']=len(advanced)-len(KEYS)
     for label,entries,scope in [('dicionario',dictionary,'principal'),('dicionario_complementos',advanced,'detalhado')]:
         f=e.work/(label+'.json');salvar_json(f,entries);ref=registrar(saida,f,label,'json')

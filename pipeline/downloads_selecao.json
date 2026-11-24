@@ -476,6 +476,16 @@
       "area": "saude"
     },
     {
+      "origem": "sau_ind_chik_incidencia_prov",
+      "variavel": "sau_ind_chik_incidencia_prov",
+      "area": "saude"
+    },
+    {
+      "origem": "sau_sinan_chik_provaveis",
+      "variavel": "sau_sinan_chik_provaveis",
+      "area": "saude"
+    },
+    {
       "origem": "sau_ind_tb_incidencia",
       "variavel": "sau_ind_tb_incidencia",
       "area": "saude"

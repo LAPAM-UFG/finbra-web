@@ -46,7 +46,7 @@ def conferir_referencias(base,snap,pending,catalogos,geografia,workers=4):
     return checked
 
 
-def gerar(base,publicado,trabalho,caches=()):
+def gerar(base,publicado,trabalho,caches=(),novas_variaveis=()):
     base,publicado,trabalho=map(lambda p:Path(p).resolve(),[base,publicado,trabalho])
     trabalho.mkdir(parents=True,exist_ok=True)
     m=json.loads((base/'gold/manifesto.json').read_bytes());old=json.loads((publicado/'gold/manifesto.json').read_bytes())
@@ -54,7 +54,14 @@ def gerar(base,publicado,trabalho,caches=()):
     downloads=json.loads((base/'gold/downloads/manifesto.json').read_bytes())
     if downloads['base_sha256']!=sha(base/'gold/manifesto.json'):raise ValueError('downloads de outra edição')
     old_dl=json.loads((publicado/'gold/downloads/manifesto.json').read_bytes())
-    if downloads['resumo']['variaveis']!=old_dl['resumo']['variaveis']:raise ValueError('quantidade de variáveis principais mudou')
+    if downloads['resumo']['variaveis']!=old_dl['resumo']['variaveis']+len(set(novas_variaveis)):raise ValueError('quantidade de variáveis principais mudou')
+    if novas_variaveis:
+        resolver=Snapshot(trabalho/'dicionarios',[base,publicado,*caches],copiar_cache=False)
+        def nomes(meta):
+            ref=meta['dicionario'];rows=json.loads(resolver.obter(ref['caminho'],ref).read_bytes())
+            return {r['variavel']for r in rows if r.get('arquivo_principal')}
+        anteriores,atuais=nomes(old_dl),nomes(downloads)
+        if not anteriores<=atuais or atuais-anteriores!=set(novas_variaveis):raise ValueError('ampliação da base principal diferente da seleção explícita')
     if downloads['resumo']['ano_de']!=2013:raise ValueError('download principal anterior a 2013')
     opening=json.loads((base/'gold/abertura/manifesto.json').read_bytes())
     work=json.loads((base/'gold/mapas/trabalho_manifesto.json').read_bytes())
