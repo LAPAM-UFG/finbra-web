@@ -192,11 +192,16 @@ function registrarCsv(nome: string): Promise<void> {
 
 const normalizar = (v: unknown): Valor => (typeof v === 'bigint' ? Number(v) : (v as Valor));
 
+// O ranking calcula o país antes de filtrar a lista por UF. Esse contrato viaja
+// junto do SQL, inclusive nas consultas de posição, cobertura e exportação.
+const UNIVERSO_FISCAL_NACIONAL='/* finbra:universo-fiscal-nacional */';
+export const permiteParticaoFiscal=(sql:string)=>!sql.includes(UNIVERSO_FISCAL_NACIONAL);
+
 /** SQL com parâmetros nomeados ($nome), executado como consulta preparada. */
 async function consultar(sql: string, params: Record<string, Valor> = {}): Promise<Linha[]> {
   const { con, manifesto } = await iniciar();
   if(/\b(indicadores|escopos|alertas|faixas)\b/.test(sql))await prepararFiscal();
-  if(!lerLocal&&/\bindicadores\b/.test(sql)) {
+  if(!lerLocal&&permiteParticaoFiscal(sql)&&/\bindicadores\b/.test(sql)) {
     const codigo=String(params.ente??'');
     const uf=typeof params.uf==='string'?params.uf:codigo?((await consultar('SELECT uf FROM entes WHERE cod_ibge=$cod',{cod:Number(codigo)}))[0]?.uf as string|undefined):undefined;
     const ref=uf?manifesto.particoes_financas?.ufs[uf]:undefined;
@@ -1946,16 +1951,17 @@ export const INDICADORES_RANKING_TRABALHO: Record<string, { monetario: boolean; 
 /**
  * Finanças: valor declarado no exercício (zeros e negativos entram), DCA com o total do domínio, fora as
  * inconsistências objetivas e os erros confirmados (visão filtrada) e, no per capita, população declarada na
- * DCA positiva.
+ * DCA positiva. O PIB usa a população do IBGE que acompanha o PIB por habitante.
  */
 function baseFinancas(campo: string, perCapita: boolean, trat: Tratamento) {
   const d = dominioCampo(campo);
-  return `SELECT i.exercicio AS ano, i.cod_ibge, i.nome, i.uf, i.populacao::DOUBLE AS populacao, i.${campo}::DOUBLE AS valor,
-      ${perCapita ? `CASE WHEN i.populacao > 0 THEN i.${campo} / i.populacao END` : `i.${campo}`}::DOUBLE AS indicador,
+  const pop=campo==='pib'?'populacao_ibge':'populacao';
+  return `SELECT i.exercicio AS ano, i.cod_ibge, i.nome, i.uf, i.${pop}::DOUBLE AS populacao, i.${campo}::DOUBLE AS valor,
+      ${perCapita ? `CASE WHEN i.${pop} > 0 THEN i.${campo} / i.${pop} END` : `i.${campo}`}::DOUBLE AS indicador,
       CASE WHEN i.${campo} IS NULL THEN 'sem_valor'
            WHEN NOT (${validoNoDominio(d, 'i')}) THEN 'sem_total_dominio'
            WHEN NOT (${naoExcluido(d, 'i', trat)}) THEN 'inconsistencia'
-           ${perCapita ? "WHEN NOT (i.populacao > 0) THEN 'sem_populacao'" : ''} END AS motivo
+           ${perCapita ? `WHEN NOT (i.${pop} > 0) THEN 'sem_populacao'` : ''} END AS motivo
     FROM indicadores i WHERE i.esfera = 'M'`;
 }
 
@@ -1989,7 +1995,7 @@ function baseSaude(ind: Indicador) {
  * $de a $ate. Exportada para os testes com dados controlados.
  */
 export function sqlClassificacao(base: string, o: { ordem: 'ASC' | 'DESC'; constante: boolean }) {
-  return `base AS (${base}),
+  return `${UNIVERSO_FISCAL_NACIONAL}\nbase AS (${base}),
     el AS (SELECT * FROM base WHERE motivo IS NULL AND indicador IS NOT NULL AND ano BETWEEN $de AND $ate),
     u AS (SELECT * FROM el ${o.constante
       ? 'WHERE cod_ibge IN (SELECT cod_ibge FROM el GROUP BY cod_ibge HAVING count(DISTINCT ano) = (SELECT count(DISTINCT ano) FROM el))'

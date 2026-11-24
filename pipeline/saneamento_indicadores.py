@@ -55,7 +55,7 @@ INDICADORES += [
  m('esgoto_rural_pct','Atendimento rural com esgoto','Rural population served by sewage collection','esgoto','percentual',['ES001-ES026','GE12A-GE06A'],['GTE0002','DFE0003'],[None,'IES0003'],pct=True,parear_numerador=True,
    descricao='Moradores rurais atendidos com rede coletora divididos pela população rural informada. Não mede cobertura de fossas ou outras soluções individuais.'),
  m('agua_hidrometros','Ligações de água com hidrômetro','Metered active water connections','agua','ligacoes',['AG004'],['GTA0004']),
- m('agua_hidrometro_pct','Ligações de água com hidrômetro','Share of active water connections with meters','agua','percentual',['AG004','AG002'],['GTA0004','GTA0003'],pct=True,parear_componentes=True,
+ m('agua_hidrometro_pct','Percentual de ligações de água com hidrômetro','Share of active water connections with meters','agua','percentual',['AG004','AG002'],['GTA0004','GTA0003'],pct=True,parear_componentes=True,
    descricao='Proporção calculada pelo LAPAM com as contagens de ligações ativas e micromedidas declaradas no ano. Difere do índice oficial IAG1003 do SINISA, que utiliza médias do ano atual e anterior. Uma ligação pode atender várias unidades.'),
  m('agua_economias','Unidades com água (economias ativas)','Active units served by water supply','agua','economias',['AG003'],['GTA0008+GTA0015'],
    descricao='Unidades ativas atendidas, incluindo residências, lojas e outros usos. Uma ligação pode atender várias economias; não é uma contagem de famílias ou apenas de domicílios.'),

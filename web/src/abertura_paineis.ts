@@ -7,6 +7,7 @@ import { disponibilidadePerfis, escopoDoPerfil } from './trabalho_perfis';
 import type { Params } from './api';
 import { avisarEtapa } from './consulta_estado';
 import { t } from './idioma';
+import {rankingFiscalPronto,comparadorFiscalPronto,type ArvoreFiscalPronta} from './fiscal_pronto';
 let etapaRemuneracao=-1;
 
 type Ref={caminho:string;bytes:number;sha256:string;gzip?:boolean};
@@ -16,12 +17,15 @@ type Indices=Record<string,Ref>;
 type Indice={versao:1;arquivo:Ref;grupos:Record<string,[number,number,string]>};
 type Bloco={compatibilidade:unknown};
 type Raiz={versao:1;catalogo:Bloco&{arquivo:Ref};
+ fiscal_ranking?:Bloco&{campos:string[];anos:Record<string,Ref>;disponibilidade:Record<string,[number,number][]>};
+ fiscal_arvore?:Bloco&{anexo:string;anos:Record<string,{contas:Ref;pacotes:Indices;colunas:string[]}>};
+ fiscal_alertas?:Bloco&{todos:Ref;pacotes:Indices};
  remuneracao?:Bloco&{anos:Record<string,Indices>;fatores:Record<string,number>;base_ipca:number;modelos_sql?:Record<string,string>};
  trabalho:Bloco&{historico:Indices;anos:Record<string,Indices>};
  gestao:Bloco&{curadoria_sha256:string;territorios:Ref;respostas:Indices;agregados:Indices};
  fiscal:Bloco&{campos:string[];pares?:string[];pacotes:Indices}};
 type Dep={manifesto:()=>Promise<ManifestoBruto>;base:string;buscar:typeof fetch};
-const ROTAS=new Set(['entes','trab_remuneracao','trab_serie','trab_caged','trab_setores','trab_perfis','munic_territorios','munic_painel','agregado','cobertura']);
+const ROTAS=new Set(['entes','trab_remuneracao','trab_serie','trab_caged','trab_setores','trab_perfis','munic_territorios','munic_painel','agregado','cobertura','ranking','disponibilidade','arvore','alertas']);
 const UFS=new Set(Object.keys(COD_UF));
 const UF_COD=new Map(Object.entries(COD_UF).map(([uf,cod])=>[String(cod),uf]));
 const canonico=(x:unknown):unknown=>Array.isArray(x)?x.map(canonico):x&&typeof x==='object'?Object.fromEntries(Object.keys(x).sort().map(k=>[k,canonico((x as Record<string,unknown>)[k])])):x;
@@ -43,13 +47,13 @@ export function criarAberturaPaineis(dep:Dep){
  function guardar<T>(key:string,fn:()=>Promise<T>):Promise<T>{let p=cache.get(key) as Promise<T>|undefined;if(!p){p=fn();cache.set(key,p);p.catch(()=>cache.delete(key));}return p;}
  function obter(){return raiz??=(async()=>{const r=await dep.buscar(dep.base+'gold/abertura/manifesto.json',{cache:'no-cache'});if(!r.ok)return null;const x=await r.json() as Raiz;return x.versao===1?x:null;})().catch(()=>{raiz=undefined;return null;});}
  async function ler<T>(ref:Ref):Promise<T>{validarRef(ref);return guardar(ref.caminho,async()=>{const r=await dep.buscar(dep.base+ref.caminho);if(!r.ok)throw new Error('Índice indisponível');const b=await r.arrayBuffer();if(b.byteLength!==ref.bytes||await sha(b)!==ref.sha256)throw new Error('Índice incompleto');return json(b,ref.gzip);});}
- async function parte(indices:Indices,chave:string):Promise<Record<string,Tabela>|null>{
+ async function parte<T=Record<string,Tabela>>(indices:Indices,chave:string):Promise<T|null>{
   const ref=indices[bucket(chave)];if(!ref)throw new Error('Catálogo de recortes indisponível');
   const i=await ler<Indice>(ref);if(i.versao!==1||!i.grupos)throw new Error('Formato de índice inválido');
   const pos=i.grupos[chave];if(!pos)return null;
   validarRef(i.arquivo);const [inicio,size,digest]=pos;
   if(!Number.isSafeInteger(inicio)||inicio<0||!Number.isSafeInteger(size)||size<1||inicio+size>i.arquivo.bytes||!/^[a-f0-9]{64}$/.test(digest))throw new Error('Trecho inválido');
-  return guardar(i.arquivo.caminho+':'+chave,async()=>{
+  return guardar<T>(i.arquivo.caminho+':'+chave,async()=>{
    const r=await dep.buscar(dep.base+i.arquivo.caminho,{headers:{Range:`bytes=${inicio}-${inicio+size-1}`}});
    if(r.status!==206||r.headers.get('Content-Range')!==`bytes ${inicio}-${inicio+size-1}/${i.arquivo.bytes}`){await r.body?.cancel();throw new Error('Range indisponível');}
    const b=await r.arrayBuffer();if(b.byteLength!==size||await sha(b)!==digest)throw new Error('Trecho incompleto');
@@ -100,6 +104,33 @@ export function criarAberturaPaineis(dep:Dep){
   try {
    const [r,m]=await Promise.all([obter(),dep.manifesto()]);if(!r)return USAR_MOTOR;
    if(c==='entes'){const cat=await cadastro(r,m);return cat.entes.map(([cod_ibge,nome,uf,esfera,capital])=>({cod_ibge,nome,uf,esfera,capital}));}
+   if(c==='alertas'){
+    const a=r.fiscal_alertas;
+    if(!a||!igual(a.compatibilidade,compat(m,['siconfi','populacao_declarada']))||Object.keys(q).some(k=>k!=='ente'))return USAR_MOTOR;
+    const ente=int(q.ente);if(!ente)return linhas(await ler<Tabela>(a.todos));
+    const p=await parte(a.pacotes,'ente:'+ente);return p?linhas(p.alertas):USAR_MOTOR;
+   }
+   if(c==='ranking'||c==='disponibilidade'){
+    const a=r.fiscal_ranking,campo=String(q.campo??'receita_bruta');
+    if(!a||!a.campos.includes(campo)||!igual(a.compatibilidade,compat(m,['siconfi','populacao_declarada','ibge_pib'])))return USAR_MOTOR;
+    if(Object.keys(q).some(k=>!['campo','ano','uf','esfera','per_capita','ordem','tratamento','ente','limite','pagina','todos'].includes(k))||q.esfera&&q.esfera!=='M')return USAR_MOTOR;
+    if(c==='disponibilidade')return a.disponibilidade[campo].map(([exercicio,entes])=>({exercicio,entes}));
+    const ref=a.anos[String(int(q.ano))];if(!ref)return USAR_MOTOR;
+    return rankingFiscalPronto(linhas(await ler<Tabela>(ref)),campo,{...q,uf:UFS.has(String(q.uf))?q.uf:undefined});
+   }
+   if(c==='arvore'){
+    const a=r.fiscal_arvore,ano=int(q.ano),coluna=String(q.coluna),trat=q.tratamento==='declarado'?'declarado':'filtrado';
+    if(!a||String(q.anexo)!==a.anexo||!igual(a.compatibilidade,compat(m,['siconfi','populacao_declarada']))||Object.keys(q).some(k=>!['anexo','ano','coluna','ente','uf','esfera','tratamento'].includes(k)))return USAR_MOTOR;
+    const y=a.anos[String(ano)];if(!y||!y.colunas.includes(coluna))return USAR_MOTOR;
+    const g=await fiscalScope(r,m,q),cat=await cadastro(r,m),comp=comparadorFiscalPronto(g,cat.todos);
+    const chave=(g:string)=>g.startsWith('ente:')?g:trat+':'+g;
+    const [defs,p,pc]=await Promise.all([ler<Tabela>(y.contas),parte<ArvoreFiscalPronta>(y.pacotes,chave(g)),comp?parte<ArvoreFiscalPronta>(y.pacotes,chave(comp.grupo)):null]);
+    if(!p||comp&&!pc)return USAR_MOTOR;
+    const valores=new Map((p.valores[coluna]??[]).map(([k,v,s])=>[k,{valor:v,sintetico:s}]));
+    const comparados=new Map((pc?.valores[coluna]??[]).map(([k,v])=>[k,v]));
+    const nos=linhas(defs).filter(d=>valores.get(String(d.chave))?.valor!=null||comparados.get(String(d.chave))!=null).map(d=>({...d,valor:valores.get(String(d.chave))?.valor??null,valor_comp:comparados.get(String(d.chave))??null,sintetico:valores.get(String(d.chave))?.sintetico??null}));
+    return {nos,populacao:p.populacao,entes:p.entes,populacao_comp:pc?.populacao??null,comparador:comp?.rotulo??null};
+   }
    if(c.startsWith('munic_'))return await gestao(r,m,c,q);
    if(c==='trab_remuneracao') {
     const a=r.remuneracao,ano=int(q.ano),dim=String(q.agrupar??'sexo');

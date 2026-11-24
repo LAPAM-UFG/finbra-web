@@ -1368,6 +1368,13 @@ button.ia-historico-importar:focus-visible { outline: 2px solid var(--foco); out
 
 /* Menus completos no celular, com as páginas organizadas por assunto. */
 .areas-mobile, .menu-mobile { display:none; }
+.areas-rotulo { display:block; margin-bottom:3px; font-size:12px; color:var(--tinta-2); }
+/* O seletor completo não depende de descobrir uma faixa rolável de links. */
+@media (min-width:801px) {
+  .topo .areas { display:none; }
+  .areas-mobile { display:block; flex:0 1 320px; min-width:200px; }
+  .areas-mobile select { width:100%; min-height:38px; padding:6px 10px; border:1px solid var(--borda-campo); border-radius:8px; background:var(--superficie); color:var(--tinta); font:inherit; }
+}
 .menu-grupos { display:contents; }
 @media (max-width:800px) {
   .topo .areas { display:none; }

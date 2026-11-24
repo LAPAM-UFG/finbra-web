@@ -1,4 +1,4 @@
-import io,json,hashlib,tempfile,unittest
+import io,json,hashlib,tempfile,unittest,copy
 from pathlib import Path
 import numpy as np
 import duckdb
@@ -6,7 +6,7 @@ from comparacoes_base import Quadro
 from curadoria_catalogos import curar_definicao,curar_mobilidade,unidade_en
 from versoes_dados import arquivar,publicar_indice,versao_manifesto
 from remuneracao_pronta import por_uf,gerar as gerar_remuneracao
-from abertura_paineis import manter_remuneracao,compatibilidade
+from abertura_paineis import manter_remuneracao,manter_fiscais,compatibilidade
 
 class Falha(Exception):
     def __init__(self):self.response={'Error':{'Code':'NoSuchKey'}}
@@ -26,6 +26,22 @@ class S3:
         self.objetos[Key]=(self.objetos[CopySource['Key']][0],Metadata);self.copias.append(Key)
 
 class Rodada2(unittest.TestCase):
+    def test_atualizacao_de_outro_tema_preserva_abertura_fiscal_e_atualiza_a_compatibilidade(self):
+        m={'gerado_em':'antigo','fontes':{'siconfi':{'edicao':1},'ibge_pib':{'ano':2023}},'base_ipca':2025}
+        old={'fiscal':{'compatibilidade':compatibilidade(m,['siconfi','populacao_declarada'],True)}}
+        for name,keys in [('fiscal_ranking',['siconfi','populacao_declarada','ibge_pib']),('fiscal_arvore',['siconfi','populacao_declarada']),('fiscal_alertas',['siconfi','populacao_declarada'])]:
+            old[name]={'compatibilidade':compatibilidade(m,keys),'pacotes':{'SP':{'sha256':'imutavel'}}}
+        novo=copy.deepcopy(m);novo['gerado_em']='novo';novo['fontes']['munic']={'ano':2025}
+        kept=manter_fiscais(old,novo);self.assertEqual(len(kept),3)
+        for key in kept:
+            self.assertEqual(kept[key]['compatibilidade']['gerado_em'],'novo');self.assertEqual(kept[key]['pacotes'],old[key]['pacotes'])
+        self.assertEqual(old['fiscal_ranking']['compatibilidade']['gerado_em'],'antigo')
+        for mudou in ['siconfi','ibge_pib']:
+            changed=copy.deepcopy(novo);changed['fontes'][mudou]={'edicao':99};ret=manter_fiscais(old,changed)
+            self.assertNotIn('fiscal_ranking',ret)
+            if mudou=='siconfi':self.assertEqual(ret,{})
+        changed=copy.deepcopy(novo);changed['base_ipca']=2026;self.assertEqual(manter_fiscais(old,changed),{})
+
     def test_candidata_de_remuneracao_nao_pode_ficar_dentro_da_fonte_micro(self):
         with tempfile.TemporaryDirectory(prefix='finbra-rem-destino-')as pasta:
             raiz=Path(pasta).resolve();micro=raiz/'micro';micro.mkdir();base=raiz/'base';base.mkdir()

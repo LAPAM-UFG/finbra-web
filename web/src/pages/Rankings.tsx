@@ -120,12 +120,12 @@ export function Rankings() {
           params={{ medida: perCapita ? 'per_capita' : 'total', tratamento: f.tratamento }} ordem={ordem} anos={anosDisp}
           uf={uf ?? null} ente={f.ente?.esfera === 'M' ? f.ente.cod_ibge : null}
           indicador={seletorIndicador} opcoes={medidaEOrdem}
-          fonte={campo === 'pib' ? t('IBGE (PIB dos municípios); população: DCA (SICONFI)', 'IBGE (municipal GDP); population: DCA (SICONFI)') : t('SICONFI/Tesouro Nacional (DCA)', 'SICONFI/National Treasury (DCA)')}
+          fonte={campo === 'pib' ? t('IBGE (PIB dos municípios e população usada no seu cálculo)', 'IBGE (municipal GDP and its population denominator)') : t('SICONFI/Tesouro Nacional (DCA)', 'SICONFI/National Treasury (DCA)')}
           atualizadoEm={String((meta.fontes[campo === 'pib' ? 'ibge_pib' : 'siconfi'] as { processado_em?: string } | undefined)?.processado_em ?? meta.geradoEm)}
           ativas={[...(perCapita ? [] : [t('valor total', 'total value')]), ...(ordem === 'asc' ? [t('menores primeiro', 'lowest first')] : [])]}
           definicoes={metadados([
-            [t('Medida', 'Measure'), perCapita ? t('per capita: valor ÷ população declarada pelo próprio município na DCA do exercício (não é a estimativa do IBGE)', 'per capita: value ÷ population reported by the municipality itself in the year’s DCA (not the IBGE estimate)') : 'total'],
-            [t('Critérios', 'Criteria'), criterios()],
+            [t('Medida', 'Measure'), perCapita ? campo === 'pib' ? t('PIB ÷ população do IBGE usada no cálculo do PIB por habitante no mesmo ano','GDP ÷ the IBGE population used to calculate GDP per resident in the same year') : t('per capita: valor ÷ população declarada pelo próprio município na DCA do exercício (não é a estimativa do IBGE)', 'per capita: value ÷ population reported by the municipality itself in the year’s DCA (not the IBGE estimate)') : 'total'],
+            [t('Critérios', 'Criteria'), criterios(campo === 'pib')],
           ]).filter(([k]) => k !== t('Exercício selecionado', 'Selected fiscal year'))}
           arquivo={`ranking_${campo}`} />
       )}
@@ -143,10 +143,10 @@ export function Rankings() {
       {vista === 'anual' && r.dados && (
         <p className="cobertura" role="note">
           <strong>{t('Elegíveis', 'Eligible')}:</strong> {numero(total)} {t('municípios', 'municipalities')}
-          {' '}({numero(r.dados.com_dca)} {t('com DCA no exercício', 'with a DCA in the year')}; {numero(r.dados.sem_valor)} {t('sem o valor', 'without the value')};{' '}
-          {numero(r.dados.fora)} {t('fora por inconsistência, ausência do total do domínio ou sem população', 'left out for inconsistency, missing domain total or no population')})
+          {' '}({numero(r.dados.com_dca)} {campo === 'pib' ? t('registros municipais no exercício','municipal records in the year') : t('com DCA no exercício', 'with a DCA in the year')}; {numero(r.dados.sem_valor)} {t('sem o valor', 'without the value')};{' '}
+          {numero(r.dados.fora)} {campo==='pib'?t('fora por falta de população IBGE positiva','left out for missing positive IBGE population'):t('fora por inconsistência, ausência do total do domínio ou sem população', 'left out for inconsistency, missing domain total or no population')})
           {' '}· {numero(r.dados.zeros)} {t('zeros declarados incluídos', 'reported zeros included')} · {numero(r.dados.negativos)} {t('negativos incluídos', 'negatives included')}.
-          {' '}<Dica rotulo={t('Critérios do ranking', 'Ranking criteria')}>{criterios()}</Dica>
+          {' '}<Dica rotulo={t('Critérios do ranking', 'Ranking criteria')}>{criterios(campo === 'pib')}</Dica>
         </p>
       )}
       {vista === 'anual' && <>
@@ -187,6 +187,7 @@ export function Rankings() {
                 metadados: metadados([
                   [t('Indicador', 'Indicator'), nomes[campo]], [t('Medida', 'Measure'), perCapita ? 'per capita' : 'total'],
                   [t('Ordem', 'Order'), ordem === 'desc' ? maiores : menores],
+                  [t('População do denominador','Population denominator'), campo === 'pib' ? t('IBGE, base do PIB no mesmo ano','IBGE, GDP denominator in the same year') : t('Declarada na DCA','Reported in the DCA')],
                   [t('Conteúdo', 'Content'), t('consulta completa filtrada (todas as páginas)', 'full filtered query (all pages)')],
                   [t('Elegíveis', 'Eligible'), String(tudo.elegiveis)],
                 ]),
@@ -199,7 +200,7 @@ export function Rankings() {
                 <tr>
                   <th>{uf ? t('Posição na UF', 'State position') : t('Posição', 'Position')}</th>
                   {uf && <th>{t('Posição nacional', 'National position')}</th>}
-                  <th className="territorio-fixo">{t('Município', 'Municipality')}</th><th>{t('UF', 'State')}</th><th>{t('População declarada na DCA', 'DCA reported population')}</th>
+                  <th className="territorio-fixo">{t('Município', 'Municipality')}</th><th>{t('UF', 'State')}</th><th>{campo==='pib'?t('População IBGE (base do PIB)','IBGE population (GDP denominator)'):t('População declarada na DCA', 'DCA reported population')}</th>
                   <th>{t('Valor', 'Value')}</th><th>Per capita</th>
                 </tr>
               </thead>
@@ -227,7 +228,10 @@ export function Rankings() {
 }
 
 /** Critérios do ranking fiscal (os mesmos no ranking anual e na evolução das posições). */
-const criterios = () => t(
+const criterios = (pib = false) => pib ? t(
+  'PIB e população do IBGE no mesmo ano, usando o denominador do PIB por habitante. Entram municípios com PIB observado e população positiva. Empates recebem a mesma posição e a seguinte salta (1, 2, 2, 4). A posição nacional considera todos os municípios; a da UF, só os do estado.',
+  'GDP and IBGE population in the same year, using the GDP-per-resident denominator. Municipalities with observed GDP and positive population are eligible. Ties share the same position and the next one skips (1, 2, 2, 4). National positions use all municipalities; state positions use municipalities in the state.'
+) : t(
   'Entram os municípios com o valor declarado no exercício, inclusive zero e negativo, e com a DCA trazendo o total do domínio (receita ou despesa). Per capita exige população positiva (declarada na DCA). Saem as inconsistências objetivas (mais de 10× a mediana real do próprio ente e acima do PIB municipal) e erros confirmados; suspeitas estatísticas continuam no ranking. Empates recebem a mesma posição e a seguinte salta (1, 2, 2, 4). A posição nacional considera todos os municípios; a da UF, só os do estado.',
   'Municipalities enter with the value reported for the year, including zero and negative values, and with a DCA that has the domain total (revenue or expenditure). Per capita requires a positive population (reported in the DCA). Objective inconsistencies (more than 10× the government’s own real median and above municipal GDP) and confirmed errors are left out; statistical flags remain in the ranking. Ties share the same position and the next one skips (1, 2, 2, 4). The national position considers all municipalities; the state position, only those in the state.',
 );

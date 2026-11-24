@@ -38,8 +38,11 @@ export type SerieRaio = {periodos:number[];serie:SerieComparacao};
 const hashValido=(s:unknown)=>typeof s==='string'&&/^[a-f0-9]{64}$/.test(s);
 const digest=async(b:ArrayBuffer)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',b)),x=>x.toString(16).padStart(2,'0')).join('');
 const finito=(v:unknown)=>v===null||typeof v==='number'&&Number.isFinite(v);
+// Edições congeladas também contêm o nome legado .json_<hash>.gz.
+// Mantemos o mesmo limite de caminho, tamanho e integridade dos nomes canônicos.
+const JSON_TERRITORIAL=/\.json(?:\.gz|_[a-f0-9]{16,64}\.gz)?$/;
 function validarObjeto(o:ObjetoComparacao) {
-  if(!o||!/^gold\/(raiox|comparacoes|assistencia|agropecuaria|mobilidade|seguranca|internet|energia|comex)\/[a-z0-9_]+\.(json(?:\.gz)?|ndjson)$/.test(o.caminho)||!hashValido(o.sha256)||!Number.isSafeInteger(o.bytes)||o.bytes<1)throw new Error(t('Referência territorial inválida.','Invalid territory reference.'));
+  if(!o||!/^gold\/(raiox|comparacoes|assistencia|agropecuaria|mobilidade|seguranca|internet|energia|comex)\/[a-z0-9_]+\.(json(?:\.gz|_[a-f0-9]{16,64}\.gz)?|ndjson)$/.test(o.caminho)||!hashValido(o.sha256)||!Number.isSafeInteger(o.bytes)||o.bytes<1)throw new Error(t('Referência territorial inválida.','Invalid territory reference.'));
 }
 export function validarPontoRaio(p:PontoRaio|null) {
   if(p===null)return;
@@ -52,7 +55,7 @@ export function criarLeitorRaio(buscar:typeof fetch=fetch,base=BASE_DADOS) {
   const cache=new Map<string,Promise<unknown>>();
   function memo<T>(k:string,f:()=>Promise<T>):Promise<T>{let p=cache.get(k) as Promise<T>|undefined;if(!p){p=f();cache.set(k,p);p.catch(()=>{if(cache.get(k)===p)cache.delete(k);});}return p;}
   async function objeto<T>(o:ObjetoRaio):Promise<T>{
-    validarObjeto(o);if(!/\.json(?:\.gz)?$/.test(o.caminho)||o.bytes>12_000_000)throw new Error('Objeto excessivo para o retrato.');
+    validarObjeto(o);if(!JSON_TERRITORIAL.test(o.caminho)||o.bytes>12_000_000)throw new Error('Objeto excessivo para o retrato.');
     return memo(`${o.sha256}:${o.json_sha256??''}:${o.json_bytes??0}`,async()=>{const r=await buscar(base+o.caminho);if(!r.ok)throw new Error(t('Não foi possível carregar o arquivo do Raio X.','Could not load the X-ray file.'));let b=await r.arrayBuffer();if(b.byteLength!==o.bytes||await digest(b)!==o.sha256)throw new Error('Arquivo territorial incompleto.');
       if(o.caminho.endsWith('.gz')){
         if(!hashValido(o.json_sha256)||!Number.isSafeInteger(o.json_bytes)||o.json_bytes!<1||o.json_bytes!>12_000_000)throw new Error('Metadados comprimidos inválidos.');

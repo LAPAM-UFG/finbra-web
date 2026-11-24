@@ -349,7 +349,7 @@ export function App() {
           {areas.filter(a=>a.id!=='downloads').map(a=><Link key={a.id} to={{pathname:a.caminho,search:a.busca}} className={area===a.id?'ativo':''} aria-current={area===a.id?'page':undefined}>{a.nome}</Link>)}
         </nav>
         <div className="areas-mobile">
-          <label className="sr-only" htmlFor="area-painel">{t('Área do painel','Dashboard area')}</label>
+          <label className="areas-rotulo" htmlFor="area-painel">{t('Todas as áreas','All areas')}</label>
           <select id="area-painel" value={area} onChange={e=>{const a=areas.find(a=>a.id===e.target.value);if(a)navegar({pathname:a.caminho,search:a.busca});}}>
             {areas.map(a=><option key={a.id} value={a.id}>{a.nome}</option>)}
           </select>

@@ -48,6 +48,13 @@ def produto_en(s):
 
 
 def curar_definicao(i):
+    identificador=i.get('id',i.get('variavel',''))
+    if identificador in {'agua_hidrometro_pct','san_agua_hidrometro_pct','san_agua_hidrometro_pct_cond'}:
+        i=copy.deepcopy(i)
+        nome=i.get('nome','')
+        i['nome']=nome.replace('Ligações de água com hidrômetro','Percentual de ligações de água com hidrômetro')
+        if 'nome_original' in i:
+            i['nome_original']=i['nome_original'].replace('Ligações de água com hidrômetro','Percentual de ligações de água com hidrômetro')
     i=copy.deepcopy(i)
     if i.get('tema')=='Finanças e economia'and i.get('metodo_referencia')=='mediana':
         i['normalizacao']='No município, indicador da fonte (corrigido pelo IPCA quando monetário). Referências regionais, estaduais e Brasil: mediana dos resultados municipais disponíveis; não é o consolidado oficial.'

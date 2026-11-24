@@ -69,6 +69,26 @@ def manter_remuneracao(bloco,m):
     return {**copy.deepcopy(bloco),'compatibilidade':nova}
 
 
+def manter_fiscais(anterior,m):
+    """Uma atualização de outro tema não descarta a abertura fiscal compatível.
+
+    A reconstrução parcial pode não trazer contas/partições fiscais. Mudanças
+    nas fontes fiscais, no PIB ou nos preços exigem novo cálculo ou fallback.
+    """
+    import copy
+    precos=anterior.get('fiscal',{}).get('compatibilidade',{})
+    atual=compatibilidade(m,['siconfi','populacao_declarada'],True)
+    if any(precos.get(k)!=atual.get(k)for k in ['fontes','base_ipca','ipca']):return {}
+    saida={}
+    for nome,chaves in [('fiscal_ranking',['siconfi','populacao_declarada','ibge_pib']),
+                        ('fiscal_arvore',['siconfi','populacao_declarada']),
+                        ('fiscal_alertas',['siconfi','populacao_declarada'])]:
+        bloco=anterior.get(nome);nova=compatibilidade(m,chaves)
+        if bloco and bloco.get('compatibilidade',{}).get('fontes')==nova['fontes']:
+            saida[nome]={**copy.deepcopy(bloco),'compatibilidade':nova}
+    return saida
+
+
 class Escritor:
     def __init__(self,saida):
         self.pasta=saida/'gold/abertura'
@@ -292,8 +312,15 @@ def gerar(base,saida,curadoria=CURADORIA):
     root['fiscal']=fiscal(cx,m,e)
     anterior=base/'gold/abertura/manifesto.json'
     if anterior.exists():
-        bloco=manter_remuneracao(json.loads(anterior.read_bytes()).get('remuneracao'),m)
+        antiga=json.loads(anterior.read_bytes())
+        bloco=manter_remuneracao(antiga.get('remuneracao'),m)
         if bloco:root['remuneracao']=bloco
+        root.update(manter_fiscais(antiga,m))
+    # As atualizações automáticas conservam a abertura rápida de receitas/ranking.
+    if (base/'gold/entes').is_dir() and (base/'silver/contas').is_dir():
+        from fiscal_pronto import gerar as complementar_fiscal
+        root=complementar_fiscal(base,saida,raiz=root)
+        e.objetos.extend(json.loads((saida/'auditoria_fiscal_pronto.json').read_bytes())['objetos'])
     (e.pasta/'manifesto.json').write_bytes(serializar(root))
     auditoria={'versao':1,'base_manifesto_sha256':sha((base/'gold/manifesto.json').read_bytes()),
         'manifesto_sha256':sha(serializar(root)),'objetos':e.objetos,'bytes':sum(r['bytes'] for r in e.objetos)}

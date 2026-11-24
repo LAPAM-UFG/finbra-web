@@ -38,7 +38,7 @@ export function buscar<T>(caminho: string, params: Params = {}): Promise<T> {
     // motor (pacotes de abertura); se não houver pacote ou falhar, o motor responde
     const p = (async () => {
       let r:unknown=USAR_MOTOR;
-      if (['entes','trab_remuneracao','trab_serie','trab_caged','trab_setores','trab_perfis','munic_territorios','munic_painel','agregado','cobertura'].includes(caminho))
+      if (['entes','trab_remuneracao','trab_serie','trab_caged','trab_setores','trab_perfis','munic_territorios','munic_painel','agregado','cobertura','ranking','disponibilidade','arvore','alertas'].includes(caminho))
         r=await import('./abertura_paineis').then(m=>m.executarAberturaPaineis(caminho,params));
       if (r===USAR_MOTOR && caminho.startsWith('educacao_fin_')) {
         const m=await import('./educacao_financeira');
