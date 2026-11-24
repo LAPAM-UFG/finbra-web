@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { pagina } from './carregar_pagina';
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useNavigationType } from 'react-router-dom';
 const HistoricoIa = pagina(() => import('./components/HistoricoIa').then(m => ({default:m.HistoricoIa})));
@@ -241,32 +241,22 @@ export function App() {
     caminhoAnterior.current = pathname;
     if (mudou && navegacao !== 'POP' && !hash) window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
   }, [pathname, navegacao, hash]);
-  // o cabeçalho é fixo e muda de altura (uma linha, duas ou três, conforme a largura e o idioma): a rolagem até uma âncora desconta essa altura
+  // A altura física preenche o layout. Só o cabeçalho fixo do celular desconta
+  // espaço das âncoras e do menu lateral; no desktop ele sai com a rolagem.
   useEffect(() => {
     const topo = document.querySelector('header.topo');
     if (!topo) return;
-    const medir = () => document.documentElement.style.setProperty('--altura-topo', `${Math.ceil(topo.getBoundingClientRect().height)}px`);
+    const medir = () => {
+      const altura = `${Math.ceil(topo.getBoundingClientRect().height)}px`;
+      const fixo = ['sticky', 'fixed'].includes(getComputedStyle(topo).position);
+      document.documentElement.style.setProperty('--altura-cabecalho', altura);
+      document.documentElement.style.setProperty('--altura-topo', fixo ? altura : '0px');
+    };
     medir();
     const o = new ResizeObserver(medir);
     o.observe(topo);
     return () => o.disconnect();
   }, []);
-  // a aba ativa fica à vista nos menus de rolagem horizontal (celular): ao trocar de área ou página e também quando a largura muda
-  // (girar o aparelho, redimensionar a janela). Só o scrollLeft do próprio menu muda, nunca a rolagem da página nem o scrollTop do menu
-  useLayoutEffect(() => {
-    const navs = Array.from(document.querySelectorAll<HTMLElement>('header.topo nav.areas, .casca > nav.menu'));
-    const mostrarAtiva = (nav: HTMLElement) => {
-      const ativo = nav.querySelector<HTMLElement>('a.ativo');
-      if (!ativo || nav.scrollWidth <= nav.clientWidth) return;
-      const n = nav.getBoundingClientRect();
-      const a = ativo.getBoundingClientRect();
-      if (a.left < n.left + 8 || a.right > n.right - 8) nav.scrollTo({ left: nav.scrollLeft + (a.left - n.left) - (n.width - a.width) / 2, behavior: 'auto' });
-    };
-    navs.forEach(mostrarAtiva);
-    const o = new ResizeObserver((entradas) => entradas.forEach((e) => mostrarAtiva(e.target as HTMLElement)));
-    navs.forEach((nav) => o.observe(nav));
-    return () => o.disconnect();
-  }, [pathname, area, idioma]);
   // só os filtros globais acompanham a navegação; as escolhas de cada página (anexo, indicador do ranking…) ficam nela
   const atuais = new URLSearchParams(search);
   const filtros = new URLSearchParams();
@@ -326,6 +316,17 @@ export function App() {
     {id:'assistencia',nome:t('Assistência social','Social assistance'),caminho:'/assistencia',busca:paraArea('assistencia')},
     {id:'downloads',nome:t('Baixar dados','Download data'),caminho:'/downloads',busca:buscaParaDownloads(search,area)},
   ];
+  const abasCurtas: Partial<Record<Area, string>> = {
+    raiox: t('Raio X', 'X-ray'),
+    financas: t('Finanças', 'Finance'),
+    trabalho: t('Trabalho', 'Labour'),
+    comex: t('Comércio ext.', 'Trade'),
+    seguranca: t('Segurança', 'Safety'),
+    mobilidade: t('Mobilidade', 'Mobility'),
+    agropecuaria: t('Agropecuária', 'Agriculture'),
+    munic: t('Gestão', 'Management'),
+    assistencia: t('Assistência', 'Assistance'),
+  };
   useEffect(()=>{
     if(!rotaConhecida(pathname)){document.title=t('Página não encontrada · LAPAM','Page not found · LAPAM');return;}
     const titulo=TITULOS[pathname.replace(/\/+$/, '')||'/'];
@@ -346,7 +347,7 @@ export function App() {
       <header className="topo">
         <img className="logo" src="/logo_lapam.png" alt="LAPAM" />
         <nav className="areas" aria-label={t('Áreas', 'Areas')}>
-          {areas.filter(a=>a.id!=='downloads').map(a=><Link key={a.id} to={{pathname:a.caminho,search:a.busca}} className={area===a.id?'ativo':''} aria-current={area===a.id?'page':undefined}>{a.nome}</Link>)}
+          {areas.filter(a=>a.id!=='downloads').map(a=><Link key={a.id} to={{pathname:a.caminho,search:a.busca}} title={a.nome} aria-label={a.nome} className={area===a.id?'ativo':''} aria-current={area===a.id?'page':undefined}>{abasCurtas[a.id] ?? a.nome}</Link>)}
         </nav>
         <div className="areas-mobile">
           <label className="areas-rotulo" htmlFor="area-painel">{t('Todas as áreas','All areas')}</label>
