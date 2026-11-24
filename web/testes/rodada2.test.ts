@@ -27,6 +27,9 @@ test('cartão e nome acessível usam o mesmo nome público, mesmo com prefixo Ba
  for(const [area,pt,en]of [['trabalho','Mercado de trabalho','Labour market'],['gestao','Gestão pública','Public management'],['clima','Clima','Climate']]){
   const a={area,nome:'Base enxuta — '+area,nome_en:'Lean base — '+area};
   assert.equal(nomeArquivoDownload(a),'Base enxuta — '+pt);assert.equal(nomeArquivoDownload(a,true),'Lean base — '+en);
+  // Descrições antigas dos cartões também trazem somente o identificador do tema.
+  assert.equal(nomeArquivoDownload({area,nome:area+' — SP',nome_en:''}),pt+' — SP');
+  assert.equal(nomeArquivoDownload({area,nome:area+' — SP',nome_en:''},true),en+' — SP');
  }
  assert.equal(nomeArquivoDownload({area:'saude',nome:'Base enxuta — Saúde',nome_en:'Health'}),'Base enxuta — Saúde');
  assert.equal(nomeArquivoDownload({area:'trabalho',nome:'Mercado de trabalho — SP',nome_en:''}),'Mercado de trabalho — SP');

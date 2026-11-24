@@ -68,7 +68,7 @@ function Arquivo({ a, base, destaque = false }: { a: ArquivoDl; base: string; de
   const href = urlArquivo(a.caminho, base);
   const f = FORMATO[a.formato];
   const nome = nomeArquivoDownload(a,idioma()==='en');
-  const descricao = pick(a.descricao, a.descricao_en);
+  const descricao = nomeArquivoDownload({ area: a.area, nome: a.descricao, nome_en: a.descricao_en }, idioma() === 'en');
   const anos = faixaAnos(a);
   const tam = tamanho(a.bytes, local());
   return (
