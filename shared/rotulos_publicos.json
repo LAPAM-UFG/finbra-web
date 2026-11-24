@@ -1,4 +1,20 @@
 {
+  "temas": {
+    "financas": ["Finanças e economia", "Finance and economy"],
+    "trabalho": ["Mercado de trabalho", "Labour market"],
+    "saude": ["Saúde", "Health"],
+    "gestao": ["Gestão pública", "Public management"],
+    "clima": ["Clima", "Climate"],
+    "assistencia": ["Assistência social", "Social assistance"],
+    "educacao": ["Educação", "Education"],
+    "saneamento": ["Saneamento", "Sanitation"],
+    "agropecuaria": ["Agropecuária", "Agriculture and livestock"],
+    "mobilidade": ["Mobilidade e segurança no trânsito", "Mobility and road safety"],
+    "seguranca": ["Segurança pública", "Public safety"],
+    "internet": ["Internet e conectividade", "Internet and connectivity"],
+    "energia": ["Energia elétrica e geração", "Electricity and generation"],
+    "comex": ["Comércio exterior", "Foreign trade"]
+  },
   "agro_produtos": {
     "Abacate": "Avocado",
     "Abacaxi": "Pineapple",
@@ -178,6 +194,8 @@
   "unidades": {
     "hectares": "hectares",
     "toneladas": "tonnes",
+    "R$/tonelada": "R$/tonne",
+    "veículo-anos": "vehicle-years",
     "quilogramas": "kilograms",
     "quilogramas por hectare": "kilograms per hectare",
     "frutos por hectare": "fruit per hectare",

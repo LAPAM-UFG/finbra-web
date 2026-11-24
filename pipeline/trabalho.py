@@ -306,6 +306,9 @@ def gerar_gold(con, somente_caged=False):
     con.execute(f"""CREATE OR REPLACE TEMP TABLE muni AS
                     SELECT cod_ibge, cod_ibge // 10 AS municipio, nome, uf, regiao FROM '{SILVER.as_posix()}/entes.parquet'
                     WHERE esfera = 'M'""")
+    # Distrito estadual com código IBGE próprio: a RAIS o publica como 260545.
+    # A lista fiscal da DCA não o contém, mas o painel inclui esse território.
+    con.execute("INSERT INTO muni SELECT 2605459,260545,'Fernando de Noronha','PE','NE' WHERE NOT EXISTS (SELECT 1 FROM muni WHERE municipio=260545)")
     pop_ibge = populacao_ibge(con) if not somente_caged else None
     # UF pelo prefixo do código, para movimentações em códigos fora do cadastro (Fernando de Noronha, 260545);
     # o código 999999 (município ignorado) não tem UF e entra só no total do Brasil

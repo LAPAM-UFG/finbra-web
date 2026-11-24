@@ -92,8 +92,8 @@ export async function referenciasDestaques(
   return { pontos, falhas, locais, trienios, trieniosSemBase };
 }
 
-export function apresentacaoDestaque(item: DestaqueRaio, p: PontoRaio|null, grupo: string, ressalvas: boolean) {
-  const a = apresentacaoRaio(item.i, p, grupo, ressalvas);
+export function apresentacaoDestaque(item: DestaqueRaio, p: PontoRaio|null, grupo: string, ressalvas: boolean, g?:GeografiaComparacao,esperado?:number|null) {
+  const a = apresentacaoRaio(item.i, p, grupo, ressalvas,g,esperado);
   return item.comparavel ? { ...a, nome: textoComparacao(item.i, 'nome'), unidade: textoComparacao(item.i, 'unidade'), valor: a.comparavel, texto: formatarRaio(item.i, a.comparavel) } : a;
 }
 

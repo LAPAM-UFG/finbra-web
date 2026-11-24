@@ -11,6 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from atualizacao_artefatos import referencias,caminho_resolvido
+from versoes_dados import arquivar,publicar_indice
 
 TEMAS=('educacao','saneamento','agropecuaria','mobilidade','seguranca','internet','energia','comex')
 MAPAS=('trabalho','saude',*TEMAS)
@@ -104,6 +105,7 @@ def planejar(client,bucket,raiz,esperado):
 def enviar(client,bucket,key,ref,condicao):
     path=Path(ref['local'])
     if digest(path,'sha256')!=ref['sha256']:raise ValueError('candidato mudou: '+key)
+    if 'IfMatch'in condicao:arquivar(client,bucket,key,condicao['IfMatch'])
     with path.open('rb') as body:
         client.put_object(Bucket=bucket,Key=key,Body=body,ContentLength=ref['bytes'],ContentMD5=base64.b64encode(bytes.fromhex(ref['md5'])).decode(),ContentType='application/json; charset=utf-8' if key.endswith('.json') else 'application/octet-stream',CacheControl='no-cache' if mutavel(key) else 'public, max-age=31536000, immutable',Metadata={'sha256':ref['sha256'],'md5':ref['md5']},**condicao)
     h=client.head_object(Bucket=bucket,Key=key)
@@ -140,6 +142,9 @@ def ativar(client,bucket,plano,backup):
         if path.exists() and path.read_bytes()!=raw:raise ValueError('backup anterior diferente: '+key)
         path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(raw)
     fallback={}
+    # Congela também a edição anterior antes de alterar qualquer chave mutável.
+    if 'gold/manifesto.json'in changed and 'gold/manifesto.json'in before:
+        publicar_indice(client,bucket,json.loads((backup/'gold/manifesto.json').read_bytes()),before)
     if 'gold/raiox/v13_manifesto.json' in changed and 'gold/raiox/v13_manifesto.json' not in before and 'gold/raiox/v12_manifesto.json' in before:
         key='gold/raiox/v12_manifesto.json';obj=client.get_object(Bucket=bucket,Key=key)
         if obj['ETag']!=before[key]['etag']:raise ValueError('Raio X anterior mudou')
@@ -147,6 +152,9 @@ def ativar(client,bucket,plano,backup):
     order=[k for k in changed if k not in PONTEIROS and k in before]+[k for k in PONTEIROS if k in changed]
     try:
         for key in order:
+            if key=='gold/manifesto.json':
+                previsto={**before,**{k:dict(bytes=v['bytes'],etag='"'+v['md5']+'"')for k,v in changed.items()}}
+                publicar_indice(client,bucket,json.loads(Path(changed[key]['local']).read_bytes()),previsto)
             condition={'IfMatch':before[key]['etag']} if key in before else {'IfNoneMatch':'*'}
             tag=enviar(client,bucket,key,changed[key],condition);written.append((key,tag))
     except Exception:

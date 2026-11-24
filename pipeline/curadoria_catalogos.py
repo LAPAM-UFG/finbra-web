@@ -12,6 +12,10 @@ def textos():
     return json.loads((Path(__file__).resolve().parent.parent/'shared/rotulos_publicos.json').read_bytes())
 
 
+def nome_tema(area, ingles=False):
+    return textos()['temas'].get(area,[area,area])[int(ingles)]
+
+
 def unidade(texto):
     s=(texto or '').strip()
     if s.split(' ')[0].lower() in {'hectares','toneladas','quilogramas','metros','cabeças','milheiros','mil','frutos','litros','dúzias'}:
@@ -66,11 +70,22 @@ def curar_definicao(i):
     if 'unidade_original'in i:i['unidade_original_en']=unidade_en(i['unidade_original'])
     for key in ['nome','nome_original']:
         if key in i:i[key]=i[key].replace('Atendimento / estimativa de pobreza da planilha','Atendimento em relação à estimativa de famílias pobres')
+        if key in i:i[key]=i[key].replace('da planilha','da folha de pagamento do MDS').replace('na planilha','na folha de pagamento do MDS')
+        if key+'_en'in i:i[key+'_en']=i[key+'_en'].replace('spreadsheet','MDS payroll')
+        if key+'_en'in i:i[key+'_en']=i[key+'_en'].replace('R$/tonelada','R$/tonne').replace('veículo-anos','vehicle-years')
+        if i.get('historico_cadunico'):
+            if key in i and '(série histórica)' not in i[key]:i[key]+=' (série histórica)'
+            if key+'_en'in i and '(historical series)' not in i[key+'_en']:i[key+'_en']+=' (historical series)'
     if i.get('id')=='homicidios':
         i['nome']='Homicídios (agressões + intervenção legal)'
         i['nome_en']='Homicides (assaults + legal intervention)'
         i['alerta']='Saúde: CID-10 X85–Y09 + Y35–Y36 (inclui intervenção legal e operações de guerra). Segurança separa agressões (X85–Y09). As medidas não são idênticas.'
         i['alerta_en']='Health: ICD-10 X85–Y09 + Y35–Y36 (includes legal intervention and operations of war). Public safety reports assaults (X85–Y09) separately. These measures differ.'
+    if i.get('id')=='idade_media'and i.get('numerador_id')=='mob_idade_anos_soma':
+        i['nome']='Idade média estimada da frota registrada'
+        i['nome_en']='Estimated mean age of the registered fleet'
+        i['descricao']='Ano de referência menos ano de fabricação, ponderado pelos veículos com ano válido. A tabulação da Senatran por fabricação não traz licenciamento, condição efetiva de uso nem situação de baixa por registro; não permite separar veículos inativos/baixados ou medir apenas os que circulam. Veículos fora de uso com cadastro ainda existente podem elevar a idade. Não se afirma que veículos formalmente baixados estejam incluídos.'
+        i['descricao_en']='Reference year minus manufacturing year, weighted by vehicles with a valid year. The Senatran manufacturing-year table has no record-level licensing, actual-use or deregistration status; it cannot isolate inactive/deregistered vehicles or measure only vehicles in use. Unused vehicles with existing registrations can increase the age. This does not assert that formally deregistered vehicles are included.'
     if i.get('id','').startswith('vac_'):
         notas={'alerta':' Coberturas acima de 100% são valores observados, não limitados; numerador e população-alvo podem diferir por atualização cadastral, doses e mobilidade.','alerta_en':' Values above 100% are observed, not capped; doses and the target population can differ due to registration updates and mobility.'}
         for campo,nota in notas.items():i[campo]=i.get(campo,'').replace(nota,'').rstrip()+nota
@@ -154,7 +169,8 @@ def curar_mobilidade(c):
             i['nome']='Combustível: '+original.capitalize()
         if i.get('fonte')=='senatran':
             i['descricao_en']='Senatran/Renavam registered fleet; this is an administrative stock, not the fleet actually circulating. A registered vehicle may not be in use. Manufacturing-year ages are estimates, not an operational fleet survey.'
-            i['descricao']+=' Cadastro administrativo, não pesquisa da frota em circulação; um registro não comprova que o veículo esteja em uso. A idade usa o ano de fabricação.'
+            nota=' Cadastro administrativo, não pesquisa da frota em circulação; um registro não comprova que o veículo esteja em uso. A idade usa o ano de fabricação.'
+            i['descricao']=i['descricao'].replace(nota,'').rstrip()+nota
         elif i.get('fonte')=='sim':i['descricao_en']='Resident deaths, underlying ICD-10 cause V01–V89; includes land transport deaths outside public roads. The municipality is the place of residence, not necessarily the crash location.'
         else:i['descricao_en']='Reference resident population (SVS/IBGE). Missing values are preserved.'
     c['indicadores']=[curar_definicao(i)for i in c['indicadores']]

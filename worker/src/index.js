@@ -6,6 +6,7 @@
 import { rotaIa } from './ia.js';
 import { rotaDados } from './dados.js';
 import { cabecalhosSeguros, paginaSite } from './site.js';
+import { porConteudo, referenciaVersao, objetoVersao } from './versoes_dados.js';
 
 const PREFIXOS_PUBLICOS = /^(silver|gold)\//;
 
@@ -32,26 +33,27 @@ async function servirDados(request, env, url) {
   if (request.method !== 'GET' && request.method !== 'HEAD') {
     return new Response('Método não permitido', { status: 405, headers: { Allow: 'GET, HEAD' } });
   }
-  // /dados/v/<versão>/... só renova o cache do navegador; a chave no R2 é a mesma
-  const chave = decodeURIComponent(url.pathname.slice('/dados/'.length)).replace(/^v\/[0-9]+\//, '');
+  const caminho = decodeURIComponent(url.pathname.slice('/dados/'.length));
+  const versao = caminho.match(/^v\/([0-9]{8,40})\//)?.[1];
+  if (caminho.startsWith('v/') && !versao) return new Response('Edição inválida', {status:404,headers:{'Cache-Control':'no-store'}});
+  const chave = caminho.replace(/^v\/[0-9]+\//, '');
   if (!PREFIXOS_PUBLICOS.test(chave) || chave.includes('..')) {
     return new Response('Não encontrado', { status: 404 });
   }
+  const congelada = versao && !porConteudo(chave) ? await referenciaVersao(env.DADOS,versao,chave) : null;
+  if (versao && !porConteudo(chave) && !congelada) return new Response('Edição não disponível', {status:404,headers:{'Cache-Control':'no-store'}});
   const cabecalhos = new Headers({
     'Accept-Ranges': 'bytes',
     'Content-Type': tipo(chave),
-    // o site pede cada arquivo com /v/<data da atualização>/ no caminho, então pode ficar em cache por bastante tempo;
-    // o manifesto é sempre revalidado
-    // O prefixo /v/<data>/ não é um arquivo congelado: ainda aponta para a
-    // chave atual do R2. Cache de um ano só para nomes por conteúdo imutáveis.
-    'Cache-Control': chave.endsWith('manifesto.json') ? 'no-cache' : /_[a-f0-9]{16,64}\.(?:json(?:\.gz)?|ndjson|parquet|bin|csv(?:\.zip)?|dta|rds)$/.test(chave) ? 'public, max-age=31536000, immutable' : 'public, max-age=86400',
+    // Cache longo apenas para nomes por conteúdo ou edições com ETags congeladas.
+    'Cache-Control': congelada || porConteudo(chave) ? 'public, max-age=31536000, immutable' : chave.endsWith('manifesto.json') ? 'no-cache' : 'public, max-age=86400',
     // a resposta depende do Range pedido: sem isto o navegador reaproveita do disco um trecho (ex.: bytes 0-16383) guardado
     // para outro intervalo sobreposto e entrega bytes que não são os pedidos (rodapé do Parquet ilegível)
     Vary: 'Range',
   });
 
   if (request.method === 'HEAD') {
-    const objeto = await env.DADOS.head(chave);
+    const objeto = congelada ? await objetoVersao(env.DADOS,chave,congelada,request) : await env.DADOS.head(chave);
     if (!objeto) return new Response(null, { status: 404 });
     // o navegador descarta o Range no HEAD, mas o DuckDB-WASM só usa leitura parcial se o HEAD
     // responder 206 com o tamanho do arquivo; por isso o 206 fica, sem corpo e sem cache (no-store, abaixo)
@@ -60,13 +62,15 @@ async function servirDados(request, env, url) {
     cabecalhos.set('Cache-Control', 'no-store');
     cabecalhos.set('Content-Length', String(objeto.size));
     cabecalhos.set('Content-Range', `bytes 0-${objeto.size - 1}/${objeto.size}`);
-    cabecalhos.set('ETag', objeto.httpEtag);
+    cabecalhos.set('ETag', congelada?.etag ?? objeto.httpEtag);
     return new Response(null, { status: 206, headers: cabecalhos });
   }
 
-  const objeto = await env.DADOS.get(chave, { range: request.headers, onlyIf: request.headers });
+  if (congelada && request.headers.get('If-None-Match') === congelada.etag) return new Response(null,{status:304,headers:{...Object.fromEntries(cabecalhos),ETag:congelada.etag}});
+  if (congelada && request.headers.has('If-Match') && request.headers.get('If-Match') !== congelada.etag) return new Response(null,{status:412});
+  const objeto = congelada ? await objetoVersao(env.DADOS,chave,congelada,request) : await env.DADOS.get(chave, { range: request.headers, onlyIf: request.headers });
   if (!objeto) return new Response('Não encontrado', { status: 404 });
-  cabecalhos.set('ETag', objeto.httpEtag);
+  cabecalhos.set('ETag', congelada?.etag ?? objeto.httpEtag);
   if (!('body' in objeto)) return new Response(null, { status: 304, headers: cabecalhos });
 
   if (request.headers.has('Range') && objeto.range) {

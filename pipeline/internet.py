@@ -24,15 +24,16 @@ class QuadroMercado(Quadro):
  """Concentração agregada por CNPJ, nunca média das concentrações locais."""
  def grupo_territorio(self,key,pos,municipio=False,incluir_ressalvas=False):
   if municipio:return super().grupo(pos,True,incluir_ressalvas)
-  out=dict(v=[],n=[],d=[],c=[],q=[])
+  out=dict(v=[],n=[],d=[],c=[],q=[],e=[])
+  esperados=self.cobertura_esperada(pos,np.isfinite(self.valores[:,pos]))
   for k,y in enumerate(self.periodos):
    row=self.mercado.get((int(y),str(key)));q=int(np.isfinite(self.valores[k,pos]).sum())
    total=float(row.total)if row is not None else None
    n=(float(row.lider)if self.tipo=='lider'else float(row.quadrados))if row is not None and pd.notna(row.lider)else None
    d=total if self.tipo=='lider'else total**2 if total is not None else None
-   flag=2 if n is None or row.sem_cnpj>0 else 4 if not d else 16 if q<len(pos)else 1 if n==0 else 0
+   flag=2 if n is None or row.sem_cnpj>0 else 4 if not d else 16 if q<esperados[k]else 1 if n==0 else 0
    v=n/d*self.definicao['fator']if flag in [0,1,16]and d and row.sem_cnpj==0 else None
-   for field,val in [('v',v),('n',n),('d',d),('c',flag),('q',q)]:out[field].append(val)
+   for field,val in [('v',v),('n',n),('d',d),('c',flag),('q',q),('e',int(esperados[k]))]:out[field].append(val)
   return out
 
 def gerar(fontes,saida):

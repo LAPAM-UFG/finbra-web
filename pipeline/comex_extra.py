@@ -34,7 +34,7 @@ def gerar_extras(fontes,saida,db,g,grupos,ufs,anos,meta,classes,objeto):
    for col in KEYS:
     if col not in data:data[col]=np.repeat(ident.reindex(codes)[col].to_numpy(),n)
    for j,id in enumerate(MENSAL):data[id]=values[:,:,j].reshape(-1);data[id+'_cond']=conditions[:,:,j].reshape(-1)
-   frame=pd.DataFrame(data)[[*KEYS,'mes','periodo',*[c for id in MENSAL for c in [id,id+'_cond']]]];p=dest/('tmp_mensal_'+bucket+'.csv');frame.to_csv(p,index=False,sep=';',encoding='utf-8');p,ref=fechar(p,'mensal_'+bucket.lower());csvpaths[bucket]=p;csvrefs[bucket]={**ref,'linhas':len(frame),'variaveis':len(frame.columns),'formato':'csv','tipo':'mensal','uf':bucket,'area':'comex'}
+   frame=pd.DataFrame(data)[[*KEYS,'mes','periodo',*[c for id in MENSAL for c in [id,id+'_cond']]]];p=dest/('tmp_mensal_'+bucket+'.csv');frame.to_csv(p,index=False,sep=';',encoding='utf-8-sig');p,ref=fechar(p,'mensal_'+bucket.lower());csvpaths[bucket]=p;csvrefs[bucket]={**ref,'linhas':len(frame),'variaveis':len(frame.columns),'formato':'csv','tipo':'mensal','uf':bucket,'area':'comex'}
   records={}
   for table,field,label in [('produtos','sh4','produtos'),('paises','pais','paises')]:
    for key,y,flow,code,fob,kg in db.execute(f"SELECT grupo,ano,fluxo,{field},fob,kg FROM {table} JOIN lote_extra USING(grupo)WHERE modo='obs'ORDER BY grupo,ano,fluxo,fob DESC,{field}").fetchall():records.setdefault((key,y),{}).setdefault(flow,{}).setdefault(label,[]).append([code,int(fob),int(kg)])
@@ -69,5 +69,5 @@ def gerar_extras(fontes,saida,db,g,grupos,ufs,anos,meta,classes,objeto):
  dictionary += [dict(variavel='mes',descricao='Mês do registro, de 1 a 12.',unidade='mês'),dict(variavel='periodo',descricao='Ano e mês no formato numérico AAAAMM. No Stata, crie a data mensal com ym(ano,mes).',unidade='AAAAMM')]
  for id in MENSAL:
   dictionary.append(dict(variavel=id,descricao='Importações de bens.'if'_imp_'in id else'Exportações menos importações de bens.'if'_saldo_'in id else'Exportações de bens.',unidade='kg de peso líquido declarado'if id.endswith('_kg')else'US$ FOB correntes'));dictionary.append(dict(variavel=id+'_cond',descricao='0: registrado com valor diferente de zero; 1: zero ou sem registro de operações no arquivo, dentro da cobertura publicada. Meses futuros ou fora da cobertura não são gerados.',unidade='código'))
- temp=dest/'tmp_dicionario_mensal.csv';pd.DataFrame(dictionary).to_csv(temp,index=False,sep=';',encoding='utf-8');p,ref=fechar(temp,'dicionario_mensal');csvdict={**ref,'formato':'csv','tipo':'dicionario','linhas':len(dictionary),'variaveis':3,'area':'comex'}
+ temp=dest/'tmp_dicionario_mensal.csv';pd.DataFrame(dictionary).to_csv(temp,index=False,sep=';',encoding='utf-8-sig');p,ref=fechar(temp,'dicionario_mensal');csvdict={**ref,'formato':'csv','tipo':'dicionario','linhas':len(dictionary),'variaveis':3,'area':'comex'}
  return dict(mensais=dict(indices=series_indices,periodos=periodos,max_trecho_bytes=max_mensal),perfis=objeto('comex','perfis_catalogo',dict(versao=1,indices=perfis_indices,max_trecho_bytes=max_perfil)),classificacoes=objeto('comex','classificacoes',dict(versao=1,**classes),True),downloads_mensais=csvrefs,dicionario_mensal=csvdict)

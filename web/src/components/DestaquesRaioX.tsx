@@ -24,7 +24,7 @@ export function DestaquesRaioX({ m, c, g, r, rede, ressalvas, focar }: {
         const { i, k } = item, key = chaveRaio(i), ponto = refs.dados?.locais[key]??r.linhas[k];
         const trienio=refs.dados?.trienios[key];
         const trienioSemBase=refs.dados?.trieniosSemBase[key];
-        const a = apresentacaoDestaque(item, ponto, r.grupo, ressalvas);
+        const a = apresentacaoDestaque(item, ponto, r.grupo, ressalvas,g,r.esperados?.[item.k]);
         const populacao = i.catalogo === 'referencias' && i.id === 'rx_populacao';
         const unidadeComparavel = textoComparacao(i, 'unidade');
         const outraUnidade = a.unidade !== unidadeComparavel && !populacao && !i.binario;

@@ -16,6 +16,7 @@ from atualizacao_artefatos import Snapshot
 from downloads_enxuto import Enxuto, preparar_stata
 from downloads_navegacao import previa, referencia, registrar, pacote
 from painel_municipal import Painel, KEYS, qi, qs, sha
+from curadoria_catalogos import nome_tema
 
 
 def gerar(publicado, base, saida, catalogos, areas=('trabalho','gestao','assistencia','clima'), stata=None,rscript=None,caches=(),tabelas=None,chaves_extras=()):
@@ -93,9 +94,9 @@ def gerar(publicado, base, saida, catalogos, areas=('trabalho','gestao','assiste
         cols=[d['variavel'] for d in dictionary if d.get('arquivo_principal') and d['area']==area]
         if not cols:continue
         query='SELECT '+','.join(qi(k) for k in [*KEYS,*cols])+' FROM atualizado WHERE ('+' OR '.join(qi(k)+' IS NOT NULL' for k in cols)+')'
-        e.exportar('painel_'+area,query+' ORDER BY cod_ibge,ano','Base enxuta — '+area,area=area)
+        e.exportar('painel_'+area,query+' ORDER BY cod_ibge,ano','Base enxuta — '+nome_tema(area),area=area)
         for uf, in p.db.execute('SELECT DISTINCT uf FROM atualizado ORDER BY uf').fetchall():
-            e.exportar('painel_'+area+'_'+uf.lower(),query+' AND uf='+qs(uf)+' ORDER BY cod_ibge,ano',area+' — '+uf,area=area,uf=uf)
+            e.exportar('painel_'+area+'_'+uf.lower(),query+' AND uf='+qs(uf)+' ORDER BY cod_ibge,ano',nome_tema(area)+' — '+uf,area=area,uf=uf)
     if stata:e.processar_stata(Path(stata))
     for item in e.pending:
         parquet=next(a for a in e.p.files if a['id']==item['id'].removesuffix('_dta')+'_parquet')
@@ -160,6 +161,8 @@ def gerar(publicado, base, saida, catalogos, areas=('trabalho','gestao','assiste
     for a in updated_files:
         key=(a['tipo'],a['area'],a['uf'])
         if key in previews:a['previa']=previews[key]
+        if a.get('area'):
+            a['nome_en']=a['nome'].replace(nome_tema(a['area']),nome_tema(a['area'],True)).replace('Base enxuta','Core panel')
     replace={a['id']:a for a in updated_files if not (a['tipo']=='area' and a['uf'])}
     m['arquivos']=[replace.pop(a['id'],a) for a in old['arquivos']];m['arquivos']+=list(replace.values())
     for uf,ref in old['recortes_uf'].items():

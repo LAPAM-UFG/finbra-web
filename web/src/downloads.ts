@@ -4,6 +4,18 @@
  * caminho sob gold/downloads/, sem "..", sem esquema, sem barra invertida e com sha256 válido.
  */
 import {redeEducacaoValida,type RedeEducacao} from './educacao_rede.ts';
+import rotulos from '../../shared/rotulos_publicos.json' with {type:'json'};
+
+/** O mesmo nome público em cartões, aria-labels e manifestos gerados. */
+export function nomeArquivoDownload(a: Pick<ArquivoDl,'area'|'nome'|'nome_en'>, ingles=false) {
+  const bruto=ingles&&a.nome_en?a.nome_en:a.nome;
+  const nome=ingles?bruto.replace(/^Base enxuta/,'Core panel'):bruto;
+  const temas:Record<string,string[]>=rotulos.temas;
+  const tema=a.area?temas[a.area]:undefined;
+  if(!tema||!a.area)return nome;
+  const conhecidos=[a.area,...tema].map(x=>x.toLocaleLowerCase());
+  return nome.split(' — ').map(parte=>conhecidos.includes(parte.toLocaleLowerCase())?tema[ingles?1:0]:parte).join(' — ');
+}
 export const TIPOS = ['painel', 'area', 'detalhado', 'dicionario', 'pacote', 'metodologia'] as const;
 export const FORMATOS = ['dta', 'rds', 'csv.zip', 'parquet', 'xlsx', 'zip', 'json', 'txt', 'do'] as const;
 export type Tipo = (typeof TIPOS)[number];

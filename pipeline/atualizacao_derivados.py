@@ -130,7 +130,7 @@ def mapas(publicado,base,trabalho,saida,caches=()):
     return audit
 
 
-def comparacoes(publicado,base,trabalho,saida,caches=()):
+def comparacoes(publicado,base,trabalho,saida,caches=(),forcar=False):
     from comparacoes_fontes import Fontes
     from comparacoes import Comparacoes
     from comparacoes_base import compacto
@@ -142,7 +142,7 @@ def comparacoes(publicado,base,trabalho,saida,caches=()):
     subprocess.run(['node',str(bundle/'catalogo_mapas.js'),str(rev/'global_base.json'),str(rev/'saude_catalogo_origem.json')],cwd=repo/'web',check=True)
     writer=Comparacoes(rev,saida,Path(__file__).resolve().parent.parent)
     for area in ['trabalho','saude','educacao','saneamento']:
-        if area in ['trabalho','saude'] or sha(base/f'gold/mapas/{area}_manifesto.json')!=sha(publicado/f'gold/mapas/{area}_manifesto.json'):
+        if forcar or area in ['trabalho','saude'] or sha(base/f'gold/mapas/{area}_manifesto.json')!=sha(publicado/f'gold/mapas/{area}_manifesto.json'):
             if area=='educacao':
                 writer.mapa(area)
                 for rede in ['publica','municipal','estadual','federal','privada']:writer.mapa(area,rede)

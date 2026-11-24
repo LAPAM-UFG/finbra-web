@@ -171,9 +171,13 @@ export function baixarArquivo(nome: string, conteudo: BlobPart, tipo: string) {
   setTimeout(() => URL.revokeObjectURL(u), 1000);
 }
 
-export function nomeArquivo(base: string) {
+export function dataLocal(agora = new Date()) {
+  return `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}-${String(agora.getDate()).padStart(2, '0')}`;
+}
+
+export function nomeArquivo(base: string, agora = new Date()) {
   const limpo = base.normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_|_$/g, '').toLowerCase();
-  return `${limpo || 'consulta'}_${new Date().toISOString().slice(0, 10)}`;
+  return `${limpo || 'consulta'}_${dataLocal(agora)}`;
 }
 
 export function exportar(base: string, formato: 'csv' | 'xlsx', tabela: Tabela, decimal: string) {

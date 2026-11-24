@@ -228,15 +228,17 @@ def gerar(fontes, destino, edicao=None):
             ter=geo['territorios'][grupo];bucket=ter['uf'] if ter['nivel']=='M' else 'referencias'
             if bucket not in handles:
                 handles[bucket]=stack.enter_context((saida/f'temporario_{bucket}.ndjson').open('wb'));index[bucket]={}
-            rows=[]
+            rows=[];esperados=[]
             for key,cat in cats.items():
                 group=('E:BR' if grupo=='BR' else governos.get(grupo)) if key=='gestao_estadic' else grupo
                 if not group or group not in cat['quantidades']:
-                    rows.extend([None]*len(cat['indicadores']));continue
+                    rows.extend([None]*len(cat['indicadores']));esperados.extend([None]*len(cat['indicadores']));continue
                 idx=indices[key][bucket if key!='gestao_estadic' else 'referencias']
                 off,size,h=idx['grupos'][group];f=files[key];f.seek(off);body=f.read(size);assert sha(body)==h
                 data=json.loads(body);assert data['grupo']==group and data['indicadores']==[i['id'] for i in cat['indicadores']]
-                rows.extend(retrato(i,s,ter['nivel']!='M' and key!='gestao_estadic') for i,s in zip(cat['indicadores'],data['dados']))
+                for i,s in zip(cat['indicadores'],data['dados']):
+                    p=retrato(i,s,ter['nivel']!='M' and key!='gestao_estadic');rows.append(p)
+                    esperados.append(s['e'][i['periodos'].index(p[0])]if p and'e'in s else None)
             off,size,h=extras_idx[grupo];economic.seek(off);body=economic.read(size);assert sha(body)==h
             es=json.loads(body);assert es['grupo']==grupo
             rows.extend(retrato(i,s) for i,s in zip(extra,extras_series(es['linhas'])))
@@ -273,7 +275,8 @@ def gerar(fontes, destino, edicao=None):
                     yy=[ne['anos'].index(y)for y in i['periodos']];vals=[ne['valores'][k][j]for k in yy];flags=[ne['condicoes'][k][j]for k in yy]
                     series=dict(v=vals,n=[None]*len(vals),d=[None]*len(vals),r=vals,c=flags,q=[int(v is not None)for v in vals]);rows.append(retrato(i,series))
             assert len(rows)==len(defs)
-            body=compacto(dict(versao=1,grupo=grupo,linhas=rows,referencias={str(a[0]):[a[10],a[8],a[9]] for a in es['linhas']}))+b'\n';f=handles[bucket]
+            esperados.extend([None]*(len(rows)-len(esperados)))
+            body=compacto(dict(versao=1,grupo=grupo,linhas=rows,**({'esperados':esperados}if ter['nivel']!='M'else{}),referencias={str(a[0]):[a[10],a[8],a[9]] for a in es['linhas']}))+b'\n';f=handles[bucket]
             index[bucket][grupo]=[f.tell(),len(body),sha(body)];f.write(body)
             max_trecho=max(max_trecho,len(body));validos+=sum(r is not None and r[1] is not None for r in rows);contagem+=1
             if contagem%500==0:print(json.dumps(dict(territorios=contagem,total=len(todos))),flush=True)

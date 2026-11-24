@@ -26,6 +26,7 @@ from boto3.s3.transfer import TransferConfig
 from botocore.config import Config
 
 from config import DATA, ROOT
+from versoes_dados import arquivar,publicar_indice
 
 CAMADAS = ("bronze", "silver", "gold")
 TRANSFERENCIA = TransferConfig(multipart_threshold=64 * 1024**2, multipart_chunksize=64 * 1024**2)
@@ -86,6 +87,12 @@ def enviar(s3, bucket, camadas, limpar=False, ignorar=(), raiz=DATA):
     # caminhos que não sobem (ex.: dados ainda incompletos): padrões como silver/lrf/* ou gold/lrf.parquet
     locais = [p for p in locais if not any(fnmatch(p.relative_to(raiz).as_posix(), g) for g in ignorar)]
     existentes = {k: v for c in camadas for k, v in remotos(s3, bucket, f"{c}/").items()}
+    if 'gold/manifesto.json'in existentes:
+        import json
+        from publicacao_lote import inventario
+        antigo=s3.get_object(Bucket=bucket,Key='gold/manifesto.json',IfMatch=existentes['gold/manifesto.json']['ETag'])
+        try:publicar_indice(s3,bucket,json.loads(antigo['Body'].read()),inventario(s3,bucket))
+        finally:antigo['Body'].close()
 
     def um(caminho):
         chave = caminho.relative_to(raiz).as_posix()
@@ -98,15 +105,22 @@ def enviar(s3, bucket, camadas, limpar=False, ignorar=(), raiz=DATA):
         extras = {"Metadata": {"md5": soma}}
         if chave.startswith("gold/comparacoes/"):
             extras["CacheControl"] = "no-cache" if chave == "gold/comparacoes/manifesto.json" else "public, max-age=31536000, immutable"
+        if chave in existentes:arquivar(s3,bucket,chave,existentes[chave]['ETag'])
+        if chave=='gold/manifesto.json':
+            import json
+            from publicacao_lote import inventario
+            previsto=inventario(s3,bucket);previsto[chave]=dict(bytes=caminho.stat().st_size,etag='"'+soma+'"')
+            publicar_indice(s3,bucket,json.loads(caminho.read_bytes()),previsto)
         s3.upload_file(str(caminho), bucket, chave, Config=TRANSFERENCIA, ExtraArgs=extras)
         return "enviado", chave, caminho.stat().st_size
 
     # os .json (manifesto, índice dos microdados) apontam para os outros arquivos: sobem depois deles
     with ThreadPoolExecutor(max_workers=6) as pool:
         resultados = list(pool.map(um, [p for p in locais if p.suffix != ".json"]))
-        resultados += list(pool.map(um, [p for p in locais if p.suffix == ".json" and p.relative_to(raiz).as_posix() != "gold/comparacoes/manifesto.json"]))
+        resultados += list(pool.map(um, [p for p in locais if p.suffix == ".json" and p.relative_to(raiz).as_posix() not in ["gold/comparacoes/manifesto.json","gold/manifesto.json"]]))
     # O ponteiro das comparações só pode aparecer depois de todos os seus índices.
     resultados += [um(p) for p in locais if p.relative_to(raiz).as_posix() == "gold/comparacoes/manifesto.json"]
+    resultados += [um(p) for p in locais if p.relative_to(raiz).as_posix() == "gold/manifesto.json"]
     enviados = [r for r in resultados if r[0] == "enviado"]
     for _, chave, tamanho in enviados:
         print(f"  enviado  {chave}  ({tamanho / 1e6:.1f} MB)")
@@ -114,7 +128,7 @@ def enviar(s3, bucket, camadas, limpar=False, ignorar=(), raiz=DATA):
           f"({sum(r[2] for r in enviados) / 1e6:.1f} MB transferidos)")
     if limpar:
         locais_chaves = {c.relative_to(raiz).as_posix() for c in locais}
-        sobrando = [k for k in existentes if k not in locais_chaves]
+        sobrando = [k for k in existentes if k not in locais_chaves and not k.startswith('gold/versoes/')]
         for i in range(0, len(sobrando), 1000):
             s3.delete_objects(Bucket=bucket, Delete={"Objects": [{"Key": k} for k in sobrando[i:i + 1000]]})
         for k in sobrando:

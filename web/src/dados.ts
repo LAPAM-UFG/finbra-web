@@ -460,7 +460,10 @@ const rotas: Record<string, (q: Params) => Promise<unknown>> = {
       const ok = elegivel(c, 'i', trat, individual);
       colunas.push(`sum(i.${c}) FILTER (${ok}) AS ${c}`);
       if (!NAO_MONETARIOS.has(c)) colunas.push(`sum(i.${c} * b.indice / ip.indice) FILTER (${ok}) AS ${c}_real`);
-      colunas.push(`sum(i.populacao) FILTER (${ok} AND i.populacao > 0)::DOUBLE AS populacao_${c}`);
+      // PIB usa a população IBGE correspondente à sua edição (em 2023, Censo
+      // 2022), e não a população fiscal declarada na DCA.
+      const populacao = c === 'pib' ? 'populacao_ibge' : 'populacao';
+      colunas.push(`sum(i.${populacao}) FILTER (${ok} AND i.${populacao} > 0)::DOUBLE AS populacao_${c}`);
       colunas.push(`count(*) FILTER (${ok})::INTEGER AS entes_${c}`);
     }
     for (const par of String(q.pares ?? '').split(',').filter(Boolean)) {

@@ -11,14 +11,14 @@ export const COD_DF = 53;
 
 /**
  * Fernando de Noronha: distrito estadual de Pernambuco, sem declaração fiscal própria (não está em entes/indicadores/lrf), mas com dados no
- * FNS (fns_municipios, cod_ibge 2605459), como já documentado em ia_territorio.ts (NORONHA, consultaSoFns). Só o cadastro EFETIVO da área
- * /datasus o inclui (cadastroEfetivoSaude); o cadastro publicado, as rotas saude_entes/entes e as outras áreas não mudam. A esfera 'M' é só
+ * FNS e na RAIS (cod_ibge 2605459). O cadastro efetivo de /datasus e /trabalho o inclui; o cadastro fiscal e as outras áreas não mudam. A esfera 'M' é só
  * para a compatibilidade com essas fontes (as páginas pedem municípios por esfera 'M'); na interface ele nunca é "município" (tipoDeEnte).
  */
 export const COD_NORONHA = 2605459;
 export const ENTE_NORONHA = { cod_ibge: COD_NORONHA, nome: 'Fernando de Noronha', uf: 'PE', esfera: 'M' as const, capital: false };
+export const incluiDistritoCadastro=(caminho:string)=>['/datasus','/trabalho'].some(area=>caminho===area||caminho.startsWith(area+'/'));
 
-/** Cadastro da área de saúde: o publicado mais Noronha (sem duplicar se um dia vier no cadastro e sem alterar a lista recebida). */
+/** Complementa o cadastro nas fontes com dados do distrito, sem duplicar nem alterar a lista recebida. */
 export function cadastroEfetivoSaude<E extends { cod_ibge: number }>(entes: readonly E[], noronha: E): E[] {
   return entes.some((e) => e.cod_ibge === COD_NORONHA) ? [...entes] : [...entes, noronha];
 }

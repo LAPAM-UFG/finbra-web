@@ -41,8 +41,8 @@ test('HEAD: 206 só de metadados com o tamanho, o Content-Range do arquivo intei
   assert.equal(r.headers.get('Vary'), 'Range');
   assert.equal((await bytes(r)).length, 0);
   assert.equal((await pedir('/dados/gold/munic/inexistente.parquet', { method: 'HEAD' })).status, 404);
-  // o prefixo de versão no caminho (renovação do cache do navegador) acha o mesmo arquivo
-  assert.equal((await pedir(`/dados/v/20261112123456/${CHAVE}`, { method: 'HEAD' })).headers.get('Content-Range'), 'bytes 0-999/1000');
+  // Uma edição inexistente não pode servir a edição atual com cache imutável.
+  assert.equal((await pedir(`/dados/v/20261112123456/${CHAVE}`, { method: 'HEAD' })).status, 404);
 });
 
 test('GET com Range: 206 com os bytes pedidos, Content-Range e Content-Length do trecho, ETag e cache público', async () => {

@@ -1,10 +1,13 @@
 /** Resumos prontos: índices pequenos por UF e trechos gzip com hash, sem motor SQL. */
 import { USAR_MOTOR } from './clima_abertura';
-import { BASE_DADOS, obterManifesto, type ManifestoBruto } from './manifesto';
+import { BASE_DADOS, obterManifesto, versaoDoManifesto, type ManifestoBruto } from './manifesto';
 import { CURADORIA } from './munic_curadoria';
 import { COD_UF, edicoesCuradas, lerEscolhas, paresPedidos, selecionar } from './munic_painel';
 import { disponibilidadePerfis, escopoDoPerfil } from './trabalho_perfis';
 import type { Params } from './api';
+import { avisarEtapa } from './consulta_estado';
+import { t } from './idioma';
+let etapaRemuneracao=-1;
 
 type Ref={caminho:string;bytes:number;sha256:string;gzip?:boolean};
 type Tabela={colunas:string[];linhas:unknown[][]};
@@ -13,11 +16,12 @@ type Indices=Record<string,Ref>;
 type Indice={versao:1;arquivo:Ref;grupos:Record<string,[number,number,string]>};
 type Bloco={compatibilidade:unknown};
 type Raiz={versao:1;catalogo:Bloco&{arquivo:Ref};
+ remuneracao?:Bloco&{anos:Record<string,Indices>;fatores:Record<string,number>;base_ipca:number;modelos_sql?:Record<string,string>};
  trabalho:Bloco&{historico:Indices;anos:Record<string,Indices>};
  gestao:Bloco&{curadoria_sha256:string;territorios:Ref;respostas:Indices;agregados:Indices};
  fiscal:Bloco&{campos:string[];pares?:string[];pacotes:Indices}};
 type Dep={manifesto:()=>Promise<ManifestoBruto>;base:string;buscar:typeof fetch};
-const ROTAS=new Set(['entes','trab_serie','trab_caged','trab_setores','trab_perfis','munic_territorios','munic_painel','agregado','cobertura']);
+const ROTAS=new Set(['entes','trab_remuneracao','trab_serie','trab_caged','trab_setores','trab_perfis','munic_territorios','munic_painel','agregado','cobertura']);
 const UFS=new Set(Object.keys(COD_UF));
 const UF_COD=new Map(Object.entries(COD_UF).map(([uf,cod])=>[String(cod),uf]));
 const canonico=(x:unknown):unknown=>Array.isArray(x)?x.map(canonico):x&&typeof x==='object'?Object.fromEntries(Object.keys(x).sort().map(k=>[k,canonico((x as Record<string,unknown>)[k])])):x;
@@ -91,10 +95,33 @@ export function criarAberturaPaineis(dep:Dep){
  }
  async function executar(c:string,q:Params={}):Promise<unknown>{
   if(!ROTAS.has(c))return USAR_MOTOR;
+  const etapa=c==='trab_remuneracao'?etapaRemuneracao--:null;
+  if(etapa!==null)avisarEtapa(etapa,t('Conferindo as estatísticas prontas da RAIS…','Checking prepared RAIS statistics…'));
   try {
    const [r,m]=await Promise.all([obter(),dep.manifesto()]);if(!r)return USAR_MOTOR;
    if(c==='entes'){const cat=await cadastro(r,m);return cat.entes.map(([cod_ibge,nome,uf,esfera,capital])=>({cod_ibge,nome,uf,esfera,capital}));}
    if(c.startsWith('munic_'))return await gestao(r,m,c,q);
+   if(c==='trab_remuneracao') {
+    const a=r.remuneracao,ano=int(q.ano),dim=String(q.agrupar??'sexo');
+    const permitidos=new Set(['ente','uf','ano','situacao','agrupar','limite']);
+    if(!a||!ano||!['sexo','raca_cor','escolaridade','faixa_idade'].includes(dim)||q.situacao!=='ativos'||Object.entries(q).some(([k,v])=>v!==''&&v!==null&&v!==undefined&&!permitidos.has(k))||!igual(a.compatibilidade,compat(m,['rais_micro'],true)))return USAR_MOTOR;
+    const ente=int(q.ente),uf=UFS.has(String(q.uf))?String(q.uf):null;
+    if(!ente&&!uf)return USAR_MOTOR;
+    const g=ente?'ente:'+String(ente===53?5300108:ente):'uf:'+uf;
+    if(etapa!==null)avisarEtapa(etapa,t('Lendo somente as estatísticas deste território…','Reading only this territory’s statistics…'));
+    const raw=await parte(a.anos[String(ano)],g);
+    const p=raw as unknown as {ano:number;dimensoes:Record<string,Linha[]>}|null;
+    if(!p||p.ano!==ano||!p.dimensoes)return USAR_MOTOR;
+    const linhas=p.dimensoes[dim];
+    if(!Array.isArray(linhas))return USAR_MOTOR;
+    if(etapa!==null)avisarEtapa(etapa,t('Conferindo médias, medianas e percentis…','Checking means, medians and percentiles…'));
+    const codigo=ente?(ente===53?5300108:ente):null;
+    const codUf=codigo?Math.floor(codigo/100000):COD_UF[uf!];
+    const arquivo=dep.base+'v/'+versaoDoManifesto(m)+'1/'+`silver/trabalho/micro/rais_vinculos/ano=${ano}/uf=${codUf}.parquet`;
+    const sql=a.modelos_sql?.[dim]?.replace('{arquivo}',arquivo.replace(/'/g,"''")).replace('{recorte}',codigo?`AND municipio=${Math.floor(codigo/10)}`:'');
+    const limite=Math.min(Math.max(int(q.limite)??3000,1),200000);
+    return {fonte:'micro',linhas:linhas.slice(0,limite).map(r=>({...r,grupos_total:linhas.length})),ano,base_ipca:a.base_ipca,fator_real:a.fatores[String(ano)]??null,preparado:true,sql};
+   }
    if(c.startsWith('trab_')){
     const a=r.trabalho;if(!igual(a?.compatibilidade,compat(m,['rais','caged','rais_perfis'],true)))return USAR_MOTOR;
     if(Object.keys(q).some(k=>!['ente','uf','ano'].includes(k)))return USAR_MOTOR;
@@ -120,7 +147,7 @@ export function criarAberturaPaineis(dep:Dep){
    const campos=String(q.campos??'').split(',').filter(Boolean);if(!campos.length||campos.some(c=>!a.campos.includes(c)))return USAR_MOTOR;
     const nomes=['exercicio',...campos.flatMap(c=>[c,c+'_real','populacao_'+c,'entes_'+c]),...pares.flatMap(p=>{const[a,b]=p.split('/');return['num','den','entes'].map(s=>`${a}__${b}_${s}`)}),'populacao','entes'];
    return linhas(p.agregado).filter(x=>!ano||Number(x.exercicio)===ano).map(x=>Object.fromEntries(nomes.map(n=>{if(!(n in x))throw new Error('Coluna ausente');return [n,x[n]];})));
-  } catch {return USAR_MOTOR;}
+  } catch {return USAR_MOTOR;} finally {if(etapa!==null)avisarEtapa(etapa,null);}
  }
  return {executar};
 }

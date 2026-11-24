@@ -78,6 +78,7 @@ class Quadro:
     # (ex.: vínculos sem remuneração válida permanecem no denominador da RAIS).
     elegiveis: np.ndarray | None = None
     validacao_extra: np.ndarray | None = None
+    inicios: np.ndarray | None = None
 
     def validar(self, nmunicipios):
         shape = (len(self.periodos), nmunicipios)
@@ -112,6 +113,12 @@ class Quadro:
     def grupo_territorio(self, key, pos, municipio=False, incluir_ressalvas=False):
         """Permite distinguir um agregado oficial de regiões com os mesmos membros."""
         return self.grupo(pos, municipio, incluir_ressalvas)
+
+    def cobertura_esperada(self, pos, observados):
+        anos=np.array([p//100 if p>10000 else p for p in self.periodos])[:,None]
+        exigiveis=np.ones_like(observados,dtype=bool) if self.inicios is None else anos>=self.inicios[pos][None,:]
+        # Observações reconstruídas para limites atuais continuam elegíveis.
+        return (exigiveis|observados).sum(axis=1)
 
     def grupo(self, pos, municipio=False, incluir_ressalvas=False):
         v = self.valores[:, pos]
@@ -163,9 +170,12 @@ class Quadro:
             )
             nn = np.full(len(vv), np.nan)
             dd = np.full(len(vv), np.nan)
+        # O cadastro atual inclui municípios instalados depois de parte da série.
+        # Não exigir resposta de um município ainda não instalado naquele ano.
+        esperados=self.cobertura_esperada(pos,ok)
         q = ok.sum(axis=1)
         cc = np.where(
-            ~np.isfinite(vv), 2, np.where(q < len(pos), 16, np.where(vv == 0, 1, 0))
+            ~np.isfinite(vv), 2, np.where(q < esperados, 16, np.where(vv == 0, 1, 0))
         )
         if self.validacao_extra is not None:
             cc[(q > 0) & (dd == 0)] = 14
@@ -174,13 +184,19 @@ class Quadro:
             inesperadas = (c == 17).any(axis=1)
             vv[inesperadas] = np.nan
             cc[inesperadas] = 17
-        return dict(
+        resultado = dict(
             v=numeros(vv),
             n=numeros(nn),
             d=numeros(dd),
             c=cc.astype(int).tolist(),
             q=q.astype(int).tolist(),
+            e=esperados.astype(int).tolist(),
         )
+        if self.definicao.get('agregacao_original')=='soma'and self.originais is not None:
+            origem=self.originais[:,pos];validas=np.isfinite(origem)&(incluir_ressalvas|sem_ressalva)
+            total=np.where(validas,origem,0).sum(axis=1);total[~validas.any(axis=1)]=np.nan
+            resultado['r']=numeros(total)
+        return resultado
 
 
 def por_base(
@@ -222,6 +238,8 @@ class Territorios:
             and len({x[0] for x in self.municipios}) == 5571
         )
         self.pos = {x[0]: k for k, x in enumerate(self.municipios)}
+        vigencia=json.loads((Path(__file__).resolve().parents[1]/'shared/vigencia_municipios.json').read_bytes())['inicio']
+        self.inicios=np.array([vigencia.get(str(m[0]),1900)for m in self.municipios])
         self.grupos = {}
         self.territorios = {}
         self.buckets = {}
@@ -336,6 +354,8 @@ class Gravador:
     def area(self, area, quadros, origem, rede="todas", grupos=None, dimensao=None):
         from curadoria_catalogos import curar_definicao
         for q in quadros:q.definicao=curar_definicao(q.definicao)
+        for q in quadros:
+            if q.valores.shape[1]==len(self.geo.municipios):q.inicios=getattr(self.geo,'inicios',None)
         for q in quadros:
             q.validar(dimensao or len(self.geo.municipios))
         prefixo = area + "_" + rede

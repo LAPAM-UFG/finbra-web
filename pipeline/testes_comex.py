@@ -27,6 +27,8 @@ class ComexTest(unittest.TestCase):
   x={x['id']:x for x in d};self.assertIn('dezembro',x['cex_exp_fob']['notas_anos']['2025'][0]);self.assertIn('outubro',x['cex_exp_fob_c']['notas_anos']['2025'][0]);self.assertNotIn(2013,x['cex_exp_var_pct']['anos']);self.assertTrue(all(len(v+'_cond')<=32 for v in x))
  def test_referencia_identifica_cobertura_municipal_incompleta(self):
   q=QuadroComex.__new__(QuadroComex);q.periodos=[2026];q.base=pd.DataFrame({'valor':[50.],'cex_populacao':[20.]},index=pd.MultiIndex.from_tuples([('BR',2026)]));q.ncol='valor';q.dcol='cex_populacao';q.power=1;q.pop=np.array([[10.,10.]]);q.cobertos=np.array([True,False]);q.definicao={'fator':1}
+  q.valores=np.array([[5.,np.nan]])
   r=q.grupo_territorio('BR',[0,1]);self.assertEqual(r['v'],[2.5]);self.assertEqual(r['q'],[1]);self.assertEqual(r['c'],[16])
+  q.inicios=np.array([1900,2027]);r=q.grupo_territorio('BR',[0,1]);self.assertEqual(r['e'],[1]);self.assertEqual(r['c'],[0])
 
 if __name__=='__main__':unittest.main()

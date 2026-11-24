@@ -76,6 +76,7 @@ export type SerieComparacao = {
   d: (number | null)[];
   c: number[];
   q: number[];
+  e?: number[];
   r?: (number | null)[];
   com_ressalvas?: SerieComparacao;
 };
@@ -494,6 +495,8 @@ export function validarSerieComparacao(
     s.q.some((q) => !Number.isInteger(q) || q < 0 || q > quantidade)
   )
     throw new Error("Condições ou cobertura incompletas.");
+  if(s.e!==undefined&&(!Array.isArray(s.e)||s.e.length!==tamanho||s.e.some((e,k)=>!Number.isSafeInteger(e)||e<0||e>quantidade||e<s.q[k])))
+    throw new Error("Quantidade esperada de territórios inválida.");
   if (
     s.v.some(
       (v, k) =>

@@ -60,6 +60,15 @@ def compatibilidade(m, fontes, ipca=False):
     return d
 
 
+def manter_remuneracao(bloco,m):
+    """Atualizações de outro tema não apagam estatísticas ainda compatíveis."""
+    import copy
+    if not bloco:return None
+    antiga=bloco.get('compatibilidade',{});nova=compatibilidade(m,['rais_micro'],True)
+    if any(antiga.get(k)!=nova.get(k)for k in ['fontes','base_ipca','ipca']):return None
+    return {**copy.deepcopy(bloco),'compatibilidade':nova}
+
+
 class Escritor:
     def __init__(self,saida):
         self.pasta=saida/'gold/abertura'
@@ -216,7 +225,7 @@ def fiscal(con,m,e):
                 ok+=f" AND i.{total}>0 AND NOT EXISTS (SELECT 1 FROM alertas a WHERE a.exclui AND a.exercicio=i.exercicio AND a.cod_ibge=i.cod_ibge AND a.dominio='{dominio}')"
             col += [f'sum(i.{campo}) FILTER ({ok}) AS {campo}',
                     f'sum(i.{campo}*b.indice/ip.indice) FILTER ({ok}) AS {campo}_real',
-                    f'sum(i.populacao) FILTER ({ok} AND i.populacao>0)::DOUBLE AS populacao_{campo}',
+                    f'sum(i.{"populacao_ibge" if campo=="pib" else "populacao"}) FILTER ({ok} AND i.{"populacao_ibge" if campo=="pib" else "populacao"}>0)::DOUBLE AS populacao_{campo}',
                     f'count(*) FILTER ({ok})::INTEGER AS entes_{campo}']
         for a,b in PARES_FISCAIS:
             ok=f'i.{a} IS NOT NULL AND i.{b} IS NOT NULL'
@@ -281,6 +290,10 @@ def gerar(base,saida,curadoria=CURADORIA):
         pacote=gestao(cx,m,e,cur)
         if pacote: root['gestao']=pacote
     root['fiscal']=fiscal(cx,m,e)
+    anterior=base/'gold/abertura/manifesto.json'
+    if anterior.exists():
+        bloco=manter_remuneracao(json.loads(anterior.read_bytes()).get('remuneracao'),m)
+        if bloco:root['remuneracao']=bloco
     (e.pasta/'manifesto.json').write_bytes(serializar(root))
     auditoria={'versao':1,'base_manifesto_sha256':sha((base/'gold/manifesto.json').read_bytes()),
         'manifesto_sha256':sha(serializar(root)),'objetos':e.objetos,'bytes':sum(r['bytes'] for r in e.objetos)}

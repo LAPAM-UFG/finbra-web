@@ -192,6 +192,7 @@ class Comparacoes:
             numerador_nome=i["nome"],
             numerador_nome_en=i["nome_en"],
             ranking=True,
+            agregacao_original='soma',
         )
         return por_base(d, periodos, v, c, p, fator=fator, base_anos=anos)
 

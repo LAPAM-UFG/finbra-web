@@ -38,7 +38,7 @@ export function buscar<T>(caminho: string, params: Params = {}): Promise<T> {
     // motor (pacotes de abertura); se não houver pacote ou falhar, o motor responde
     const p = (async () => {
       let r:unknown=USAR_MOTOR;
-      if (['entes','trab_serie','trab_caged','trab_setores','trab_perfis','munic_territorios','munic_painel','agregado','cobertura'].includes(caminho))
+      if (['entes','trab_remuneracao','trab_serie','trab_caged','trab_setores','trab_perfis','munic_territorios','munic_painel','agregado','cobertura'].includes(caminho))
         r=await import('./abertura_paineis').then(m=>m.executarAberturaPaineis(caminho,params));
       if (r===USAR_MOTOR && caminho.startsWith('educacao_fin_')) {
         const m=await import('./educacao_financeira');
@@ -49,7 +49,7 @@ export function buscar<T>(caminho: string, params: Params = {}): Promise<T> {
         r=await import('./aberturas_iniciais').then(m=>m.executarInicialClima(caminho,params));
       if (r===USAR_MOTOR && ['meta','colunas','entes','saude_meta','saude_entes','saude_colunas','saude_serie','saude_siops'].includes(caminho))
         r=await import('./aberturas_iniciais').then(m=>m.executarInicialSaude(caminho,params));
-      return r===USAR_MOTOR?import('./dados').then(m=>m.executar(caminho,params)):r;
+      return r===USAR_MOTOR?import('./dados').then(m=>m.executar(caminho==='trab_remuneracao'?'trab_consulta':caminho,params)):r;
     })();
     p.catch(() => cache.delete(u));
     cache.set(u, p);

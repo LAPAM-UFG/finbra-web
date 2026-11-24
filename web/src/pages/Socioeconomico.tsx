@@ -98,7 +98,8 @@ export function Socioeconomico() {
       <h3 className="secao">{t(`Indicadores de ${anoPib}`, `Indicators for ${anoPib}`)}</h3>
       <div className="kpis">
         <Kpi rotulo={`${t('PIB', 'GDP')} ${anoPib}`} valor={temPib ? reais(num(a?.pib)) : indisponivel} nota={t('R$ correntes', 'current R$')} />
-        <Kpi rotulo={`${t('PIB per capita', 'GDP per capita')} ${anoPib}`} valor={temPib ? reaisExato(pibPc(a)) : indisponivel} />
+        <Kpi rotulo={`${t('PIB per capita', 'GDP per capita')} ${anoPib}`} valor={temPib ? reaisExato(pibPc(a)) : indisponivel}
+          nota={temPib ? t(`População usada: ${numero(num(a?.populacao_pib))} · IBGE, mesma base demográfica do PIB`, `Population used: ${numero(num(a?.populacao_pib))} · IBGE, the GDP demographic reference`) : undefined} />
         <Kpi rotulo={`${t('Receita bruta ÷ PIB', 'Gross revenue ÷ GDP')} ${anoPib}`} valor={temPib ? pct(receitaPib(a)) : indisponivel}
           nota={f.alvo || !temPib ? undefined : `${numero(num(a?.receita_bruta__pib_entes))} ${t('municípios com os dois valores', 'municipalities with both values')}`} />
         <Kpi rotulo={`${t('Impostos, taxas e contrib. de melhoria ÷ PIB', 'Taxes, fees and betterment levies ÷ GDP')} ${anoPib}`}
@@ -110,9 +111,10 @@ export function Socioeconomico() {
         <>
           <h3 className="secao">{t(`Série completa: ${anos[0]}–${anos.at(-1)}`, `Full series: ${anos[0]}–${anos.at(-1)}`)}</h3>
           <div className="grade-2">
-            <CartaoGrafico titulo={t('PIB per capita', 'GDP per capita')} desc={t('R$ correntes; anos sem PIB ficam em branco', 'current R$; years without GDP are left blank')}
+            <CartaoGrafico titulo={t('PIB per capita', 'GDP per capita')} desc={t('R$ correntes; população IBGE da edição do PIB (em 2023, Censo 2022). Anos sem PIB ficam em branco.', 'Current R$; IBGE population from the GDP edition (2022 Census for 2023). Years without GDP are left blank.')}
               tabela={<TabelaSerie nome="pib_per_capita" anos={anos} colunas={[
                 { titulo: t('PIB per capita (R$ correntes)', 'GDP per capita (current R$)'), valores: anos.map((ano) => pibPc(doAno(s, ano))), formato: reaisExato },
+                { titulo: t('População usada (IBGE)', 'Population used (IBGE)'), valores: anos.map((ano) => num(doAno(s, ano)?.populacao_pib)), formato: numero },
                 ...(f.rotuloComparador ? [{ titulo: f.rotuloComparador, valores: anos.map((ano) => pibPc(doAno(c, ano))), formato: reaisExato }] : []),
               ]} />}>
               <Grafico opcao={opcaoPib} nome="pib_per_capita" />

@@ -1,4 +1,5 @@
 import {unidadePublica} from './rotulos_publicos';
+import {quantidadeEsperada} from './cobertura_territorial';
 import { BASE_DADOS } from './manifesto';
 import { idioma, local, t } from './idioma';
 import { porUnidade } from './format';
@@ -27,7 +28,7 @@ export const nomeRedeRaio = (r:string) => ({todas:t('Todas as redes','All networ
 export type IndicadorRaio = DefComparacao & {area:AreaComparacao;catalogo:string;indice:number;rede:string};
 export const chaveRaio = (i:IndicadorRaio) => `${i.catalogo}:${i.id}`;
 export type PontoRaio = [number,number|null,number|null,number|null,number,number,number|null,[number|null,number|null,number|null,number,number,number|null]?];
-export type RetratoRaio = {versao:1;grupo:string;linhas:(PontoRaio|null)[];referencias:Record<string,[number|null,number|null,number|null]>};
+export type RetratoRaio = {versao:1;grupo:string;linhas:(PontoRaio|null)[];esperados?:(number|null)[];referencias:Record<string,[number|null,number|null,number|null]>};
 type TrechoRaio = [number,number,string];
 type ObjetoRaio = ObjetoComparacao & {json_sha256?:string;json_bytes?:number};
 type IndiceRaio = {versao:1;arquivo:ObjetoComparacao;grupos:Record<string,TrechoRaio>};
@@ -79,7 +80,9 @@ export function criarLeitorRaio(buscar:typeof fetch=fetch,base=BASE_DADOS) {
   const retrato=async(m:MetaRaio,g:GeografiaComparacao,grupo:string)=>{
     const ter=g.territorios[grupo];if(!ter||!['M','UF','BR'].includes(ter.nivel))throw new Error('Escolha um município, estado ou Brasil.');
     const idx=await objeto<IndiceRaio>(m.indices[ter.nivel==='M'?ter.uf!:'referencias']);const r=await trecho<RetratoRaio>(idx.arquivo,idx.grupos[grupo]);
-    if(idx.versao!==1||r.versao!==1||r.grupo!==grupo||r.linhas?.length!==m.indicadores||!r.referencias)throw new Error('Retrato de outro território ou edição.');r.linhas.forEach(validarPontoRaio);return r;
+    if(idx.versao!==1||r.versao!==1||r.grupo!==grupo||r.linhas?.length!==m.indicadores||!r.referencias)throw new Error('Retrato de outro território ou edição.');
+    if(r.esperados!==undefined&&(!Array.isArray(r.esperados)||r.esperados.length!==m.indicadores||r.esperados.some(e=>e!==null&&(!Number.isSafeInteger(e)||e<0))))throw new Error('Cobertura esperada do retrato inválida.');
+    r.linhas.forEach(validarPontoRaio);return r;
   };
   return {meta,catalogo,geografia,retrato,objeto,trecho};
 }
@@ -120,7 +123,7 @@ function unidadeOriginalRaio(i:IndicadorRaio) {
   };
   return unidadePublica(t(pt,en[pt]??pt));
 }
-export function apresentacaoRaio(i:IndicadorRaio,p:PontoRaio|null,grupo:string,ressalvas=false) {
+export function apresentacaoRaio(i:IndicadorRaio,p:PontoRaio|null,grupo:string,ressalvas=false,g?:GeografiaComparacao,esperado?:number|null) {
   const ponto=pontoEfetivoRaio(p,ressalvas);const valor=ponto?.[1]??null;
   const individual=/^\d{7}$/.test(grupo)||i.catalogo==='gestao_estadic'&&grupo!=='BR';
   let original=ponto?.[6]??null;
@@ -136,9 +139,9 @@ export function apresentacaoRaio(i:IndicadorRaio,p:PontoRaio|null,grupo:string,r
   const un=usarOriginal?unidadeOriginalRaio(i):textoComparacao(i,'unidade');
   return {nome:n,unidade:un,valor:usarOriginal?original:valor,comparavel:valor,original,individual,
     texto:i.binario&&individual?formatoComparacao(i,valor,true):usarOriginal?porUnidade(original,un,{variacao:i.id.startsWith('variacao')}):formatarRaio(i,valor),
-    condicao:condicaoRaio(i,ponto,grupo),ponto};
+    condicao:condicaoRaio(i,ponto,grupo,g,esperado),ponto};
 }
-function condicaoRaio(i:IndicadorRaio,p:PontoRaio|null,grupo:string) {
+function condicaoRaio(i:IndicadorRaio,p:PontoRaio|null,grupo:string,g?:GeografiaComparacao,esperado?:number|null) {
   if(!p)return t('Não se aplica a este recorte','Not applicable to this scope');
   if(i.catalogo==='referencias'&&p[1]===null){
     if(['rx_pib','rx_pib_hab'].includes(i.id)&&p[2]===null)return t('PIB indisponível neste ano na base','GDP unavailable for this year in this dataset');
@@ -149,7 +152,13 @@ function condicaoRaio(i:IndicadorRaio,p:PontoRaio|null,grupo:string) {
   }
   const condicao=condicaoComparacao(p[4]);
   const notas=[condicao];
-  if(p[4]===16&&!/^\d{7}$/.test(grupo))notas.push(t('referência calculada com municípios disponíveis; não é total oficial consolidado','benchmark calculated from available municipalities; not an official consolidated total'));
+  if(p[4]===16&&!/^\d{7}$/.test(grupo)) {
+    const e=esperado??(g?quantidadeEsperada(g,grupo,p[0]):null);
+    if(e!==null&&e>p[5])notas.push(t(`${p[5].toLocaleString(local())} de ${e.toLocaleString(local())} territórios com dados; faltam ${(e-p[5]).toLocaleString(local())}`,`${p[5].toLocaleString(local())} of ${e.toLocaleString(local())} territories have data; ${(e-p[5]).toLocaleString(local())} missing`));
+    notas.push(i.catalogo==='gestao_estadic'
+      ?t('referência calculada com governos estaduais disponíveis; não é total oficial consolidado','benchmark calculated from available state governments; not an official consolidated total')
+      :t('referência calculada com municípios disponíveis; não é total oficial consolidado','benchmark calculated from available municipalities; not an official consolidated total'));
+  }
   if(p[1]!==null && i.area==='saude' && (i.minimo??0)>0 && p[3]!==null && p[3]<(i.minimo??0))notas.push(t('base pequena: taxa muito instável','small denominator: highly unstable rate'));
   if(p[1]!==null && p[1]>100 && i.area==='saude' && i.id.startsWith('vac_'))notas.push(t('acima de 100%: valor observado, não limitado','above 100%: observed value, not capped'));
   if(p[1]!==null && p[1]>100 && /estimativa.*pobreza|estimativa.*pobres/.test(i.nome))notas.push(t('Acima de 100%: atendimento observado comparado a uma estimativa de famílias pobres, sujeita a outra referência e atualização; não é percentual limitado.','Above 100%: observed coverage compared with an estimate of poor families, potentially from a different date or update; not a capped percentage.'));
@@ -206,14 +215,14 @@ export function serieExtraRaio(linhas:AnoReferencia[],id:string):SerieComparacao
   }return s;
 }
 export async function retratoDoAnoRaio(c:CatalogoRaio,g:GeografiaComparacao,r:RetratoRaio,ano:number,rede:string) {
-  const linhas=r.linhas.map(()=>null as PontoRaio|null);const erros:Record<string,string>={};
+  const linhas=r.linhas.map(()=>null as PontoRaio|null),esperados=r.linhas.map(()=>null as number|null);const erros:Record<string,string>={};
   const escolhidos=indicadoresRaio(c,r.grupo,rede);const cats=[...new Set(escolhidos.map(x=>x.i.catalogo))];
   await Promise.all(cats.map(async cat=>{
     const itens=escolhidos.filter(x=>x.i.catalogo===cat);
-    const resultados=await Promise.allSettled(itens.map(async({i})=>{const s=await obterSerieRaio(c,g,r.grupo,i);return pontoDoAnoRaio({...i,periodos:s.periodos},s.serie,ano);}));
-    resultados.forEach((x,j)=>{if(x.status==='fulfilled')linhas[itens[j].k]=x.value;else erros[cat]=String(x.reason?.message??x.reason);});
+    const resultados=await Promise.allSettled(itens.map(async({i})=>{const s=await obterSerieRaio(c,g,r.grupo,i);const ponto=pontoDoAnoRaio({...i,periodos:s.periodos},s.serie,ano);return {ponto,esperado:ponto?s.serie.e?.[s.periodos.indexOf(ponto[0])]??null:null};}));
+    resultados.forEach((x,j)=>{if(x.status==='fulfilled'){linhas[itens[j].k]=x.value.ponto;esperados[itens[j].k]=x.value.esperado;}else erros[cat]=String(x.reason?.message??x.reason);});
   }));
-  return {retrato:{...r,linhas},erros};
+  return {retrato:{...r,linhas,esperados},erros};
 }
 
 export function nomeTerritorioRaio(g:GeografiaComparacao,grupo:string) {

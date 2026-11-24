@@ -12,6 +12,7 @@ import { cancelarConsultasTrabalho, gruposDaFonte } from '../dados';
 import { div, numero, pct, reaisCurto, reaisExato } from '../format';
 import { num } from '../hooks';
 import { t } from '../idioma';
+import {nomeGrupoTrabalho} from '../trabalho_rotulos';
 import { pequeno, temFiltrosDeRecorte, totalDosGrupos, useRecorte } from '../trabalho_comum';
 import { colunasConsulta, metadadosConsulta, notaDefinicoes, notaFonte, type ResultadoConsulta } from './TrabalhoConsulta';
 
@@ -48,7 +49,7 @@ export function TrabalhoRemuneracao() {
   // consulta pesada (microdados de uma UF) só depois de Calcular; as tabelas pré-somadas (Brasil, cubo) são leves e rodam direto
   const chave = JSON.stringify([dimEscolhida?.id, p]);
   const liberado = !capacidadeCarregando && !!p && !incompativel && (!micro || pedido === chave);
-  const grupos = useApi<ResultadoConsulta>(liberado ? 'trab_consulta' : null, { ...p, agrupar: dimEscolhida?.id ?? 'sexo' });
+  const grupos = useApi<ResultadoConsulta & {preparado?:boolean}>(liberado ? 'trab_remuneracao' : null, { ...p, agrupar: dimEscolhida?.id ?? 'sexo' });
   const dados = liberado ? grupos.dados : undefined;
 
   const real = recorte.moeda === 'real';
@@ -66,7 +67,7 @@ export function TrabalhoRemuneracao() {
     return { linhas: l, total: totalDosGrupos(l) ?? undefined };
   }, [dados, dimEscolhida?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const nome = (r: Linha) => (r.grupo === null ? t('(não informado)', '(not reported)') : r.nome ? String(r.nome) : String(r.grupo));
+  const nome = (r: Linha) => (r.grupo === null ? t('(não informado)', '(not reported)') : nomeGrupoTrabalho(dimEscolhida!.id,r.grupo,r.nome?String(r.nome):String(r.grupo)));
   const mediaTotal = total && total.rem_dez_media !== null && fator !== null ? total.rem_dez_media * fator : null;
   const mediaDe = (r: Linha) => (fator === null || num(r.rem_dez_media) === null ? null : num(r.rem_dez_media)! * fator);
   const valida = (r: Linha, nmin = recorte.nmin) => !pequeno(num(r.n_rem_dez), nmin);
@@ -93,6 +94,7 @@ export function TrabalhoRemuneracao() {
         rotulo, ano: ano!, recorte: rec, fonte, total: total as unknown as Linha, moeda: moedaTexto, geradoEm: meta.geradoEm, processado, sql: dados?.sql,
         extra: [[t('Comparação', 'Comparison'), dimEscolhida!.rotulo], [t('Método', 'Method'), metodo], [t('Definições', 'Definitions'), notaDefinicoes()],
           [t('Quantis', 'Quantiles'), micro ? t('medianas e percentis dos microdados', 'microdata medians and percentiles') : t('indisponíveis nas tabelas pré-somadas deste recorte (precisam dos microdados)', 'unavailable in this scope’s pre-aggregated tables (they need the microdata)')],
+          [t('Execução','Execution'),dados?.preparado?t('Estatísticas prontas exatas; mesmo universo e regras dos microdados.','Exact prepared statistics; the same microdata population and rules.'):t('Cálculo sob demanda.','On-demand calculation.')],
           [t('Grupos pequenos', 'Small groups'), t(`N com remuneração informada abaixo de ${recorte.nmin} (cobertura salarial, não o total de ativos): valor marcado na tela e grupo fora do gráfico`, `N with pay reported below ${recorte.nmin} (pay coverage, not total active jobs): value flagged on screen and group left out of the chart`)]],
       }),
     };
@@ -111,8 +113,8 @@ export function TrabalhoRemuneracao() {
         resumo={micro ? t(`compara a remuneração de dezembro por sexo, raça/cor, escolaridade ou idade, com média, mediana, P10 e P90. Escolha a comparação e clique em Calcular.`, `compares December pay by sex, race/colour, education or age, with average, median, P10 and P90. Choose the comparison and click Calculate.`)
           : t('só a divisão por sexo e a média de dezembro; o resto precisa dos microdados de uma UF ou município.', 'only the split by sex and the December average; the rest needs the microdata of a state or municipality.')}
         detalhe={micro
-          ? t(`microdados de ${rotulo}: sexo, raça/cor, escolaridade e idade, com média, mediana, P10 e P90. A leitura é pesada (SP, MG e RJ podem levar minutos): ela só começa em Calcular.`,
-            `microdata for ${rotulo}: sex, race/colour, education and age, with average, median, P10 and P90. Reading is heavy (SP, MG and RJ may take minutes): it only starts on Calculate.`)
+          ? t(`microdados de ${rotulo}: sexo, raça/cor, escolaridade e idade, com média, mediana, P10 e P90. Os recortes usuais de 2025 usam estatísticas prontas quando disponíveis. Filtros específicos e outros anos podem exigir leitura dos microdados; as etapas e o tempo decorrido aparecem depois de Calcular.`,
+            `microdata for ${rotulo}: sex, race/colour, education and age, with mean, median, P10 and P90. Common 2025 breakdowns use prepared statistics when available. Specific filters and other years may need microdata reads; stages and elapsed time appear after Calculate.`)
           : t('tabelas pré-somadas deste recorte: só a divisão por sexo e a média de dezembro; raça/cor, escolaridade, idade, mediana e percentis precisam dos microdados, que não estão disponíveis para este recorte.',
             'pre-aggregated tables for this scope: only the split by sex and the December average; race/colour, education, age, median and percentiles need the microdata, which are not available for this scope.')} />}
       <AjudaTrabalho foco="remuneracao" />
@@ -150,6 +152,7 @@ export function TrabalhoRemuneracao() {
       </section>
       {incompativel && <p className="aviso" role="status">{t('Os filtros avançados do recorte precisam dos microdados, indisponíveis para este recorte: remova-os ou mude o território.', 'The scope’s advanced filters need the microdata, unavailable for this scope: remove them or change the territory.')}</p>}
       {aguardando && <p className="vazio">{t('Escolha a comparação e clique em Calcular.', 'Choose the comparison and click Calculate.')}</p>}
+      {dados?.preparado&&<p className="nota-base">{t('Estatísticas prontas calculadas dos mesmos microdados: média, mediana, P10 e P90 exatos para este recorte. Nenhuma média de medianas.','Prepared statistics from the same microdata: exact mean, median, P10 and P90 for this scope. Medians are never averaged.')}</p>}
       {liberado && (
         <>
           <Estado carregando={grupos.carregando} erro={grupos.erro} tentarNovamente={grupos.recarregar} cancelar={cancelarConsultasTrabalho}

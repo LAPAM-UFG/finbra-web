@@ -21,7 +21,7 @@ import publicacao_lote as pub
 
 
 class R2:
-    def __init__(self,objetos):self.objetos=dict(objetos);self.escritas=[];self.falhar=None
+    def __init__(self,objetos):self.objetos=dict(objetos);self.escritas=[];self.falhar=None;self.metadados={}
     def get_paginator(self,name):return self
     def paginate(self,Bucket,Prefix):
         yield dict(Contents=[dict(Key=k,Size=len(v),ETag=self.etag(v)) for k,v in self.objetos.items() if k.startswith(Prefix)])
@@ -29,14 +29,17 @@ class R2:
     def etag(raw):return '"'+hashlib.md5(raw).hexdigest()+'"'
     def head_object(self,Bucket,Key):
         if Key not in self.objetos:raise ClientError({'Error':{'Code':'404'}},'HeadObject')
-        raw=self.objetos[Key];return dict(ContentLength=len(raw),ETag=self.etag(raw),Metadata={'md5':hashlib.md5(raw).hexdigest()})
+        raw=self.objetos[Key];return dict(ContentLength=len(raw),ETag=self.etag(raw),Metadata={'md5':hashlib.md5(raw).hexdigest(),**self.metadados.get(Key,{})})
     def get_object(self,Bucket,Key,**kwargs):return dict(self.head_object(Bucket,Key),Body=io.BytesIO(self.objetos[Key]))
     def put_object(self,**kw):
         key=kw['Key'];old=self.objetos.get(key)
         if kw.get('IfNoneMatch')=='*' and old is not None:raise ValueError('precondição')
         if 'IfMatch' in kw and (old is None or kw['IfMatch']!=self.etag(old)):raise ValueError('precondição')
         if key==self.falhar:raise RuntimeError('interrupção simulada')
-        raw=kw['Body'].read();self.objetos[key]=raw;self.escritas.append(key)
+        raw=kw['Body'].read()if hasattr(kw['Body'],'read')else kw['Body'];self.objetos[key]=raw;self.metadados[key]=kw.get('Metadata',{});self.escritas.append(key)
+    def copy_object(self,Bucket,Key,CopySource,CopySourceIfMatch,Metadata,**kw):
+        if self.head_object(Bucket,CopySource['Key'])['ETag']!=CopySourceIfMatch:raise ValueError('precondição')
+        self.objetos[Key]=self.objetos[CopySource['Key']];self.metadados[Key]=Metadata
 
 
 class Atualizacao(unittest.TestCase):
@@ -228,8 +231,9 @@ class Atualizacao(unittest.TestCase):
 class Publicacao(unittest.TestCase):
     def preparar(self,root):
         old={k:b'{"edicao":1}' for k in pub.PONTEIROS}
+        old['gold/manifesto.json']=b'{"edicao":1,"gerado_em":"2026-11-23T00:00:00Z"}'
         for key in pub.PONTEIROS:
-            p=root/key;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(b'{"edicao":2}')
+            p=root/key;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(b'{"edicao":2}'if key!='gold/manifesto.json'else b'{"edicao":2,"gerado_em":"2026-11-24T00:00:00Z"}')
         return R2(old)
 
     def test_plano_rejeita_origem_concorrente_antes_de_enviar(self):
@@ -256,7 +260,8 @@ class Publicacao(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             root=Path(t);client=self.preparar(root);old=dict(client.objetos);plan=pub.planejar(client,'b',root,pub.inventario(client,'b'));client.falhar='gold/downloads/manifesto.json'
             with self.assertRaises(RuntimeError):pub.ativar(client,'b',plan,root/'backup')
-            self.assertEqual(client.objetos,old)
+            self.assertEqual({k:client.objetos[k]for k in old},old)
+            self.assertTrue(all(k.startswith('gold/versoes/')for k in set(client.objetos)-set(old)))
             for key in old:self.assertEqual((root/'backup'/key).read_bytes(),old[key])
 
     def test_stage_repetivel_e_global_ativado_por_ultimo(self):

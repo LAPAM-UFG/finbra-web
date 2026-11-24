@@ -5,6 +5,7 @@
  */
 export type ManifestoBruto = {
   gerado_em: string; anos: number[]; base_ipca: number; colunas: Record<string, Record<string, string[]>>;
+  cache_http?: {versao:string;manifesto_gerado_em:string};
   ipca_ultimo?: { exercicio: number; meses: number };
   fontes?: Record<string, Record<string, unknown>>;
   /** Ponteiros técnicos de pacotes de abertura (sem motor), amarrados ao gerado_em deste manifesto; não são fontes de dados. */
@@ -35,4 +36,4 @@ export function injetarManifesto(m: ManifestoBruto) {
 }
 
 /** Versão dos URLs: os dígitos de gerado_em (mesma regra de sempre). */
-export const versaoDoManifesto = (m: ManifestoBruto) => m.gerado_em.replace(/[^0-9]/g, '');
+export const versaoDoManifesto = (m: ManifestoBruto) => m.cache_http?.manifesto_gerado_em===m.gerado_em && /^\d{8,39}$/.test(m.cache_http.versao) ? m.cache_http.versao : m.gerado_em.replace(/[^0-9]/g, '');

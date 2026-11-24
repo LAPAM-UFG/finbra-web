@@ -39,7 +39,12 @@ export async function paginaSite(request, env, url) {
   if (path === '/favicon.ico') return env.ASSETS.fetch(new Request(new URL('/logo_lapam.png', url), request));
   if (path.startsWith('/assets/') || ['/logo_lapam.png', '/finbra.R'].includes(path)) {
     const asset = await env.ASSETS.fetch(request);
-    return asset.headers.get('Content-Type')?.includes('text/html') ? new Response('Arquivo não encontrado', { status: 404 }) : asset;
+    if(asset.headers.get('Content-Type')?.includes('text/html'))return new Response('Arquivo não encontrado', { status: 404 });
+    if(asset.ok && /^\/assets\/.+-[A-Za-z0-9_-]{8,}\.(?:js|css|wasm|woff2?)$/.test(path)) {
+      const headers=new Headers(asset.headers);headers.set('Cache-Control','public, max-age=31536000, immutable');
+      return new Response(asset.body,{status:asset.status,headers});
+    }
+    return asset;
   }
   const redirect = redirecionamentoSite(url, env);
   if (redirect) return redirect;

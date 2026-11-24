@@ -8,7 +8,7 @@ import { numero, pct, reais } from './format';
 import { dado, local, t } from './idioma';
 import { anosSaude } from './saude_anos';
 import type {FontesMeta} from './saude_comum';
-import { cadastroEfetivoSaude, COD_NORONHA, ENTE_NORONHA, focoValido, lerFiltros, rolagemParaOpcao, teclaBusca, tipoDeEnte, UFS_BR, type AvisoUrl } from './filtros_url';
+import { cadastroEfetivoSaude, incluiDistritoCadastro, COD_NORONHA, ENTE_NORONHA, focoValido, lerFiltros, rolagemParaOpcao, teclaBusca, tipoDeEnte, UFS_BR, type AvisoUrl } from './filtros_url';
 
 type Contexto = { meta: Meta; entes: Ente[]; porCodigo: Map<number, Ente> };
 const Ctx = createContext<Contexto | null>(null);
@@ -60,7 +60,7 @@ export const UFS = UFS_BR;
 const UF_SEM_MUNICIPIOS = new Set(['DF']);
 export const esfera = (e: Ente['esfera']) =>
   ({ M: t('Município', 'Municipality'), E: t('Estado', 'State'), D: t('Distrito Federal', 'Federal District') })[e];
-/** Fernando de Noronha, só no cadastro efetivo de /datasus (ver filtros_url.ts). Esfera M por compatibilidade com o FNS; a tela não o chama de município. */
+/** Fernando de Noronha no cadastro efetivo de Saúde e Trabalho; a tela o identifica como distrito estadual. */
 const NORONHA: Ente = ENTE_NORONHA;
 /** Tipo do ente para a tela: Noronha é distrito estadual, nunca município. */
 export const tipoEnte = (e: Ente) =>
@@ -90,8 +90,8 @@ export function useFiltros() {
     { ano: busca.get('ano'), uf: busca.get('uf'), ente: busca.get('cod') ?? busca.get('ente') },
     // trabalho e saúde já avisam sozinhas de um ano numérico fora da base (anoForaDaBase)
     { anos, aceitaUltimo: saude, avisoProprioDeAnoNumerico: trabalho || saude },
-    // /datasus: o cadastro efetivo inclui Fernando de Noronha (dados no FNS); as demais áreas usam o cadastro publicado
-    (cod) => porCodigo.get(cod) ?? (saude && cod === COD_NORONHA ? NORONHA : undefined),
+    // O distrito tem registros no FNS e na RAIS, mas não declaração fiscal própria.
+    (cod) => porCodigo.get(cod) ?? (incluiDistritoCadastro(caminho) && cod === COD_NORONHA ? NORONHA : undefined),
   );
   const { ano, ultimo, anoForaDaBase, ente, uf } = lidos;
   const tratamento = TRATAMENTO;
@@ -267,8 +267,9 @@ function AvisosUrl({ semAno }: { semAno?: boolean }) {
 
 function Filtros({ semAno, semEnte, semBuscaEnte, comUltimo, ultimoPadrao, anosCobertos }: Opcoes) {
   const { entes } = useDados(), f = useFiltros(), caminho = useLocation().pathname;
-  const saude = caminho.startsWith('/datasus'), trabalho=caminho.startsWith('/trabalho');
-  const cadastro=useMemo(()=>saude?cadastroEfetivoSaude(entes,NORONHA):entes,[saude,entes]);
+  const trabalho=caminho.startsWith('/trabalho');
+  const comDistrito=incluiDistritoCadastro(caminho);
+  const cadastro=useMemo(()=>comDistrito?cadastroEfetivoSaude(entes,NORONHA):entes,[comDistrito,entes]);
   const lugares=useMemo<LugarOpcao[]>(()=>[
     ...lugaresCadastro(semBuscaEnte?[]:cadastro.filter(x=>x.esfera==='M').map(x=>({cod:x.cod_ibge,nome:x.nome,uf:x.uf}))),
     ...(!semBuscaEnte?cadastro.filter(x=>x.esfera==='E').map(x=>({grupo:String(x.cod_ibge),nome:x.nome+' · '+t('governo estadual','state government'),uf:x.uf,tipo:'UF' as const})):[]),

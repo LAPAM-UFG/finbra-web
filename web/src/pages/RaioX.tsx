@@ -45,7 +45,7 @@ function CorpoRaioX({m,c,g,sp,setSp}:{m:Awaited<ReturnType<typeof leitorRaio.met
   const mudar=(valores:Record<string,string|null>,replace=false)=>{const n=new URLSearchParams(window.location.search);for(const[k,v]of Object.entries(valores))if(v===null||v==='')n.delete(k);else n.set(k,v);setSp(n,{replace});};
   const escolher=(chave:string)=>{const x=g.territorios[chave];const n=new URLSearchParams(window.location.search);n.delete('ente');n.delete('ind');if(x.nivel==='M'){n.set('cod',chave);n.set('uf',x.uf!);}else{n.delete('cod');if(chave==='BR')n.delete('uf');else n.set('uf',chave);}setSp(n);};
   const disponiveis=useMemo(()=>indicadoresRaio(c,grupo,rede),[c,grupo,rede]);
-  const linhas=useMemo(()=>disponiveis.map(({i,k})=>({i,k,a:apresentacaoRaio(i,r?.linhas[k]??null,grupo,ressalvas)})),[disponiveis,r,grupo,ressalvas]);
+  const linhas=useMemo(()=>disponiveis.map(({i,k})=>({i,k,a:apresentacaoRaio(i,r?.linhas[k]??null,grupo,ressalvas,g,r?.esperados?.[k])})),[disponiveis,r,grupo,ressalvas,g]);
   const filtradas=useMemo(()=>linhas.filter(x=>(tema==='todos'||x.i.area===tema)&&buscarIndicadorRaio(x.i,busca)&&(!soValores||x.a.valor!==null)&&(mostrarZeros||x.a.valor!==0||chaveRaio(x.i)===ind)),[linhas,tema,busca,soValores,mostrarZeros,ind]);
   const comValor=linhas.filter(x=>x.a.valor!==null).length;
   const focar=(i:IndicadorRaio)=>{setRecolhidas(xs=>xs.filter(x=>x!==i.area));setAbertas(xs=>xs.includes(i.area)?xs:[...xs,i.area]);mudar({ind:chaveRaio(i),tema:i.area,busca:null,com_valor:null});setLimites(x=>({...x,[i.area]:Math.max(25,linhas.filter(x=>x.i.area===i.area).findIndex(x=>chaveRaio(x.i)===chaveRaio(i))+1)}));};

@@ -186,8 +186,8 @@
     "url": "https://www.ibge.gov.br/estatisticas/economicas/contas-nacionais/9088-produto-interno-bruto-dos-municipios.html"
   },
   "fin_pib_per_capita": {
-    "nome": "PIB por habitante · razão municipal PIB/população",
-    "nome_en": "GDP per resident · municipal GDP/population ratio",
+    "nome": "PIB por habitante municipal (mediana nos agregados)",
+    "nome_en": "Municipal GDP per resident (median in aggregates)",
     "fonte": "IBGE · PIB e população; cálculo LAPAM/UFG",
     "url": "https://sidra.ibge.gov.br/tabela/5938"
   },

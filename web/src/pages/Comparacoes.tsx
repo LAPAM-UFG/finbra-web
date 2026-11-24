@@ -1148,7 +1148,7 @@ function Serie({
                   : condicaoComparacao(l.s.c[p2])
                 : t("Fora da cobertura", "Outside coverage")}
               {!l.municipio && p2 >= 0 && l.s.c[p2] !== 22
-                ? ` · ${numero(l.s.q[p2])}/${numero(l.total)} ${m.rede === "estadic" ? t("governos", "governments") : t("municípios", "municipalities")}`
+                ? ` · ${numero(l.s.q[p2])}/${numero(l.s.e?.[p2]??l.total)} ${m.rede === "estadic" ? t("governos", "governments") : t("municípios", "municipalities")}`
                 : ""}
             </p>
             {i.minimo &&
@@ -1213,7 +1213,7 @@ function Serie({
                         {formatoComparacao(i, l.s.v[k], l.municipio)}
                         <small>
                           {condicaoComparacao(l.s.c[k])}
-                          {!l.municipio && l.s.c[k] !== 22 ? ` · ${l.s.q[k]}/${l.total}` : ""}
+                          {!l.municipio && l.s.c[k] !== 22 ? ` · ${l.s.q[k]}/${l.s.e?.[k]??l.total}` : ""}
                         </small>
                       </td>
                     ))}

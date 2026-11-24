@@ -29,10 +29,11 @@ class QuadroComex(Quadro):
   df=self.base.loc[(key,self.periodos),:];n=df[self.ncol].to_numpy();d=df[self.dcol].to_numpy();v,c,dd=calcular_razao(n,d,self.definicao['fator'],self.power)
   # Zero de comércio é um componente conhecido. Agregações de concentração
   # usam os produtos/mercados reunidos, inclusive municípios sem comércio.
-  valid=np.isfinite(v);q=np.where(valid,int(self.cobertos[pos].sum()),0);c[valid&(q<len(pos))]=16
+  valid=np.isfinite(v);e=self.cobertura_esperada(pos,np.isfinite(self.valores[:,pos]));q=np.where(valid,int(self.cobertos[pos].sum()),0);c[valid&(q<e)]=16
   if self.dcol=='cex_populacao':
-   q=np.array([(np.isfinite(self.pop[k,pos])&self.cobertos[pos]).sum()if valid[j]else 0 for j,k in enumerate(range(len(self.periodos)))]);c[valid&(q<len(pos))]=16
-  return dict(v=numeros(v),n=numeros(n),d=numeros(dd),c=c.astype(int).tolist(),q=q.astype(int).tolist(),r=numeros(v))
+   q=np.array([(np.isfinite(self.pop[k,pos])&self.cobertos[pos]).sum()if valid[j]else 0 for j,k in enumerate(range(len(self.periodos)))]);c[valid&(q<e)]=16
+  e=np.maximum(e,q)
+  return dict(v=numeros(v),n=numeros(n),d=numeros(dd),c=c.astype(int).tolist(),q=q.astype(int).tolist(),e=e.astype(int).tolist(),r=numeros(v))
 
 def grupos_geograficos(g):
  out={k:[]for k,t in g['territorios'].items()if t['nivel']in ['M','UF','BR','imediata','intermediaria']}

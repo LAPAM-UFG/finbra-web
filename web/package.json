@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "test:rodada2": "vite build --ssr testes/rodada2.test.ts --outDir testes/.saida/rodada2 --emptyOutDir --logLevel warn && node --test testes/.saida/rodada2/rodada2.test.js",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test:saude-abertura": "vite build --ssr testes/saude_abertura.test.ts --outDir testes/.saida/saude_abertura --emptyOutDir --logLevel warn && node --test testes/.saida/saude_abertura/saude_abertura.test.js",
@@ -13,7 +14,7 @@
     "test:educacao": "vite build --ssr testes/educacao.test.ts --outDir testes/.saida/educacao --emptyOutDir --logLevel warn && node --test testes/.saida/educacao/educacao.test.js",
     "catalogo:downloads": "vite build --ssr scripts/catalogos_downloads.ts --outDir testes/.saida/catalogos_downloads --emptyOutDir --logLevel warn",
     "test:saneamento": "vite build --ssr testes/saneamento.test.ts --outDir testes/.saida/saneamento --emptyOutDir --logLevel warn && node --test testes/.saida/saneamento/saneamento.test.js",
-    "test": "vite build --ssr testes/consultas.test.ts --outDir testes/.saida --emptyOutDir --logLevel warn && node --test testes/.saida/consultas.test.js && npm run test:saneamento && npm run test:assistencia-rankings && npm run test:assistencia-mapa && npm run test:mapas && npm run test:comparacoes && npm run test:cadunico-historico && npm run test:assistencia-referencias && npm run test:raio-x && npm run test:agropecuaria && npm run test:mobilidade && npm run test:seguranca && npm run test:internet && npm run test:energia && npm run test:comex && npm run test:ia-paineis && npm run test:auditoria",
+    "test": "vite build --ssr testes/consultas.test.ts --outDir testes/.saida --emptyOutDir --logLevel warn && node --test testes/.saida/consultas.test.js && npm run test:saneamento && npm run test:assistencia-rankings && npm run test:assistencia-mapa && npm run test:mapas && npm run test:comparacoes && npm run test:cadunico-historico && npm run test:assistencia-referencias && npm run test:raio-x && npm run test:agropecuaria && npm run test:mobilidade && npm run test:seguranca && npm run test:internet && npm run test:energia && npm run test:comex && npm run test:ia-paineis && npm run test:auditoria && npm run test:rodada2",
     "test:assistencia-mapa": "vite build --ssr testes/assistencia_mapa.test.ts --outDir testes/.saida/assistencia_mapa --emptyOutDir --logLevel warn && node --test testes/.saida/assistencia_mapa/assistencia_mapa.test.js",
     "test:mapas": "vite build --ssr testes/mapas.test.ts --outDir testes/.saida/mapas --emptyOutDir --logLevel warn && node --test testes/.saida/mapas/mapas.test.js",
     "test:comparacoes": "vite build --ssr testes/comparacoes.test.ts --outDir testes/.saida/comparacoes --emptyOutDir --logLevel warn && node --test testes/.saida/comparacoes/comparacoes.test.js",

@@ -4,7 +4,7 @@ import { REDES_EDUCACAO,redeEducacaoValida,type RedeEducacao } from '../educacao
 import { useCallback, useDeferredValue, useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 import '../downloads.css';
 import {
-  arquivoDoRecorte, ordenarDetalhados, validarCatalogo, validarPrevia, COD_BRASILIA, COD_NORONHA, faixaAnos, filtrarArquivos, filtrarDicionario, formatoDisponivel, formatosBase, indexarDicionario, POR_PAGINA, tamanho, urlArquivo, validarDicionario, validarManifesto,
+  nomeArquivoDownload, arquivoDoRecorte, ordenarDetalhados, validarCatalogo, validarPrevia, COD_BRASILIA, COD_NORONHA, faixaAnos, filtrarArquivos, filtrarDicionario, formatoDisponivel, formatosBase, indexarDicionario, POR_PAGINA, tamanho, urlArquivo, validarDicionario, validarManifesto,
   type PreviaDl, type ArquivoDl, type EntradaDic, type Formato, type FormatoBase, type IndiceDic, type ManifestoDl,
 } from '../downloads';
 import { Estado } from '../components/Kpi';
@@ -67,9 +67,7 @@ function Ico({ nome }: { nome: 'baixar' | 'busca' }) {
 function Arquivo({ a, base, destaque = false }: { a: ArquivoDl; base: string; destaque?: boolean }) {
   const href = urlArquivo(a.caminho, base);
   const f = FORMATO[a.formato];
-  const nomeBruto=pick(a.nome,a.nome_en);
-  const areas:Record<string,[string,string]>={trabalho:['Mercado de trabalho','Labour market'],gestao:['Gestão pública','Public management'],clima:['Clima','Climate'],assistencia:['Assistência social','Social assistance']};
-  const nome = a.area&&areas[a.area]&&new RegExp('^'+a.area+'\\s*[—–-]').test(nomeBruto)?t(...areas[a.area])+(a.uf?' · '+nomeDaUf(a.uf):''):nomeBruto;
+  const nome = nomeArquivoDownload(a,idioma()==='en');
   const descricao = pick(a.descricao, a.descricao_en);
   const anos = faixaAnos(a);
   const tam = tamanho(a.bytes, local());
