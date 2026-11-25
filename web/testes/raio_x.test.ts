@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { apresentacaoRaio, criarLeitorRaio, grupoOrigemRaio, linkComparacaoRaio, pontoDoAnoRaio, pontoEfetivoRaio, serieExtraRaio, type IndicadorRaio, type PontoRaio } from '../src/raio_x';
+import { apresentacaoRaio, buscarIndicadorRaio, criarLeitorRaio, grupoOrigemRaio, linkComparacaoRaio, pontoDoAnoRaio, pontoEfetivoRaio, serieExtraRaio, type IndicadorRaio, type PontoRaio } from '../src/raio_x';
 import type { GeografiaComparacao, ObjetoComparacao, SerieComparacao } from '../src/comparacoes_dados';
 import { buscaEntreAreas, buscaParaDownloads } from '../src/navegacao';
 import { apresentacaoDestaque, gruposReferenciaDestaques, pontoExatoDestaque, referenciaDestaque, referenciasDestaques } from '../src/raio_x_destaques';
@@ -9,6 +9,16 @@ import type { CatalogoRaio, MetaRaio, RetratoRaio } from '../src/raio_x';
 const indicador:IndicadorRaio={id:'empregos',nome:'Vínculos por mil habitantes',nome_en:'Jobs per thousand residents',nome_original:'Vínculos formais',unidade_original:'vínculos',descricao:'Empregos',descricao_en:'Jobs',tema:'Trabalho',tema_en:'Jobs',unidade:'vínculos por mil',unidade_en:'jobs per thousand',formato:'numero',periodos:[2024,2025],frequencia:'anual',metodo_referencia:'razao',normalizacao:'Valor observado dividido pela população residente',normalizacao_en:'Observed value divided by population',fator:1000,ranking:true,fonte_nome:'RAIS',fontes:[],area:'trabalho',rede:'todas',catalogo:'trabalho_todas',indice:0};
 const serie:SerieComparacao={v:[2,0],n:[2,0],d:[1,1],c:[0,1],q:[1,1],r:[2,0]};
 const geo={versao:1,municipios:[],governos:[['E:52','Goiás','GO']],territorios:{BR:{nome:'Brasil',nivel:'BR',uf:null,cod:'BR'},GO:{nome:'GO',nivel:'UF',uf:'GO',cod:'GO'},'5208905':{nome:'Goiás',nivel:'M',uf:'GO',cod:5208905}}} as GeografiaComparacao;
+
+test('busca combina palavras em qualquer ordem e preserva sinônimos e ausência de acentos', () => {
+  const dengue={...indicador,id:'dengue_letalidade_prov',nome:'Dengue: letalidade entre os casos prováveis',nome_en:'Dengue: case fatality among probable cases',descricao:'Óbitos divididos pelos casos prováveis'};
+  assert.equal(buscarIndicadorRaio(dengue,'  LETALIDADE   dengue  '),true);
+  assert.equal(buscarIndicadorRaio(dengue,'provaveis dengue'),true);
+  assert.equal(buscarIndicadorRaio(dengue,'dengue inexistente'),false);
+  assert.equal(buscarIndicadorRaio(indicador,'empregos'),true);
+  assert.equal(buscarIndicadorRaio({...indicador,nome:'Remuneração média'},'salário médio'),true);
+  assert.equal(buscarIndicadorRaio(dengue,''),true);
+});
 
 test('referências dos cartões não duplicam Brasil nem Brasília/DF', () => {
   assert.deepEqual(gruposReferenciaDestaques(geo, '5208905'), ['GO', 'BR']);

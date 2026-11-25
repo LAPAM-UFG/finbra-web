@@ -1,3 +1,4 @@
+import { buscarDados as fetch } from './buscar_dados';
 /** Educação: catálogo pequeno e um único Range por território; nenhum motor SQL. */
 import { useEffect, useState } from 'react';
 import { BASE_DADOS } from './manifesto';

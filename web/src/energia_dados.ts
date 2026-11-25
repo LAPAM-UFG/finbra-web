@@ -1,3 +1,4 @@
+import { buscarDados as fetch } from './buscar_dados';
 import {useEffect,useState} from 'react';
 import {BASE_DADOS} from './manifesto';
 import {leitorRaio} from './raio_x';

@@ -241,7 +241,12 @@ export const INDICADORES: Indicador[] = [
   {
     id: 'dengue_incidencia', grupo: G_AGRAVOS, nome: () => t('Dengue: casos prováveis', 'Dengue: probable cases'),
     unidade: () => t('por 100 mil habitantes', 'per 100,000 inhabitants'), numerador: 'sinan_dengue_provaveis', denominador: 'populacao', fator: 100000, tipo: 'taxa', minimo: 5000,
-    nota: () => t(`Casos de dengue notificados e não descartados (os arquivos públicos do SINAN já excluem os descartados) ÷ população residente × 100.000. ${RESSALVA_SINAN()}`, `Dengue cases notified and not discarded (the public SINAN files already exclude discarded ones) ÷ resident population × 100,000. ${RESSALVA_SINAN()}`),
+    nota: () => t(`Casos de dengue notificados e não descartados ÷ população residente × 100.000. Inclui registros sem confirmação final. A classificação antiga (CON_CLASSI, até 2006) e a atual (CLASSI_FIN) são compatibilizadas; excluem-se descartados e registros classificados como chikungunya. A série segue o ano do arquivo DATASUS e o município de residência. ${RESSALVA_SINAN()}`, `Notified dengue cases that were not discarded ÷ resident population × 100,000. Includes records without final confirmation. Legacy (CON_CLASSI, through 2006) and current (CLASSI_FIN) classifications are harmonised; discarded records and those classified as chikungunya are excluded. The series follows DATASUS file year and municipality of residence. ${RESSALVA_SINAN()}`),
+  },
+  {
+    id: 'dengue_letalidade_prov', grupo: G_AGRAVOS, nome: () => t('Dengue: letalidade entre os casos prováveis', 'Dengue: case fatality among probable cases'),
+    unidade: () => t('% dos casos prováveis', '% of probable cases'), numerador: 'sinan_dengue_obitos', denominador: 'sinan_dengue_provaveis', fator: 1, tipo: 'proporcao', minimo: 100,
+    nota: () => t(`Óbitos por dengue entre casos confirmados ÷ casos prováveis × 100. O denominador inclui todas as notificações não descartadas, com ou sem confirmação final. Usa o mesmo numerador de óbitos da medida entre confirmados, apresentada separadamente. Não é a letalidade restrita aos casos graves ou com sinais de alarme. Série pelo ano do arquivo DATASUS e município de residência. ${RESSALVA_SINAN()}`, `Dengue deaths among confirmed cases ÷ probable cases × 100. The denominator includes all non-discarded notifications, with or without final confirmation. Uses the same death numerator as the separate confirmed-case measure. This is distinct from case fatality restricted to severe cases or those with warning signs. Series by DATASUS file year and municipality of residence. ${RESSALVA_SINAN()}`),
   },
   {
     id: 'dengue_letalidade', grupo: G_AGRAVOS, nome: () => t('Dengue: letalidade entre os confirmados', 'Dengue: case fatality among confirmed'),
@@ -252,7 +257,7 @@ export const INDICADORES: Indicador[] = [
   {
     id: 'dengue_graves', grupo: G_AGRAVOS, nome: () => t('Dengue: proporção de casos graves', 'Dengue: share of severe cases'),
     unidade: () => t('% dos casos confirmados', '% of confirmed cases'), numerador: 'sinan_dengue_graves', denominador: 'sinan_dengue_confirmados', fator: 1, tipo: 'proporcao', minimo: 100,
-    nota: () => t(`Dengue grave (classificação 12, ou FHD e SCD nos anos antigos) ÷ casos confirmados. ${RESSALVA_SINAN()}`, `Severe dengue (classification 12, or DHF and DSS in old years) ÷ confirmed cases. ${RESSALVA_SINAN()}`),
+    nota: () => t(`Dengue grave (classificação 12, ou FHD e SCD nos anos antigos) ÷ casos confirmados. Medida restrita: não inclui dengue com sinais de alarme nem a antiga dengue com complicações. A classificação clínica mudou em 2014; a série não representa uma definição clínica uniforme. ${RESSALVA_SINAN()}`, `Severe dengue (classification 12, or DHF and DSS in old years) ÷ confirmed cases. This narrow measure excludes dengue with warning signs and legacy dengue with complications. Clinical classification changed in 2014; the series does not represent a uniform clinical definition. ${RESSALVA_SINAN()}`),
   },
   {
     id: 'chik_incidencia_prov', grupo: G_AGRAVOS, nome: () => t('Chikungunya: casos prováveis', 'Chikungunya: probable cases'),
@@ -322,14 +327,14 @@ export const INDICADORES: Indicador[] = [
   {
     id: 'resp_notificacoes', grupo: G_RESP, nome: () => t('Microcefalia e alterações do SNC: notificações', 'Microcephaly and CNS changes: notifications'),
     unidade: () => t('por 100 mil nascidos vivos', 'per 100,000 live births'), numerador: 'resp_notificacoes', denominador: 'nascidos', fator: 100000, tipo: 'taxa', minimo: 10000,
-    nota: () => t(`Notificações no RESP (registro criado na emergência da síndrome congênita ligada ao vírus Zika) de recém-nascidos, crianças, fetos, natimortos e abortos com microcefalia ou alterações do sistema nervoso central, pelo ano da notificação e município de residência, sem as excluídas ÷ nascidos vivos × 100.000. Notificação não é caso confirmado e a vigilância mudou muito depois de 2016. Veja também as confirmadas.`,
-      `RESP notifications (a registry created during the emergency of congenital syndrome linked to Zika virus) of newborns, children, fetuses, stillbirths and miscarriages with microcephaly or central nervous system changes, by year of notification and municipality of residence, excluding the removed ones ÷ live births × 100,000. A notification is not a confirmed case and surveillance changed a lot after 2016. See also the confirmed ones.`),
+    nota: () => t(`Notificações no RESP de recém-nascidos, crianças, fetos, natimortos e abortos com microcefalia ou alterações do sistema nervoso central, pelo ano da notificação e município de residência, sem as excluídas ÷ nascidos vivos × 100.000. Inclui Zika, outras infecções congênitas (STORCH), coinfecções e causas desconhecidas; não mede a incidência de Zika. Notificação não é caso confirmado e a vigilância mudou muito depois de 2016.`,
+      `RESP notifications of newborns, children, fetuses, stillbirths and miscarriages with microcephaly or central nervous system changes, by year of notification and municipality of residence, excluding removed records ÷ live births × 100,000. Includes Zika, other congenital infections (STORCH), coinfections and unknown causes; this is not Zika incidence. A notification is not a confirmed case and surveillance changed substantially after 2016.`),
   },
   {
     id: 'resp_confirmadas', grupo: G_RESP, nome: () => t('Microcefalia e alterações do SNC: confirmadas', 'Microcephaly and CNS changes: confirmed'),
     unidade: () => t('por 100 mil nascidos vivos', 'per 100,000 live births'), numerador: 'resp_confirmadas', denominador: 'nascidos', fator: 100000, tipo: 'taxa', minimo: 10000,
-    nota: () => t(`Notificações do RESP com classificação final "confirmado" ÷ nascidos vivos × 100.000, pelo ano da notificação e município de residência. A confirmação pode levar meses: os últimos anos tendem a ficar subestimados.`,
-      `RESP notifications with final classification "confirmed" ÷ live births × 100,000, by year of notification and municipality of residence. Confirmation can take months: the latest years tend to be underestimated.`),
+    nota: () => t(`Notificações do RESP com classificação final "confirmado" ÷ nascidos vivos × 100.000, pelo ano da notificação e município de residência. A confirmação é da alteração congênita: inclui Zika, STORCH, coinfecções e etiologia desconhecida; não significa confirmação de infecção por Zika. A confirmação pode levar meses: os últimos anos tendem a ficar subestimados.`,
+      `RESP notifications with final classification "confirmed" ÷ live births × 100,000, by year of notification and municipality of residence. Confirmation concerns the congenital abnormality: includes Zika, STORCH, coinfections and unknown aetiology; it does not mean confirmed Zika infection. Confirmation can take months: the latest years tend to be underestimated.`),
   },
 ];
 
@@ -431,7 +436,7 @@ export const nomeContagem = (c: string): string => ({
   resp_notificacoes: t('Notificações de microcefalia (RESP)', 'Microcephaly notifications (RESP)'), resp_confirmadas: t('Confirmadas de microcefalia (RESP)', 'Confirmed microcephaly (RESP)'),
 }[c] ?? c);
 
-export const formatar = (ind: Indicador, v: number | null | undefined) => (ind.monetario ? reais(v) : ind.tipo === 'proporcao' ? pct(v) : numero1(v));
+export const formatar = (ind: Indicador, v: number | null | undefined) => (ind.monetario ? reais(v) : ind.tipo === 'proporcao' ? pct(v, ind.id.startsWith('dengue_letalidade') ? 2 : 1) : numero1(v));
 
 export const fonteSaude = () => t(
   'SIM (Sistema de Informações sobre Mortalidade), SINASC (Sistema de Informações sobre Nascidos Vivos), SIH (Sistema de Informações Hospitalares do SUS) e as internações por condições sensíveis à atenção primária (ICSAP, Lista Brasileira da Portaria SAS/MS nº 221/2008), CNES (Cadastro Nacional de Estabelecimentos de Saúde), SINAN (agravos de notificação), SISCAN (controle do câncer do colo do útero e da mama), Painel de Oncologia e RESP (microcefalia), SIA (produção ambulatorial, por município do estabelecimento), cobertura da atenção primária (relatórios públicos da APS), Ministério da Saúde/DATASUS e SAPS, microdados públicos por município de residência (a produção ambulatorial e a rede do CNES seguem o município do estabelecimento); população: estimativas da SVS/MS por município, sexo e idade (2000 em diante). Processamento: LAPAM/UFG.',

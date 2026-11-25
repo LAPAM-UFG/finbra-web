@@ -13,6 +13,11 @@ from pathlib import Path
 import numpy as np
 import requests
 
+# Frações: 0,05%, 0,1%, 0,5% e 1%. Faixas fixas permitem comparar anos
+# sem comprimir praticamente toda a letalidade na faixa genérica de 0–20%.
+ESCALAS_SAUDE = {k: [.0005, .001, .005, .01]
+                 for k in ('dengue_letalidade', 'dengue_letalidade_prov')}
+
 
 def sha(b):
     return hashlib.sha256(b).hexdigest()
@@ -187,7 +192,7 @@ class Gerador:
         # permanecem sem registro, em vez de receber um zero inventado.
         self.audit['territorios_sem_grupo_saude'] = sorted(set(self.codes) - vistos)
         origem = dict(tipo='saude', caminho='gold/manifesto.json', sha256=a['sha256'], indice_sha256=a['indice_sha256'], snapshot=a['snapshot'], gerado_em=a['gerado_em'])
-        m = self.catalogo('saude', 'todas', definicoes, matriz, anos, origem, i['serie'])
+        m = self.catalogo('saude', 'todas', definicoes, matriz, anos, origem, i['serie'], escalas=ESCALAS_SAUDE)
         (self.dest / 'saude_manifesto.json').write_bytes(compacto(m))
 
     def educacao(self):

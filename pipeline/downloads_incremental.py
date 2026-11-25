@@ -17,6 +17,7 @@ from downloads_enxuto import Enxuto, preparar_stata, metadado
 from downloads_navegacao import previa, referencia, registrar, pacote
 from painel_municipal import Painel, KEYS, qi, qs, sha
 from curadoria_catalogos import nome_tema
+from downloads_notas import notas_da_edicao, texto_metodologia
 
 
 def gerar(publicado, base, saida, catalogos, areas=('trabalho','gestao','assistencia','clima'), stata=None,rscript=None,caches=(),tabelas=None,chaves_extras=(),adicionar=()):
@@ -140,7 +141,7 @@ def gerar(publicado, base, saida, catalogos, areas=('trabalho','gestao','assiste
     m['stata']['painel_declarado']=bool(stata)
     n,cities,first,last=p.db.execute('SELECT count(*),count(DISTINCT cod_ibge),min(ano),max(ano) FROM atualizado').fetchall()[0]
     m['resumo'].update(linhas=n,municipios=cities,ano_de=first,ano_ate=last,variaveis=len(names)-len(KEYS))
-    m['notas']=[f'Base enxuta: {len(names)-len(KEYS)} variáveis principais, além dos seis identificadores, somente desde 2013.' if note.startswith('Base enxuta:') else note for note in m.get('notas',[])]
+    m['notas']=notas_da_edicao(m.get('notas',[]),len(names)-len(KEYS))
     m['resumo']['variaveis_detalhadas']=len(advanced)-len(KEYS)
     for label,entries,scope in [('dicionario',dictionary,'principal'),('dicionario_complementos',advanced,'detalhado')]:
         f=e.work/(label+'.json');salvar_json(f,entries);ref=registrar(saida,f,label,'json')
@@ -184,6 +185,8 @@ def gerar(publicado, base, saida, catalogos, areas=('trabalho','gestao','assiste
         catalog=json.loads(snapshots.obter(ref['caminho'],ref).read_bytes());replace={a['id']:a for a in updated_files if a['uf']==uf and a['tipo']=='area'}
         catalog['arquivos']=[replace.pop(a['id'],a) for a in catalog['arquivos']];catalog['arquivos']+=list(replace.values());m['recortes_uf'][uf]=referencia(saida,e.work,'catalogo_'+uf.lower(),catalog)
     # Pacotes nacionais precisam conter o painel e o dicionário novos.
+    guia=e.work/'LEIA-ME_atual.txt';guia.write_text(texto_metodologia(m['notas']),encoding='utf-8')
+    m['arquivos']=[{**a,**registrar(saida,guia,'metodologia','txt')} if a['id']=='metodologia' else a for a in m['arquivos']]
     for a in m['arquivos']:
         if a['tipo'] in ['dicionario','metodologia'] and not (saida/a['caminho']).exists():
             src=snapshots.obter(a['caminho'],a);target=saida/a['caminho'];target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(src,target)

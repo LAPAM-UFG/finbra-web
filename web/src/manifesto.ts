@@ -1,3 +1,4 @@
+import { buscarDados as fetch } from './buscar_dados';
 /**
  * Manifesto dos dados: UM snapshot por sessão, compartilhado entre o caminho rápido do clima (sem DuckDB) e o motor (dados.ts).
  * Assim a versão do resumo e a do histórico nunca se misturam ao navegar. Respeita VITE_DADOS_URL e não usa cache do navegador

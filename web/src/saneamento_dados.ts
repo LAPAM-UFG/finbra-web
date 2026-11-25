@@ -1,3 +1,4 @@
+import { buscarDados as fetch } from './buscar_dados';
 /** Saneamento: um catálogo pequeno e um Range por território, sem DuckDB. */
 import {useEffect,useState} from 'react';
 import {BASE_DADOS} from './manifesto';

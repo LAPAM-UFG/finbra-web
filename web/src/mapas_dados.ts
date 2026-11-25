@@ -1,3 +1,4 @@
+import { buscarDados as fetch } from './buscar_dados';
 /** Um indicador/ano/UF por Range. Nunca inicia SQL nem baixa microdados. */
 import { BASE_DADOS } from './manifesto';
 import { UF_NOMES } from './ufs';

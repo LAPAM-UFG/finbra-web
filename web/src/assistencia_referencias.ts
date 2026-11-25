@@ -1,3 +1,4 @@
+import { buscarDados as fetch } from './buscar_dados';
 import { BASE_DADOS } from './manifesto';
 import { lerJson, lerTrecho, type MedidaRankingPib, type LinhaRankingPib, type CoberturaRankingPib } from './assistencia_economia';
 import { local, t } from './idioma';

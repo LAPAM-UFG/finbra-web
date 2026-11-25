@@ -171,7 +171,7 @@ export const formatarRaio=(i:DefComparacao,v:number|null)=>i.id==='rx_populacao'
 export function buscarIndicadorRaio(i:IndicadorRaio,termo:string) {
   const texto=normComparacao([i.id,i.nome,i.nome_en,i.nome_original,i.descricao,i.tema,i.fonte_nome].join(' '));
   const q=normComparacao(termo.trim());
-  return texto.includes(q)||(/^(salario|salarios|salario medio|salarios medios|wages?)$/.test(q)&&texto.includes('remunera'))||(/^(emprego|empregos|jobs?)$/.test(q)&&i.area==='trabalho'&&texto.includes('vinculo'));
+  return q.split(/\s+/).every(p=>texto.includes(p))||(/^(salario|salarios|salario medio|salarios medios|wages?)$/.test(q)&&texto.includes('remunera'))||(/^(emprego|empregos|jobs?)$/.test(q)&&i.area==='trabalho'&&texto.includes('vinculo'));
 }
 export function linkComparacaoRaio(i:IndicadorRaio,grupo:string,g:GeografiaComparacao,p?:number) {
   const ter=g.territorios[grupo];const sp=new URLSearchParams();if(ter.uf)sp.set('uf',ter.uf);if(ter.nivel==='M')sp.set('cod',grupo);

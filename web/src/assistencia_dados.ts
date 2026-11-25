@@ -1,3 +1,4 @@
+import { buscarDados as fetch } from './buscar_dados';
 /** Agregados públicos prontos: catálogo leve e apenas um trecho por território, sem iniciar o DuckDB. */
 import { useEffect, useState } from 'react';
 import { BASE_DADOS, obterManifesto, versaoDoManifesto } from './manifesto';

@@ -1,3 +1,4 @@
+import { buscarDados as fetch } from './buscar_dados';
 /** Leitores leves compartilhados; este módulo nunca importa o DuckDB. */
 import { criarAbertura, USAR_MOTOR } from './clima_abertura';
 import { criarAberturaSaude } from './saude_abertura';

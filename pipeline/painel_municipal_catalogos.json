@@ -1,6 +1,6 @@
 {
   "versao": 1,
-  "base_gerado_em": "2026-11-24T23:09:42+00:00",
+  "base_gerado_em": "2026-11-25T04:39:09+00:00",
   "capitulos_cid": {
     "cap01": "I. Infecciosas e parasitárias",
     "cap02": "II. Neoplasias (tumores)",
@@ -878,7 +878,7 @@
     },
     {
       "campo": "homicidios",
-      "nome": "Homicídios",
+      "nome": "Homicídios (agressões + intervenção legal)",
       "fonte": "sim",
       "anos": [
         1996,
@@ -5971,8 +5971,8 @@
     },
     {
       "id": "homicidios",
-      "nome": "Homicídios",
-      "descricao": "Óbitos por agressão (X85–Y09) e intervenção legal (Y35–Y36), pela causa básica, ÷ população × 100.000. Não inclui as mortes por intenção indeterminada (Y10–Y34), parte das quais são homicídios.",
+      "nome": "Homicídios (agressões + intervenção legal)",
+      "descricao": "Óbitos por agressão (X85–Y09) e intervenção legal (Y35–Y36), pela causa básica, ÷ população × 100.000. Y35–Y36 também inclui operações de guerra. Segurança mostra agressões (X85–Y09) separadamente; os totais diferem. Não inclui intenção indeterminada (Y10–Y34).",
       "unidade": "por 100 mil habitantes",
       "numerador": "homicidios",
       "denominador": "populacao",
@@ -6882,13 +6882,52 @@
     {
       "id": "dengue_incidencia",
       "nome": "Dengue: casos prováveis",
-      "descricao": "Casos de dengue notificados e não descartados (os arquivos públicos do SINAN já excluem os descartados) ÷ população residente × 100.000. Notificação depende da vigilância local: onde se notifica menos, aparece menos (subnotificação), e surtos fazem os números oscilar muito de um ano para outro. Pode diferir dos boletins do Ministério, que aplicam exclusões e atualizações próprias.",
+      "descricao": "Casos de dengue notificados e não descartados ÷ população residente × 100.000. Inclui registros sem confirmação final. A classificação antiga (CON_CLASSI, até 2006) e a atual (CLASSI_FIN) são compatibilizadas; excluem-se descartados e registros classificados como chikungunya. A série segue o ano do arquivo DATASUS e o município de residência. Notificação depende da vigilância local: onde se notifica menos, aparece menos (subnotificação), e surtos fazem os números oscilar muito de um ano para outro. Pode diferir dos boletins do Ministério, que aplicam exclusões e atualizações próprias.",
       "unidade": "por 100 mil habitantes",
       "numerador": "sinan_dengue_provaveis",
       "denominador": "populacao",
       "fator": 100000,
       "tipo": "taxa",
       "fonte": "SINAN (dengue) e população da SVS/MS",
+      "anos": [
+        2000,
+        2001,
+        2002,
+        2003,
+        2004,
+        2005,
+        2006,
+        2007,
+        2008,
+        2009,
+        2010,
+        2011,
+        2012,
+        2013,
+        2014,
+        2015,
+        2016,
+        2017,
+        2018,
+        2019,
+        2020,
+        2021,
+        2022,
+        2023,
+        2024,
+        2025
+      ]
+    },
+    {
+      "id": "dengue_letalidade_prov",
+      "nome": "Dengue: letalidade entre os casos prováveis",
+      "descricao": "Óbitos por dengue entre casos confirmados ÷ casos prováveis × 100. O denominador inclui todas as notificações não descartadas, com ou sem confirmação final. Usa o mesmo numerador de óbitos da medida entre confirmados, apresentada separadamente. Não é a letalidade restrita aos casos graves ou com sinais de alarme. Série pelo ano do arquivo DATASUS e município de residência. Notificação depende da vigilância local: onde se notifica menos, aparece menos (subnotificação), e surtos fazem os números oscilar muito de um ano para outro. Pode diferir dos boletins do Ministério, que aplicam exclusões e atualizações próprias.",
+      "unidade": "% dos casos prováveis",
+      "numerador": "sinan_dengue_obitos",
+      "denominador": "sinan_dengue_provaveis",
+      "fator": 1,
+      "tipo": "proporcao",
+      "fonte": "SINAN (dengue)",
       "anos": [
         2000,
         2001,
@@ -6960,7 +6999,7 @@
     {
       "id": "dengue_graves",
       "nome": "Dengue: proporção de casos graves",
-      "descricao": "Dengue grave (classificação 12, ou FHD e SCD nos anos antigos) ÷ casos confirmados. Notificação depende da vigilância local: onde se notifica menos, aparece menos (subnotificação), e surtos fazem os números oscilar muito de um ano para outro. Pode diferir dos boletins do Ministério, que aplicam exclusões e atualizações próprias.",
+      "descricao": "Dengue grave (classificação 12, ou FHD e SCD nos anos antigos) ÷ casos confirmados. Medida restrita: não inclui dengue com sinais de alarme nem a antiga dengue com complicações. A classificação clínica mudou em 2014; a série não representa uma definição clínica uniforme. Notificação depende da vigilância local: onde se notifica menos, aparece menos (subnotificação), e surtos fazem os números oscilar muito de um ano para outro. Pode diferir dos boletins do Ministério, que aplicam exclusões e atualizações próprias.",
       "unidade": "% dos casos confirmados",
       "numerador": "sinan_dengue_graves",
       "denominador": "sinan_dengue_confirmados",
@@ -7286,7 +7325,7 @@
     {
       "id": "resp_notificacoes",
       "nome": "Microcefalia e alterações do SNC: notificações",
-      "descricao": "Notificações no RESP (registro criado na emergência da síndrome congênita ligada ao vírus Zika) de recém-nascidos, crianças, fetos, natimortos e abortos com microcefalia ou alterações do sistema nervoso central, pelo ano da notificação e município de residência, sem as excluídas ÷ nascidos vivos × 100.000. Notificação não é caso confirmado e a vigilância mudou muito depois de 2016. Veja também as confirmadas.",
+      "descricao": "Notificações no RESP de recém-nascidos, crianças, fetos, natimortos e abortos com microcefalia ou alterações do sistema nervoso central, pelo ano da notificação e município de residência, sem as excluídas ÷ nascidos vivos × 100.000. Inclui Zika, outras infecções congênitas (STORCH), coinfecções e causas desconhecidas; não mede a incidência de Zika. Notificação não é caso confirmado e a vigilância mudou muito depois de 2016.",
       "unidade": "por 100 mil nascidos vivos",
       "numerador": "resp_notificacoes",
       "denominador": "nascidos",
@@ -7309,7 +7348,7 @@
     {
       "id": "resp_confirmadas",
       "nome": "Microcefalia e alterações do SNC: confirmadas",
-      "descricao": "Notificações do RESP com classificação final \"confirmado\" ÷ nascidos vivos × 100.000, pelo ano da notificação e município de residência. A confirmação pode levar meses: os últimos anos tendem a ficar subestimados.",
+      "descricao": "Notificações do RESP com classificação final \"confirmado\" ÷ nascidos vivos × 100.000, pelo ano da notificação e município de residência. A confirmação é da alteração congênita: inclui Zika, STORCH, coinfecções e etiologia desconhecida; não significa confirmação de infecção por Zika. A confirmação pode levar meses: os últimos anos tendem a ficar subestimados.",
       "unidade": "por 100 mil nascidos vivos",
       "numerador": "resp_confirmadas",
       "denominador": "nascidos",
@@ -7341,6 +7380,13 @@
         "en": "Has indirect administration"
       },
       "fontes": [
+        {
+          "ano": 2025,
+          "var": "MREH02",
+          "aba": "Recursos humanos",
+          "tema": "Composição do quadro de pessoal da administração indireta",
+          "rotulo": "Administração indireta - existência"
+        },
         {
           "ano": 2024,
           "var": "MREH02",
@@ -7431,6 +7477,13 @@
       },
       "fontes": [
         {
+          "ano": 2025,
+          "var": "MREH016",
+          "aba": "Recursos humanos",
+          "tema": "Composição do quadro de pessoal da administração direta",
+          "rotulo": "Total"
+        },
+        {
           "ano": 2024,
           "var": "MREH016",
           "aba": "Recursos humanos",
@@ -7471,6 +7524,13 @@
         "en": "Statutory staff (direct administration)"
       },
       "fontes": [
+        {
+          "ano": 2025,
+          "var": "MREH011",
+          "aba": "Recursos humanos",
+          "tema": "Composição do quadro de pessoal da administração direta",
+          "rotulo": "Estatutários"
+        },
         {
           "ano": 2024,
           "var": "MREH011",
@@ -7513,6 +7573,13 @@
       },
       "fontes": [
         {
+          "ano": 2025,
+          "var": "MREH012",
+          "aba": "Recursos humanos",
+          "tema": "Composição do quadro de pessoal da administração direta",
+          "rotulo": "Celetistas"
+        },
+        {
           "ano": 2024,
           "var": "MREH012",
           "aba": "Recursos humanos",
@@ -7553,6 +7620,13 @@
         "en": "Appointed-only staff (direct administration)"
       },
       "fontes": [
+        {
+          "ano": 2025,
+          "var": "MREH013",
+          "aba": "Recursos humanos",
+          "tema": "Composição do quadro de pessoal da administração direta",
+          "rotulo": "Somente comissionados"
+        },
         {
           "ano": 2024,
           "var": "MREH013",
@@ -7595,6 +7669,13 @@
       },
       "fontes": [
         {
+          "ano": 2025,
+          "var": "MREH014",
+          "aba": "Recursos humanos",
+          "tema": "Composição do quadro de pessoal da administração direta",
+          "rotulo": "Estagiários"
+        },
+        {
           "ano": 2024,
           "var": "MREH014",
           "aba": "Recursos humanos",
@@ -7635,6 +7716,13 @@
         "en": "No permanent tie (direct administration)"
       },
       "fontes": [
+        {
+          "ano": 2025,
+          "var": "MREH015",
+          "aba": "Recursos humanos",
+          "tema": "Composição do quadro de pessoal da administração direta",
+          "rotulo": "Sem vínculo permanente"
+        },
         {
           "ano": 2024,
           "var": "MREH015",
@@ -7677,6 +7765,13 @@
       },
       "fontes": [
         {
+          "ano": 2025,
+          "var": "MREH036",
+          "aba": "Recursos humanos",
+          "tema": "Composição do quadro de pessoal da administração indireta",
+          "rotulo": "Total"
+        },
+        {
           "ano": 2024,
           "var": "MREH036",
           "aba": "Recursos humanos",
@@ -7703,6 +7798,13 @@
         "en": "Statutory staff (indirect administration)"
       },
       "fontes": [
+        {
+          "ano": 2025,
+          "var": "MREH031",
+          "aba": "Recursos humanos",
+          "tema": "Composição do quadro de pessoal da administração indireta",
+          "rotulo": "Estatutários"
+        },
         {
           "ano": 2024,
           "var": "MREH031",
@@ -7731,6 +7833,13 @@
       },
       "fontes": [
         {
+          "ano": 2025,
+          "var": "MREH032",
+          "aba": "Recursos humanos",
+          "tema": "Composição do quadro de pessoal da administração indireta",
+          "rotulo": "Celetistas"
+        },
+        {
           "ano": 2024,
           "var": "MREH032",
           "aba": "Recursos humanos",
@@ -7757,6 +7866,13 @@
         "en": "Appointed-only staff (indirect administration)"
       },
       "fontes": [
+        {
+          "ano": 2025,
+          "var": "MREH033",
+          "aba": "Recursos humanos",
+          "tema": "Composição do quadro de pessoal da administração indireta",
+          "rotulo": "Somente comissionados"
+        },
         {
           "ano": 2024,
           "var": "MREH033",
@@ -7785,6 +7901,13 @@
       },
       "fontes": [
         {
+          "ano": 2025,
+          "var": "MREH034",
+          "aba": "Recursos humanos",
+          "tema": "Composição do quadro de pessoal da administração indireta",
+          "rotulo": "Estagiários"
+        },
+        {
           "ano": 2024,
           "var": "MREH034",
           "aba": "Recursos humanos",
@@ -7811,6 +7934,13 @@
         "en": "No permanent tie (indirect administration)"
       },
       "fontes": [
+        {
+          "ano": 2025,
+          "var": "MREH035",
+          "aba": "Recursos humanos",
+          "tema": "Composição do quadro de pessoal da administração indireta",
+          "rotulo": "Sem vínculo permanente"
+        },
         {
           "ano": 2024,
           "var": "MREH035",
@@ -8089,6 +8219,13 @@
         "en": "Has a master plan"
       },
       "fontes": [
+        {
+          "ano": 2025,
+          "var": "MLEG01",
+          "aba": "Legislação e instr planejamento",
+          "tema": "Plano Diretor",
+          "rotulo": "Plano diretor - existência"
+        },
         {
           "ano": 2021,
           "var": "Mleg01",

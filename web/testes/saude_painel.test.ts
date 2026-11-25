@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Linha } from '../src/api';
-import { INDICADORES, indicador, calcular, disponivelNosDados, type FontesMeta } from '../src/saude_comum';
+import { INDICADORES, indicador, calcular, formatar, disponivelNosDados, type FontesMeta } from '../src/saude_comum';
 import {
   condicaoTexto, filtrarIndicadores, normalizarBusca, notaSemValor, resumirIndicador, tabelaResumo, TEMAS, temColunasDoIndicador, valorExportado,
 } from '../src/saude_painel';
@@ -20,6 +20,20 @@ const serie = (r: Record<string, number | null> = {}): Linha[] => {
   const base = (ano: number) => ({ ano, ...Object.fromEntries([...colunasDe()].map((c) => [c, 100])) });
   return [base(2022), { ...base(2023), ...r }];
 };
+
+test('dengue: letalidades preservam denominadores distintos, zero registrado e ausencia', () => {
+  const prov = indicador('dengue_letalidade_prov'), conf = indicador('dengue_letalidade');
+  const row = { sinan_dengue_obitos: 2, sinan_dengue_provaveis: 1000, sinan_dengue_confirmados: 500 };
+  assert.equal(calcular(prov, row), 0.002);
+  assert.equal(calcular(conf, row), 0.004);
+  assert.equal(calcular(prov, { ...row, sinan_dengue_obitos: 0 }), 0);
+  assert.equal(calcular(prov, { ...row, sinan_dengue_obitos: null }), null);
+  assert.equal(calcular(prov, { ...row, sinan_dengue_provaveis: 0 }), null);
+  assert.equal(calcular(prov, { ...row, sinan_dengue_provaveis: null }), null);
+  assert.equal(valorExportado(prov, 0.002), 0.2);
+  assert.match(formatar(prov, 0.000754327), /0[,.]08\s*%/);
+  assert.match(formatar(conf, 0.000754327), /0[,.]08\s*%/);
+});
 
 test('chikungunya: prováveis e confirmados têm numeradores distintos; notificações não substituem prováveis', () => {
   const prov = indicador('chik_incidencia_prov'), conf = indicador('chik_incidencia');
@@ -54,7 +68,7 @@ test('busca: sem acento, maiúsculas, palavras usuais e tema; vazia devolve o co
   assert.deepEqual(ids('cesárea'), ['cesareas']);
   assert.ok(['mamo_50_69', 'mamo_50_74'].every((id) => ids('mama').includes(id)));
   assert.ok(ids('enfermeiros').includes('enfermeiros_mil'));
-  assert.deepEqual(ids('dengue', 'vigilancia').sort(), ['dengue_graves', 'dengue_incidencia', 'dengue_letalidade']);
+  assert.deepEqual(ids('dengue', 'vigilancia').sort(), ['dengue_graves', 'dengue_incidencia', 'dengue_letalidade', 'dengue_letalidade_prov']);
   assert.deepEqual(ids('dengue', 'oncologia'), []); // o tema restringe
   assert.deepEqual(ids('zzzz inexistente'), []);
   assert.equal(ids('').length, INDICADORES.length);

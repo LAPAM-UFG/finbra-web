@@ -1,3 +1,4 @@
+import { buscarDados as fetch } from '../buscar_dados';
 import { useSearchParams } from 'react-router-dom';
 import { COD_UF } from '../munic_painel';
 import { REDES_EDUCACAO,redeEducacaoValida,type RedeEducacao } from '../educacao_rede';

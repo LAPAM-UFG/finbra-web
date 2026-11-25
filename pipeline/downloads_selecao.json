@@ -461,6 +461,11 @@
       "area": "saude"
     },
     {
+      "origem": "sau_ind_dengue_letalidade_prov",
+      "variavel": "sau_ind_dengue_letalidade_prov",
+      "area": "saude"
+    },
+    {
       "origem": "sau_ind_dengue_letalidade",
       "variavel": "sau_ind_dengue_letalidade",
       "area": "saude"

@@ -1,3 +1,4 @@
+import { buscarDados as fetch } from './buscar_dados';
 import { feature } from 'topojson-client';
 import type { GeometryCollection, Topology } from 'topojson-specification';
 import type { FeatureCollection, MultiPolygon, Polygon } from 'geojson';

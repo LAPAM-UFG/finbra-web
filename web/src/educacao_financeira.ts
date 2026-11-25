@@ -1,3 +1,4 @@
+import { buscarDados as fetch } from './buscar_dados';
 /** SIOPE pronto por recorte; falhas ou atualização da fonte retornam ao motor. */
 import { BASE_DADOS, obterManifesto, type ManifestoBruto } from './manifesto';
 import { obterMetaEducacao, lerObjetoEducacao, ufMunicipioEducacao, type MetaEducacao, type ObjetoEducacao, type TrechoEducacao } from './educacao_dados';

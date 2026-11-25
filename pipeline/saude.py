@@ -78,6 +78,7 @@ import pyarrow as pa
 from config import GOLD, SILVER
 from icsap import agregar_icsap
 from chikungunya import sql_chikungunya
+from dengue import fonte_dengue, sql_dengue
 
 GOLD_S = GOLD / "saude"
 ANO_FECHADO = datetime.now(ZoneInfo('America/Sao_Paulo')).year - 1
@@ -407,11 +408,10 @@ def cnes(con, micro: Path):
 SINAN_AGRAVOS = {
     "DENG": ("dengue", 2000), "CHIK": ("chikungunya", 2014), "TUBE": ("tuberculose", 2001), "HANS": ("hanseníase", 2001), "VIOL": ("violência", 2009),
 }
-# dengue: os arquivos públicos já trazem só os casos não descartados (casos prováveis). Confirmados: dengue clássica, com complicações,
+# dengue: exclui descartados também dos arquivos Windows (CON_CLASSI/CON_EVOLUC, até 2006). Confirmados: dengue clássica, com complicações,
 # FHD e SCD (1 a 4, anos antigos) e dengue, com sinais de alarme e grave (10 a 12). Graves: FHD, SCD e dengue grave (3, 4, 12).
 # Óbito: EVOLUCAO = 2 entre os confirmados. Chikungunya: fichas antigas 1/2 e atuais 13/5; ver chikungunya.py.
 # Tuberculose: TRATAMENTO = 1 (caso novo, sem recidiva, reingresso, transferência nem pós-óbito). Hanseníase: MODOENTR = 1 (caso novo).
-SINAN_CONF_DENGUE = "('1', '2', '3', '4', '10', '11', '12')"
 
 
 def sinan(con, micro: Path):
@@ -423,15 +423,10 @@ def sinan(con, micro: Path):
                    TRY_CAST(left(ID_MN_RESI, 6) AS INTEGER) AS municipio {extra}
             FROM read_parquet('{base}/{cod}BR*.parquet', filename = true, union_by_name = true)"""
 
-    conf = SINAN_CONF_DENGUE
     con.execute(f"""
         CREATE OR REPLACE TABLE sinan AS
         WITH deng AS (
-            SELECT ano, municipio, count(*) AS sinan_dengue_provaveis,
-                   count(*) FILTER (WHERE CLASSI_FIN IN {conf}) AS sinan_dengue_confirmados,
-                   count(*) FILTER (WHERE CLASSI_FIN IN ('3', '4', '12')) AS sinan_dengue_graves,
-                   count(*) FILTER (WHERE CLASSI_FIN IN {conf} AND EVOLUCAO = '2') AS sinan_dengue_obitos
-            FROM ({ler('DENG', ', CLASSI_FIN, EVOLUCAO')}) GROUP BY ano, municipio),
+            {sql_dengue(fonte_dengue(con, base))}),
         chik AS (
             {sql_chikungunya(ler('CHIK', ', CLASSI_FIN'))}),
         tube AS (
@@ -460,7 +455,7 @@ def sinan(con, micro: Path):
             WHERE k.municipio IS NOT NULL AND k.ano BETWEEN 2000 AND {ANO_FECHADO})
         -- agravo ausente do ano (arquivo inexistente ou sem a coluna) fica nulo, nunca zero: sem nenhum registro no país, não há dado
         SELECT ano, municipio, uf,
-               {', '.join(f"CASE WHEN sum({'sinan_chik_notificacoes' if c.startswith('sinan_chik_') else c}) OVER (PARTITION BY ano) > 0 THEN {c} END AS {c}" for c in SINAN_COLUNAS)}
+               {', '.join(f"CASE WHEN sum({'sinan_chik_notificacoes' if c.startswith('sinan_chik_') else 'sinan_dengue_notificacoes' if c.startswith('sinan_dengue_') else c}) OVER (PARTITION BY ano) > 0 THEN {c} END AS {c}" for c in SINAN_COLUNAS)}
         FROM j ORDER BY ano, municipio""")
     con.execute(f"COPY sinan TO '{GOLD_S / 'sinan.parquet'}' (FORMAT parquet, COMPRESSION zstd)")
     print("sinan:", con.sql("""SELECT ano, sum(sinan_dengue_provaveis), sum(sinan_dengue_confirmados), sum(sinan_dengue_obitos), sum(sinan_tb_casos_novos),

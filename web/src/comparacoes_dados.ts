@@ -1,3 +1,4 @@
+import { buscarDados as fetch } from './buscar_dados';
 /** Séries e listas prontas: leitura parcial, edição fixada e ausência explícita. */
 import { BASE_DADOS } from "./manifesto";
 import { UF_NOMES } from "./ufs";

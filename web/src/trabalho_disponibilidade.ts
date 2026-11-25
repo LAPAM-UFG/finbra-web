@@ -1,3 +1,4 @@
+import { buscarDados as fetch } from './buscar_dados';
 /** Disponibilidade dos atalhos avançados, sem carregar o motor ou microdados. */
 import { useEffect,useState } from 'react';
 import { BASE_DADOS } from './manifesto';

@@ -1,3 +1,4 @@
+import { buscarDados as fetch } from './buscar_dados';
 /** Resumos prontos: índices pequenos por UF e trechos gzip com hash, sem motor SQL. */
 import { USAR_MOTOR } from './clima_abertura';
 import { BASE_DADOS, obterManifesto, versaoDoManifesto, type ManifestoBruto } from './manifesto';

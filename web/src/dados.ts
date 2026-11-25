@@ -1,3 +1,4 @@
+import { buscarDados as fetch } from './buscar_dados';
 import {leitorSan} from './saneamento_dados';
 import {obterMetaEducacao} from './educacao_dados';
 /**

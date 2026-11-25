@@ -1,3 +1,4 @@
+import { buscarDados as fetch } from './buscar_dados';
 /** Números prontos por território. Não inicia SQL nem carrega dados de outros lugares. */
 import { useEffect, useState } from 'react';
 import { BASE_DADOS } from './manifesto';

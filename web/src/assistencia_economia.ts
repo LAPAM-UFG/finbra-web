@@ -1,3 +1,4 @@
+import { buscarDados as fetch } from './buscar_dados';
 import { BASE_DADOS } from './manifesto';
 
 type Objeto = { caminho: string; bytes: number; sha256: string };

@@ -69,6 +69,7 @@ import './clima.test'; // painel automático de clima: escolha pela URL, lacunas
 import './worker_dados.test'; // servidor de dados do Worker (HEAD, Range, Vary, 304) com R2 simulado
 import './filtros_url.test'; // URL e teclado: avisos de recorte, DF/Noronha, busca sem seleção acidental
 import './revisao_geral.test';
+import './buscar_dados.test';
 import './navegacao.test'; // território entre áreas e links antigos da IA
 import { CURADORIA } from '../src/munic_curadoria';
 import { COD_UF, montarCartoes, selecionar, type DadosPainel, type Escopo, type Modo } from '../src/munic_painel';
