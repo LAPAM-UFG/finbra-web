@@ -149,10 +149,13 @@ main { padding: 24px 28px 48px; min-width: 0; }
   .areas { order: 3; flex: 1 1 100%; }
 }
 @media (min-width:801px) {
-  .topo { position:static; flex-wrap:nowrap; min-height:58px; padding:8px 16px; }
-  .areas { order:0; flex:1 1 0; flex-wrap:wrap; overflow:visible; }
+  .topo { position:static; flex-wrap:nowrap; min-height:64px; padding:10px 16px; }
+  .topo .logo { height:40px; }
+  .areas { order:0; flex:1 1 0; flex-wrap:wrap; overflow:visible; gap:4px; }
+  /* Distribui as abas pela largura disponível, com leitura maior em telas amplas. */
+  .areas a { flex:1 0 auto; justify-content:center; min-height:42px; padding:6px 8px; font-size:clamp(14px, .85vw, 18px); }
 }
-@media (min-width:801px) and (max-width:960px) {
+@media (min-width:801px) and (max-width:1100px) {
   .topo { flex-wrap:wrap; }
   .areas { order:3; flex-basis:100%; }
 }
