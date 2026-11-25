@@ -419,6 +419,9 @@ class Comparacoes:
                 i[
                     "descricao_en"
                 ] += " Comparisons adjust both pay and payroll by IPCA to the indicated price base."
+            if area == 'saude':
+                from comparacoes_saude import incluir_sem_localizacao_brasil
+                qout = incluir_sem_localizacao_brasil(qout, self, saude[id])
             out.append(qout)
         if area == "saude":
             from comparacoes_saude import complementos

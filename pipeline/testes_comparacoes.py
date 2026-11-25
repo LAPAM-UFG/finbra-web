@@ -7,11 +7,34 @@ from types import SimpleNamespace
 from unittest.mock import patch
 import numpy as np
 from comparacoes_base import Quadro, por_base, Gravador, compatibilidade_global
-from comparacoes_saude import montar, definicao
+from comparacoes_saude import montar, definicao, incluir_sem_localizacao_brasil
 from comparacoes import Comparacoes
 
 
 class TestesComparacao(unittest.TestCase):
+    def test_sinan_brasil_inclui_sem_localizacao_sem_alterar_uf_e_municipio(self):
+        import duckdb
+        con=duckdb.connect()
+        try:
+            con.execute('CREATE TABLE registros(ano INTEGER,sinan_teste DOUBLE,populacao DOUBLE)')
+            con.execute('INSERT INTO registros VALUES (2024,10,1000),(2024,NULL,2000),(2024,5,NULL)')
+            i=definicao('teste','Teste','Test','SINAN','SINAN','https://datasus.saude.gov.br/')
+            i['fator']=100000
+            a=np.array([[10.,np.nan]]);d=np.array([[1000.,2000.]])
+            q=Quadro(i,[2024],a/d*100000,a,d,np.array([[0,2]],dtype=np.uint8))
+            g=SimpleNamespace(con=con,sql=lambda _: 'registros')
+            novo=incluir_sem_localizacao_brasil(q,g,{'numerador':'sinan_teste','denominador':'populacao'})
+            br=novo.grupo_territorio('BR',[0,1]);self.assertEqual((br['n'],br['d'],br['v']),([15],[3000],[500]))
+            self.assertEqual(br['q'],[1])
+            self.assertEqual(novo.grupo_territorio('GO',[0,1]),q.grupo_territorio('GO',[0,1]))
+            self.assertEqual(novo.grupo_territorio('5208707',[0],municipio=True),q.grupo_territorio('5208707',[0],municipio=True))
+            con.execute('DELETE FROM registros');con.execute('INSERT INTO registros VALUES (2024,0,1000)')
+            self.assertEqual(incluir_sem_localizacao_brasil(q,g,{'numerador':'sinan_teste','denominador':'populacao'}).grupo_territorio('BR',[0,1])['c'],[1])
+            con.execute('UPDATE registros SET populacao=0')
+            vazio=incluir_sem_localizacao_brasil(q,g,{'numerador':'sinan_teste','denominador':'populacao'}).grupo_territorio('BR',[0,1])
+            self.assertEqual((vazio['v'],vazio['c']),([None],[4]))
+        finally:con.close()
+
     def test_envio_comparacoes_inclui_ndjson_e_publica_manifesto_por_ultimo(self):
         import r2
 

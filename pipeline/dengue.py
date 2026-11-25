@@ -26,7 +26,7 @@ def fonte_dengue(con, base: Path) -> str:
             return partes[0] if len(partes) == 1 else 'coalesce(' + ','.join(partes) + ')'
 
         consultas.append(f"""SELECT 2000 + try_cast(regexp_extract(filename, 'DENGBR([0-9]{{2}})[.]parquet$', 1) AS INTEGER) AS ano,
-        try_cast(left(ID_MN_RESI, 6) AS INTEGER) AS municipio,
+        coalesce(try_cast(left(ID_MN_RESI, 6) AS INTEGER), 0) AS municipio,
         {campo('CLASSI_FIN', 'CON_CLASSI')} AS classe,
         {campo('EVOLUCAO', 'CON_EVOLUC')} AS evolucao,
         {'true' if colunas.intersection(('CLASSI_FIN', 'CON_CLASSI')) else 'false'} AS tem_classificacao,

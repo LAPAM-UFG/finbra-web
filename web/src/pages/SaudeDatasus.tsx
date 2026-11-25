@@ -324,6 +324,7 @@ export function SaudeVisaoGeral() {
     <>
       <h1 className="titulo-pagina">{t('Saúde: visão geral', 'Health: overview')}</h1>
       <p className="subtitulo">{rotulo} · {semAno ? t('último ano de cada fonte', 'latest year of each source') : ano} · {t('nascimentos, óbitos, internações e rede de saúde', 'births, deaths, admissions and health network')} <Dica rotulo={t('Fonte', 'Source')}>{fonteSaude()}</Dica></p>
+      {!escopo.ente && !escopo.uf && <p className="nota-base">{t('Os registros do SINAN com município vazio entram no total Brasil, sem atribuição a estado ou município. Mapas e rankings municipais usam apenas as localizações identificadas.', 'SINAN records with an empty municipality are included in the Brazil total without allocation to a state or municipality. Municipal maps and rankings use identified locations only.')}</p>}
       <BarraFiltros comUltimo ultimoPadrao />
       <AvisoAno ano={ano} />
       <Estado carregando={serie.carregando} erro={serie.erro} tentarNovamente={serie.recarregar}

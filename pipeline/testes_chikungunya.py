@@ -45,6 +45,22 @@ class ChikungunyaTest(unittest.TestCase):
     def test_ausencia_de_notificacao_nao_cria_linha_zero(self):
         self.assertEqual(self.con.execute(sql_chikungunya('SELECT * FROM registros')).fetchall(), [])
 
+    def test_pipeline_preserva_sem_localizacao_dos_dois_agravos_sem_duplicar(self):
+        import saude
+        with tempfile.TemporaryDirectory() as folder:
+            root=Path(folder);base=root/'SINAN/DADOS/FINAIS';base.mkdir(parents=True)
+            sources={
+                'CHIKBR24':"SELECT * FROM (VALUES (NULL,'13'),('','5'),('520870','13')) t(ID_MN_RESI,CLASSI_FIN)",
+                'DENGBR24':"SELECT * FROM (VALUES (NULL,'10','2'),('520870','10','1')) t(ID_MN_RESI,CLASSI_FIN,EVOLUCAO)",
+                'TUBEBR24':"SELECT '' ID_MN_RESI,'' TRATAMENTO,'' DT_DIAG WHERE false",
+                'HANSBR24':"SELECT '' ID_MN_RESI,'' MODOENTR WHERE false",
+                'VIOLBR24':"SELECT '' ID_MN_RESI WHERE false",
+            }
+            for name,sql in sources.items():self.con.execute('COPY ('+sql+") TO '"+(base/(name+'.parquet')).as_posix()+"' (FORMAT parquet)")
+            out=root/'saida';out.mkdir()
+            with patch.object(saude,'GOLD_S',out),contextlib.redirect_stdout(io.StringIO()):saude.sinan(self.con,root)
+            self.assertEqual(self.con.execute('SELECT municipio,uf,sinan_dengue_provaveis,sinan_chik_notificacoes,sinan_chik_provaveis FROM sinan ORDER BY municipio').fetchall(),[(0,0,1,2,1),(520870,52,1,1,1)])
+
     def test_pipeline_preserva_zero_em_ano_so_com_descartados_e_ausencia_noutros_recortes(self):
         import saude
         with tempfile.TemporaryDirectory() as folder:

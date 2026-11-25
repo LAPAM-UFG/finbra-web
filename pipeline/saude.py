@@ -420,7 +420,7 @@ def sinan(con, micro: Path):
 
     def ler(cod, extra=""):
         return f"""SELECT 2000 + TRY_CAST(regexp_extract(filename, '{cod}BR(\\d{{2}})\\.parquet$', 1) AS INTEGER) AS ano,
-                   TRY_CAST(left(ID_MN_RESI, 6) AS INTEGER) AS municipio {extra}
+                   coalesce(TRY_CAST(left(ID_MN_RESI, 6) AS INTEGER), 0) AS municipio {extra}
             FROM read_parquet('{base}/{cod}BR*.parquet', filename = true, union_by_name = true)"""
 
     con.execute(f"""
@@ -452,7 +452,8 @@ def sinan(con, micro: Path):
             FROM chaves k LEFT JOIN deng d USING (ano, municipio) LEFT JOIN chik c USING (ano, municipio) LEFT JOIN tube t USING (ano, municipio)
                  LEFT JOIN tubd td USING (ano, municipio)
                  LEFT JOIN hans h USING (ano, municipio) LEFT JOIN viol v USING (ano, municipio)
-            WHERE k.municipio IS NOT NULL AND k.ano BETWEEN 2000 AND {ANO_FECHADO})
+            -- 0 e uma chave tecnica, sem codigo IBGE nem UF: entra apenas no Brasil.
+            WHERE k.ano BETWEEN 2000 AND {ANO_FECHADO})
         -- agravo ausente do ano (arquivo inexistente ou sem a coluna) fica nulo, nunca zero: sem nenhum registro no país, não há dado
         SELECT ano, municipio, uf,
                {', '.join(f"CASE WHEN sum({'sinan_chik_notificacoes' if c.startswith('sinan_chik_') else 'sinan_dengue_notificacoes' if c.startswith('sinan_dengue_') else c}) OVER (PARTITION BY ano) > 0 THEN {c} END AS {c}" for c in SINAN_COLUNAS)}

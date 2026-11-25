@@ -4,6 +4,38 @@ import numpy as np
 from comparacoes_base import Quadro
 
 
+class QuadroSinanBrasil(Quadro):
+    """Total dos registros do SINAN no Brasil, inclusive residencia nao localizada."""
+    brasil: dict
+
+    def grupo_territorio(self, key, pos, municipio=False, incluir_ressalvas=False):
+        out = super().grupo_territorio(key, pos, municipio, incluir_ressalvas)
+        if key != 'BR' or municipio:
+            return out
+        valores, ns, ds, condicoes = [], [], [], []
+        for ano in self.periodos:
+            n, d = self.brasil.get(ano, (None, None))
+            flag = 2 if n is None else 3 if d is None else 4 if d <= 0 else 1 if n == 0 else 0
+            valores.append(n / d * self.definicao['fator'] if flag in (0, 1) else None)
+            ns.append(n); ds.append(d); condicoes.append(flag)
+        # q/e continuam descrevendo os municipios localizados, sem inventar
+        # uma localizacao para os registros adicionais do total nacional.
+        out.update(v=valores, n=ns, d=ds, c=condicoes)
+        return out
+
+
+def incluir_sem_localizacao_brasil(q, g, definicao):
+    if not definicao['numerador'].startswith('sinan_'):
+        return q
+    rows = g.con.execute('SELECT ano,sum(' + definicao['numerador'] + '),sum(' + definicao['denominador'] + ') FROM '
+                         + g.sql('gold/saude/municipios.parquet') + ' GROUP BY ano').fetchall()
+    novo = QuadroSinanBrasil(**vars(q))
+    novo.brasil = {int(a): (n, d) for a, n, d in rows}
+    novo.definicao = dict(q.definicao, normalizacao='Brasil: razão dos totais nacionais da fonte, incluindo registros sem localização municipal; população nacional quando aplicável. UF e regiões: razão dos componentes dos mesmos municípios válidos. Registros sem localização não são distribuídos entre territórios.',
+                         normalizacao_en='Brazil: ratio of national source totals, including records without a municipal location; national population where applicable. States and regions: ratio of components for the same valid municipalities. Unlocated records are not allocated to territories.')
+    return novo
+
+
 def definicao(id, nome, nome_en, tema, fonte, url, **extra):
     return dict(
         id=id,

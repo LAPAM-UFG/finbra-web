@@ -62,6 +62,11 @@ class DengueTest(unittest.TestCase):
         self.arquivo(2006, 'ID_MN_RESI VARCHAR, CON_CLASSI VARCHAR, CON_EVOLUC VARCHAR', [])
         self.assertEqual(self.agregar(), [])
 
+    def test_sem_localizacao_e_preservado_sem_imputar_municipio(self):
+        self.arquivo(2024, 'ID_MN_RESI VARCHAR, CLASSI_FIN VARCHAR, EVOLUCAO VARCHAR',
+                     [(None, '10', '2'), ('', '5', '1'), ('520870', '10', '1')])
+        self.assertEqual(self.agregar(), [(2024, 0, 2, 1, 1, 0, 1), (2024, 520870, 1, 1, 1, 0, 0)])
+
 
 if __name__ == '__main__':
     unittest.main()
