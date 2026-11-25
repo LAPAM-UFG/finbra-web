@@ -9,18 +9,16 @@ export async function referenciaVersao(bucket, versao, chave) {
   let cache = indices.get(bucket);
   if (!cache) { cache = new Map(); indices.set(bucket, cache); }
   if (!cache.has(versao)) {
-    const p = (async () => {
-      const objeto = await bucket.get(`gold/versoes/${versao}.json`);
-      if (!objeto) return null;
-      const m = await objeto.json();
-      if (m.versao !== 1 || m.edicao !== versao || !m.arquivos) throw new Error('Índice de versão inválido');
-      return m;
-    })();
-    cache.set(versao,p);
-    p.then(m=>{if(!m)cache.delete(versao);},()=>cache.delete(versao));
+    // I/O pertence à requisição que o iniciou. Não compartilha uma Promise de
+    // R2 ainda pendente entre invocações; só o JSON já lido entra no cache.
+    const objeto = await bucket.get(`gold/versoes/${versao}.json`);
+    if (!objeto) return null;
+    const m = await objeto.json();
+    if (m.versao !== 1 || m.edicao !== versao || !m.arquivos) throw new Error('Índice de versão inválido');
+    cache.set(versao,m);
     if (cache.size > 16) cache.delete(cache.keys().next().value);
   }
-  const ref = (await cache.get(versao))?.arquivos[chave];
+  const ref = cache.get(versao)?.arquivos[chave];
   if (!ref) return null;
   if (!/^"[a-f0-9]{32}(?:-\d+)?"$/.test(ref.etag) || !Number.isSafeInteger(ref.bytes) || ref.bytes < 0) throw new Error('Objeto de versão inválido');
   return ref;

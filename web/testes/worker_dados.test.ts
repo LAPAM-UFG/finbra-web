@@ -6,6 +6,23 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 // @ts-expect-error módulo JavaScript do Worker, sem tipos
 import worker from '../../worker/src/index.js';
+// @ts-expect-error módulo JavaScript do Worker, sem tipos
+import { referenciaVersao } from '../../worker/src/versoes_dados.js';
+
+test('edicoes: requisicoes concorrentes compartilham apenas JSON concluido, sem I/O pendente', async () => {
+  let leituras=0;
+  let liberar!: () => void;
+  const barreira=new Promise<void>(resolve=>{liberar=resolve;});
+  const referencia={bytes:10,etag:'"'+'a'.repeat(32)+'"'};
+  const bucket={get:async()=>{leituras++;await barreira;return{json:async()=>({versao:1,edicao:'20261125',arquivos:{'silver/entes.parquet':referencia}})};}};
+  const a=referenciaVersao(bucket,'20261125','silver/entes.parquet');
+  const b=referenciaVersao(bucket,'20261125','silver/entes.parquet');
+  assert.equal(leituras,2);
+  liberar();
+  assert.deepEqual(await Promise.all([a,b]),[referencia,referencia]);
+  assert.deepEqual(await referenciaVersao(bucket,'20261125','silver/entes.parquet'),referencia);
+  assert.equal(leituras,2); // o JSON concluido evita novas leituras
+});
 
 const CHAVE = 'gold/munic/painel_agregados.parquet';
 const CONTEUDO = Uint8Array.from({ length: 1000 }, (_, i) => (i * 7) % 251);
