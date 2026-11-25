@@ -262,12 +262,11 @@ main:focus { outline: none; }
 }
 .dica-botao[aria-expanded='true'] { background: var(--acao); color: var(--acao-tinta); border-color: var(--acao); }
 .dica-texto {
-  position: absolute; z-index: 40; top: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+  position: fixed; z-index: 1000; box-sizing: border-box; overflow-y: auto; overflow-wrap: anywhere;
   width: min(340px, calc(100vw - 32px)); background: var(--superficie); color: var(--tinta); border: 1px solid var(--borda);
   border-radius: 8px; padding: 10px 12px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.16); font-size: 12px; font-weight: 400;
   line-height: 1.45; text-align: left; text-transform: none; letter-spacing: 0; white-space: normal;
 }
-th .dica-texto { left: auto; right: 0; transform: none; }
 /* âncoras: o cabeçalho fixo tem altura variável (medida em App.tsx), então toda rolagem até um id deixa essa folga */
 html { scroll-padding-top: calc(var(--altura-topo, 72px) + 12px); }
 .bloco-saude { font-weight: 400; line-height: 1.4; }
